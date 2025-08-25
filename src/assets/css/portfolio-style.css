@@ -1,0 +1,1075 @@
+body {
+  margin: 0;
+  font-family: "Nunito", Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f9fafb;
+  color: #1f2937;
+}
+
+.color-pc {
+  color: #037fff;
+}
+
+.color-wh {
+  color: #ffffff !important;
+}
+
+.color-tc {
+  color: #a4acc4 !important;
+}
+
+.title-border {
+  width: 150px;
+  background-color: #2e344e;
+  height: 5px;
+  border-radius: 6px;
+  margin: 10px 0;
+}
+.title-border .title-border-width {
+  width: 50px;
+  height: 5px;
+  background-color: #037fff;
+}
+
+body {
+  overflow: hidden;
+  background-color: #10121B;
+}
+
+.portfolio-page-container {
+  display: flex;
+  background-color: #10121B;
+  flex-direction: row;
+  align-items: stretch;
+  /* This is default */
+  justify-content: stretch;
+}
+.portfolio-page-container .left-sidebar {
+  background-color: #191D2B;
+  border-right: 1px solid #2e344e;
+  width: 25%;
+  height: 100vh;
+  float: left;
+}
+.portfolio-page-container .left-sidebar .my-name {
+  text-align: center;
+  color: #037fff;
+}
+.portfolio-page-container .left-sidebar .left-sidebar-container {
+  border-bottom: 1px solid #2e344e;
+  padding: 50px 0;
+}
+.portfolio-page-container .left-sidebar .left-sidebar-container .mobile-mene-toggle {
+  display: none;
+}
+.portfolio-page-container .left-sidebar .left-sidebar-container .image-container {
+  border-radius: 50%;
+  overflow: hidden;
+  margin: auto;
+  height: 250px;
+  width: 250px;
+  border: 7px solid #2e344e;
+}
+.portfolio-page-container .left-sidebar .left-sidebar-container .image-container .avatar-image {
+  width: 100%;
+  transform: scale(0.9);
+  transition: 0.3s;
+}
+.portfolio-page-container .left-sidebar .left-sidebar-container .image-container .avatar-image:hover {
+  width: 100%;
+  transform: scale(1);
+}
+.portfolio-page-container .left-sidebar .portfolio-menu-container {
+  padding: 50px 0;
+}
+.portfolio-page-container .left-sidebar .portfolio-menu-container .portfolio-menu {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.portfolio-page-container .left-sidebar .portfolio-menu-container .portfolio-menu li {
+  padding: 5px 10px;
+  background-color: transparent;
+  margin: 5px 0;
+  text-align: center;
+  transition: 0.3s;
+  font-size: 20px;
+  font-weight: 600;
+}
+.portfolio-page-container .left-sidebar .portfolio-menu-container .portfolio-menu li a {
+  color: #037fff;
+  text-decoration: none;
+}
+.portfolio-page-container .left-sidebar .portfolio-menu-container .portfolio-menu li:hover {
+  background-color: rgba(0, 0, 0, 0.3);
+}
+.portfolio-page-container .left-sidebar .portfolio-menu-container .portfolio-menu li.active {
+  background-color: #037fff;
+}
+.portfolio-page-container .left-sidebar .portfolio-menu-container .portfolio-menu li.active a {
+  color: #ffffff;
+}
+.portfolio-page-container .left-sidebar .content-container {
+  width: 75%;
+}
+.portfolio-page-container .content-container {
+  background-color: transparent;
+  width: 100%;
+  position: relative;
+  overflow-y: scroll;
+  height: 100vh;
+  padding-bottom: 50px;
+}
+.portfolio-page-container .content-container .content-wrapper {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+}
+.portfolio-page-container #home {
+  text-align: center;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  flex-direction: column;
+}
+.portfolio-page-container #home h1 {
+  font-size: 60px;
+  margin: 0 !important;
+  font-weight: blod;
+  line-height: 1;
+}
+.portfolio-page-container #home .home-desc {
+  color: red;
+  font-size: 22px;
+  margin: 10px 0;
+}
+.portfolio-page-container #home .social-media-container .flex {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.portfolio-page-container #home .social-media-container a {
+  color: #a4acc4;
+  margin: 0 5px;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid #2e344e;
+  transition: 0.3s;
+}
+.portfolio-page-container #home .social-media-container a:hover {
+  background-color: #10121B;
+  color: #fff;
+}
+.portfolio-page-container #about {
+  height: 100%;
+  padding: 100px 20px;
+  margin-bottom: 1000px;
+}
+.portfolio-page-container #about .about-title {
+  margin: 0;
+  font-size: 40px;
+}
+.portfolio-page-container #about .about-info-container {
+  padding: 50px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.portfolio-page-container #about .about-info-container .about-info-image {
+  width: 48%;
+  margin-right: 2%;
+  float: left;
+  overflow: hidden;
+}
+.portfolio-page-container #about .about-info-container .about-info-image img {
+  width: 100%;
+  border-radius: 10px;
+}
+.portfolio-page-container #about .about-info-container .about-info-details {
+  width: 48%;
+  float: left;
+}
+.portfolio-page-container #about .about-info-container .about-info-details .about-info-title {
+  font-size: 40px;
+  margin: 0;
+  line-height: 1;
+}
+.portfolio-page-container #about .about-info-container .about-info-details .about-info-desc {
+  font-size: 20px;
+  margin: 10px 0;
+}
+.portfolio-page-container #about .about-info-container .about-info-details .about-info-table {
+  font-size: 20px;
+  color: #a4acc4;
+  padding: 10px 0;
+  padding-bottom: 0;
+}
+.portfolio-page-container #about .about-info-container .about-info-details .about-info-table tr {
+  margin: 5px 0;
+  display: block;
+}
+.portfolio-page-container #about .about-info-container .about-info-details .about-info-table tr td:first-child {
+  font-weight: 800;
+}
+.portfolio-page-container #about .about-info-container .about-info-details .about-info-button {
+  padding: 10px 30px;
+  background-color: #037fff;
+  text-decoration: none;
+  font-size: 22px;
+  margin-top: 20px;
+  display: inline-block;
+}
+.portfolio-page-container #about .about-services-container {
+  margin-bottom: 50px;
+  display: flex;
+  align-items: stretch;
+  margin-top: 50px;
+}
+.portfolio-page-container #about .about-services-container .about-service {
+  width: 30%;
+  margin: 0 0.5%;
+  float: left;
+  background-color: #191D2B;
+  border-top: 5px solid #2e344e;
+  padding: 10px;
+  transition: 0.3s;
+}
+.portfolio-page-container #about .about-services-container .about-service .service-title {
+  font-size: 30px;
+  margin: 15px 0;
+}
+.portfolio-page-container #about .about-services-container .about-service:hover {
+  border-color: #037fff;
+}
+.portfolio-page-container #about .about-reviews-container {
+  margin-bottom: 100px;
+  display: flex;
+  align-items: stretch;
+  margin-top: 50px;
+}
+.portfolio-page-container #about .about-reviews-container .about-review {
+  margin: 0 0.5%;
+  padding: 20px 0 65px 0;
+}
+.portfolio-page-container #about .about-reviews-container .about-review .review-text {
+  background-color: #191D2B;
+  padding: 30px 20px;
+  transition: 0.3s;
+  border-left: 5px solid #2e344e;
+  font-size: 20px;
+  color: #a4acc4;
+  margin: 0;
+  position: relative;
+}
+.portfolio-page-container #about .about-reviews-container .about-review .review-text::after {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 100%;
+  border-top: 15px solid #191D2B;
+}
+.portfolio-page-container #about .about-reviews-container .about-review .review-author {
+  color: #a4acc4;
+  font-size: 28px;
+  margin: 0;
+  margin: 15px 0 0 0;
+}
+.portfolio-page-container #about .about-reviews-container .about-review .review-src {
+  color: #a4acc4;
+}
+.portfolio-page-container #about .about-reviews-container .about-service:hover {
+  border-color: #037fff;
+}
+.portfolio-page-container #resume {
+  height: 100%;
+  padding: 100px 20px;
+  margin-bottom: 1000px;
+}
+.portfolio-page-container #resume .resume-title {
+  margin: 0;
+  font-size: 40px;
+}
+.portfolio-page-container #resume .section-title {
+  font-size: 30px;
+  color: #a4acc4;
+  display: flex;
+  align-items: center;
+  margin-top: 50px;
+}
+.portfolio-page-container #resume .section-title svg {
+  margin-right: 10px;
+}
+.portfolio-page-container #resume .resume-skill-container {
+  overflow: hidden;
+  padding: 30px 0 40px 0;
+}
+.portfolio-page-container #resume .resume-skill-container .progress-bar-container {
+  width: 48%;
+  margin: 0 1%;
+  float: left;
+}
+.portfolio-page-container #resume .resume-skill-container .progress-bar-container .progress-bar-title {
+  color: #a4acc4;
+  margin-bottom: 0;
+  font-weight: 700;
+  font-size: 24px;
+}
+.portfolio-page-container #resume .resume-skill-container .progress-bar-container .bar-container {
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+}
+.portfolio-page-container #resume .resume-skill-container .progress-bar-container .bar-container .progress-bar {
+  width: 90%;
+  background-color: #191D2B;
+  border-radius: 5px;
+  float: left;
+}
+.portfolio-page-container #resume .resume-skill-container .progress-bar-container .bar-container .progress-bar .progress-bar-indicator {
+  transition: 0.2s;
+  height: 7px;
+  border-radius: 5px;
+  background-color: #037fff;
+}
+.portfolio-page-container #resume .resume-skill-container .progress-bar-container .bar-container .percent-holder {
+  width: 8%;
+  color: #a4acc4;
+  margin-left: 2%;
+  font-weight: 700;
+}
+.portfolio-page-container #resume .resume-experience-container .timeline {
+  max-width: 800px;
+  margin: 0;
+  position: relative;
+  border-left: 3px solid #3a3f58;
+  margin-left: 15px;
+}
+.portfolio-page-container #resume .resume-experience-container .heading {
+  font-size: 2rem;
+  color: white;
+  margin-bottom: 40px;
+}
+.portfolio-page-container #resume .resume-experience-container .entry {
+  position: relative;
+  margin-bottom: 50px;
+  padding-left: 25px;
+}
+.portfolio-page-container #resume .resume-experience-container .entry::before {
+  content: "";
+  position: absolute;
+  left: -11px;
+  top: 0;
+  width: 20px;
+  height: 20px;
+  background-color: #0f111a;
+  border: 3px solid #3a3f58;
+  border-radius: 50%;
+}
+.portfolio-page-container #resume .resume-experience-container .time {
+  font-weight: 500;
+  color: #9aa0b3;
+  margin-bottom: 10px;
+}
+.portfolio-page-container #resume .resume-experience-container .role {
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #1e7aff;
+  margin-bottom: 5px;
+}
+.portfolio-page-container #resume .resume-experience-container .company {
+  font-size: 1rem;
+  font-weight: 500;
+  color: #ffffff;
+  margin-bottom: 10px;
+}
+.portfolio-page-container #resume .resume-experience-container .description {
+  color: #b3b3b3;
+  line-height: 1.5;
+}
+.portfolio-page-container #resume .resume-education-container {
+  padding-bottom: 50px;
+}
+.portfolio-page-container #resume .resume-education-container .timeline {
+  max-width: 800px;
+  margin: 0;
+  position: relative;
+  border-left: 3px solid #3a3f58;
+  margin-left: 15px;
+}
+.portfolio-page-container #resume .resume-education-container .heading {
+  font-size: 2rem;
+  color: white;
+  margin-bottom: 40px;
+}
+.portfolio-page-container #resume .resume-education-container .entry {
+  position: relative;
+  margin-bottom: 50px;
+  padding-left: 25px;
+}
+.portfolio-page-container #resume .resume-education-container .entry::before {
+  content: "";
+  position: absolute;
+  left: -11px;
+  top: 0;
+  width: 20px;
+  height: 20px;
+  background-color: #0f111a;
+  border: 3px solid #3a3f58;
+  border-radius: 50%;
+}
+.portfolio-page-container #resume .resume-education-container .time {
+  font-weight: 500;
+  color: #9aa0b3;
+  margin-bottom: 10px;
+}
+.portfolio-page-container #resume .resume-education-container .role {
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #1e7aff;
+  margin-bottom: 5px;
+}
+.portfolio-page-container #resume .resume-education-container .company {
+  font-size: 1rem;
+  font-weight: 500;
+  color: #ffffff;
+  margin-bottom: 10px;
+}
+.portfolio-page-container #resume .resume-education-container .description {
+  color: #b3b3b3;
+  line-height: 1.5;
+}
+.portfolio-page-container #portfolio {
+  padding: 100px 20px;
+}
+.portfolio-page-container #portfolio .portfolio-title {
+  font-size: 40px;
+  margin-top: 0;
+}
+.portfolio-page-container #portfolio .portfolios-container {
+  padding: 30px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  /* Optional spacing between items */
+}
+.portfolio-page-container #portfolio .portfolios-container .portfolio-item {
+  flex: 0 0 calc(33.333% - 1rem);
+  /* 3 columns with spacing accounted for */
+  border-radius: 10px;
+  overflow: hidden;
+  float: left;
+  background-color: #191D2B;
+}
+.portfolio-page-container #portfolio .portfolios-container .portfolio-item .portfolio-image-container {
+  position: relative;
+  overflow: hidden;
+}
+.portfolio-page-container #portfolio .portfolios-container .portfolio-item .portfolio-image-container .portfolio-image-overlay {
+  display: none;
+  opacity: 0;
+  height: 90%;
+  width: 95%;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background-color: rgba(25, 29, 43, 0.9);
+  transition: 0.5s;
+  border-radius: 10px;
+  align-items: center;
+  justify-content: center;
+}
+.portfolio-page-container #portfolio .portfolios-container .portfolio-item .portfolio-image-container .portfolio-image-overlay a {
+  background-color: #ffffff !important;
+  border-radius: 50%;
+  margin: 0 5px;
+  height: 50px;
+  width: 50px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+}
+.portfolio-page-container #portfolio .portfolios-container .portfolio-item .portfolio-image-container img {
+  width: 100%;
+  height: auto;
+}
+.portfolio-page-container #portfolio .portfolios-container .portfolio-item .portfolio-image-container:hover .portfolio-image-overlay {
+  display: flex;
+  opacity: 1;
+}
+.portfolio-page-container #portfolio .portfolios-container .portfolio-item .portfolio-details-container {
+  padding: 20px;
+}
+.portfolio-page-container #portfolio .portfolios-container .portfolio-item .portfolio-details-container .portfolio-title {
+  margin: 0;
+  color: #037fff;
+  font-size: 24px;
+}
+.portfolio-page-container #portfolio .portfolios-container .portfolio-item .portfolio-details-container .portfolio-desc {
+  margin: 0;
+  font-size: 18px;
+  color: #a4acc4;
+}
+.portfolio-page-container #blog {
+  padding: 100px 20px;
+}
+.portfolio-page-container #blog .blog-title {
+  font-size: 40px;
+  margin-top: 0;
+}
+.portfolio-page-container #blog .blogs-container {
+  overflow: hidden;
+  padding: 30px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  /* Optional spacing between items */
+}
+.portfolio-page-container #blog .blogs-container .blog-item {
+  flex: 0 0 calc(33.333% - 1rem);
+  /* 3 columns with spacing accounted for */
+  border-radius: 10px;
+  overflow: hidden;
+  float: left;
+  background-color: #191D2B;
+}
+.portfolio-page-container #blog .blogs-container .blog-item .blog-image-container {
+  position: relative;
+  overflow: hidden;
+}
+.portfolio-page-container #blog .blogs-container .blog-item .blog-image-container .blog-image-overlay {
+  display: none;
+  opacity: 0;
+  height: 90%;
+  width: 95%;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background-color: rgba(25, 29, 43, 0.9);
+  transition: 0.5s;
+  border-radius: 10px;
+  align-items: center;
+  justify-content: center;
+}
+.portfolio-page-container #blog .blogs-container .blog-item .blog-image-container .blog-image-overlay a {
+  background-color: #ffffff !important;
+  border-radius: 50%;
+  margin: 0 5px;
+  height: 50px;
+  width: 50px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+}
+.portfolio-page-container #blog .blogs-container .blog-item .blog-image-container img {
+  width: 100%;
+  height: auto;
+}
+.portfolio-page-container #blog .blogs-container .blog-item .blog-image-container:hover .blog-image-overlay {
+  display: flex;
+  opacity: 1;
+}
+.portfolio-page-container #blog .blogs-container .blog-item .blog-details-container {
+  padding: 20px;
+}
+.portfolio-page-container #blog .blogs-container .blog-item .blog-details-container .blog-title {
+  margin: 0;
+  color: #037fff;
+  font-size: 24px;
+}
+.portfolio-page-container #blog .blogs-container .blog-item .blog-details-container .blog-desc {
+  margin: 0;
+  font-size: 18px;
+  color: #a4acc4;
+}
+.portfolio-page-container #contact {
+  padding: 100px 20px !important;
+}
+.portfolio-page-container #contact .contact-title {
+  font-size: 40px;
+  margin-top: 0;
+}
+.portfolio-page-container #contact .section-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.portfolio-page-container #contact .section-container .contact-form-container {
+  width: 49%;
+  margin-right: 1%;
+}
+.portfolio-page-container #contact .section-container .contact-form-container .form-title {
+  color: #a4acc4;
+  font-size: 36px;
+  margin: 0;
+  margin-bottom: 20px;
+}
+.portfolio-page-container #contact .section-container .contact-form-container .form-group {
+  margin-bottom: 25px;
+  position: relative;
+}
+.portfolio-page-container #contact .section-container .contact-form-container .form-group label {
+  display: block;
+  color: #a4acc4;
+  font-size: 16px;
+  position: absolute;
+  top: -11px;
+  left: 20px;
+  background-color: #10121B;
+}
+.portfolio-page-container #contact .section-container .contact-form-container .form-group input {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  background-color: transparent;
+  color: #a4acc4;
+  border: 1px solid #2e344e;
+  outline: 0;
+  transition: 0.5s;
+  font-size: 18px;
+}
+.portfolio-page-container #contact .section-container .contact-form-container .form-group input:focus,
+.portfolio-page-container #contact .section-container .contact-form-container .form-group textarea:focus {
+  border-color: #037fff;
+}
+.portfolio-page-container #contact .section-container .contact-form-container .form-group textarea {
+  font-size: 18px;
+  display: block;
+  width: 100%;
+  padding: 10px;
+  background-color: transparent;
+  color: #a4acc4;
+  border: 1px solid #2e344e;
+  outline: 0;
+  transition: 0.5s;
+}
+.portfolio-page-container #contact .section-container .contact-form-container .submit-button {
+  margin-top: 10px;
+  background-color: #037fff;
+  color: #ffffff;
+  border: 0;
+  padding: 10px 20px;
+  font-size: 20px;
+  cursor: pointer;
+}
+.portfolio-page-container #contact .section-container .contact-info-container {
+  width: 49%;
+  padding: 20px;
+  margin-left: 1%;
+}
+.portfolio-page-container #contact .section-container .contact-info-container .info-row {
+  display: flex;
+  align-items: center;
+  background-color: #191D2B;
+  margin-bottom: 20px;
+  padding: 20px;
+}
+.portfolio-page-container #contact .section-container .contact-info-container .info-row .icon-container {
+  width: 20%;
+}
+.portfolio-page-container #contact .section-container .contact-info-container .info-row .data-container {
+  width: 80%;
+}
+.portfolio-page-container #contact .section-container .contact-info-container .info-row .data-container label {
+  display: block;
+  color: #a4acc4;
+  font-size: 20px;
+  margin-bottom: 10px;
+}
+.portfolio-page-container #contact .section-container .contact-info-container .info-row .data-container a {
+  text-decoration: none;
+  color: #ffffff;
+  display: block;
+  font-size: 18px;
+}
+
+.page-home.portfolio-page-container {
+  background-color: transparent !important;
+}
+.page-home.portfolio-page-container .content-container {
+  background-color: rgba(25, 29, 43, 0.5);
+}
+
+.page-resume.portfolio-page-container {
+  background-color: transparent !important;
+}
+
+.skeleton-card {
+  background-color: #18191a;
+  border-radius: 10px;
+  padding: 0;
+  width: 99%;
+  animation: fadePulse 2s ease-in-out infinite;
+  border: 1px solid #037fff;
+  margin-bottom: 0;
+  /* Header */
+  /* Line sizes */
+  /* Main big rectangle */
+  /* Footer buttons */
+}
+.skeleton-card .skeleton-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+}
+.skeleton-card .skeleton-avatar {
+  width: 48px;
+  height: 48px;
+  background-color: #191D2B;
+  border-radius: 50%;
+  margin-right: 16px;
+  border: 2px solid rgba(41, 177, 169, 0.3);
+  background-image: url(https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png);
+  background-position: center;
+  background-size: contain;
+}
+.skeleton-card .skeleton-lines {
+  flex: 1;
+}
+.skeleton-card .skeleton-line {
+  height: 12px;
+  background-color: #2e344e;
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+.skeleton-card .skeleton-line.button {
+  height: 25px !important;
+  border: 2px solid #191D2B;
+  background-color: #037fff !important;
+}
+.skeleton-card .short {
+  width: 40%;
+}
+.skeleton-card .medium {
+  width: 60%;
+}
+.skeleton-card .small {
+  width: 25%;
+}
+.skeleton-card .skeleton-main {
+  height: 380px;
+  background-color: #191D2B;
+  border-radius: 10px;
+  margin-bottom: 20px;
+}
+.skeleton-card .skeleton-footer {
+  display: flex;
+  justify-content: space-around;
+}
+
+.skeleton-card.no-border {
+  border: unset !important;
+  background-color: transparent;
+}
+
+.timeline {
+  position: relative;
+  width: 3px;
+  height: 100vh;
+  margin: 0 40px;
+  background-color: #2e3148;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-evenly;
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #2e3148;
+  background-color: #0f111a;
+  border-radius: 50%;
+}
+
+@media only screen and (max-width: 768px) {
+  .portfolio-page-container .left-sidebar {
+    position: absolute;
+    right: 100%;
+    width: 80%;
+    z-index: 9999;
+    transition: 1s;
+  }
+  .portfolio-page-container .left-sidebar .left-sidebar-container {
+    position: relative;
+    transition: 1s;
+  }
+  .portfolio-page-container .left-sidebar .left-sidebar-container .mobile-mene-toggle {
+    display: block;
+    position: absolute;
+    left: 100%;
+    top: 20px;
+    background-color: #ffffff;
+    height: 60px;
+    width: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .portfolio-page-container .left-sidebar.show {
+    left: 0 !important;
+  }
+  .portfolio-page-container #home {
+    padding: 0 20px;
+  }
+  .portfolio-page-container #about {
+    background-color: #10121B;
+    height: 100%;
+    padding: 100px 20px;
+    margin-bottom: 1000px;
+  }
+  .portfolio-page-container #about .about-title {
+    margin: 0;
+    font-size: 40px;
+  }
+  .portfolio-page-container #about .about-info-container {
+    padding: 50px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+  }
+  .portfolio-page-container #about .about-info-container .about-info-image {
+    width: 100%;
+    margin-bottom: 20px;
+    margin-right: 0;
+    float: none;
+  }
+  .portfolio-page-container #about .about-info-container .about-info-image img {
+    width: 100%;
+    border-radius: 10px;
+  }
+  .portfolio-page-container #about .about-info-container .about-info-details {
+    width: 100%;
+    float: none;
+  }
+  .portfolio-page-container #about .about-info-container .about-info-details .about-info-title {
+    font-size: 40px;
+    margin: 0;
+    line-height: 1;
+  }
+  .portfolio-page-container #about .about-info-container .about-info-details .about-info-desc {
+    font-size: 20px;
+    margin: 10px 0;
+  }
+  .portfolio-page-container #about .about-info-container .about-info-details .about-info-table {
+    font-size: 20px;
+    color: #a4acc4;
+    padding: 10px 0;
+    padding-bottom: 0;
+  }
+  .portfolio-page-container #about .about-info-container .about-info-details .about-info-table tr {
+    margin: 5px 0;
+    display: block;
+  }
+  .portfolio-page-container #about .about-info-container .about-info-details .about-info-table tr td:first-child {
+    font-weight: 800;
+  }
+  .portfolio-page-container #about .about-info-container .about-info-details .about-info-button {
+    padding: 10px 30px;
+    background-color: #037fff;
+    text-decoration: none;
+    font-size: 22px;
+    margin-top: 20px;
+    display: inline-block;
+  }
+  .portfolio-page-container #about .about-services-container {
+    margin-bottom: 50px;
+    display: flex;
+    align-items: stretch;
+    margin-top: 50px;
+    flex-direction: column;
+    align-items: center;
+  }
+  .portfolio-page-container #about .about-services-container .about-service {
+    width: 100%;
+    margin: 0;
+    margin-bottom: 20px;
+    float: none;
+  }
+  .portfolio-page-container #about .about-services-container .about-service .service-title {
+    font-size: 30px;
+    margin: 15px 0;
+  }
+  .portfolio-page-container #about .about-services-container .about-service:hover {
+    border-color: #037fff;
+  }
+  .portfolio-page-container #about .about-reviews-container {
+    margin-bottom: 100px;
+    display: flex;
+    align-items: stretch;
+    margin-top: 50px;
+  }
+  .portfolio-page-container #about .about-reviews-container .carousel-root {
+    width: 100%;
+  }
+  .portfolio-page-container #about .about-reviews-container .about-review {
+    margin: 0 0.5%;
+    padding: 20px 0 65px 0;
+  }
+  .portfolio-page-container #about .about-reviews-container .about-review .review-text {
+    background-color: #191D2B;
+    padding: 30px 20px;
+    transition: 0.3s;
+    border-left: 5px solid #2e344e;
+    font-size: 20px;
+    color: #a4acc4;
+    margin: 0;
+    position: relative;
+  }
+  .portfolio-page-container #about .about-reviews-container .about-review .review-text::after {
+    content: "";
+    width: 0;
+    height: 0;
+    border-left: 10px solid transparent;
+    border-right: 10px solid transparent;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: 100%;
+    border-top: 15px solid #191D2B;
+  }
+  .portfolio-page-container #about .about-reviews-container .about-review .review-author {
+    color: #a4acc4;
+    font-size: 28px;
+    margin: 0;
+    margin: 15px 0 0 0;
+  }
+  .portfolio-page-container #about .about-reviews-container .about-review .review-src {
+    color: #a4acc4;
+  }
+  .portfolio-page-container #resume .resume-title {
+    margin: 0;
+    font-size: 40px;
+  }
+  .portfolio-page-container #resume .section-title {
+    font-size: 30px;
+    color: #a4acc4;
+    display: flex;
+    align-items: center;
+    margin-top: 50px;
+  }
+  .portfolio-page-container #resume .section-title svg {
+    margin-right: 10px;
+  }
+  .portfolio-page-container #resume .resume-skill-container .progress-bar-container {
+    width: 100%;
+    float: none;
+  }
+  .portfolio-page-container #resume .resume-skill-container .progress-bar-container .progress-bar-title {
+    margin-top: 20px;
+    font-size: 22px;
+  }
+  .portfolio-page-container #resume .resume-skill-container .progress-bar-container .bar-container {
+    align-items: center;
+  }
+  .portfolio-page-container #resume .resume-skill-container .progress-bar-container .bar-container .progress-bar {
+    width: 88%;
+  }
+  .portfolio-page-container #resume .resume-skill-container .progress-bar-container .bar-container .percent-holder {
+    width: 12%;
+  }
+  .portfolio-page-container #resume .resume-education-container {
+    padding-bottom: 50px;
+  }
+  .portfolio-page-container #portfolio .portfolios-container {
+    flex-wrap: wrap;
+    gap: 0;
+    /* Optional spacing between items */
+  }
+  .portfolio-page-container #portfolio .portfolios-container .portfolio-item {
+    flex: 0 0 100%;
+    float: none;
+    margin-bottom: 20px;
+  }
+  .portfolio-page-container #portfolio .portfolios-container .portfolio-item .portfolio-details-container {
+    padding: 20px;
+  }
+  .portfolio-page-container #portfolio .portfolios-container .portfolio-item .portfolio-details-container .portfolio-title {
+    margin: 0;
+    color: #037fff;
+    font-size: 18px;
+  }
+  .portfolio-page-container #portfolio .portfolios-container .portfolio-item .portfolio-details-container .portfolio-desc {
+    margin: 0;
+    font-size: 16px;
+    color: #a4acc4;
+  }
+  .portfolio-page-container #blog .blogs-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    /* Optional spacing between items */
+  }
+  .portfolio-page-container #blog .blogs-container .blog-item {
+    flex: 0 0 100%;
+    margin-bottom: 20px;
+  }
+  .portfolio-page-container #blog .blogs-container .blog-item .blog-details-container .blog-title {
+    font-size: 18px;
+  }
+  .portfolio-page-container #blog .blogs-container .blog-item .blog-details-container .blog-desc {
+    font-size: 16px;
+  }
+  .portfolio-page-container #contact .section-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-direction: column;
+  }
+  .portfolio-page-container #contact .section-container .contact-form-container {
+    width: 100%;
+  }
+  .portfolio-page-container #contact .section-container .contact-form-container .form-title {
+    color: #a4acc4;
+    font-size: 36px;
+    margin: 0;
+    margin-bottom: 20px;
+  }
+  .portfolio-page-container #contact .section-container .contact-form-container .form-group {
+    margin-bottom: 25px;
+    position: relative;
+  }
+  .portfolio-page-container #contact .section-container .contact-form-container .form-group input {
+    width: 96%;
+  }
+  .portfolio-page-container #contact .section-container .contact-form-container .form-group textarea {
+    width: 96%;
+  }
+  .portfolio-page-container #contact .section-container .contact-form-container .submit-button {
+    margin-top: 5px;
+  }
+  .portfolio-page-container #contact .section-container .contact-info-container {
+    width: 100%;
+    padding: 20px;
+  }
+  .portfolio-page-container #contact .section-container .contact-info-container .info-row {
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+  }
+  .portfolio-page-container #contact .section-container .contact-info-container .info-row .icon-container {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .portfolio-page-container #contact .section-container .contact-info-container .info-row .data-container {
+    width: 100%;
+    text-align: center;
+  }
+}/*# sourceMappingURL=portfolio-style.css.map */
