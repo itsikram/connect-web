@@ -3,7 +3,7 @@ import socket from '../../common/socket';
 import UserPP from '../UserPP';
 import { useSelector } from 'react-redux';
 import * as faceapi from "face-api.js";
-import { useParams, useLocation, Link, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Peer from 'simple-peer';
 import ModalContainer from '../modal/ModalContainer';
 import useIsMobile from '../../utils/useIsMobile';
@@ -17,19 +17,16 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
     const [myEmotion, setMyEmotion] = useState(false);
     const [friendId, setFriendId] = useState(false);
     const [isLoaded, setIsLoaded] = useState(false);
-    const [isPpLoaded, setIsPpLoaded] = useState(false);
     const [friendPP, setFriendPP] = useState(friendProfilePic);
     const [isMicrophone, setIsMicrophone] = useState(true);
     const [isBackCamera, setIsBackCamera] = useState(false);
     const [isCameraOn, setIsCameraOn] = useState(true);
-    const [hasVideoInput, setHasVideoInput] = useState(true);
     const [stream, setStream] = useState();
     const [callAccepted, setCallAccepted] = useState(false);
     const [me, setMe] = useState('');
     const [isChatOptionMenu, setIsChatOptionMenu] = useState(false);
     const [receiverId, setReceiverId] = useState();
     const [isVideoCalling, setIsVideoCalling] = useState(false);
-    const [modalHeight, setModalHeight] = useState('auto');
 
     const cameraVideoRef = useRef(null);
     const location = useLocation();
@@ -65,7 +62,7 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
         callingBeepAudio?.current.pause();
     };
 
-    const callUser = (id) => {
+    const callUser = useCallback((id) => {
         // if (!stream) return;
         const peerA = new Peer({
             initiator: true,
@@ -88,7 +85,7 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
         });
 
         connectionRef.current = peerA;
-    };
+    }, [stream, me, profile.fullName]);
 
     const answerCall = useCallback((data) => {
         setCallAccepted(true);
@@ -146,14 +143,14 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
 
     useEffect(() => {
         if (stream && receiverId && !connectionRef.current) callUser(receiverId);
-    }, [stream, receiverId]);
+    }, [stream, receiverId, callUser]);
 
     useEffect(() => {
         if (isVideoCalling) {
             navigator.mediaDevices.enumerateDevices().then(devices => {
                 const videoDevices = devices.filter(d => d.kind === 'videoinput');
                 const backCamera = videoDevices.find(d => /back|environment/i.test(d.label));
-                const deviceId = isBackCamera && backCamera?.deviceId || videoDevices[0]?.deviceId;
+                const deviceId = (isBackCamera && backCamera?.deviceId) || videoDevices[0]?.deviceId;
 
                 navigator.mediaDevices.getUserMedia({
                     video: { deviceId },
@@ -164,7 +161,7 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
                 });
             });
         }
-    }, [isVideoCalling, isMicrophone]);
+    }, [isVideoCalling, isMicrophone, isBackCamera]);
 
     const handleVideoCallBtn = useCallback(e => {
         const id = e.currentTarget.dataset.id;
@@ -191,16 +188,16 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
         }
     }, [friendId, stream]);
 
-    const startVideo = () => {
+    const startVideo = useCallback(() => {
         if (!cameraVideoRef.current) return
         navigator.mediaDevices.enumerateDevices().then(devices => {
             const videoDevices = devices.filter(d => d.kind === 'videoinput');
             const backCamera = videoDevices.find(d => /back|environment/i.test(d.label));
-            const deviceId = isBackCamera && backCamera?.deviceId || videoDevices[0]?.deviceId;
+            const deviceId = (isBackCamera && backCamera?.deviceId) || videoDevices[0]?.deviceId;
             navigator.mediaDevices.getUserMedia({ video: { deviceId }, audio: isMicrophone })
                 .then(stream => { cameraVideoRef.current.srcObject = stream; });
         });
-    };
+    }, [isBackCamera, isMicrophone]);
 
     const stopCamera = () => {
         if (!cameraVideoRef.current) return
@@ -225,16 +222,16 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
         }, 3000);
     };
 
-    const loadModels = async () => {
+    const loadModels = useCallback(async () => {
         await faceapi.nets.tinyFaceDetector.loadFromUri("/models");
         await faceapi.nets.faceExpressionNet.loadFromUri("/models");
         detectEmotions();
-    };
+    }, []);
 
     useEffect(() => { setMe(profile._id); }, [profile]);
 
     const handleBumpBtnClick = useCallback(() => {
-        socket.emit('bump', friendProfile, profile);
+        socket.emit('bump', { friendProfile: friendProfile._id, myProfile: profile._id });
     }, [friendProfile, profile]);
 
     useEffect(() => {
@@ -242,7 +239,7 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
             startVideo();
             loadModels();
         }
-    }, [room, settings]);
+    }, [room, settings, startVideo, loadModels]);
 
     useEffect(() => { stopCamera(); }, [location]);
 
@@ -251,10 +248,10 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
         setIsLoaded(!!friendProfile._id);
         setFriendPP(friendProfile.profilePic);
         socket.emit('last_emotion', { friendId: friendProfile._id, profileId });
-    }, [friendProfile]);
+    }, [friendProfile, profileId]);
 
     useEffect(() => {
-        if (isValidUrl(friendPP)) checkImgLoading(friendPP, setIsPpLoaded);
+        if (isValidUrl(friendPP)) checkImgLoading(friendPP, () => {}); // Removed unused setIsPpLoaded
         else setFriendPP('');
     }, [friendPP]);
 
@@ -262,7 +259,7 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
         if (myEmotion && friendId) {
             socket.emit('emotion_change', { profileId, emotion: myEmotion, friendId });
         }
-    }, [myEmotion, friendId]);
+    }, [myEmotion, friendId, profileId]);
 
     useEffect(() => {
         const handleEmotion = (emotion) => setEmotion(emotion);
@@ -319,10 +316,10 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
                 </div>
 
                 {
-                    isLoaded == true ?
+                    isLoaded === true ?
                         <>
                             <div className='chat-header-user-info'>
-                                <h4 className='chat-header-username'> {`${friendProfile == true ? (friendProfile?.fullName || '') : friendProfile.user && friendProfile.user.firstName + ' ' + friendProfile.user.surname}`}</h4>
+                                <h4 className='chat-header-username'> {`${friendProfile === true ? (friendProfile?.fullName || '') : friendProfile.user && friendProfile.user.firstName + ' ' + friendProfile.user.surname}`}</h4>
 
                                 {
 
@@ -352,9 +349,9 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
                                             <>
 
                                                 {
-                                                    emotion && (<span className='chat-header-active-status text-capitalized'>{emotion} |</span>)}
+                                                    emotion && (<span className='chat-header-active-status text-capitalized'>{emotion} |</span>)
 
-                                                {lastSeen && <span className='chat-header-active-status text-capitalized'> Last Seen: {lastSeen}</span>}
+                                                }{lastSeen && <span className='chat-header-active-status text-capitalized'> Last Seen: {lastSeen}</span>}
 
 
                                             </>
@@ -407,7 +404,7 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
 
                 <ModalContainer
                     title="Video Call"
-                    style={{ width: isMobile ? '95%' : "600px", top: "50%", borderRadius: '10px', height: modalHeight }}
+                    style={{ width: isMobile ? '95%' : "600px", top: "50%", borderRadius: '10px', height: 'auto' }}
                     isOpen={isVideoCalling || callAccepted}
                     onRequestClose={closeVideoCall}
                     id="videoCallModal"
@@ -434,7 +431,7 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
                                             isMicrophone ? <i className="fa fa-microphone"></i> : <i className="fa fa-microphone-slash"></i>
                                         }
                                     </button>
-                                    {hasVideoInput && (
+                                    {(
                                         <button onClick={handleCameraToggle} className='call-button-camera call-button'>
                                             {isCameraOn ? <i className="fa fa-video" /> : <i className="fa fa-video-slash" />}
                                         </button>

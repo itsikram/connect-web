@@ -1,4 +1,4 @@
-import { ADD_MESSAGE, ADD_MESSAGES, NEW_MESSAGE, SEND_MESSAGE, SEEN_MESSAGE } from "../constants/messageConsts";
+import { ADD_MESSAGE, ADD_MESSAGES, NEW_MESSAGE, SEEN_MESSAGE } from "../constants/messageConsts";
 let initialState = []
 const messageReducer = (state = initialState, action) => {
     switch (action.type) {
@@ -40,16 +40,34 @@ const messageReducer = (state = initialState, action) => {
         case NEW_MESSAGE:
             let newMsg = action.payload
             let contactId = newMsg.senderId
-            let otherContacts = state.filter(state => state.person._id !== contactId)
+            let otherContacts = state.filter(state => state?.person?._id !== contactId)
 
-            let updatedContact = state.filter(state => state.person._id === contactId)
+            let updatedContact = state.filter(state => state?.person?._id === contactId)
 
-            updatedContact[0].messages = [newMsg]
-            return [
-                ...updatedContact,
-                ...otherContacts,
-            ];
-
+            // Check if the contact exists before trying to access its messages
+            if (updatedContact.length > 0 && updatedContact[0]) {
+                updatedContact[0].messages = [newMsg]
+                return [
+                    ...updatedContact,
+                    ...otherContacts,
+                ];
+            } else {
+                // If contact doesn't exist, create a new contact entry
+                // This handles the case where someone messages you for the first time
+                console.warn('Contact not found in state for NEW_MESSAGE, creating new contact:', contactId);
+                
+                // Create a minimal contact structure - the person data will be populated later
+                // when fetchMessages is called or when the contact is properly loaded
+                const newContact = {
+                    person: { _id: contactId }, // Minimal person data
+                    messages: [newMsg]
+                };
+                
+                return [
+                    newContact,
+                    ...otherContacts,
+                ];
+            }
             break;
 
         case SEEN_MESSAGE:
@@ -59,36 +77,26 @@ const messageReducer = (state = initialState, action) => {
 
             let usOtherContacts = state.filter(state => state?.person?._id !== seenContactId)
 
-            let seenContact = state.filter(state => state.person._id === seenContactId)
+            let seenContact = state.filter(state => state?.person?._id === seenContactId)
 
-            if (seenContact.length > 0 && seenContact[0]?.messages.length > 0) {
+            // Check if the contact exists and has messages before trying to access them
+            if (seenContact.length > 0 && seenContact[0]?.messages && seenContact[0].messages.length > 0) {
                 console.log('s c', seenContact[0].messages[0])
 
                 seenContact[0].messages[0].isSeen = true
 
+                return [
+                    ...seenContact,
+                    ...usOtherContacts,
+                ];
+            } else {
+                // If contact doesn't exist or has no messages, return unchanged state
+                console.warn('Contact or messages not found in state for SEEN_MESSAGE:', seenContactId);
+                return state;
             }
-
-            return [
-                ...seenContact,
-                ...usOtherContacts,
-            ];
             break;
 
-        case SEND_MESSAGE:
-            let newMsgSent = action.payload
-            let newContactId = newMsgSent.receiverId
-
-            let newOtherContacts = state.filter(state => state.person._id !== newContactId)
-
-            let newUpdatedContact = state.filter(state => state.person._id === newContactId)
-
-            newUpdatedContact[0].messages = [newMsgSent]
-
-            return [
-                ...newUpdatedContact,
-                ...newOtherContacts,
-            ];
-            break;
+        // SEND_MESSAGE case removed since it's no longer used and was causing errors
 
         default:
             return state;

@@ -1,5 +1,4 @@
 export const ADD_MESSAGE = 'ADD_MESSAGE'
 export const ADD_MESSAGES = 'ADD_MESSAGES'
 export const NEW_MESSAGE = 'NEW_MESSAGE'
-export const SEND_MESSAGE = 'SEND_MESSAGE'
 export const SEEN_MESSAGE = 'SEEN_MESSAGE'

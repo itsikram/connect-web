@@ -41,14 +41,18 @@ const MessageList = () => {
 
         if (myContacts.length == 0) return;
 
-        myContacts && myContacts.map((contact, index) => {
+        myContacts && myContacts.forEach((contact, index) => {
+
+            if (!contact || !contact.person || !contact.person._id) {
+                return;
+            }
 
             setContactPerson(contact.person)
             setContactMessages(contact.messages)
 
             // alert(contactPerson._id)
             // alert(contact?.person._id)
-            socket.emit('is_active', { profileId: contact?.person._id, myId: profileId })
+            socket.emit('is_active', { profileId: contact?.person?._id, myId: profileId })
             socket.on('is_active', (isUserActive, lastLogin, activeProfileId) => {
                 if (isUserActive === true) {
                     // alert(activeProfileId)
@@ -68,7 +72,7 @@ const MessageList = () => {
 
     useEffect(() => {
         const handleClickOutside = (event) => {
-            if (MessageOptionMenu.current && !MessageOptionMenu.current.contains(event.target)) {
+            if (messageMenuRef.current && !messageMenuRef.current.contains(event.target)) {
                 setMessageOption(false);
             }
         };
@@ -154,28 +158,30 @@ const MessageList = () => {
                             </li>
                         </div> */}
                         {
-                            myContacts.length > 0 ? myContacts.map((contactItem, index) => {
-                                let contactPerson = (contactItem.person)
-                                let contactMessages = (contactItem.messages || [])
-                                let authorFullName = contactPerson?.fullName
-                                let isMsgSeen = (contactMessages[0] ? (contactMessages[0].isSeen && contactMessages[0].receiverId == myId ? true : contactMessages[0].isSeen) : true)
-                                let isFrndActive = activeFriends.includes(contactPerson._id)
-                                return <div key={index} style={{ textDecoration: 'none' }} data-id={contactPerson._id} onClick={goToLink.bind(this)}>
-                                    <li className={`message-list-item ${isMsgSeen ? 'message-seen' : 'message-unseen'} ${contactPerson._id == params.profile ? 'active' : ''}`}>
-                                        <div className={"user-profilePic"}>
-                                            <UserPP profilePic={contactPerson.profilePic} profile={contactPerson._id} active={isFrndActive}></UserPP>
-                                        </div>
-                                        <div className={'user-data'}>
-                                            <h4 className={"message-author-name"}>{authorFullName}</h4>
-                                            <p className={"last-message-data"}>
-                                                <span className={"last-message"}>{truncateString(contactMessages && contactMessages[0]?.message || '', 45)} </span>
-                                                {contactMessages && contactMessages.length > 0 ? (<span className={"last-msg-time"}>| <Moment fromNow>{contactMessages && contactMessages[0].timestamp}</Moment></span>) : <></>}
-                                            </p>
-                                        </div>
-                                    </li>
-                                </div>
+                            myContacts.length > 0 ? myContacts
+                                .filter((contactItem) => contactItem && contactItem.person && contactItem.person._id)
+                                .map((contactItem, index) => {
+                                    let contactPerson = (contactItem.person)
+                                    let contactMessages = (contactItem.messages || [])
+                                    let authorFullName = contactPerson?.fullName || (contactPerson?.user ? `${contactPerson?.user?.firstName || ''} ${contactPerson?.user?.surname || ''}`.trim() : '')
+                                    let isMsgSeen = (contactMessages[0] ? (contactMessages[0].isSeen && contactMessages[0].receiverId == myId ? true : contactMessages[0].isSeen) : true)
+                                    let isFrndActive = activeFriends.includes(contactPerson._id)
+                                    return <div key={index} style={{ textDecoration: 'none' }} data-id={contactPerson._id} onClick={goToLink.bind(this)}>
+                                        <li className={`message-list-item ${isMsgSeen ? 'message-seen' : 'message-unseen'} ${contactPerson._id == params.profile ? 'active' : ''}`}>
+                                            <div className={"user-profilePic"}>
+                                                <UserPP profilePic={contactPerson.profilePic} profile={contactPerson._id} active={isFrndActive}></UserPP>
+                                            </div>
+                                            <div className={'user-data'}>
+                                                <h4 className={"message-author-name"}>{authorFullName}</h4>
+                                                <p className={"last-message-data"}>
+                                                    <span className={"last-message"}>{truncateString(contactMessages && contactMessages[0]?.message || '', 45)} </span>
+                                                    {contactMessages && contactMessages.length > 0 ? (<span className={"last-msg-time"}>| <Moment fromNow>{contactMessages && contactMessages[0].timestamp}</Moment></span>) : <></>}
+                                                </p>
+                                            </div>
+                                        </li>
+                                    </div>
 
-                            }) : <MsgListSkleton count={5} /> // <h4 className={"data-not-found"}>No Message List to Show</h4>
+                                }) : <MsgListSkleton count={5} /> // <h4 className={"data-not-found"}>No Message List to Show</h4>
                         }
 
                     </ul>

@@ -190,7 +190,8 @@ let CreatePost = ({ setPosts = null }) => {
             }
 
         } catch (error) {
-            console.log(error)
+            console.log('Error uploading attachment:', error)
+            setIsUploading(false)
         }
 
     }
@@ -206,7 +207,7 @@ let CreatePost = ({ setPosts = null }) => {
                     e.target.classList.add('added')
                     let postFormData = new FormData()
                     postFormData.append('caption', postData.caption)
-                    postFormData.append('urls', postData.urls)
+                    postFormData.append('photos', postData.urls)
                     postFormData.append('feelings', postData.feelings)
                     postFormData.append('location', postData.location)
 
@@ -229,17 +230,24 @@ let CreatePost = ({ setPosts = null }) => {
                     break;
                 case 'video':
                     e.target.classList.add('added')
+                    let videoPostFormData = new FormData()
+                    videoPostFormData.append('caption', postData.caption)
+                    videoPostFormData.append('photos', postData.urls)
+                    videoPostFormData.append('feelings', postData.feelings)
+                    videoPostFormData.append('location', postData.location)
 
-                    let watchRes = await api.post('/watch/create', { caption: postData.caption, videoUrl: postData.urls, location: postData.location, feelings: postData.feelings }, {
+                    let videoRes = await api.post('/post/create/', videoPostFormData, {
                         headers: {
                             'content-type': 'multipart/form-data'
                         }
                     })
 
-                    if (watchRes.status === 200) {
+                    if (videoRes.status === 200) {
                         setPostData(postDataInit)
-                        dispatch(addPost(defaultRes.data.post))
-
+                        dispatch(addPost(videoRes.data.post))
+                        if (setPosts) {
+                            setPosts(posts => [videoRes.data.post, ...posts])
+                        }
                         setPostModal(false)
                     }
                     break;
@@ -248,7 +256,7 @@ let CreatePost = ({ setPosts = null }) => {
 
                     let defaultFormData = new FormData()
                     defaultFormData.append('caption', postData.caption)
-                    defaultFormData.append('urls', postData.urls)
+                    defaultFormData.append('photos', postData.urls)
                     defaultFormData.append('feelings', postData.feelings)
                     defaultFormData.append('location', postData.location)
 
@@ -275,7 +283,8 @@ let CreatePost = ({ setPosts = null }) => {
 
 
         } catch (error) {
-            console.log(error)
+            console.log('Error creating post:', error)
+            // You might want to show an error message to the user here
         }
 
     }, [postData])

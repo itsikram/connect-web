@@ -253,16 +253,17 @@ const Chat = ({ socket }) => {
             setMessages(msgs);
             setHasMoreMessages(true)
         });
-        socket.on('newMessage', ({ updatedMessage, senderName, senderPP }) => {
-            if (updatedMessage.receiverId == userId && updatedMessage.senderId == friendId) {
-                setMessages((prevMessages) => [...prevMessages, updatedMessage]);
+        socket.on('newMessage', ({ updatedMessage, senderName, senderPP, chatPage }) => {
 
-                scrollToLastMessage()
-            }
-            if (updatedMessage.senderId == userId && updatedMessage.receiverId == friendId) {
-                setMessages((prevMessages) => [...prevMessages, updatedMessage]);
-
-                scrollToLastMessage()
+            if ( chatPage === true) {
+                if (updatedMessage.receiverId == userId && updatedMessage.senderId == friendId) {
+                    setMessages((prevMessages) => [...prevMessages, updatedMessage]);
+                    scrollToLastMessage()
+                }
+                if (updatedMessage.senderId == userId && updatedMessage.receiverId == friendId) {
+                    setMessages((prevMessages) => [...prevMessages, updatedMessage]);
+                    scrollToLastMessage()
+                }
             }
 
         });
@@ -274,7 +275,9 @@ const Chat = ({ socket }) => {
 
         socket.on('typing', ({ receiverId, isTyping, type }) => {
 
-            if (receiverId == friendId) {
+            console.log('typing', receiverId, isTyping, type)
+
+            if (receiverId === profile._id) {
                 if (isTyping == true) {
                     setIsTyping(true)
                     setTypeMessage(type)
@@ -340,8 +343,8 @@ const Chat = ({ socket }) => {
                                 return (
                                     <SingleMessage key={index} msg={msg} friendProfile={friendProfile} messages={messages} isActive={isActive} setIsReplying={setIsReplying} setReplyData={setReplyData} isPreview={isPreview} setIsPreview={setIsPreview} msgListRef={msgListRef} isMsgLoading={isMsgLoading} />
                                 )
-                            }) : <> 
-                             {<SingleMsgSkleton count={10} /> } 
+                            }) : <>
+                                {<SingleMsgSkleton count={10} />}
                             </>
 
                         }

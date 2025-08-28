@@ -181,15 +181,17 @@ const Main = () => {
             dispatch(addMessages(data.reverse(), true))
         })
 
-        socket.on('newMessage', ({ updatedMessage, senderName, senderPP }) => {
+        socket.on('newMessageToUser', ({ updatedMessage, senderName, senderPP }) => {
             dispatch(newMessage(updatedMessage))
             notify(updatedMessage.message, senderName, senderPP, '/message/' + updatedMessage.senderId)
 
         })
 
-        socket.on('bumpUser', ((friend, profile) => {
+        socket.on('bumpUser',(( {friendProfileData, myProfileData}) => {
 
-            notify(`${profile.fullName} Bumped you`, friend.fullName, profile.profilePic, '/message/' + profile._id)
+            console.log('bumpUser', friendProfileData, myProfileData)
+
+            notify(`${friendProfileData.fullName} Bumped you`, friendProfileData.fullName, friendProfileData.profilePic, '/message/' + friendProfileData._id)
 
         }))
 
@@ -199,7 +201,7 @@ const Main = () => {
             socket.off('oldNotifications')
             socket.off('newNotification')
             socket.off('oldMessages')
-            socket.off('newMessage')
+            socket.off('newMessageToUser')
             socket.off('bumpUser')
         }
     }, [socket])

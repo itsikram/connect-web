@@ -1,4 +1,4 @@
-import {ADD_MESSAGE,ADD_MESSAGES,NEW_MESSAGE,SEND_MESSAGE,SEEN_MESSAGE} from '../constants/messageConsts'
+import {ADD_MESSAGE,ADD_MESSAGES,NEW_MESSAGE,SEEN_MESSAGE} from '../constants/messageConsts'
 
 export const addMessage = (message) => {
     return {
@@ -28,12 +28,7 @@ export const seenMessage = (contactId => {
     }
 })
 
-export const sendMessage = (message => {
-    return {
-        type: SEND_MESSAGE,
-        payload: message,
-    }
-})
+// sendMessage action removed since it's no longer used and was causing errors
 
 
 // export const viewNotification = (notifications) => {

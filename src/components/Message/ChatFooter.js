@@ -4,7 +4,6 @@ import $ from 'jquery'
 import { useDispatch, useSelector } from 'react-redux';
 import api from '../../api/api';
 import { loadSettings } from '../../services/actions/settingsActions';
-import { sendMessage } from '../../services/actions/messageActions';
 import EmojiPicker from 'emoji-picker-react';
 import { useParams } from 'react-router-dom';
 
@@ -66,13 +65,13 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
                 let data = { room, senderId: userId, receiverId: friendId, message: inputValue, attachment: attachmentUrl, parent: replyData.messageId, isAi }
                 socket.emit('sendMessage', data);
                 setIsTyping(false)
-                dispatch(sendMessage(data))
+                // Remove dispatch(sendMessage(data)) to prevent the error
                 scrollToLastMessage();
             } else {
                 let data = { room, senderId: userId, receiverId: friendId, message: inputValue, attachment: attachmentUrl, parent: false, isAi }
                 socket.emit('sendMessage', data);
                 setIsTyping(false)
-                dispatch(sendMessage(data))
+                // Remove dispatch(sendMessage(data)) to prevent the error
                 scrollToLastMessage();
 
             }
