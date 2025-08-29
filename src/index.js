@@ -5,28 +5,28 @@ import reportWebVitals from './reportWebVitals';
 import {Provider} from 'react-redux'
 import store from './store';
 
-import * as serviceWorkerRegistration from './serviceWorkerRegistration'; // ✅
+import * as serviceWorkerRegistration from './serviceWorkerRegistration';
 
 
-serviceWorkerRegistration.register({
-  onSuccess: (registration) => {
-    console.log('Service Worker registered successfully:', registration);
-  },
-  // onUpdate: (registration) => {
-  //   console.log('New content is available; please refresh.');
-  //   // Optionally show a prompt or reload:
-  //   if (window.confirm('New version available. Reload now?')) {
-  //     window.location.reload();
-  //   }
-  // }
-});
-
-if ('serviceWorker' in navigator) {
-  console.log("'serviceWorker' in navigator")
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js');
+if (process.env.NODE_ENV === 'production') {
+  serviceWorkerRegistration.register({
+    onSuccess: (registration) => {
+      console.log('Service Worker registered successfully:', registration);
+    },
+    // onUpdate: (registration) => {
+    //   console.log('New content is available; please refresh.');
+    //   // Optionally show a prompt or reload:
+    //   if (window.confirm('New version available. Reload now?')) {
+    //     window.location.reload();
+    //   }
+    // }
   });
+} else {
+  // Ensure no service worker is active during development to avoid reload loops
+  serviceWorkerRegistration.unregister();
 }
+
+
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(

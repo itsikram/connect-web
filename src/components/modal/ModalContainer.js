@@ -4,7 +4,7 @@ import $ from 'jquery'
 
 Modal.setAppElement('#root')
 
-let ModalContainer = ({children,title,style,isOpen,onRequestClose,id,onClose},props) => {
+let ModalContainer = ({children,title,style,isOpen,onRequestClose,id,onClose,isFullscreen},props) => {
 
 let subtitle = title || 'Modal'
 
@@ -26,7 +26,23 @@ var isMobile = useMediaQuery("(max-width: 768px)");
 
 
   const customStyles = {
-    content: {
+    content: isFullscreen ? {
+      top: '0',
+      left: '0',
+      right: '0',
+      bottom: '0',
+      marginRight: '0',
+      transform: 'none',
+      backgroundColor: 'rgb(36,37,38)',
+      zIndex: '99',
+      maxHeight: '100vh',
+      width: '100vw',
+      height: '100vh',
+      padding: '0',
+      border: 'none',
+      borderRadius: '0',
+      ...style,
+    } : {
       top: '50%',
       left: '50%',
       right: 'auto',
@@ -60,6 +76,7 @@ var isMobile = useMediaQuery("(max-width: 768px)");
             isOpen={isOpen}
             onRequestClose={onRequestClose}
             id = {id || "profile-modal"}
+            className={isFullscreen ? "fullscreen-modal" : ""}
           >
             {children}
           </Modal>

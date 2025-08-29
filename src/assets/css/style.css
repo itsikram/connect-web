@@ -220,6 +220,111 @@ body {
 #videoCallModal .call-buttons .call-button-switch svg {
   color: #29B1A9;
 }
+#videoCallModal .call-buttons .call-button-fullscreen i,
+#videoCallModal .call-buttons .call-button-fullscreen svg {
+  color: #29B1A9;
+}
+
+/* Fullscreen styles for video call modal */
+#videoCallModal.fullscreen-modal {
+  padding: 0 !important;
+}
+
+#videoCallModal.fullscreen-modal .fullscreen-content {
+  height: 100vh !important;
+  width: 100vw !important;
+  position: relative;
+  background: #0b0f17;
+  display: flex;
+  flex-direction: column;
+}
+
+#videoCallModal.fullscreen-modal .fullscreen-content .video-call-container {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  border-radius: 0 !important;
+  aspect-ratio: unset !important;
+  background: #0b0f17;
+}
+
+#videoCallModal.fullscreen-modal .fullscreen-content .friends-video,
+#videoCallModal.fullscreen-modal .fullscreen-content .receive-friends-video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
+  background: #0b0f17;
+}
+
+#videoCallModal.fullscreen-modal .fullscreen-content .my-video,
+#videoCallModal.fullscreen-modal .fullscreen-content .receive-my-video {
+  position: absolute !important;
+  width: 250px !important;
+  height: 180px !important;
+  right: 30px !important;
+  bottom: 120px !important;
+  border-radius: 12px !important;
+  object-fit: cover;
+  background: #0b0f17;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  border: 2px solid #29B1A9 !important;
+  z-index: 50;
+}
+
+#videoCallModal.fullscreen-modal .fullscreen-content .vc-modal-heading {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  margin: 0;
+  padding: 10px 20px;
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 12px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #29B1A9 !important;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+#videoCallModal.fullscreen-modal .fullscreen-content .call-buttons {
+  position: absolute !important;
+  bottom: 30px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  z-index: 100 !important;
+  background: rgba(0, 0, 0, 0.8) !important;
+  padding: 16px 24px !important;
+  border-radius: 60px !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 16px !important;
+  margin: 0 !important;
+}
+
+#videoCallModal.fullscreen-modal .fullscreen-content .call-button {
+  width: 56px !important;
+  height: 56px !important;
+  border-radius: 50% !important;
+  transition: all 0.2s ease !important;
+}
+
+#videoCallModal.fullscreen-modal .fullscreen-content .call-button:hover {
+  transform: translateY(-2px) scale(1.05) !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4) !important;
+}
 
 #header {
   background-color: #242526;
@@ -5108,12 +5213,20 @@ body {
   float: left;
   margin-right: 3%;
 }
-.hr-notification-menu-container .hr-notification-menu .hr-notification-item .hr-notification-row .hr-notification-col-2 .hr-notification-icon-continaer {
+.hr-notification-menu-container .hr-notification-menu .hr-notification-item .hr-notification-row .hr-notification-col-2 .hr-notification-icon-container {
   border-radius: 50%;
   overflow: hidden;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.hr-notification-menu-container .hr-notification-menu .hr-notification-item .hr-notification-row .hr-notification-col-2 .hr-notification-icon-continaer img {
+.hr-notification-menu-container .hr-notification-menu .hr-notification-item .hr-notification-row .hr-notification-col-2 .hr-notification-icon-container img {
   width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
 }
 .hr-notification-menu-container .hr-notification-menu .hr-notification-item .hr-notification-row .hr-notification-col-10 {
   width: 80%;

@@ -10,7 +10,7 @@ import useIsMobile from '../../utils/useIsMobile';
 import api from '../../api/api';
 import checkImgLoading from '../../utils/checkImgLoading';
 import isValidUrl from '../../utils/isValiUrl';
-import Webcam from 'react-webcam';
+// Removed react-webcam to directly control local preview video element
 
 const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic }) => {
     const [emotion, setEmotion] = useState(false);
@@ -27,6 +27,9 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
     const [isChatOptionMenu, setIsChatOptionMenu] = useState(false);
     const [receiverId, setReceiverId] = useState();
     const [isVideoCalling, setIsVideoCalling] = useState(false);
+    const [incomingCall, setIncomingCall] = useState(null);
+    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [videoFilter, setVideoFilter] = useState('');
 
     const cameraVideoRef = useRef(null);
     const location = useLocation();
@@ -40,6 +43,35 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
     const settings = useSelector(state => state.setting);
     const profile = useSelector(state => state.profile);
     const profileId = profile._id;
+
+    // Media capability helpers
+    const isSecure = (typeof window !== 'undefined' && (window.isSecureContext || ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)));
+    const hasMediaDevices = typeof navigator !== 'undefined' && !!(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function');
+    const canEnumerateDevices = typeof navigator !== 'undefined' && !!(navigator.mediaDevices && typeof navigator.mediaDevices.enumerateDevices === 'function');
+
+    const pickPreferredVideoDeviceId = useCallback(async () => {
+        if (!canEnumerateDevices) return undefined;
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = devices.filter(d => d.kind === 'videoinput');
+            const backCamera = videoDevices.find(d => /back|environment/i.test(d.label));
+            return (isBackCamera && backCamera?.deviceId) || videoDevices[0]?.deviceId;
+        } catch (err) {
+            console.warn('enumerateDevices failed; falling back to default camera', err);
+            return undefined;
+        }
+    }, [canEnumerateDevices, isBackCamera]);
+
+    const getLocalStream = useCallback(async (withVideo = true, withAudio = true) => {
+        if (!hasMediaDevices || !isSecure) {
+            console.error('Media devices unavailable or insecure context. Use HTTPS or localhost.');
+            throw new Error('insecure_or_unsupported_context');
+        }
+        const deviceId = withVideo ? await pickPreferredVideoDeviceId() : undefined;
+        const videoConstraint = withVideo ? (deviceId ? { deviceId: { exact: deviceId } } : true) : false;
+        const constraints = { video: videoConstraint, audio: !!withAudio };
+        return navigator.mediaDevices.getUserMedia(constraints);
+    }, [hasMediaDevices, isSecure, pickPreferredVideoDeviceId]);
 
     const handleMicrophoneClick = useCallback(() => {
         setIsMicrophone(prev => !prev);
@@ -109,7 +141,7 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
     }, [stream]);
 
     useEffect(() => {
-        socket.on('call-accepted', signal => {
+        socket.on('call-accepted', ({ signal }) => {
             setCallAccepted(true);
             stopCallingBeep();
             if (connectionRef.current && !connectionRef.current.destroyed) {
@@ -122,10 +154,10 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
         });
 
         socket.on('receive-call', data => {
-            setReceiverId(data.from);
+            // Do not auto-answer. Show incoming modal and wait for user action.
+            setIncomingCall(data);
             setIsVideoCalling(true);
             playCallingBeep();
-            answerCall(data);
         });
 
         socket.on('videoCallEnd', () => {
@@ -142,30 +174,42 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
     }, [answerCall]);
 
     useEffect(() => {
-        if (stream && receiverId && !connectionRef.current) callUser(receiverId);
-    }, [stream, receiverId, callUser]);
+        // Only auto-initiate peer when this user is the caller
+        if (stream && receiverId && !incomingCall && !connectionRef.current) {
+            callUser(receiverId);
+        }
+    }, [stream, receiverId, callUser, incomingCall]);
 
     useEffect(() => {
-        if (isVideoCalling) {
-            navigator.mediaDevices.enumerateDevices().then(devices => {
-                const videoDevices = devices.filter(d => d.kind === 'videoinput');
-                const backCamera = videoDevices.find(d => /back|environment/i.test(d.label));
-                const deviceId = (isBackCamera && backCamera?.deviceId) || videoDevices[0]?.deviceId;
-
-                navigator.mediaDevices.getUserMedia({
-                    video: { deviceId },
-                    audio: isMicrophone
-                }).then(mediaStream => {
-                    setStream(mediaStream);
-                    if (myVideo.current) myVideo.current.srcObject = mediaStream;
-                });
-            });
-        }
-    }, [isVideoCalling, isMicrophone, isBackCamera]);
+        if (!isVideoCalling) return;
+        (async () => {
+            try {
+                const mediaStream = await getLocalStream(true, isMicrophone);
+                setStream(mediaStream);
+                if (myVideo.current) {
+                    myVideo.current.srcObject = mediaStream;
+                }
+            } catch (err) {
+                console.error('Failed to get local media stream (video+audio). Retrying audio-only...', err);
+                try {
+                    const audioOnlyStream = await getLocalStream(false, isMicrophone);
+                    setStream(audioOnlyStream);
+                    if (myVideo.current) {
+                        myVideo.current.srcObject = audioOnlyStream;
+                    }
+                } catch (err2) {
+                    console.error('Failed to get any media stream', err2);
+                    alert('Camera/Microphone unavailable. Please use HTTPS or localhost and grant permissions.');
+                    setIsVideoCalling(false);
+                }
+            }
+        })();
+    }, [isVideoCalling, isMicrophone, isBackCamera, getLocalStream]);
 
     const handleVideoCallBtn = useCallback(e => {
         const id = e.currentTarget.dataset.id;
         setReceiverId(id);
+        setIncomingCall(null);
         setIsVideoCalling(true);
         playCallingBeep();
     }, []);
@@ -189,15 +233,11 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
     }, [friendId, stream]);
 
     const startVideo = useCallback(() => {
-        if (!cameraVideoRef.current) return
-        navigator.mediaDevices.enumerateDevices().then(devices => {
-            const videoDevices = devices.filter(d => d.kind === 'videoinput');
-            const backCamera = videoDevices.find(d => /back|environment/i.test(d.label));
-            const deviceId = (isBackCamera && backCamera?.deviceId) || videoDevices[0]?.deviceId;
-            navigator.mediaDevices.getUserMedia({ video: { deviceId }, audio: isMicrophone })
-                .then(stream => { cameraVideoRef.current.srcObject = stream; });
-        });
-    }, [isBackCamera, isMicrophone]);
+        if (!cameraVideoRef.current) return;
+        getLocalStream(true, isMicrophone)
+            .then(localStream => { cameraVideoRef.current.srcObject = localStream; })
+            .catch(err => console.error('Failed to start hidden camera for emotion', err));
+    }, [getLocalStream, isMicrophone]);
 
     const stopCamera = () => {
         if (!cameraVideoRef.current) return
@@ -274,6 +314,79 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
 
     const handleSwitchClick = useCallback(() => {
         setIsBackCamera(prev => !prev);
+    }, []);
+
+    const toggleVideoFilter = useCallback(() => {
+        const filters = ['', 'video-vivid-filter', 'video-vivid-warm', 'video-vivid-cool', 'video-vivid-dramatic'];
+        const currentIndex = filters.indexOf(videoFilter);
+        const nextIndex = (currentIndex + 1) % filters.length;
+        setVideoFilter(filters[nextIndex]);
+    }, [videoFilter]);
+
+    const toggleFullscreen = useCallback(async () => {
+        if (!isFullscreen) {
+            // Enter fullscreen
+            try {
+                const modalElement = document.getElementById('videoCallModal');
+                if (modalElement && modalElement.requestFullscreen) {
+                    await modalElement.requestFullscreen();
+                } else if (modalElement && modalElement.webkitRequestFullscreen) {
+                    await modalElement.webkitRequestFullscreen();
+                } else if (modalElement && modalElement.mozRequestFullScreen) {
+                    await modalElement.mozRequestFullScreen();
+                } else if (modalElement && modalElement.msRequestFullscreen) {
+                    await modalElement.msRequestFullscreen();
+                }
+                setIsFullscreen(true);
+            } catch (err) {
+                console.error('Failed to enter fullscreen:', err);
+                // Fallback to CSS fullscreen
+                setIsFullscreen(true);
+            }
+        } else {
+            // Exit fullscreen
+            try {
+                if (document.fullscreenElement) {
+                    await document.exitFullscreen();
+                } else if (document.webkitFullscreenElement) {
+                    await document.webkitExitFullscreen();
+                } else if (document.mozFullScreenElement) {
+                    await document.mozCancelFullScreen();
+                } else if (document.msFullscreenElement) {
+                    await document.msExitFullscreen();
+                }
+                setIsFullscreen(false);
+            } catch (err) {
+                console.error('Failed to exit fullscreen:', err);
+                // Fallback to CSS fullscreen
+                setIsFullscreen(false);
+            }
+        }
+    }, [isFullscreen]);
+
+    // Handle fullscreen change events (e.g., when user presses ESC)
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            const isCurrentlyFullscreen = !!(
+                document.fullscreenElement ||
+                document.webkitFullscreenElement ||
+                document.mozFullScreenElement ||
+                document.msFullscreenElement
+            );
+            setIsFullscreen(isCurrentlyFullscreen);
+        };
+
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+        document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+        document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
+        return () => {
+            document.removeEventListener('fullscreenchange', handleFullscreenChange);
+            document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+            document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+            document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+        };
     }, []);
 
     const chatOptionMenu = useRef(null);
@@ -404,26 +517,41 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
 
                 <ModalContainer
                     title="Video Call"
-                    style={{ width: isMobile ? '95%' : "600px", top: "50%", borderRadius: '10px', height: 'auto' }}
+                    style={isFullscreen ? {} : { width: isMobile ? '95%' : "600px", top: "50%", borderRadius: '10px', height: 'auto' }}
                     isOpen={isVideoCalling || callAccepted}
                     onRequestClose={closeVideoCall}
                     id="videoCallModal"
+                    isFullscreen={isFullscreen}
                 >
-                    <div className={`${callAccepted ? 'call-accepted' : ''}`} style={{ padding: 0 }}>
+                    <div className={`${callAccepted ? 'call-accepted' : ''} ${isFullscreen ? 'fullscreen-content' : ''}`} style={{ padding: 0 }}>
                         {<h2 className='text-center vc-modal-heading'>Video Call - {friendProfile && friendProfile.fullName}</h2>}
-                        <p className='fs-3 text-center'>
-                            {!callAccepted && <>Calling {friendProfile && friendProfile.fullName}</>}
-                        </p>
+                        {!isFullscreen && (
+                            <p className='fs-3 text-center'>
+                                {!callAccepted && (
+                                    incomingCall ? <>
+                                        {(incomingCall.name || 'Someone')} is calling you
+                                    </> : <>
+                                        Calling {friendProfile && friendProfile.fullName}
+                                    </>
+                                )}
+                            </p>
+                        )}
                         <div className={`video-call-container ${isMobile ? 'mobile' : ''}`}>
-                            {<video playsInline ref={userVideo} className='friends-video' autoPlay style={{ width: '100%', display: callAccepted ? 'block' : 'none' }} />}
-                            <Webcam playsInline muted ref={myVideo} autoPlay className='my-video' style={{ width: '150px' }} />
-                            {/* <video playsInline muted ref={myVideo} autoPlay className='my-video' style={{ width: '150px' }} /> */}
+                            {<video playsInline ref={userVideo} className={`friends-video ${videoFilter}`} autoPlay style={{ width: '100%', display: callAccepted ? 'block' : 'none' }} />}
+                            <video playsInline muted ref={myVideo} autoPlay className={`my-video ${videoFilter}`} style={{ width: '150px' }} />
                         </div>
                         <div className='call-buttons'>
 
                             <button onClick={handleLeaveCall.bind(this)} ref={callEndBtn} className='call-button-ends call-button bg-danger'>
                                 <i className="fa fa-phone"></i>
                             </button>
+                            {
+                                !callAccepted && incomingCall && (
+                                    <button onClick={() => answerCall(incomingCall)} className='call-button-receive call-button bg-success'>
+                                        <i className="fa fa-phone-volume"></i>
+                                    </button>
+                                )
+                            }
                             {
                                 callAccepted && <>
                                     <button onClick={handleMicrophoneClick.bind(this)} className='call-button-microphone call-button'>
@@ -437,8 +565,8 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
                                         </button>
                                     )}
                                     <button onClick={handleSwitchClick.bind(this)} className='call-button-switch call-button'>
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2"
-                                            stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2"
+                                            strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
                                             <path d="M11 7H5a2 2 0 0 0-2 2v4" />
                                             <path d="M13 17h6a2 2 0 0 0 2-2v-4" />
                                             <polyline points="16 3 21 3 21 8" />
@@ -446,7 +574,30 @@ const ChatHeader = ({ friendProfile, isActive, room, lastSeen, friendProfilePic 
                                             <path d="M21 3l-6.5 6.5" />
                                             <path d="M3 21l6.5-6.5" />
                                         </svg>
-
+                                    </button>
+                                    <button onClick={toggleVideoFilter} className={`call-button-filter call-button ${videoFilter ? 'active' : ''}`} title={videoFilter ? `Filter: ${videoFilter.replace('video-vivid-', '').replace('filter', 'vivid')}` : 'No filter'}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                                            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                                        </svg>
+                                    </button>
+                                    <button onClick={toggleFullscreen} className='call-button-fullscreen call-button'>
+                                        {isFullscreen ? (
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2"
+                                                strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                                                <path d="M8 3v3a2 2 0 0 1-2 2H3" />
+                                                <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
+                                                <path d="M3 16h3a2 2 0 0 1 2 2v3" />
+                                                <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
+                                            </svg>
+                                        ) : (
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2"
+                                                strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                                                <path d="M3 7V3a2 2 0 0 1 2-2h4" />
+                                                <path d="M17 3h4a2 2 0 0 1 2 2v4" />
+                                                <path d="M21 17v4a2 2 0 0 1-2 2h-4" />
+                                                <path d="M7 21H3a2 2 0 0 1-2-2v-4" />
+                                            </svg>
+                                        )}
                                     </button>
 
 

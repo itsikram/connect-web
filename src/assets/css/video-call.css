@@ -1,0 +1,241 @@
+.vc-modal-heading {
+  margin: 8px 0 4px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.video-call-container {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #0b0f17;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.video-call-container.mobile {
+  aspect-ratio: 3 / 4;
+}
+
+.friends-video,
+.receive-friends-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #0b0f17;
+}
+
+.my-video,
+.receive-my-video {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 180px !important;
+  height: 112px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: #0b0f17;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+@media (max-width: 768px) {
+  .my-video,
+  .receive-my-video {
+    width: 120px !important;
+    height: 80px;
+    right: 8px;
+    bottom: 8px;
+  }
+}
+
+.call-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.call-button {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: transform 0.12s ease, background 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.call-button:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.call-button-ends {
+  background: #ef4444 !important;
+}
+
+.call-button-receive {
+  background: #22c55e !important;
+}
+
+.call-button-camera {
+  background: #3b82f6 !important;
+}
+
+.call-button-microphone {
+  background: #6366f1 !important;
+}
+
+.call-button-switch {
+  background: #0ea5e9 !important;
+}
+
+.call-button-fullscreen {
+  background: #8b5cf6 !important;
+}
+
+/* Fullscreen specific styles */
+.fullscreen-content {
+  height: 100vh !important;
+  width: 100vw !important;
+  position: relative;
+  background: #0b0f17;
+  display: flex;
+  flex-direction: column;
+}
+
+.fullscreen-content .vc-modal-heading {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  margin: 0;
+  padding: 10px 20px;
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 12px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #29B1A9 !important;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.fullscreen-content .video-call-container {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  border-radius: 0 !important;
+  aspect-ratio: unset !important;
+  background: #0b0f17;
+}
+
+.fullscreen-content .friends-video,
+.fullscreen-content .receive-friends-video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
+  background: #0b0f17;
+}
+
+.fullscreen-content .my-video,
+.fullscreen-content .receive-my-video {
+  position: absolute !important;
+  width: 250px !important;
+  height: 180px !important;
+  right: 30px !important;
+  bottom: 120px !important;
+  border-radius: 12px !important;
+  object-fit: cover;
+  background: #0b0f17;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  border: 2px solid rgba(41, 177, 169, 0.8) !important;
+  z-index: 50;
+}
+
+.fullscreen-content .call-buttons {
+  position: absolute !important;
+  bottom: 30px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  z-index: 100 !important;
+  background: rgba(0, 0, 0, 0.8) !important;
+  padding: 16px 24px !important;
+  border-radius: 60px !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 16px !important;
+  margin: 0 !important;
+}
+
+.fullscreen-content .call-button {
+  width: 56px !important;
+  height: 56px !important;
+  border-radius: 50% !important;
+  transition: all 0.2s ease !important;
+}
+
+.fullscreen-content .call-button:hover {
+  transform: translateY(-2px) scale(1.05) !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Mobile fullscreen adjustments */
+@media (max-width: 768px) {
+  .fullscreen-content .my-video,
+  .fullscreen-content .receive-my-video {
+    width: 160px !important;
+    height: 120px !important;
+    right: 20px !important;
+    bottom: 100px !important;
+  }
+  
+  .fullscreen-content .call-buttons {
+    bottom: 20px !important;
+    padding: 12px 20px !important;
+  }
+  
+  .fullscreen-content .call-button {
+    width: 48px !important;
+    height: 48px !important;
+  }
+}
+
+/* Subtle gradient ring for the local preview */
+.my-video::after,
+.receive-my-video::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.2), rgba(255,255,255,0));
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+}
+
+

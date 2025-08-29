@@ -304,15 +304,18 @@ const Chat = ({ socket }) => {
     }, [params, friendProfile]);
 
     useEffect(() => {
-        if (messages.length > 0) {
+        // Only process seen message if we have messages, friendId, and friend profile is loaded
+        if (messages.length > 0 && friendId && friendProfile?._id) {
             setTimeout(() => {
                 let lastMessage = messages[messages.length - 1];
-                if (lastMessage.senderId !== userId) {
+                // Only mark as seen if the last message is from the friend (not from current user)
+                if (lastMessage && lastMessage.senderId !== userId && lastMessage.senderId === friendId) {
                     socket.emit('seenMessage', lastMessage);
                     dispatch(seenMessage(friendId))
                 }
             }, 2000);
         }
+        
         socket.on('seenMessage', (msg) => {
             $('#chatMessageList .message-sent.chat-message-container .chat-message-seen-status').css('visibility', 'hidden');
             $('#chatMessageList .message-sent.chat-message-container.message-id-' + msg._id + ':last-child .chat-message-seen-status').css('visibility', 'visible');
@@ -321,7 +324,7 @@ const Chat = ({ socket }) => {
         return () => {
             socket.off('seenMessage');
         }
-    }, [params, messages])
+    }, [params, messages, friendId, friendProfile, userId])
 
 
 

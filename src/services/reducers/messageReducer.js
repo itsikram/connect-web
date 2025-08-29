@@ -39,22 +39,35 @@ const messageReducer = (state = initialState, action) => {
 
         case NEW_MESSAGE:
             let newMsg = action.payload
+            
+            // Validate the message payload
+            if (!newMsg || !newMsg.senderId) {
+                console.warn('NEW_MESSAGE: Invalid message payload', newMsg);
+                return state;
+            }
+
             let contactId = newMsg.senderId
             let otherContacts = state.filter(state => state?.person?._id !== contactId)
-
             let updatedContact = state.filter(state => state?.person?._id === contactId)
 
             // Check if the contact exists before trying to access its messages
             if (updatedContact.length > 0 && updatedContact[0]) {
-                updatedContact[0].messages = [newMsg]
+                // Create a deep copy to avoid mutation
+                const updatedContactData = {
+                    ...updatedContact[0],
+                    messages: [newMsg, ...(updatedContact[0].messages || [])]
+                };
+                
                 return [
-                    ...updatedContact,
+                    updatedContactData,
                     ...otherContacts,
                 ];
             } else {
                 // If contact doesn't exist, create a new contact entry
                 // This handles the case where someone messages you for the first time
-                console.warn('Contact not found in state for NEW_MESSAGE, creating new contact:', contactId);
+                if (process.env.NODE_ENV === 'development') {
+                    console.debug('Contact not found in state for NEW_MESSAGE, creating new contact:', contactId);
+                }
                 
                 // Create a minimal contact structure - the person data will be populated later
                 // when fetchMessages is called or when the contact is properly loaded
@@ -73,25 +86,37 @@ const messageReducer = (state = initialState, action) => {
         case SEEN_MESSAGE:
 
             let seenContactId = action.payload.contactId
-            // alert('s m'+seenContactId)
+            
+            // Early return if contactId is invalid
+            if (!seenContactId) {
+                console.warn('SEEN_MESSAGE: Invalid contactId provided');
+                return state;
+            }
 
             let usOtherContacts = state.filter(state => state?.person?._id !== seenContactId)
-
             let seenContact = state.filter(state => state?.person?._id === seenContactId)
 
             // Check if the contact exists and has messages before trying to access them
             if (seenContact.length > 0 && seenContact[0]?.messages && seenContact[0].messages.length > 0) {
-                console.log('s c', seenContact[0].messages[0])
-
-                seenContact[0].messages[0].isSeen = true
+                // Create a deep copy to avoid mutation
+                const updatedSeenContact = {
+                    ...seenContact[0],
+                    messages: seenContact[0].messages.map((msg, index) => 
+                        index === 0 ? { ...msg, isSeen: true } : msg
+                    )
+                };
 
                 return [
-                    ...seenContact,
+                    updatedSeenContact,
                     ...usOtherContacts,
                 ];
             } else {
-                // If contact doesn't exist or has no messages, return unchanged state
-                console.warn('Contact or messages not found in state for SEEN_MESSAGE:', seenContactId);
+                // If contact doesn't exist or has no messages, silently return unchanged state
+                // This can happen when the seen message is processed before the contact is loaded
+                // or when switching between conversations quickly
+                if (process.env.NODE_ENV === 'development') {
+                    console.debug('SEEN_MESSAGE: Contact or messages not found in state for contactId:', seenContactId, 'Current state contacts:', state.map(s => s?.person?._id));
+                }
                 return state;
             }
             break;

@@ -226,7 +226,7 @@ let HeaderRight = ({ dispatch, useSelector }) => {
                                                             <Link to={notification.link || ''}>
                                                                 <div className="hr-notification-row align-items-center">
                                                                     <div className="hr-notification-col-2">
-                                                                        <div className="hr-notification-icon-continaer">
+                                                                        <div className="hr-notification-icon-container">
                                                                             <img className="hr-notification-icon" src={notification.icon} alt="Notification Icon" />
                                                                         </div>
                                                                     </div>

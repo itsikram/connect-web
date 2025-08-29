@@ -13,7 +13,8 @@ function App() {
     const [caller, setCaller] = useState('');
     const [callerSignal, setCallerSignal] = useState();
     const [callAccepted, setCallAccepted] = useState(false);
-    const [isVideoCalling,setIsVideoCalling] = useState(false)
+    const [isVideoCalling,setIsVideoCalling] = useState(false);
+    const [videoFilter, setVideoFilter] = useState('');
     const myVideo = useRef();
     const userVideo = useRef();
     const connectionRef = useRef();
@@ -83,13 +84,20 @@ function App() {
         connectionRef.current = peer;
     };
 
+    const toggleVideoFilter = () => {
+        const filters = ['', 'video-vivid-filter', 'video-vivid-warm', 'video-vivid-cool', 'video-vivid-dramatic'];
+        const currentIndex = filters.indexOf(videoFilter);
+        const nextIndex = (currentIndex + 1) % filters.length;
+        setVideoFilter(filters[nextIndex]);
+    };
+
     return (
         <div style={{ padding: 20 }}>
             <h2>Video Call App</h2>
             <p>{me}</p>
             <div>
-                <video playsInline muted ref={myVideo} autoPlay style={{ width: '300px' }} />
-                {callAccepted && <video playsInline ref={userVideo} autoPlay style={{ width: '300px' }} />}
+                <video playsInline muted ref={myVideo} autoPlay className={videoFilter} style={{ width: '300px' }} />
+                {callAccepted && <video playsInline ref={userVideo} autoPlay className={videoFilter} style={{ width: '300px' }} />}
             </div>
             <div>
                 <input
@@ -98,6 +106,9 @@ function App() {
                     onChange={(e)=> {setCaller(e.target.value)}}
                 />
                 <button onClick={() => callUser(caller)}>Call</button>
+                <button onClick={toggleVideoFilter} style={{ marginLeft: '10px' }}>
+                    {videoFilter ? `Filter: ${videoFilter.replace('video-vivid-', '').replace('filter', 'vivid')}` : 'No Filter'}
+                </button>
             </div>
             {receivingCall && !callAccepted && (
                 <div>

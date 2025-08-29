@@ -20,6 +20,8 @@ const VideoCall = ({ myId }) => {
     const [isBackCamera, setIsBackCamera] = useState(false);
     const [hasVideoInput, setHasVideoInput] = useState(true);
     const [modalHeight, setModalHeight] = useState('auto');
+    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [videoFilter, setVideoFilter] = useState('');
 
     const myVideo = useRef();
     const userVideo = useRef();
@@ -203,22 +205,98 @@ const VideoCall = ({ myId }) => {
         setIsBackCamera(prev => !prev);
     }, []);
 
+    const toggleFullscreen = useCallback(async () => {
+        if (!isFullscreen) {
+            // Enter fullscreen
+            try {
+                const modalElement = document.getElementById('videoCallModal');
+                if (modalElement && modalElement.requestFullscreen) {
+                    await modalElement.requestFullscreen();
+                } else if (modalElement && modalElement.webkitRequestFullscreen) {
+                    await modalElement.webkitRequestFullscreen();
+                } else if (modalElement && modalElement.mozRequestFullScreen) {
+                    await modalElement.mozRequestFullScreen();
+                } else if (modalElement && modalElement.msRequestFullscreen) {
+                    await modalElement.msRequestFullscreen();
+                }
+                setIsFullscreen(true);
+            } catch (err) {
+                console.error('Failed to enter fullscreen:', err);
+                // Fallback to CSS fullscreen
+                setIsFullscreen(true);
+            }
+        } else {
+            // Exit fullscreen
+            try {
+                if (document.fullscreenElement) {
+                    await document.exitFullscreen();
+                } else if (document.webkitFullscreenElement) {
+                    await document.webkitExitFullscreen();
+                } else if (document.mozFullScreenElement) {
+                    await document.mozCancelFullScreen();
+                } else if (document.msFullscreenElement) {
+                    await document.msExitFullscreen();
+                }
+                setIsFullscreen(false);
+            } catch (err) {
+                console.error('Failed to exit fullscreen:', err);
+                // Fallback to CSS fullscreen
+                setIsFullscreen(false);
+            }
+        }
+    }, [isFullscreen]);
+
+    const toggleVideoFilter = useCallback(() => {
+        const filters = ['', 'video-vivid-filter', 'video-vivid-warm', 'video-vivid-cool', 'video-vivid-dramatic'];
+        const currentIndex = filters.indexOf(videoFilter);
+        const nextIndex = (currentIndex + 1) % filters.length;
+        setVideoFilter(filters[nextIndex]);
+    }, [videoFilter]);
+
+    // Handle fullscreen change events (e.g., when user presses ESC)
+    useEffect(() => {
+        const handleFullscreenChange = () => {
+            const isCurrentlyFullscreen = !!(
+                document.fullscreenElement ||
+                document.webkitFullscreenElement ||
+                document.mozFullScreenElement ||
+                document.msFullscreenElement
+            );
+            setIsFullscreen(isCurrentlyFullscreen);
+        };
+
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+        document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+        document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
+        return () => {
+            document.removeEventListener('fullscreenchange', handleFullscreenChange);
+            document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+            document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+            document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+        };
+    }, []);
+
     return (
         <div>
             <ModalContainer
                 title="Video Call"
-                style={{ width: isMobile ? '95%' : '600px', top: '50%', height: modalHeight }}
+                style={isFullscreen ? {} : { width: isMobile ? '95%' : '600px', top: '50%', height: modalHeight }}
                 isOpen={isVideoCall}
                 onRequestClose={closeVideoCall}
                 id="videoCallModal"
+                isFullscreen={isFullscreen}
             >
-                <div className={`${callAccepted ? 'call-accepted' : ''}`} style={{ padding: 0 }}>
+                <div className={`${callAccepted ? 'call-accepted' : ''} ${isFullscreen ? 'fullscreen-content' : ''}`} style={{ padding: 0 }}>
                     <h2 className='text-center vc-modal-heading'>Video Call - {callerName}</h2>
-                    <p className='fs-4 text-center'>{receivingCall && !callAccepted && `${callerName} Calling you`}</p>
+                    {!isFullscreen && (
+                        <p className='fs-4 text-center'>{receivingCall && !callAccepted && `${callerName} Calling you`}</p>
+                    )}
 
                     <div className={`video-call-container ${isMobile ? 'mobile' : ''}`}>
-                        {callAccepted && <video playsInline ref={userVideo} className='receive-friends-video' autoPlay style={{ width: '100%' }} />}
-                        {<video playsInline muted ref={myVideo} className='receive-my-video' autoPlay style={{ width: '150px' }} />}
+                        {callAccepted && <video playsInline ref={userVideo} className={`receive-friends-video ${videoFilter}`} autoPlay style={{ width: '100%' }} />}
+                        {<video playsInline muted ref={myVideo} className={`receive-my-video ${videoFilter}`} autoPlay style={{ width: '150px' }} />}
                     </div>
 
                     <div className='call-buttons'>
@@ -245,6 +323,30 @@ const VideoCall = ({ myId }) => {
                                         <path d="M21 3l-6.5 6.5" />
                                         <path d="M3 21l6.5-6.5" />
                                     </svg>
+                                </button>
+                                <button onClick={toggleVideoFilter} className={`call-button-filter call-button ${videoFilter ? 'active' : ''}`} title={videoFilter ? `Filter: ${videoFilter.replace('video-vivid-', '').replace('filter', 'vivid')}` : 'No filter'}>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                                        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                                    </svg>
+                                </button>
+                                <button onClick={toggleFullscreen} className='call-button-fullscreen call-button'>
+                                    {isFullscreen ? (
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2"
+                                            strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                                            <path d="M8 3v3a2 2 0 0 1-2 2H3" />
+                                            <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
+                                            <path d="M3 16h3a2 2 0 0 1 2 2v3" />
+                                            <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
+                                        </svg>
+                                    ) : (
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2"
+                                            strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                                            <path d="M3 7V3a2 2 0 0 1 2-2h4" />
+                                            <path d="M17 3h4a2 2 0 0 1 2 2v4" />
+                                            <path d="M21 17v4a2 2 0 0 1-2 2h-4" />
+                                            <path d="M7 21H3a2 2 0 0 1-2-2v-4" />
+                                        </svg>
+                                    )}
                                 </button>
                             </>
                         )}
