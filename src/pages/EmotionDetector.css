@@ -1,0 +1,492 @@
+.emotion-detector-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 2rem;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+}
+
+.title {
+  text-align: center;
+  color: white;
+  font-size: 2.5rem;
+  margin-bottom: 2rem;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.main-content {
+  display: flex;
+  gap: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+  flex-wrap: wrap;
+}
+
+/* Video Section */
+.video-section {
+  flex: 1;
+  min-width: 320px;
+}
+
+.video-wrapper {
+  position: relative;
+  background: #000;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.video-feed {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.detecting-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 1.2rem;
+  z-index: 2;
+}
+
+/* Real-time Speaking Indicator */
+.speaking-indicator {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background: rgba(76, 175, 80, 0.95);
+  color: white;
+  padding: 12px 20px;
+  border-radius: 25px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: bold;
+  font-size: 1rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 3;
+  animation: slideInLeft 0.3s ease;
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.speaking-pulse {
+  width: 12px;
+  height: 12px;
+  background: white;
+  border-radius: 50%;
+  animation: pulse 1s ease infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.7;
+  }
+}
+
+/* Video Info Badge */
+.video-info {
+  position: absolute;
+  bottom: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+}
+
+.info-badge {
+  background: rgba(102, 126, 234, 0.9);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  display: inline-block;
+}
+
+/* Results Section */
+.results-section {
+  flex: 1;
+  min-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.result-card {
+  background: white;
+  border-radius: 16px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.result-card h2 {
+  margin: 0 0 1rem 0;
+  color: #333;
+  font-size: 1.5rem;
+  border-bottom: 2px solid #667eea;
+  padding-bottom: 0.5rem;
+}
+
+.states-count {
+  font-size: 0.9rem;
+  color: #667eea;
+  font-weight: normal;
+}
+
+.detection-error {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 8px;
+  color: #856404;
+  font-size: 0.9rem;
+}
+
+/* Batch Analysis Styles */
+.batch-info {
+  font-size: 0.9rem;
+  color: #667eea;
+  font-weight: normal;
+}
+
+.emotion-confidence {
+  font-size: 1rem;
+  color: #4caf50;
+  margin-left: 1rem;
+  font-weight: bold;
+}
+
+.source-info {
+  margin-top: 1rem;
+  padding: 0.5rem;
+  background: linear-gradient(135deg, #667eea20 0%, #764ba220 100%);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.source-badge {
+  display: inline-block;
+  background: #667eea;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 15px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.result-card h3 {
+  margin: 1rem 0 0.5rem 0;
+  color: #666;
+  font-size: 1rem;
+}
+
+/* Emotion Display */
+.emotion-display {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: linear-gradient(135deg, #667eea20 0%, #764ba220 100%);
+  border-radius: 12px;
+  margin-bottom: 1rem;
+}
+
+.emotion-emoji {
+  font-size: 4rem;
+}
+
+.emotion-name {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #667eea;
+  text-transform: capitalize;
+}
+
+/* Emotion Scores */
+.emotion-scores {
+  margin-top: 1rem;
+}
+
+.score-bar-container {
+  display: grid;
+  grid-template-columns: 120px 1fr 60px;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.score-label {
+  font-size: 0.9rem;
+  color: #666;
+  text-transform: capitalize;
+}
+
+.score-bar-bg {
+  height: 24px;
+  background: #f0f0f0;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+}
+
+.score-bar-fill {
+  height: 100%;
+  background: #667eea;
+  border-radius: 12px;
+  transition: width 0.3s ease;
+}
+
+.score-value {
+  font-size: 0.9rem;
+  font-weight: bold;
+  color: #333;
+  text-align: right;
+}
+
+/* Dominant State */
+.dominant-state {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  background: linear-gradient(135deg, #4caf5020 0%, #8bc34a20 100%);
+  border-radius: 12px;
+  margin-bottom: 1rem;
+  border: 2px solid #4caf50;
+}
+
+.dominant-state .state-emoji {
+  font-size: 3rem;
+}
+
+.dominant-label {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.dominant-name {
+  margin: 0.25rem 0;
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #4caf50;
+  text-transform: capitalize;
+}
+
+.dominant-confidence {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+/* States Grid */
+.states-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.state-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 12px;
+  transition: all 0.3s ease;
+}
+
+.state-item.detected {
+  background: linear-gradient(135deg, #4caf5010 0%, #8bc34a10 100%);
+  border: 2px solid #4caf50;
+}
+
+.state-item.not-detected {
+  background: #f5f5f5;
+  border: 2px solid #e0e0e0;
+  opacity: 0.6;
+}
+
+.state-item .state-emoji {
+  font-size: 2rem;
+}
+
+.state-info {
+  flex: 1;
+}
+
+.state-name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: bold;
+  color: #333;
+  text-transform: capitalize;
+}
+
+.state-confidence {
+  margin: 0.25rem 0 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.state-not-detected {
+  margin: 0.25rem 0 0 0;
+  font-size: 0.85rem;
+  color: #999;
+}
+
+.state-extra {
+  margin: 0.25rem 0 0 0;
+  font-size: 0.75rem;
+  color: #666;
+  font-style: italic;
+}
+
+/* Spinner */
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Error Message */
+.error-message {
+  background: white;
+  border-radius: 16px;
+  padding: 2rem;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.error-icon {
+  font-size: 3rem;
+  display: block;
+  margin-bottom: 1rem;
+}
+
+.error-message p {
+  color: #f44336;
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+/* Waiting Message */
+.waiting-message {
+  background: white;
+  border-radius: 16px;
+  padding: 3rem;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.waiting-message .spinner {
+  border-color: rgba(102, 126, 234, 0.3);
+  border-top-color: #667eea;
+  margin: 0 auto 1rem auto;
+}
+
+.waiting-message p {
+  color: #666;
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .emotion-detector-container {
+    padding: 1rem;
+  }
+
+  .title {
+    font-size: 1.8rem;
+  }
+
+  .main-content {
+    flex-direction: column;
+  }
+
+  .emotion-display {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .score-bar-container {
+    grid-template-columns: 100px 1fr 50px;
+    font-size: 0.85rem;
+  }
+
+  .states-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .result-card {
+    background: #1e1e1e;
+  }
+
+  .result-card h2 {
+    color: #fff;
+  }
+
+  .result-card h3 {
+    color: #ccc;
+  }
+
+  .score-label,
+  .state-name {
+    color: #fff;
+  }
+
+  .score-value {
+    color: #fff;
+  }
+
+  .state-item.not-detected {
+    background: #2a2a2a;
+    border-color: #444;
+  }
+
+  .error-message,
+  .waiting-message {
+    background: #1e1e1e;
+  }
+
+  .waiting-message p {
+    color: #ccc;
+  }
+}
+

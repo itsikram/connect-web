@@ -1,0 +1,463 @@
+/* Professional Toast Styles - Simplified and Robust */
+
+/* Global override to hide all react-toastify default icons */
+.Toastify__toast-icon {
+  display: none !important;
+}
+
+/* Global override to hide all progress bars */
+.Toastify__progress-bar {
+  display: none !important;
+}
+
+.Toastify__progress-bar--bg {
+  display: none !important;
+}
+
+/* Ensure our custom toast container has proper isolation */
+.custom-toast-container * {
+  box-sizing: border-box !important;
+}
+
+/* Toast Container Override */
+.Toastify__toast-container.custom-toast-container {
+  padding: 0 !important;
+  width: auto !important;
+  max-width: 420px !important;
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+}
+
+/* Ensure proper centering for top-center position */
+.Toastify__toast-container--top-center.custom-toast-container {
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  right: auto !important;
+  top: 50px !important;
+}
+
+.Toastify__toast-container.custom-toast-container .Toastify__toast {
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  border: none !important;
+  outline: none !important;
+  padding: 0 !important;
+  margin: 8px 0 !important;
+  min-height: auto !important;
+  font-family: inherit !important;
+  position: relative !important;
+  overflow: visible !important;
+}
+
+/* Remove any potential borders or lines from react-toastify */
+.Toastify__toast-container.custom-toast-container .Toastify__toast::before,
+.Toastify__toast-container.custom-toast-container .Toastify__toast::after {
+  display: none !important;
+  content: none !important;
+  border: none !important;
+  background: none !important;
+}
+
+/* Ensure the toast wrapper provides positioning context for close button */
+.Toastify__toast-container.custom-toast-container .Toastify__toast .custom-toast {
+  position: relative !important;
+}
+
+.Toastify__toast-container.custom-toast-container .Toastify__toast::before {
+  display: none !important;
+}
+
+.Toastify__toast-container.custom-toast-container .Toastify__toast-body {
+  padding: 0 !important;
+  margin: 0 !important;
+  color: inherit !important;
+  font-size: inherit !important;
+  position: relative !important;
+}
+
+/* Hide any default react-toastify icons */
+.Toastify__toast-container.custom-toast-container .Toastify__toast-icon {
+  display: none !important;
+}
+
+.Toastify__toast-container.custom-toast-container .Toastify__toast::after {
+  display: none !important;
+}
+
+/* Hide all possible react-toastify default icons */
+.Toastify__toast-container.custom-toast-container .Toastify__toast-icon > svg,
+.Toastify__toast-container.custom-toast-container .Toastify__toast-icon > div,
+.Toastify__toast-container.custom-toast-container .Toastify__toast-icon > span,
+.Toastify__toast-container.custom-toast-container .Toastify__toast-icon > i {
+  display: none !important;
+}
+
+/* Ensure no default toast styling interferes */
+.Toastify__toast-container.custom-toast-container .Toastify__toast--info::before,
+.Toastify__toast-container.custom-toast-container .Toastify__toast--success::before,
+.Toastify__toast-container.custom-toast-container .Toastify__toast--warning::before,
+.Toastify__toast-container.custom-toast-container .Toastify__toast--error::before {
+  display: none !important;
+}
+
+/* Main Toast Styles */
+.custom-toast {
+  background: #ffffff !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
+  border: 1px solid #e5e7eb !important;
+  padding: 16px 40px 16px 16px !important;
+  position: relative !important;
+  overflow: hidden !important;
+  transition: all 0.3s ease !important;
+  max-width: 400px !important;
+  min-width: 300px !important;
+  width: 100% !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif !important;
+  z-index: 1 !important;
+  contain: layout style !important;
+}
+
+.custom-toast:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Pause progress bar on hover */
+/* Ensure progress keeps running even on hover */
+.custom-toast:hover .custom-toast__progress-bar::before {
+  animation-play-state: running !important;
+}
+
+/* Toast Type Indicators */
+.custom-toast--success {
+  border-left: 4px solid #10b981 !important;
+}
+
+.custom-toast--error {
+  border-left: 4px solid #ef4444 !important;
+}
+
+.custom-toast--warning {
+  border-left: 4px solid #f59e0b !important;
+}
+
+.custom-toast--info {
+  border-left: 4px solid #3b82f6 !important;
+}
+
+/* Content Layout */
+.custom-toast__content {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 12px !important;
+}
+
+.custom-toast__icon {
+  flex-shrink: 0 !important;
+  width: 24px !important;
+  height: 24px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 50% !important;
+  font-size: 14px !important;
+  margin-top: 2px !important;
+}
+
+.custom-toast--success .custom-toast__icon {
+  background: rgba(16, 185, 129, 0.1) !important;
+  color: #059669 !important;
+}
+
+.custom-toast--error .custom-toast__icon {
+  background: rgba(239, 68, 68, 0.1) !important;
+  color: #dc2626 !important;
+}
+
+.custom-toast--warning .custom-toast__icon {
+  background: rgba(245, 158, 11, 0.1) !important;
+  color: #d97706 !important;
+}
+
+.custom-toast--info .custom-toast__icon {
+  background: rgba(59, 130, 246, 0.1) !important;
+  color: #2563eb !important;
+}
+
+/* Body Layout */
+.custom-toast__body {
+  flex: 1 !important;
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 12px !important;
+}
+
+.custom-toast__avatar {
+  flex-shrink: 0 !important;
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 50% !important;
+  overflow: hidden !important;
+  border: 2px solid #f1f5f9 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+}
+
+.custom-toast__avatar img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+.custom-toast__text {
+  flex: 1 !important;
+  min-width: 0 !important;
+}
+
+.custom-toast__title {
+  font-weight: 600 !important;
+  font-size: 14px !important;
+  color: #1f2937 !important;
+  margin-bottom: 4px !important;
+  line-height: 1.3 !important;
+  word-wrap: break-word !important;
+}
+
+.custom-toast__message {
+  font-size: 13px !important;
+  color: #6b7280 !important;
+  line-height: 1.4 !important;
+  word-wrap: break-word !important;
+}
+
+/* Link Styles */
+.custom-toast__link {
+  text-decoration: none !important;
+  color: inherit !important;
+  display: block !important;
+}
+
+.custom-toast__link:hover,
+.custom-toast__link:focus,
+.custom-toast__link:visited {
+  text-decoration: none !important;
+  color: inherit !important;
+  outline: none !important;
+}
+
+/* Hide react-toastify default close button completely */
+.Toastify__toast-container.custom-toast-container .Toastify__close-button {
+  display: none !important;
+}
+
+/* Hide all progress bars and lines */
+.Toastify__toast-container.custom-toast-container .Toastify__progress-bar {
+  display: none !important;
+}
+
+.Toastify__toast-container.custom-toast-container .Toastify__progress-bar--bg {
+  display: none !important;
+}
+
+.Toastify__toast-container.custom-toast-container .Toastify__progress-bar--animated {
+  display: none !important;
+}
+
+.Toastify__toast-container.custom-toast-container .Toastify__progress-bar--controlled {
+  display: none !important;
+}
+
+.Toastify__toast-container.custom-toast-container .Toastify__progress-bar--rtl {
+  display: none !important;
+}
+
+/* Custom Close Button */
+.custom-toast__close-btn {
+  position: absolute !important;
+  top: 12px !important;
+  right: 12px !important;
+  color: #6b7280 !important;
+  opacity: 0.8 !important;
+  transition: all 0.2s ease !important;
+  width: 24px !important;
+  height: 24px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  border-radius: 50% !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  font-size: 18px !important;
+  font-weight: 300 !important;
+  cursor: pointer !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+  z-index: 10 !important;
+  line-height: 1 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.custom-toast__close-btn:hover {
+  opacity: 1 !important;
+  background: rgba(255, 255, 255, 1) !important;
+  color: #374151 !important;
+  transform: scale(1.1) !important;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Hide react-toastify progress bar - we'll use our custom one */
+.Toastify__toast-container.custom-toast-container .Toastify__progress-bar,
+.Toastify__toast-container.custom-toast-container .Toastify__progress-bar--success,
+.Toastify__toast-container.custom-toast-container .Toastify__progress-bar--error,
+.Toastify__toast-container.custom-toast-container .Toastify__progress-bar--warning {
+  display: none !important;
+  height: 0 !important;
+  visibility: hidden !important;
+}
+
+/* Custom Progress Bar as Bottom Border */
+.custom-toast__progress-bar {
+  position: absolute !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 4px !important;
+  background: transparent !important;
+  border-radius: 0 0 12px 12px !important;
+  overflow: hidden !important;
+}
+
+.custom-toast__progress-bar::before {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  height: 100% !important;
+  width: 100% !important;
+  background: currentColor !important;
+  animation: toast-progress var(--progress-duration, 5000ms) linear forwards !important;
+  transform-origin: left !important;
+}
+
+.custom-toast__progress-bar--success {
+  color: #10b981 !important;
+}
+
+.custom-toast__progress-bar--error {
+  color: #ef4444 !important;
+}
+
+.custom-toast__progress-bar--warning {
+  color: #f59e0b !important;
+}
+
+.custom-toast__progress-bar--info {
+  color: #3b82f6 !important;
+}
+
+/* Progress bar animation */
+@keyframes toast-progress {
+  0% {
+    transform: scaleX(1) !important;
+  }
+  100% {
+    transform: scaleX(0) !important;
+  }
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .Toastify__toast-container.custom-toast-container,
+  .Toastify__toast-container--top-center.custom-toast-container {
+    top: 50px !important;
+    right: 10px !important;
+    left: 10px !important;
+    max-width: none !important;
+    transform: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+  }
+
+  .custom-toast {
+    min-width: auto !important;
+    max-width: calc(100vw - 20px) !important;
+    width: 100% !important;
+    margin: 4px 0 !important;
+  }
+}
+
+/* Extra small mobile devices */
+@media (max-width: 480px) {
+  .Toastify__toast-container.custom-toast-container,
+  .Toastify__toast-container--top-center.custom-toast-container {
+    top: 50px !important;
+    right: 5px !important;
+    left: 5px !important;
+  }
+
+  .custom-toast {
+    max-width: calc(100vw - 10px) !important;
+    margin: 2px 0 !important;
+    padding: 12px 32px 12px 12px !important;
+  }
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+  .custom-toast {
+    background: #1f2937 !important;
+    border: 1px solid #374151 !important;
+    color: #f9fafb !important;
+  }
+
+  .custom-toast__title {
+    color: #f9fafb !important;
+  }
+
+  .custom-toast__message {
+    color: #d1d5db !important;
+  }
+
+  .custom-toast__avatar {
+    border: 2px solid #374151 !important;
+  }
+
+  /* Dark mode custom close button */
+  .custom-toast__close-btn {
+    background: rgba(55, 65, 81, 0.9) !important;
+    color: #d1d5db !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .custom-toast__close-btn:hover {
+    background: rgba(55, 65, 81, 1) !important;
+    color: #f9fafb !important;
+  }
+}
+
+/* Animation Support */
+.toast-enter {
+  transform: translateX(100%) !important;
+  opacity: 0 !important;
+}
+
+.toast-enter-active {
+  transform: translateX(0) !important;
+  opacity: 1 !important;
+  transition: transform 0.3s ease, opacity 0.3s ease !important;
+}
+
+.toast-exit {
+  transform: translateX(0) !important;
+  opacity: 1 !important;
+}
+
+.toast-exit-active {
+  transform: translateX(100%) !important;
+  opacity: 0 !important;
+  transition: transform 0.3s ease, opacity 0.3s ease !important;
+}
