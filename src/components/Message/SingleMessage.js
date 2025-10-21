@@ -33,6 +33,7 @@ const SingleMessage = ({ index, msg, friendProfile, messages, setReplyData, setI
     const [isPlaying, setIsPlaying] = useState(false)
     const [audioDuration, setAudioDuration] = useState(0)
     const [audioCurrent, setAudioCurrent] = useState(0)
+    const [hasParentComment, setHasParentComment] = useState(false)
     const audioRef = useRef(null)
 
     useEffect(() => {
