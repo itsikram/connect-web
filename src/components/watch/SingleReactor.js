@@ -2,10 +2,10 @@ import React, { useEffect, useState } from 'react';
 import api from '../../api/api';
 import UserPP from '../UserPP';
 import { Link } from 'react-router-dom';
-
-const Rlike = 'https://programmerikram.com/wp-content/uploads/2025/03/like-icon.svg';
-const Rlove = 'https://programmerikram.com/wp-content/uploads/2025/03/love-icon.svg';
-const Rhaha = 'https://programmerikram.com/wp-content/uploads/2025/03/haha-icon.svg';
+import config from '../../config/config.json';
+const Rlike = config?.reactLike;    
+const Rlove = config?.reactLove;
+const Rhaha = config?.reactHaha;
 
 
 const SingleReactor = ({ reactor }) => {

@@ -1,8 +1,17 @@
 {
-    "logo": "/assets/images/connect_logo.png",
-    "defaultCover": "/assets/images/default_cover.png",
-    "defaultProfile": "/assets/images/default_profile_pic.png",
-    "callingBeep": "/assets/audio/calling-beep.mp3",
+    "logo": "/assets/images/logo.png",
+    "siteUrl": "https://connect-zfgx.onrender.com/",
+    "loadingUrl": "/assets/images/loading.gif",
+    "defaultCover": "/assets/images/default-cover.png",
+    "defaultProfile": "/assets/images/default-profile-pic.png",
     "chessBackground": "https://images.unsplash.com/photo-1518546305927-5a555bb7020d?auto=format&fit=crop&w=1500&q=60",
-    "luduBackground": "https://images.unsplash.com/photo-1518546305927-5a555bb7020d?auto=format&fit=crop&w=1500&q=60"
+    "luduBackground": "https://images.unsplash.com/photo-1518546305927-5a555bb7020d?auto=format&fit=crop&w=1500&q=60",
+    "defaultNotificationSound": "/assets/audio/calling-beep.mp3",
+    "defaultRingtone": "/assets/audio/default-ringtone.mp3",
+    "callingBeep": "/assets/audio/calling-beep.mp3",
+    "reactLike": "/assets/images/reacts/reactLike.svg",
+    "reactLove": "/assets/images/reacts/reactLove.svg",
+    "reactHaha": "/assets/images/reacts/reactHaha.svg",
+    "mailApiUrl": "https://storefrontsignonline.com/wp-json/connect/v1/send-mail",
+    "portfolioPP": "/assets/images/portfolio-pp.png"
 }

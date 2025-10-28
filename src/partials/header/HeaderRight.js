@@ -7,9 +7,9 @@ import MessageList from "../../components/Message/MessageList";
 import api from "../../api/api";
 import { useAuth } from "../../hooks/useAuth";
 import { addNotifications, viewNotification, viewNotifications } from "../../services/actions/notificationActions";
-
+import config from '../../config/config.json';
 let HeaderRight = ({ dispatch, useSelector }) => {
-    const { user, logout } = useAuth();
+    const { user, logout, isAuthenticated } = useAuth();
     let profileData = useSelector(state => state.profile)
     let optionData = useSelector(state => state.option)
     let notificaitonData = useSelector(state => state.notification)
@@ -20,10 +20,10 @@ let HeaderRight = ({ dispatch, useSelector }) => {
     let [totalNotifications, setTotalNotifications] = useState(0)
     let [totalMessages, setTotalMessages] = useState(0)
     let location = useLocation();
-    let [ppUrl, setPpUrl] = useState('https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png')
+    let [ppUrl, setPpUrl] = useState(config?.defaultProfile)
     let navigate = useNavigate()
     const profilePath = user?.profile ? `/${user.profile}/` : '/'
-
+    
     const [notificationOption, setNotificationOption] = useState(false);
     const notficationOptionMenuRef = useRef(null);
 
@@ -33,9 +33,11 @@ let HeaderRight = ({ dispatch, useSelector }) => {
 
 
     useEffect(() => {
-
-        if (profileData?.profilePic) {
-            setPpUrl(profileData.profilePic)
+        // Reset to default profile pic when profile data is cleared (after logout)
+        if (!profileData?.profilePic) {
+            setPpUrl(config?.defaultProfile);
+        } else if (profileData?.profilePic) {
+            setPpUrl(profileData.profilePic);
         }
     }, [profileData])
 
@@ -182,6 +184,12 @@ let HeaderRight = ({ dispatch, useSelector }) => {
         // Navigate to login page
         navigate('/login');
     }, [logout, navigate]);
+    
+    // Early return if not authenticated
+    if (!isAuthenticated) {
+        return null;
+    }
+    
     return (
         <Fragment>
             <div className="header-quick-menu-container">

@@ -1,4 +1,4 @@
-import {SET_LOGIN,GET_USER, LOGOUT} from '../constants/authConsts'
+import {SET_LOGIN,GET_USER, LOGOUT, CLEAR_ALL_STATE} from '../constants/authConsts'
 
 const initialSate = {
     user: {},
@@ -20,6 +20,10 @@ const authReducer = (state = initialSate,action) => {
             return {
                 token: undefined
             }
+        }
+
+        case CLEAR_ALL_STATE: {
+            return initialSate
         }
 
         case GET_USER: 

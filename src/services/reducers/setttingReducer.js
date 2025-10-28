@@ -1,4 +1,5 @@
 import { SET_MODE_SHARE,SET_NOTIFICATION,UPDATE_OPTION,LOAD_SETTINGS } from "../constants/settingConsts";
+import {CLEAR_ALL_STATE} from '../constants/authConsts';
 let initialState = {
     isShareEmotion: false,
     notification: true,
@@ -47,6 +48,8 @@ const settingReducer = (state = initialState, action) => {
                 return action.payload
             break
 
+        case CLEAR_ALL_STATE:
+            return initialState
 
         default:
             return state;

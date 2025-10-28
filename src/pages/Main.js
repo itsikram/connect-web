@@ -100,7 +100,7 @@ import SavedVideos from "./SavedVideos.js";
 function showNotification(msg, receiverId) {
     const notification = new Notification("New Message!", {
         body: msg.message,
-        icon: "https://programmerikram.com/wp-content/uploads/2025/03/ics_logo.png"
+        icon: config?.logo
     });
 
     // Handle click event
@@ -186,8 +186,12 @@ const Main = () => {
 
 
     const playSound = () => {
-        audioElement?.current.play();
-
+        if (audioElement?.current) {
+            audioElement.current.play().catch(error => {
+                console.warn('Failed to play notification sound:', error);
+                // Try to play a fallback sound or just skip audio
+            });
+        }
     }
     const notify = (text, senderName, senderPP, link) => {
         playSound();
@@ -562,11 +566,30 @@ const Main = () => {
         return () => clearTimeout(timer);
     }, [location.pathname, location.search, location.hash]);
 
+    // Stop all audio elements on route change to prevent stuck ringtones
+    useEffect(() => {
+        const stopAllAudio = () => {
+            const audioElements = document.querySelectorAll('audio');
+            audioElements.forEach(audio => {
+                audio.pause();
+                audio.currentTime = 0;
+            });
+        };
+        stopAllAudio();
+    }, [location.pathname]);
+
     const isPortfolioRoute = location.pathname.startsWith('/portfolio');
 
     return (
         <Fragment>
-            <audio ref={audioElement} src="https://programmerikram.com/wp-content/uploads/2025/05/connect-message-sound.wav">
+            <audio 
+                ref={audioElement} 
+                src={config?.defaultNotificationSound}
+                preload="auto"
+                onError={(e) => {
+                    console.warn('Audio file failed to load:', e.target.src);
+                }}
+            >
                 <track kind="captions" />
             </audio>
             
@@ -578,7 +601,7 @@ const Main = () => {
                     </div>)}
 
 
-                {!isPortfolioRoute && <Header />}
+                {!isPortfolioRoute && isAuthenticated && <Header />}
 
                 <div id="main-container" className={isLoading ? 'loading' : ''}>
                     {/* <Face /> */}

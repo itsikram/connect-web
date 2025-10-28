@@ -59,6 +59,7 @@ body {
 .forgot-password {
     color: #003eaa !important;
 }
+
 .divider-text {
     color: gray;
 }
@@ -117,6 +118,7 @@ body {
     align-items: center !important;
     justify-content: center;
     background-color: #18191A;
+    flex-direction: column;
     z-index: 999999999999;
     top: 0;
     left: 0;
@@ -133,10 +135,13 @@ body {
     }
 
     @keyframes pulse {
-        0%, 100% {
+
+        0%,
+        100% {
             opacity: 1;
             transform: translateX(-50%) scale(1);
         }
+
         50% {
             opacity: 0.6;
             transform: translateX(-50%) scale(1.3);
@@ -351,6 +356,7 @@ body {
         }
 
         .call-button-filter {
+
             i,
             svg {
                 color: $pc;
@@ -358,6 +364,7 @@ body {
 
             &.active {
                 background-color: $pc;
+
                 i,
                 svg {
                     color: #fff;
@@ -366,14 +373,16 @@ body {
         }
 
         .call-button-fullscreen {
+
             i,
             svg {
                 color: $pc;
             }
-        
+
         }
 
         .call-button-minimize {
+
             i,
             svg {
                 color: $pc;
@@ -386,11 +395,12 @@ body {
     }
 }
 
-#header,.sticky-header {
+#header,
+.sticky-header {
     background: linear-gradient(135deg, rgba($card-bg, 0.95) 0%, rgba($profilebg, 0.95) 100%);
     backdrop-filter: blur(24px) saturate(180%);
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 
+    box-shadow:
         0 4px 24px rgba(0, 0, 0, 0.15),
         inset 0 1px 0 rgba(255, 255, 255, 0.05);
     z-index: 1000;
@@ -403,12 +413,13 @@ body {
         position: relative;
         z-index: 1000;
         overflow: visible;
-        
+
         // Slim header padding
         .row {
             margin: 0;
-            
-            > .col, > [class*="col-"] {
+
+            >.col,
+            >[class*="col-"] {
                 padding-top: 4px;
                 padding-bottom: 4px;
             }
@@ -451,7 +462,7 @@ body {
                 border-radius: 24px;
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-                box-shadow: 
+                box-shadow:
                     inset 0 1px 0 rgba(255, 255, 255, 0.05),
                     0 2px 8px rgba(0, 0, 0, 0.1);
                 overflow: unset;
@@ -461,7 +472,7 @@ body {
                 &:hover {
                     background: rgba($bc, 0.5);
                     border-color: rgba($pc, 0.2);
-                    box-shadow: 
+                    box-shadow:
                         inset 0 1px 0 rgba(255, 255, 255, 0.08),
                         0 4px 16px rgba(0, 0, 0, 0.15);
                 }
@@ -469,10 +480,10 @@ body {
                 &:focus-within {
                     background: rgba($bc, 0.6);
                     border-color: rgba($pc, 0.4);
-                    box-shadow: 
+                    box-shadow:
                         inset 0 1px 0 rgba(255, 255, 255, 0.1),
                         0 4px 20px rgba($pc, 0.15);
-                    
+
                     .header-search-icon {
                         color: $pc !important;
                     }
@@ -522,6 +533,7 @@ body {
                             opacity: 0;
                             transform: translateY(-10px);
                         }
+
                         to {
                             opacity: 1;
                             transform: translateY(0);
@@ -553,7 +565,7 @@ body {
                     .search-results-videos,
                     .search-results-posts {
                         margin-bottom: 20px;
-                        
+
                         &:not(:last-child) {
                             padding-bottom: 16px;
                             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -699,7 +711,7 @@ body {
                 backdrop-filter: blur(12px);
                 border-radius: 12px;
                 padding: 6px;
-                box-shadow: 
+                box-shadow:
                     inset 0 1px 0 rgba(255, 255, 255, 0.05),
                     0 2px 8px rgba(0, 0, 0, 0.15);
                 border: 1px solid rgba(255, 255, 255, 0.06);
@@ -747,7 +759,7 @@ body {
                             opacity: 0;
                             pointer-events: none;
                             transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-                            box-shadow: 
+                            box-shadow:
                                 0 4px 20px rgba(0, 0, 0, 0.3),
                                 inset 0 1px 0 rgba(255, 255, 255, 0.1);
                             border: 1px solid rgba(255, 255, 255, 0.1);
@@ -792,7 +804,7 @@ body {
                         color: $pc;
                         transform: translateY(-2px);
                         box-shadow: 0 4px 12px rgba($pc, 0.15);
-                        
+
                         &::before {
                             opacity: 1;
                             transform: translateX(-50%) translateY(0);
@@ -811,11 +823,11 @@ body {
                     .header-nav-menu-item.active {
                         color: $pc !important;
                         background: linear-gradient(135deg, rgba($pc, 0.2), rgba($pc, 0.12));
-                        box-shadow: 
+                        box-shadow:
                             0 2px 8px rgba($pc, 0.25),
                             inset 0 1px 0 rgba(255, 255, 255, 0.1);
                         border: 1px solid rgba($pc, 0.2);
-                        
+
                         .header-nav-menu-icon {
                             filter: drop-shadow(0 2px 4px rgba($pc, 0.3));
                         }
@@ -844,7 +856,7 @@ body {
                     .header-nav-menu-item.active:hover {
                         background: linear-gradient(135deg, rgba($pc, 0.25), rgba($pc, 0.15));
                         transform: translateY(-2px);
-                        box-shadow: 
+                        box-shadow:
                             0 4px 16px rgba($pc, 0.3),
                             inset 0 1px 0 rgba(255, 255, 255, 0.15);
                     }
@@ -888,7 +900,7 @@ body {
                 background: linear-gradient(135deg, rgba($pc, 0.25), rgba($pc, 0.15));
                 color: $pc;
                 border-color: rgba($pc, 0.3);
-                box-shadow: 
+                box-shadow:
                     0 4px 16px rgba($pc, 0.3),
                     inset 0 1px 0 rgba(255, 255, 255, 0.15);
                 transform: scale(1.05);
@@ -913,7 +925,7 @@ body {
         .header-right {
             position: relative;
             z-index: 1001;
-            
+
             .header-quick-menu-container {
                 position: relative;
                 z-index: 1001;
@@ -1004,7 +1016,7 @@ body {
 
                     .header-quick-menu-item.active {
                         background: linear-gradient(135deg, rgba($pc, 0.25), rgba($pc, 0.15)) !important;
-                        box-shadow: 
+                        box-shadow:
                             0 4px 16px rgba($pc, 0.3),
                             inset 0 1px 0 rgba(255, 255, 255, 0.15);
                         border: 1px solid rgba($pc, 0.3);
@@ -3202,9 +3214,7 @@ body {
 
 .saved-videos-container {
 
-    .saved-video-card {
-        
-    }
+    .saved-video-card {}
 }
 
 .setting-page {
@@ -4482,7 +4492,7 @@ body {
         border-radius: 50%;
         transform: scale(1);
         border: 2.5px solid gray;
-        
+
         display: flex;
         align-items: center;
         justify-content: center;
@@ -6346,7 +6356,7 @@ body {
                     top: -35px !important;
                     transform: translateY(-50%);
                     z-index: 999999;
-                    
+
 
                     .reacted {
                         color: $pc !important;
@@ -6424,9 +6434,10 @@ body {
                     align-items: center;
                     gap: 8px;
                     font-size: 12px;
-                    color: rgba(255,255,255,0.6);
+                    color: rgba(255, 255, 255, 0.6);
                     margin-top: 2px;
                 }
+
                 .message-time {
                     opacity: .8;
                     margin-top: -5px !important;
@@ -6604,10 +6615,11 @@ body {
                     visibility: visible !important;
                 }
 
-                .message-text,.message-time {
+                .message-text,
+                .message-time {
                     color: #fff !important;
                 }
-                
+
             }
 
             .chat-message-container.message-typing {
@@ -6864,12 +6876,12 @@ body {
     width: 300px !important;
     background-color: #242526 !important;
     border-radius: 5px !important;
-    box-shadow: 0px 0px 2px 0px rgba(255,255,255,0.3) !important;
+    box-shadow: 0px 0px 2px 0px rgba(255, 255, 255, 0.3) !important;
     opacity: 1 !important;
     visibility: visible !important;
     display: block !important;
     max-height: 80vh;
-  overflow-y: scroll;
+    overflow-y: scroll;
 }
 
 // Ensure mega menu is visible in both default and sticky header states
@@ -7203,21 +7215,21 @@ body {
 }
 
 #left-sidebar .ls-nav-menu .ls-nav-menu-item .ls-icon {
-    background-image: url(http://localhost:3000/assets/images/icons.png);
+    background-image: url(http://localhost:3000/assets/images/icons.png) !important;
 
 }
 
 #left-sidebar .ls-nav-menu .ls-nav-menu-item .lsi-star {
-    background-image: url(http://localhost:3000/assets/images/star-icon.png);
+    background-image: url(http://localhost:3000/assets/images/star-icon.png) !important;
 
 }
 
 #left-sidebar .ls-nav-menu .ls-nav-menu-item .lsi-card {
-    background-image: url(http://localhost:3000/assets/images/card-icon.png);
+    background-image: url(http://localhost:3000/assets/images/card-icon.png) !important;
 }
 
 .nf-create-post .bottom .button-container li .button-icon {
-    background-image: url(http://localhost:3000/assets/images/new-icons.png);
+    background-image: url(http://localhost:3000/assets/images/new-icons.png) !important;
 }
 
 
@@ -7368,7 +7380,8 @@ body {
         width: 25px;
     }
 
-    #header .hr-mega-menu,#header:not(.sticky-header) .hr-mega-menu {
+    #header .hr-mega-menu,
+    #header:not(.sticky-header) .hr-mega-menu {
         left: unset !important;
         right: -100% !important;
     }
@@ -7376,18 +7389,19 @@ body {
 
 
     #chatBox .chat-header {
-    flex-direction: column !important;
-    gap: 5px !important;
-    padding-left: 70px  !important;
-    align-items: flex-start !important;
-    
+        flex-direction: column !important;
+        gap: 5px !important;
+        padding-left: 70px !important;
+        align-items: flex-start !important;
+
     }
 
-    
+
 
     #chatBox .chat-footer .new-message-container .new-message-form .new-message-input-container .new-message-input {
         margin-top: 0 !important;
     }
+
     .chat-new-attachment {
         margin-top: 0 !important;
     }
@@ -7395,47 +7409,49 @@ body {
     #chatBox .chat-footer {
         bottom: -125px;
     }
+
     #header:not(.sticky-header) {
         padding: 8px 0;
-        
+
         .header-container {
             padding: 0 16px;
         }
-        
+
         .header-search-container {
             margin-left: 8px;
             padding: 6px 12px;
         }
     }
-    
+
     #header.sticky-header {
         padding: 8px 0 !important;
-        
+
         .header-container {
             padding: 0 16px !important;
         }
-        
+
         .header-search-container {
             margin-left: 8px !important;
             padding: 6px 12px !important;
         }
     }
-    
+
     // Sidebar improvements for mobile
-    #left-sidebar, #right-sidebar {
+    #left-sidebar,
+    #right-sidebar {
         min-width: 100%;
         margin: 8px;
         padding: 12px;
         border-radius: 12px;
     }
-    
+
     // Post improvements for mobile
     .nf-post {
         margin: 8px;
         border-radius: 12px;
         padding: 16px;
     }
-    
+
     .nf-create-post {
         margin: 8px;
         border-radius: 12px;
@@ -7605,7 +7621,7 @@ body {
                     max-height: 80vh;
                     overflow-y: auto;
                     margin-top: 8px;
-                    
+
                     /* Slim scrollbar for mobile */
                     scrollbar-width: thin;
                     scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
@@ -7827,6 +7843,7 @@ body {
     padding: 0;
     box-shadow: none;
 }
+
 .sm-skleton.skeleton-card .chat-message-profilePic {
     margin-bottom: 0 !important;
 }
@@ -7951,39 +7968,39 @@ body {
     padding: 12px 24px;
     font-size: 14px;
     cursor: pointer;
-    
+
     &.btn-primary {
         background: $accent-gradient;
         color: white;
         box-shadow: 0 4px 12px rgba($pc, 0.3);
-        
+
         &:hover {
             transform: translateY(-2px);
             box-shadow: 0 8px 24px rgba($pc, 0.4);
         }
-        
+
         &:active {
             transform: translateY(0);
         }
     }
-    
+
     &.btn-secondary {
         background: linear-gradient(135deg, $hover-bg 0%, $bc 100%);
         color: $mtc-light;
         border: 1px solid $card-border;
-        
+
         &:hover {
             background: linear-gradient(135deg, $bc 0%, $hover-bg 100%);
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
         }
     }
-    
+
     &.btn-outline {
         background: transparent;
         color: $pc;
         border: 2px solid $pc;
-        
+
         &:hover {
             background: $pc;
             color: white;
@@ -8001,14 +8018,14 @@ body {
     color: $mtc-light;
     padding: 12px 16px;
     transition: all 0.3s ease;
-    
+
     &:focus {
         background: linear-gradient(135deg, $bc 0%, $hover-bg 100%);
         border-color: $pc;
         box-shadow: 0 0 0 3px rgba($pc, 0.2);
         outline: none;
     }
-    
+
     &::placeholder {
         color: $mtc;
     }
@@ -8022,7 +8039,7 @@ body {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
     backdrop-filter: blur(20px);
     transition: all 0.3s ease;
-    
+
     &:hover {
         transform: translateY(-4px);
         box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
@@ -8030,25 +8047,50 @@ body {
 }
 
 // Enhanced Typography
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
     color: $mtc-light;
     font-weight: 600;
     line-height: 1.4;
 }
 
-h1 { font-size: 2.5rem; }
-h2 { font-size: 2rem; }
-h3 { font-size: 1.75rem; }
-h4 { font-size: 1.5rem; }
-h5 { font-size: 1.25rem; }
-h6 { font-size: 1rem; }
+h1 {
+    font-size: 2.5rem;
+}
+
+h2 {
+    font-size: 2rem;
+}
+
+h3 {
+    font-size: 1.75rem;
+}
+
+h4 {
+    font-size: 1.5rem;
+}
+
+h5 {
+    font-size: 1.25rem;
+}
+
+h6 {
+    font-size: 1rem;
+}
 
 // Modern Loading Animation
 @keyframes modernPulse {
-    0%, 100% {
+
+    0%,
+    100% {
         opacity: 0.4;
         transform: scale(1);
     }
+
     50% {
         opacity: 1;
         transform: scale(1.05);

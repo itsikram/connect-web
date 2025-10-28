@@ -27,21 +27,21 @@ const VideoCallPage = ({ socket }) => {
 
     socket.on("connect", () => console.log("Socket connected", socket.id));
 
-    socket.on("agora-incoming-call", ({ from, channelName }) => {
+    socket.on("incoming-call", ({ from, channelName }) => {
       console.log("Incoming call from", from, channelName);
       if (window.confirm("Incoming call. Accept?")) {
-        socket.emit("agora-answer-call", { to: from, channelName });
+        socket.emit("answer-call", { to: from, channelName });
         startCall(channelName);
       }
     });
 
-    socket.on("agora-call-accepted", ({ channelName }) => {
+    socket.on("call-accepted", ({ channelName }) => {
       startCall(channelName);
     });
 
     return () => {
-      socket.off("agora-incoming-call");
-      socket.off("agora-call-accepted");
+      socket.off("incoming-call");
+      socket.off("call-accepted");
     };
   }, [socket]);
 
@@ -99,7 +99,7 @@ const VideoCallPage = ({ socket }) => {
     if (!friendId) return alert("Enter friend's ID");
     const channelName = `${myId}-${friendId}`;
     setCurrentChannel(channelName);
-    socket.emit("agora-call-user", { to: friendId, channelName });
+    socket.emit("call-user", { to: friendId, channelName });
   };
 
   // End call

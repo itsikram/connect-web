@@ -2,7 +2,7 @@ import React from 'react';
 import { Outlet } from 'react-router-dom';
 import PortfolioMenu from '../../components/portfolio/PortfolioMenu';
 import ParticleBackground from '../../components/portfolio/ParticleBackground.tsx';
-
+import config from '../../config/config.json';
 const PortfolioContainer = () => {
     return (
         <div className='portfolio-page-container'>
@@ -12,7 +12,7 @@ const PortfolioContainer = () => {
             <div className='left-sidebar'>
                 <h1 className='my-name mb-2'>Md Ikram</h1>
                 <div className='image-container my-2'>
-                    <img className='avatar-image' src='https://programmerikram.com/wp-content/uploads/2024/10/Ikramul-islam-transparent.png' alt='Programmer Ikram' />
+                    <img className='avatar-image' src={config?.portfolioPP} alt='Programmer Ikram' />
                 </div>
                 <hr className='my-3' style={{ color: 'gray' }} />
                 <PortfolioMenu />

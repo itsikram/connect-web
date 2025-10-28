@@ -10,11 +10,12 @@ import api from '../../api/api';
 import checkImgLoading from '../../utils/checkImgLoading';
 import isValidUrl from '../../utils/isValiUrl';
 import { useCallMinimize } from '../../contexts/CallMinimizeContext';
-import { 
-    emotionEmojiMap 
+import {
+    emotionEmojiMap
 } from '../../utils/emotionDetection';
 import { startMediaPipeEmotionDetection } from '../../utils/mediapipeExpressions';
-import  config  from '../../config/config.json';
+import config from '../../config/config.json';
+import ringtones from '../../config/ringtones.json';
 // Using Agora RTC SDK instead of simple-peer
 
 const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
@@ -36,6 +37,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
     const [filterMyVideo, setFilterMyVideo] = useState(false);
     const [isMinimized, setIsMinimized] = useState(false);
     const [callDuration, setCallDuration] = useState(0);
+    const [outgoingCallStatus, setOutgoingCallStatus] = useState('');
     const callStartTime = useRef(null);
 
     const cameraVideoRef = useRef(null);
@@ -147,11 +149,54 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
     const closeVideoCall = () => { };
 
     const playCallingBeep = () => {
-        callingBeepAudio?.current.play();
+        setTimeout(() => {
+            if (callingBeepAudio?.current) {
+                const audio = callingBeepAudio.current;
+                
+                // Check if audio has a valid source
+                if (!audio.src || audio.src === window.location.href) {
+                    console.warn('Ringtone audio has no valid source');
+                    return;
+                }
+                
+                // Wait for audio to be ready if not already loaded
+                if (audio.readyState < 2) {
+                    const handleCanPlay = () => {
+                        audio.play().catch(error => {
+                            console.warn('Failed to play ringtone:', error);
+                        });
+                        audio.removeEventListener('canplaythrough', handleCanPlay);
+                    };
+                    audio.addEventListener('canplaythrough', handleCanPlay);
+                    
+                    // Fallback timeout
+                    setTimeout(() => {
+                        audio.removeEventListener('canplaythrough', handleCanPlay);
+                    }, 3000);
+                } else {
+                    audio.play().catch(error => {
+                        console.warn('Failed to play ringtone:', error);
+                    });
+                }
+            } else {
+                // Retry after a short delay if audio element not yet mounted
+                setTimeout(() => {
+                    if (callingBeepAudio?.current) {
+                        callingBeepAudio.current.play().catch(error => {
+                            console.warn('Failed to play ringtone after retry:', error);
+                        });
+                    }
+                }, 300);
+            }
+        }, 500);
     };
 
     const stopCallingBeep = () => {
-        callingBeepAudio?.current.pause();
+        if (callingBeepAudio?.current) {
+            const audio = callingBeepAudio.current;
+            audio.pause();
+            audio.currentTime = 0; // Reset to beginning
+        }
     };
 
     // Stop hidden emotion camera when a call starts or is accepted
@@ -434,7 +479,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             console.error('Failed to start local video immediately:', error);
         }
 
-        socket.emit('agora-answer-call', { to: data.from, channelName: data.channelName });
+        socket.emit('answer-call', { to: data.from, channelName: data.channelName });
         await startCall(data.channelName);
     }, [startCall]);
 
@@ -503,14 +548,26 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
     // Handle leave call - called when user clicks end button
     const handleLeaveCall = useCallback(async () => {
         console.log('ChatHeader: handleLeaveCall - emitting to server and cleaning up');
+        
+        // Explicitly stop ringtone first
+        stopCallingBeep();
+
+        if(!callAccepted) {
+            socket.emit('video-call-cancel', {to: friendId, channelName: currentChannel});
+            await cleanupVideoCall();
+            return;
+
+        }
         // Emit to server (server will broadcast to both users)
-        socket.emit('leaveVideoCall', friendId);
+        socket.emit('video-call-end', {to:friendId, channelName: currentChannel});
         // Do local cleanup
         await cleanupVideoCall();
-    }, [friendId, cleanupVideoCall]);
+    }, [friendId, cleanupVideoCall, callAccepted, currentChannel]);
 
     useEffect(() => {
-        socket.on('agora-incoming-video-call', ({ from, channelName, isAudio, callerName, callerProfilePic }) => {
+        socket.on('incoming-video-call', ({ from, channelName, isAudio, callerName, callerProfilePic }) => {
+
+            socket.emit('update-call-status', { to: from, status: "Ringing..." });
             // Only handle video calls in ChatHeader, audio calls handled by AudioCall component
             if (!isAudio) {
                 console.log('Incoming Agora video call from', from, 'channel:', channelName);
@@ -521,8 +578,22 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             }
         });
 
+        // Outgoing call status updates from callee
+        const handleUpdatedCallStatus = ({ from, status }) => {
+            // Only update if this status is for the current friend and we're the caller waiting
+            if (!callAccepted && isVideoCalling && from === friendId) {
+                setOutgoingCallStatus(status || '');
+            }
+        };
+        socket.on('updated-call-status', handleUpdatedCallStatus);
 
-        socket.on('agora-apply-video-filter', ({ filter }) => {
+        socket.on('video-call-rejected', ({to: friendId, channelName}) => {
+            console.log('ChatHeader: Received video-call-rejected event from server');
+            stopCallingBeep(); // Explicitly stop the beep
+            cleanupVideoCall();
+        });
+
+        socket.on('apply-video-filter', ({ filter }) => {
 
             if (filter !== '') {
                 setFilterFriendVideo(filter);
@@ -531,7 +602,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             }
         });
 
-        socket.on('agora-call-accepted', ({ channelName, isAudio }) => {
+        socket.on('call-accepted', ({ channelName, isAudio }) => {
             // Only handle video call acceptance
             if (!isAudio && isVideoCalling) { // caller-side only
                 stopCallingBeep();
@@ -539,13 +610,13 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             }
         });
 
-        socket.on('videoCallEnd', () => {
+        socket.on('video-call-ended', () => {
             console.log('ChatHeader: Received videoCallEnd event from server');
             // IMPORTANT: Only do local cleanup, do NOT call handleLeaveCall which would re-emit
+            stopCallingBeep(); // Explicitly stop the beep
             cleanupVideoCall();
+            setOutgoingCallStatus('');
         });
-
-        callingBeepAudio?.current.setAttribute('src', config?.callingBeep);
 
         // Live voice: when friend starts/stops, we join/leave and play their audio
         const liveVoiceClientRef = { current: null };
@@ -559,7 +630,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             liveVoiceClientRef.current = null;
         };
 
-        socket.on('agora-live-voice-start', async ({ channelName }) => {
+        socket.on('live-voice-start', async ({ channelName }) => {
             try {
                 // Create a new lightweight client for voice-only playback
                 await ensureLeaveLiveVoice();
@@ -585,19 +656,87 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             }
         });
 
-        socket.on('agora-live-voice-stop', async () => {
+        socket.on('live-voice-stop', async () => {
             await ensureLeaveLiveVoice();
         });
 
         return () => {
-            socket.off('agora-incoming-video-call');
-            socket.off('agora-call-accepted');
+            socket.off('incoming-video-call');
+            socket.off('call-accepted');
             socket.off('videoCallEnd');
-            socket.off('agora-apply-video-filter');
-            socket.off('agora-live-voice-start');
-            socket.off('agora-live-voice-stop');
+            socket.off('apply-video-filter');
+            socket.off('live-voice-start');
+            socket.off('live-voice-stop');
+            socket.off('updated-call-status', handleUpdatedCallStatus);
         };
-    }, [startCall, isVideoCalling, cleanupVideoCall]);
+    }, [startCall, isVideoCalling, cleanupVideoCall, callAccepted, friendId]);
+
+    // Notify caller when user focuses the tab during an incoming ringing call
+    const notifyFocusDuringIncomingCall = useCallback(() => {
+        if (incomingCall && !callAccepted) {
+            const to = incomingCall.from || friendId;
+            if (to) {
+                try {
+                    socket.emit('update-call-status', { to, status: "Call Seen" });
+                } catch (_) { }
+            }
+        }
+    }, [incomingCall, callAccepted, friendId]);
+
+    useEffect(() => {
+        const onWindowFocus = () => notifyFocusDuringIncomingCall();
+        const onVisibilityChange = () => {
+            if (document.visibilityState === 'visible') notifyFocusDuringIncomingCall();
+        };
+        window.addEventListener('focus', onWindowFocus);
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        return () => {
+            window.removeEventListener('focus', onWindowFocus);
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+        };
+    }, [notifyFocusDuringIncomingCall]);
+
+    // Setup ringtone based on user settings (only when audio element exists)
+    useEffect(() => {
+        if (callingBeepAudio?.current && incomingCall) {
+            // Use user's ringtone preference or fallback to default
+            const ringtone = settings.ringtone 
+                ? ringtones.find(r => r.id === settings.ringtone)
+                : null;
+            const toneSrc = ringtone?.src || config?.callingBeep || '';
+            
+            if (toneSrc) {
+                const audio = callingBeepAudio.current;
+                
+                // Only load if source hasn't been set yet
+                if (!audio.src || audio.src !== toneSrc) {
+                    audio.setAttribute('src', toneSrc);
+                    audio.load(); // Ensure the audio is loaded
+                    
+                    // Handle loading errors
+                    const handleError = () => {
+                        console.error('Failed to load ringtone:', toneSrc);
+                    };
+                    
+                    // Handle successful load
+                    const handleLoadStart = () => {
+                        console.log('Loading ringtone:', toneSrc);
+                    };
+                    
+                    const handleCanPlay = () => {
+                        console.log('Ringtone loaded successfully');
+                        audio.removeEventListener('canplaythrough', handleCanPlay);
+                        audio.removeEventListener('error', handleError);
+                        audio.removeEventListener('loadstart', handleLoadStart);
+                    };
+                    
+                    audio.addEventListener('error', handleError);
+                    audio.addEventListener('loadstart', handleLoadStart);
+                    audio.addEventListener('canplaythrough', handleCanPlay);
+                }
+            }
+        }
+    }, [settings, incomingCall]);
 
     // Call a friend using Agora
     const callFriend = useCallback(async (friendId) => {
@@ -605,6 +744,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
         const channelName = `${profileId}-${friendId}`;
         setCurrentChannel(channelName);
         console.log('Initiating Agora call to:', friendId, 'with channel:', channelName);
+        setOutgoingCallStatus('Calling...');
 
         // Start local video immediately when initiating call
         try {
@@ -620,11 +760,11 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             console.error('Failed to start local video for outgoing call:', error);
         }
 
-        socket.emit('agora-video-call', { to: friendId, channelName });
+        socket.emit('video-call', { to: friendId, channelName });
         playCallingBeep();
     }, [profileId]);
 
-        const handleVideoCallBtn = useCallback(e => {
+    const handleVideoCallBtn = useCallback(e => {
         const id = e.currentTarget.dataset.id;
         // setReceiverId(id); // Function not defined, commenting out
         setIncomingCall(null);
@@ -649,7 +789,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             }
         }));
 
-        socket.emit('agora-audio-call', { to: id, channelName, isAudio: true });
+        socket.emit('audio-call', { to: id, channelName, isAudio: true });
     }, [profileId, friendProfile]);
 
     const minimizeVideoCall = useCallback(() => {
@@ -735,12 +875,6 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
     };
 
     // Enhanced emotion detection state management
-    const emotionHistoryRef = useRef([]);
-    const baselineExpressionsRef = useRef({});
-    const lastStableEmotionRef = useRef(null);
-    const emotionStabilityCountRef = useRef(0);
-    const detectionQualityRef = useRef(0);
-    const consecutiveEmotionCountRef = useRef({});
     const lastEmotionTimestampRef = useRef(Date.now());
 
     const detectEmotions = () => {
@@ -749,19 +883,19 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             clearInterval(emotionIntervalRef.current);
             emotionIntervalRef.current = null;
         }
-        
+
         // Optimized adaptive detection frequency
         let detectionInterval = 900; // Faster base interval
         let lastActivityTime = Date.now();
         let frameSkipCounter = 0;
-        
+
         emotionIntervalRef.current = setInterval(async () => {
             // Guard check: stop detection if profileId or friendId become unavailable
             // Ensure both are valid strings with content
             if (!profileId || typeof profileId !== 'string' || profileId.length === 0 ||
                 !friendId || typeof friendId !== 'string' || friendId.length === 0) {
-                console.warn('⚠️ Stopping emotion detection - invalid IDs:', { 
-                    profileId: profileId || 'missing', 
+                console.warn('⚠️ Stopping emotion detection - invalid IDs:', {
+                    profileId: profileId || 'missing',
                     profileIdType: typeof profileId,
                     friendId: friendId || 'missing',
                     friendIdType: typeof friendId
@@ -774,7 +908,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             }
             // Adaptive frame skipping for performance
             const timeSinceLastChange = Date.now() - lastEmotionTimestampRef.current;
-            
+
             // Skip frames intelligently based on recent activity
             if (timeSinceLastChange > 10000) { // No change for 10 seconds
                 frameSkipCounter++;
@@ -800,7 +934,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
         // Ensure both are valid strings with content
         if (!profileId || typeof profileId !== 'string' || profileId.length === 0 ||
             !friendId || typeof friendId !== 'string' || friendId.length === 0) {
-            console.warn('⚠️ Not loading models - invalid IDs:', { 
+            console.warn('⚠️ Not loading models - invalid IDs:', {
                 profileId: profileId || 'missing',
                 profileIdType: typeof profileId,
                 friendId: friendId || 'missing',
@@ -808,7 +942,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             });
             return;
         }
-        
+
         const success = await loadFaceModels();
         if (success) {
             detectEmotions();
@@ -821,7 +955,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
 
     useEffect(() => {
         const hasValidIds = profileId && typeof profileId === 'string' && profileId.length > 0 &&
-                           friendId && typeof friendId === 'string' && friendId.length > 0;
+            friendId && typeof friendId === 'string' && friendId.length > 0;
 
         if (room && settings.isShareEmotion && hasValidIds) {
             (async () => {
@@ -830,7 +964,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                     await startVideo();
                     if (cameraVideoRef.current) {
                         // Stop any previous controller
-                        try { mediaPipeCtlRef.current?.stop(); } catch (_) {}
+                        try { mediaPipeCtlRef.current?.stop(); } catch (_) { }
                         mediaPipeCtlRef.current = await startMediaPipeEmotionDetection(cameraVideoRef.current, ({ label, analysis, clarityScore }) => {
                             // Update rolling window
                             const now = Date.now();
@@ -888,19 +1022,24 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                 });
             }
             stopCamera();
-            
+
         }
         return () => {
-            try { mediaPipeCtlRef.current?.stop(); } catch (_) {}
+            try { mediaPipeCtlRef.current?.stop(); } catch (_) { }
             mediaPipeCtlRef.current = null;
         };
     }, [room, settings.isShareEmotion, profileId, friendId, startVideo]);
 
-    useEffect(() => { stopCamera(); }, [location]);
+    useEffect(() => { 
+        stopCamera(); 
+        stopCallingBeep();
+    }, [location]);
 
     // Cleanup on component unmount
     useEffect(() => {
         return () => {
+            // Stop ringtone on unmount
+            stopCallingBeep();
             // Clear any running intervals on unmount
             if (remoteUserCheckInterval.current) {
                 clearInterval(remoteUserCheckInterval.current);
@@ -941,14 +1080,14 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             // Handle the new emotion data format from server
             if (data && data.emotion) {
                 setEmotion(data.emotion);
-                console.log('em',data)
+                console.log('em', data)
                 // You can use the emotion data here for UI updates
                 // For example, updating friend's emotion display
             }
         };
-        
+
         socket.on('emotion_change', handleEmotionChange);
-        
+
         return () => {
             socket.off('emotion_change', handleEmotionChange);
         };
@@ -999,7 +1138,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
         const nextIndex = (currentIndex + 1) % filters.length;
         const newFilter = filters[nextIndex];
         setFilterMyVideo(newFilter);
-        socket.emit('agora-filter-video', { to: friendId, filter: newFilter });
+        socket.emit('filter-video', { to: friendId, filter: newFilter });
     }, [filterMyVideo, friendId]);
 
     const toggleFullscreen = useCallback(async () => {
@@ -1174,38 +1313,38 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
 
             <div className='chat-header-action'>
                 <div className='chat-header-action-btn-container'>
-                    <div 
-                        onClick={handleBumpBtnClick} 
+                    <div
+                        onClick={handleBumpBtnClick}
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleBumpBtnClick(); } }}
                         role='button'
                         tabIndex={0}
-                        className='bump-button action-button' 
+                        className='bump-button action-button'
                         title='bump'
                     >
                         <i className="fas fa-record-vinyl"></i>
                     </div>
-                    <div 
-                        onClick={handleAudioCallBtn} 
+                    <div
+                        onClick={handleAudioCallBtn}
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleAudioCallBtn(e); } }}
                         role='button'
                         tabIndex={0}
-                        data-id={friendId} 
+                        data-id={friendId}
                         className='call-button action-button'
                     >
                         <i className="fas fa-phone-alt"></i>
                     </div>
-                    <div 
-                        onClick={handleVideoCallBtn} 
+                    <div
+                        onClick={handleVideoCallBtn}
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleVideoCallBtn(e); } }}
                         role='button'
                         tabIndex={0}
-                        data-id={friendId} 
+                        data-id={friendId}
                         className='video-call-button action-button'
                     >
                         <i className="fas fa-video"></i>
                     </div>
-                    <div 
-                        onClick={handleChatOptionClick.bind(this)} 
+                    <div
+                        onClick={handleChatOptionClick.bind(this)}
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleChatOptionClick(); } }}
                         role='button'
                         tabIndex={0}
@@ -1217,27 +1356,27 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                     {isChatOptionMenu && (
                         <div className="chat-option-menu" ref={chatOptionMenu} >
                             <ul>
-                                <li 
-                                    onClick={handleViewProfile.bind(this)} 
+                                <li
+                                    onClick={handleViewProfile.bind(this)}
                                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleViewProfile(); } }}
                                     tabIndex={0}
                                 >View Profile</li>
                                 {
-                                    profile?.blockedUsers.includes(friendId) ? 
-                                        <li 
-                                            onClick={handleUnBlockUser.bind(this)} 
+                                    profile?.blockedUsers.includes(friendId) ?
+                                        <li
+                                            onClick={handleUnBlockUser.bind(this)}
                                             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleUnBlockUser(); } }}
                                             tabIndex={0}
-                                        >Unblock {friendProfile.user.firstName}</li> 
-                                        : 
-                                        <li 
-                                            onClick={handleBlockUser.bind(this)} 
+                                        >Unblock {friendProfile.user.firstName}</li>
+                                        :
+                                        <li
+                                            onClick={handleBlockUser.bind(this)}
                                             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleBlockUser(); } }}
                                             tabIndex={0}
                                         >Block {friendProfile.user.firstName}</li>
                                 }
 
-                                <li 
+                                <li
                                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); } }}
                                     tabIndex={0}
                                 >Report {friendProfile.user.firstName}</li>
@@ -1265,14 +1404,14 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                                     incomingCall ? <>
                                         {(incomingCall.name || 'Someone')} is calling you
                                     </> : <>
-                                        Calling {friendProfile && friendProfile.fullName}
+                                        Calling {friendProfile && friendProfile.fullName}{outgoingCallStatus ? ` • ${outgoingCallStatus}` : ''}
                                     </>
                                 )}
                             </p>
                         )}
-                        <div className={`video-call-container ${isMobile ? 'mobile' : ''}`} style={{ 
-                            width: '100%', 
-                            height: '400px', 
+                        <div className={`video-call-container ${isMobile ? 'mobile' : ''}`} style={{
+                            width: '100%',
+                            height: '400px',
                             position: 'relative',
                             overflow: 'hidden'
                         }}>
@@ -1386,9 +1525,11 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                 )
             }
 
-            <audio ref={callingBeepAudio} src='' loop>
-                <track kind="captions" />
-            </audio>
+            {incomingCall && (
+                <audio ref={callingBeepAudio} loop preload="none">
+                    <track kind="captions" />
+                </audio>
+            )}
 
         </>
     );

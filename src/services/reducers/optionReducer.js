@@ -1,4 +1,5 @@
 import { SET_HEADER_HEIGHT,SET_BODY_HEIGHT,SET_LOADING } from "../constants/optionConsts";
+import {CLEAR_ALL_STATE} from '../constants/authConsts';
 let initialState = {headerHeight: null,bodyHeight: null,isLoading: true}
 const optionReducer = (state=initialState,action) => {
     switch (action.type) {
@@ -23,6 +24,8 @@ const optionReducer = (state=initialState,action) => {
                 };
                 break;
 
+            case CLEAR_ALL_STATE:
+                return initialState
 
         default:
             return state;

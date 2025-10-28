@@ -7,7 +7,9 @@ import { Link, useLocation } from 'react-router-dom';
 import CommentSkeleton from '../loading/CommentSkeleton';
 import LoadingSpinner, { TypingIndicator } from '../loading/LoadingSpinner';
 import './CommentStyles.css';
-const loadingUrl = 'https://programmerikram.com/wp-content/uploads/2025/03/loading.gif'
+import config from '../../config/config.json';
+const loadingUrl = config?.loadingUrl;
+
 function isValidUrl(str) {
     return true;
     var pattern = new RegExp('^(https?:\\/\\/)?' + // protocol

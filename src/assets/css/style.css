@@ -5141,7 +5141,7 @@ body {
   transform: translate(-50%, -50%);
 }
 #create-post-modal .modal-body .cp-modal-container .cpm-form .cpm-attachment-control .cpm-attachment-upload .cpm-attachment-upload-overlay .plus-icon {
-  background-image: url(https://programmerikram.com/wp-content/uploads/2025/04/icon3.png);
+  background-image: url(/assets/images/icon3.png);
   background-position: 0px -83px;
   background-size: auto;
   width: 20px;
@@ -5170,7 +5170,7 @@ body {
   font-size: 12px;
 }
 #create-post-modal .modal-body .cp-modal-container .cpm-form .cpm-attachment .post-meta-buttons .attachment-button-file {
-  background-image: url(https://programmerikram.com/wp-content/uploads/2025/04/new-icons.png);
+  background-image: url(/assets/images/new-icons.png);
   margin-right: 5px;
   background-position: 0px -181px;
   background-size: 26px 302px;
@@ -5234,19 +5234,19 @@ body {
 }
 
 #left-sidebar .ls-nav-menu .ls-nav-menu-item .ls-icon {
-  background-image: url(https://programmerikram.com/wp-content/themes/personal/assets/images/icons.png);
+  background-image: url(/assets/images/icons.png);
 }
 
 #left-sidebar .ls-nav-menu .ls-nav-menu-item .lsi-star {
-  background-image: url(https://programmerikram.com/wp-content/themes/personal/assets/images/star-icon.png);
+  background-image: url(/assets/images/star-icon.png);
 }
 
 #left-sidebar .ls-nav-menu .ls-nav-menu-item .lsi-card {
-  background-image: url(https://programmerikram.com/wp-content/themes/personal/assets/images/card-icon.png);
+  background-image: url(/assets/images/card-icon.png);
 }
 
 .nf-create-post .bottom .button-container li .button-icon {
-  background-image: url(https://programmerikram.com/wp-content/themes/personal/assets/images/new-icons.png);
+  background-image: url(/assets/images/new-icons.png);  
 }
 
 .page-title {
@@ -5707,7 +5707,7 @@ body {
   border-radius: 50%;
   margin-right: 16px;
   border: 2px solid rgba(41, 177, 169, 0.3);
-  background-image: url(https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png);
+  background-image: url(/assets/images/default-profile-pic.png);
   background-position: center;
   background-size: contain;
 }

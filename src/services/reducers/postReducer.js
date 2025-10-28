@@ -1,4 +1,5 @@
 import { LOAD_POSTS, ADD_POST, REMOVE_POST } from "../constants/postConsts";
+import {CLEAR_ALL_STATE} from '../constants/authConsts';
 
 // initial state
 const initialPostState = []
@@ -23,6 +24,8 @@ const postReducer = (state = initialPostState, action) => {
             let postId = action.payload.postId
             let updatedPosts = state.filter(post => !post._id == postId)
             return updatedPosts
+        case CLEAR_ALL_STATE:
+            return initialPostState
         default:
             return state
     }

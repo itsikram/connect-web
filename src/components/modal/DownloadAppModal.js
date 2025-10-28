@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import ModalContainer from "./ModalContainer";
+import axios from "axios";
 
 const StoreButton = ({ href, label, icon }) => (
   <a href={href} target="_blank" rel="noreferrer"
@@ -24,6 +25,25 @@ const StoreButton = ({ href, label, icon }) => (
 );
 
 const DownloadAppModal = ({ isOpen, onClose }) => {
+
+  const [connectData, setConnectData] = useState({
+    apkUrl: ''
+  });
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      let res = await axios.get(process.env.REACT_APP_SERVER_ADDR + '/api/connect');
+      if (res.status === 200) {
+        setConnectData(prev => ({
+          ...prev,
+          ...res.data
+        }));
+      }
+    };
+    fetchSettings();
+  }, []);
+
+  console.log('connectData',connectData);
   return (
     <ModalContainer isOpen={isOpen} onRequestClose={onClose} style={{ borderRadius: '16px', padding: 0 }}>
       <div style={{ background: 'linear-gradient(180deg, #141518 0%, #0f1114 100%)', color: '#eaecef', borderRadius: '16px', overflow: 'hidden' }}>
@@ -54,16 +74,20 @@ const DownloadAppModal = ({ isOpen, onClose }) => {
           </p>
 
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 4 }}>
+            {connectData?.apkUrl && (
             <StoreButton
-              href="https://programmerikram.com/connect.apk"
+              href={connectData?.apkUrl || ''}
               label="Google Play"
               icon="fab fa-google-play"
             />
+            )}
+            {connectData?.ipaUrl && (
             <StoreButton
-              href="https://apps.apple.com/"
-              label="App Store"
-              icon="fab fa-apple"
-            />
+              href={connectData?.ipaUrl || ''}
+                label="App Store"
+                icon="fab fa-apple"
+              />
+            )}
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>

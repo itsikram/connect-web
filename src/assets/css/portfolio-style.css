@@ -732,7 +732,7 @@ body {
   border-radius: 50%;
   margin-right: 16px;
   border: 2px solid rgba(41, 177, 169, 0.3);
-  background-image: url(https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png);
+  background-image: url(/assets/images/default-profile-pic.png);
   background-position: center;
   background-size: contain;
 }

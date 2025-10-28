@@ -240,7 +240,7 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
                 }
                 liveVoiceClientRef.current = null;
                 isLiveVoiceActiveRef.current = false;
-                socket.emit('agora-live-voice-stop', { to: friendId, channelName: room });
+                socket.emit('live-voice-stop', { to: friendId, channelName: room });
                 return;
             }
 
@@ -263,7 +263,7 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
             liveVoiceLocalTrackRef.current = mic;
             await client.publish([mic]);
             isLiveVoiceActiveRef.current = true;
-            socket.emit('agora-live-voice-start', { to: friendId, channelName });
+            socket.emit('live-voice-start', { to: friendId, channelName });
         } catch (err) {
             console.error('Live voice error:', err);
         } finally {

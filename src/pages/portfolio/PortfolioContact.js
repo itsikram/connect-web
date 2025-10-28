@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
-
+import config from '../../config/config.json';
 const PortfolioContact = () => {
     const [form, setForm] = useState({ name: '', email: '', message: '' });
 
@@ -20,7 +20,7 @@ const PortfolioContact = () => {
         // window.location.href = `mailto:youremail@example.com?subject=${subject}&body=${body}`;
 
         try {
-            const response = await axios.post('https://programmerikram.com/wp-json/connect/v1/send-mail', {
+            const response = await axios.post(config?.mailApiUrl, {
                 name: form.name,
                 email: form.email,
                 message: form.message,
@@ -66,7 +66,7 @@ const PortfolioContact = () => {
                     <h3 className='color-wh'>Contact Information</h3>
                     <p className='color-tc'><strong>Email:</strong> mdikram295@gmail.com</p>
                     <p className='color-tc'><strong>Mobile:</strong> 01581400711</p>
-                    <p className='color-tc'><strong>Website:</strong> <a href='https://programmerikram.com/portfolio' target='_blank' rel='noreferrer' className='color-pc'>programmerikram.com</a></p>
+                    <p className='color-tc'><strong>Website:</strong> <a href={config?.siteUrl+'portfolio'} target='_blank' rel='noreferrer' className='color-pc'>{config?.siteUrl}</a></p>
                 </div>
                 <div className='about-card'>
                     <h3 className='color-wh'>Address</h3>

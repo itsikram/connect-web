@@ -1,4 +1,5 @@
 import {GET_PROFILE_REQ,GET_PROFILE_FAILED,GET_PROFILE_SUCCESS} from '../constants/profileConsts'
+import {CLEAR_ALL_STATE} from '../constants/authConsts'
 
 
 // initial state
@@ -28,6 +29,8 @@ const profileReducer = (state = initialProfileState,action) => {
                 isLoading: false,
                 error: action.payload
             }
+        case CLEAR_ALL_STATE:
+            return initialProfileState
         default:
             return state
     }

@@ -1,8 +1,9 @@
 import React, { Fragment, useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import checkImgLoading from "../utils/checkImgLoading";
+import config from "../config/config.json";
 
-const default_pp_src = 'https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png';
+const default_pp_src = config.defaultProfile;
 
 
 let UserPP = ({profilePic, profile, active, hasStory}) => {

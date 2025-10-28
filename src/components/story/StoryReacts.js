@@ -8,9 +8,6 @@ import { confirmAlert } from 'react-confirm-alert';
 import $ from 'jquery'
 import SingleReactor from './SingleReactor';
 import StoryLists from './StoryLists';
-const Rlike = 'https://programmerikram.com/wp-content/uploads/2025/03/like-icon.svg';
-const Rlove = 'https://programmerikram.com/wp-content/uploads/2025/03/love-icon.svg';
-const Rhaha = 'https://programmerikram.com/wp-content/uploads/2025/03/haha-icon.svg';
 
 
 const StoryReacts = (props) => {

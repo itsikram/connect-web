@@ -1,4 +1,5 @@
 import { GET_NOTIFICATIONS, ADD_NOTIFICATION, ADD_NOTIFICATIONS, VIEW_NOTIFICATION ,VIEW_NOTIFICATIONS,DELETE_NOTIFICATIONS} from "../constants/notificationConsts";
+import {CLEAR_ALL_STATE} from '../constants/authConsts';
 let initialState = []
 const notificaitonReducer = (state = initialState, action) => {
     switch (action.type) {
@@ -61,6 +62,8 @@ const notificaitonReducer = (state = initialState, action) => {
             
             break;
 
+        case CLEAR_ALL_STATE:
+            return initialState
 
         default:
             return state;

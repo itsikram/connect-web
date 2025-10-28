@@ -39,7 +39,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Network-first strategy for API requests
-  if (url.pathname.startsWith('/api/') || url.hostname === '192.168.0.100') {
+  if (url.pathname.startsWith('/api/') || url.hostname === '172.20.10.2') {
     event.respondWith(
       fetch(event.request)
         .then((response) => {

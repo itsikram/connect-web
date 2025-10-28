@@ -2,12 +2,16 @@ import React, { createContext, useState, useEffect, useCallback, useRef } from '
 import { useNavigate } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
 import axios from 'axios';
+import { useDispatch } from 'react-redux';
+import { clearAllState } from '../services/actions/authActions';
+import socket from '../common/socket';
 
 export const AuthContext = createContext(null);
 
 const AUTH_STORAGE_KEY = 'user';
 
 export const AuthProvider = ({ children }) => {
+    const dispatch = useDispatch();
     const [user, setUser] = useState(null);
     const [token, setToken] = useState(null);
     const [refreshToken, setRefreshToken] = useState(null);
@@ -269,11 +273,24 @@ export const AuthProvider = ({ children }) => {
     const handleLogout = useCallback(() => {
         console.log('🚪 Logging out user...');
         
+        // Disconnect socket connection
+        try {
+            if (socket && socket.connected) {
+                socket.disconnect();
+                console.log('🔌 Socket disconnected');
+            }
+        } catch (error) {
+            console.warn('Warning: Could not disconnect socket:', error);
+        }
+        
         // Clear token refresh timeout
         if (tokenRefreshTimeoutRef.current) {
             clearTimeout(tokenRefreshTimeoutRef.current);
         }
 
+        // Clear all Redux state
+        dispatch(clearAllState());
+        
         // Clear state FIRST
         setToken(null);
         setRefreshToken(null);
@@ -292,8 +309,8 @@ export const AuthProvider = ({ children }) => {
             console.warn('Warning: Could not clear localStorage:', error);
         }
         
-        console.log('✅ User logged out successfully');
-    }, []);
+        console.log('✅ User logged out successfully - All data cleared from Redux store');
+    }, [dispatch]);
 
     // Update user data (for profile updates, etc.)
     const updateUser = useCallback((userData) => {

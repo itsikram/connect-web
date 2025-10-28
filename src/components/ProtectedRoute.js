@@ -1,7 +1,6 @@
 import React, { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import LoadingSpinner from './LoadingSpinner';
 import config from '../config/config.json';
 
 /**
@@ -18,9 +17,9 @@ const ProtectedRoute = ({ children }) => {
         return (
             <div id="site-loader">
                 <div className="loader-logo-container">
-                    <img src={config?.logo} alt="connect" />
+                    <img src={config?.logo} alt="C" />
                 </div>
-                <LoadingSpinner size="medium" color="primary" text="Checking authentication..." />
+                {/* <LoadingSpinner size="medium" color="primary" text="Checking authentication..." /> */}
             </div>
         );
     }

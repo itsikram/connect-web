@@ -10,7 +10,7 @@ import ImageSkleton from '../../skletons/friend/ImageSkleton';
 let FGI = (props) => {
 
     let [isPpLoaded, setIsPpLoaded] = useState(false)
-    let [profilePic, setProfilePic] = useState(props?.profilePic || 'https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png')
+    let [profilePic, setProfilePic] = useState(props?.profilePic || config?.defaultProfile)
     let [isAccepting, setIsAccepting] = useState(false)
     let [isDeleting, setIsDeleting] = useState(false)
     let [isAdding, setIsAdding] = useState(false)

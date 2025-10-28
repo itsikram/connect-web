@@ -1,4 +1,4 @@
-import {SET_LOGIN,LOGOUT,GET_USER} from '../constants/authConsts'
+import {SET_LOGIN,LOGOUT,GET_USER, CLEAR_ALL_STATE} from '../constants/authConsts'
 
 export const setLogin = (token) => {
 
@@ -12,7 +12,14 @@ export const logOut = () => {
     return {
         type: LOGOUT,
     }
-} 
+}
+
+export const clearAllState = () => {
+    return {
+        type: CLEAR_ALL_STATE
+    }
+}
+ 
 export const getUser = (userData) => {
 
     return {

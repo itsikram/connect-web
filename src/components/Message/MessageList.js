@@ -64,35 +64,62 @@ const MessageList = React.memo(({ onChatSelect }) => {
     const myId = myProfile._id
     const myContacts = useSelector(state => state.message)
     const navigate = useNavigate();
-    useEffect(() => {
 
+    // Listen for real-time friend online/offline updates
+    useEffect(() => {
+        const handleFriendOnline = (data) => {
+            console.log('handleFriendOnline', data);
+            const friendProfileId = data?.profileId;
+            if (friendProfileId) {
+                setActiveFriends(prev => {
+                    if (!prev.includes(friendProfileId)) {
+                        return [...prev, friendProfileId];
+                    }
+                    return prev;
+                });
+            }
+        };
+
+        const handleFriendOffline = (data) => {
+            console.log('handleFriendOffline', data);
+            const friendProfileId = data?.profileId;
+            if (friendProfileId) {
+                setActiveFriends(prev => prev.filter(id => id !== friendProfileId));
+            }
+        };
+
+        socket.on('friend_online', handleFriendOnline);
+        socket.on('friend_offline', handleFriendOffline);
+
+        return () => {
+            socket.off('friend_online', handleFriendOnline);
+            socket.off('friend_offline', handleFriendOffline);
+        };
+    }, []);
+
+    // Initial check for online status when contacts change
+    useEffect(() => {
         if (myContacts.length == 0) return;
 
         myContacts && myContacts.forEach((contact) => {
-
             if (!contact || !contact.person || !contact.person._id) {
                 return;
             }
 
-
-            // alert(contactPerson._id)
-            // alert(contact?.person._id)
             socket.emit('is_active', { profileId: contact?.person?._id, myId: profileId })
             socket.on('is_active', (isUserActive, lastLogin, activeProfileId) => {
                 if (isUserActive === true) {
-                    // alert(activeProfileId)
-                    if (!activeFriends.includes(activeProfileId)) {
-                        return setActiveFriends([...activeFriends, activeProfileId])
-                    }
+                    setActiveFriends(prev => {
+                        if (!prev.includes(activeProfileId)) {
+                            return [...prev, activeProfileId]
+                        }
+                        return prev;
+                    })
                 }
-
             })
-            // return () => socket.off('is_active');
-
         })
 
         return () => socket.off('is_active');
-
     }, [myContacts])
 
     useEffect(() => {
@@ -330,7 +357,6 @@ const MessageList = React.memo(({ onChatSelect }) => {
                                                         profile={contactPerson._id} 
                                                         active={isOnline}
                                                     />
-                                                    {isOnline && <div className="online-badge"></div>}
                                                 </div>
                                             </div>
                                             <div className="chat-info">

@@ -3,7 +3,8 @@ import $ from 'jquery'
 import UserPP from '../UserPP';
 import api from '../../api/api';
 import SingleComment from './SingleComment';
-const loadingUrl = 'https://programmerikram.com/wp-content/uploads/2025/03/loading.gif'
+import config from '../../config/config.json';
+const loadingUrl = config?.loadingUrl;
 
 const WatchComment = (props) => {
     const watch = props.watch || {}

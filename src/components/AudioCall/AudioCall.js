@@ -7,6 +7,7 @@ import useIsMobile from '../../utils/useIsMobile';
 import ringtones from '../../config/ringtones.json';
 import api from '../../api/api';
 import { useCallMinimize } from '../../contexts/CallMinimizeContext';
+import config from '../../config/config.json';
 
 const AudioCall = ({ myId }) => {
     console.log('AudioCall - Component mounted/rendered with myId:', myId);
@@ -22,6 +23,7 @@ const AudioCall = ({ myId }) => {
     const [currentChannel, setCurrentChannel] = useState(null);
     const [isMinimized, setIsMinimized] = useState(false);
     const [callDuration, setCallDuration] = useState(0);
+    const [outgoingCallStatus, setOutgoingCallStatus] = useState('');
     const callStartTime = useRef(null);
 
     const callEndBtn = useRef();
@@ -40,16 +42,51 @@ const AudioCall = ({ myId }) => {
 
     const stopRingtone = () => {
         if (ringtoneAudio?.current) {
-            ringtoneAudio.current.pause();
+            const audio = ringtoneAudio.current;
+            audio.pause();
+            audio.currentTime = 0; // Reset to beginning
         }
     };
     
     const playRingtone = () => {
         setTimeout(() => {
             if (ringtoneAudio?.current) {
-                ringtoneAudio.current.play().catch(error => {
-                    console.warn('Failed to play ringtone:', error);
-                });
+                const audio = ringtoneAudio.current;
+                
+                // Check if audio has a valid source
+                if (!audio.src || audio.src === window.location.href) {
+                    console.warn('Ringtone audio has no valid source');
+                    return;
+                }
+                
+                // Wait for audio to be ready if not already loaded
+                if (audio.readyState < 2) {
+                    const handleCanPlay = () => {
+                        audio.play().catch(error => {
+                            console.warn('Failed to play ringtone:', error);
+                        });
+                        audio.removeEventListener('canplaythrough', handleCanPlay);
+                    };
+                    audio.addEventListener('canplaythrough', handleCanPlay);
+                    
+                    // Fallback timeout
+                    setTimeout(() => {
+                        audio.removeEventListener('canplaythrough', handleCanPlay);
+                    }, 3000);
+                } else {
+                    audio.play().catch(error => {
+                        console.warn('Failed to play ringtone:', error);
+                    });
+                }
+            } else {
+                // Retry after a short delay if audio element not yet mounted
+                setTimeout(() => {
+                    if (ringtoneAudio?.current) {
+                        ringtoneAudio.current.play().catch(error => {
+                            console.warn('Failed to play ringtone after retry:', error);
+                        });
+                    }
+                }, 300);
             }
         }, 500);
     };
@@ -283,15 +320,45 @@ const AudioCall = ({ myId }) => {
     }, [myId, getToken]);
 
     useEffect(() => {
-        if (mySettings.ringtone && ringtoneAudio?.current) {
-            const ringtone = ringtones.find(r => r.id === mySettings.ringtone);
-            const toneSrc = ringtone?.src || '';
+        if (ringtoneAudio?.current && receivingCall && incomingCall) {
+            // Use user's ringtone preference or fallback to default
+            const ringtone = mySettings.ringtone 
+                ? ringtones.find(r => r.id === mySettings.ringtone)
+                : null;
+            const toneSrc = ringtone?.src || config?.callingBeep || '';
+            
             if (toneSrc) {
-                ringtoneAudio.current.setAttribute('src', toneSrc);
-                ringtoneAudio.current.load(); // Ensure the audio is loaded
+                const audio = ringtoneAudio.current;
+                
+                // Only load if source hasn't been set yet
+                if (!audio.src || audio.src !== toneSrc) {
+                    audio.setAttribute('src', toneSrc);
+                    audio.load(); // Ensure the audio is loaded
+                    
+                    // Handle loading errors
+                    const handleError = () => {
+                        console.error('Failed to load ringtone:', toneSrc);
+                    };
+                    
+                    // Handle successful load
+                    const handleLoadStart = () => {
+                        console.log('Loading ringtone:', toneSrc);
+                    };
+                    
+                    const handleCanPlay = () => {
+                        console.log('Ringtone loaded successfully');
+                        audio.removeEventListener('canplaythrough', handleCanPlay);
+                        audio.removeEventListener('error', handleError);
+                        audio.removeEventListener('loadstart', handleLoadStart);
+                    };
+                    
+                    audio.addEventListener('error', handleError);
+                    audio.addEventListener('loadstart', handleLoadStart);
+                    audio.addEventListener('canplaythrough', handleCanPlay);
+                }
             }
         }
-    }, [mySettings]);
+    }, [mySettings, receivingCall, incomingCall]);
 
     // Local cleanup without emitting to server
     // IMPORTANT: Define this BEFORE the useEffect that uses it
@@ -360,7 +427,9 @@ const AudioCall = ({ myId }) => {
             console.log('AudioCall - Socket disconnected');
         });
         
-        socket.on('agora-incoming-audio-call', ({ from, channelName, isAudio, callerName, callerProfilePic }) => {
+        socket.on('incoming-audio-call', ({ from, channelName, isAudio, callerName, callerProfilePic }) => {
+            socket.emit('update-call-status', { to: from, status: "Ringing..." });
+
 
             if (isAudio) {
                 setIsAudioCall(true);
@@ -368,7 +437,7 @@ const AudioCall = ({ myId }) => {
                 setCaller(from);
                 setIncomingCall({ from, channelName, name: callerName || 'Unknown Caller', profilePic: callerProfilePic });
                 setCallerName(callerName || 'Unknown Caller');
-                setCallerProfilePic(callerProfilePic || 'https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png');
+                setCallerProfilePic(callerProfilePic || config?.defaultProfile);
                 setCurrentChannel(channelName);
                 playRingtone();
             } else {
@@ -385,43 +454,75 @@ const AudioCall = ({ myId }) => {
             setReceivingCall(false);
             setCaller(to);
             setCallerName(callerName || 'Friend');
-            setCallerProfilePic(callerProfilePic || 'https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png');
+            setCallerProfilePic(callerProfilePic || config?.defaultProfile);
             setCurrentChannel(channelName);
             setIncomingCall({ from: myId, to, channelName, name: callerName || 'Friend', profilePic: callerProfilePic });
             console.log('AudioCall - Outgoing call modal should now be visible');
+            setOutgoingCallStatus('Calling...');
             // playRingtone();
         };
 
         window.addEventListener('startAudioCall', handleOutgoingAudioCall);
 
-        socket.on('agora-call-accepted', ({ channelName, isAudio }) => {
+        socket.on('call-accepted', ({ channelName, isAudio }) => {
             // Caller side should join upon acceptance; callee already joined in answerCall
             if (isAudio && !receivingCall) {
                 console.log('Agora audio call accepted, joining channel:', channelName);
                 stopRingtone();
                 // Call startCall directly since it's defined above
                 startCall(channelName);
+                setOutgoingCallStatus('');
             }
         });
 
-        socket.on('audioCallEnd', () => {
-            console.log('AudioCall: Received audioCallEnd event from server');
+        socket.on('audio-call-ended', async () => {
+            console.log('AudioCall: Received audio-call-ended event from server');
             console.log('AudioCall: Current state - callAccepted:', callAccepted, 'isAudioCall:', isAudioCall);
             console.log('AudioCall: Current channel:', currentChannel);
             console.log('AudioCall: Incoming call:', incomingCall);
             // IMPORTANT: Only do local cleanup, do NOT call endCall which would re-emit
-            cleanupAudioCall();
+            stopRingtone();
+            await cleanupAudioCall();
+        });
+        socket.on('audio-call-cancelled', async () => {
+            console.log('AudioCall: Received audio-call-cancelled event from server');
+            stopRingtone();
+            await cleanupAudioCall();
+        });
+        socket.on('audio-call-rejected', async () => {
+            console.log('AudioCall: Received audio-call-cancelled event from server');
+            stopRingtone();
+            await cleanupAudioCall();
         });
 
+        const handleUpdatedCallStatus = ({ from, status }) => {
+            // Only for outgoing (caller) side: receivingCall is false
+            if (!receivingCall && !callAccepted && caller && from === caller) {
+                setOutgoingCallStatus(status || '');
+            }
+        };
+        socket.on('updated-call-status', handleUpdatedCallStatus);
+
         return () => {
-            socket.off('agora-incoming-audio-call');
-            socket.off('agora-call-accepted');
-            socket.off('audioCallEnd');
+            socket.off('incoming-audio-call');
+            socket.off('call-accepted');
+            socket.off('audio-call-ended');
+            socket.off('audio-call-cancelled');
+            socket.off('audio-call-rejected');
             socket.off('connect');
             socket.off('disconnect');
             window.removeEventListener('startAudioCall', handleOutgoingAudioCall);
+            stopRingtone(); // Stop ringtone on cleanup
+            socket.off('updated-call-status', handleUpdatedCallStatus);
         };
-    }, [startCall, cleanupAudioCall]); // Include startCall and cleanupAudioCall dependencies
+    }, [startCall, cleanupAudioCall, caller, receivingCall, callAccepted]); // Include deps
+
+    // Cleanup on component unmount
+    useEffect(() => {
+        return () => {
+            stopRingtone();
+        };
+    }, []);
 
     const answerCall = useCallback(async () => {
         stopRingtone();
@@ -438,14 +539,16 @@ const AudioCall = ({ myId }) => {
             console.error('Failed to start local audio immediately:', error);
         }
         
-        socket.emit('agora-answer-call', { to: incomingCall.from, channelName: incomingCall.channelName, isAudio: true });
+        socket.emit('answer-call', { to: incomingCall.from, channelName: incomingCall.channelName, isAudio: true });
         await startCall(incomingCall.channelName);
     }, [incomingCall, startCall]);
 
     // End call - called when user clicks end button
     const endCall = useCallback(async () => {
-        console.log('AudioCall: endCall - emitting to server and cleaning up');
-        console.log('AudioCall: Current state - callAccepted:', callAccepted, 'isAudioCall:', isAudioCall, 'channel:', currentChannel);
+        console.log('AudioCall: Current state - callAccepted:',incomingCall, caller, callAccepted,myId);
+        
+        // Explicitly stop ringtone first
+        stopRingtone();
         
         // Determine the friend ID to notify
         // If we have incomingCall, use incomingCall.from (the person who called us)
@@ -454,27 +557,40 @@ const AudioCall = ({ myId }) => {
         if (incomingCall?.from) {
             // We received this call, so notify the person who called us
             friendIdToNotify = incomingCall.from;
+            if(!callAccepted && friendIdToNotify !== myId) {
+                socket.emit('audio-call-reject', {to:friendIdToNotify, channelName: currentChannel});
+                await cleanupAudioCall();
+                return;
+            }
+            if(!callAccepted && friendIdToNotify === myId) {
+                socket.emit('audio-call-cancel', {to:caller, channelName: currentChannel});
+
+                await cleanupAudioCall();
+                return;
+            }
         } else if (caller) {
             // We initiated this call, so notify the person we called
             friendIdToNotify = caller;
-        }
-        
-        console.log('AudioCall: Friend ID to notify:', friendIdToNotify);
-        console.log('AudioCall: incomingCall:', incomingCall);
-        console.log('AudioCall: caller:', caller);
-        console.log('AudioCall: Current user ID:', myId);
-        if (friendIdToNotify && friendIdToNotify !== myId) {
-            console.log('AudioCall: About to emit leaveAudioCall to friend:', friendIdToNotify);
-            socket.emit('leaveAudioCall', friendIdToNotify);
-            console.log('AudioCall: Successfully emitted leaveAudioCall to friend:', friendIdToNotify);
-        } else {
-            console.log('AudioCall: No friend ID to notify or trying to notify self, cannot emit leaveAudioCall');
-            console.log('AudioCall: friendIdToNotify:', friendIdToNotify, 'myId:', myId);
+            if(!callAccepted) {
+                socket.emit('audio-call-cancel', {to:friendIdToNotify, channelName: currentChannel});
+                await cleanupAudioCall();
+                return;
+            }
+            await cleanupAudioCall();
+            return;
         }
 
+        if (friendIdToNotify && friendIdToNotify !== myId) {
+            socket.emit('audio-call-end', {to:friendIdToNotify, channelName: currentChannel});
+            console.log('AudioCall: Successfully emitted audio-call-end to friend:', friendIdToNotify);
+        } else {
+            console.log('AudioCall: No friend ID to notify or trying to notify self, cannot emit audio-call-end');
+            console.log('AudioCall: friendIdToNotify:', friendIdToNotify, 'myId:', myId);
+        }
         // Do local cleanup
         await cleanupAudioCall();
-    }, [caller, incomingCall, myId, cleanupAudioCall]);
+        return;
+    }, [caller, incomingCall, myId, cleanupAudioCall, callAccepted, currentChannel]);
 
     const handleMicrophoneClick = useCallback(async () => {
         if (localTracks.current[0]) {
@@ -535,7 +651,7 @@ const AudioCall = ({ myId }) => {
                     </h2>
                     <p className='fs-4 text-center'>
                         {receivingCall && !callAccepted && `${callerName} is calling you`}
-                        {!receivingCall && !callAccepted && `Calling ${callerName}...`}
+                        {!receivingCall && !callAccepted && `Calling ${callerName}${outgoingCallStatus ? ` • ${outgoingCallStatus}` : '...'}`}
                         {callAccepted && `Connected - ${callerName}`}
                     </p>
 
@@ -558,7 +674,7 @@ const AudioCall = ({ myId }) => {
                                         objectFit: 'cover'
                                     }}
                                     onError={(e) => {
-                                        e.target.src = 'https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png';
+                                        e.target.src = config?.defaultProfile;
                                     }}
                                 />
                             ) : (
@@ -602,17 +718,16 @@ const AudioCall = ({ myId }) => {
                                 <button onClick={answerCall} className='call-button-receive call-button bg-success'>
                                     <i className="fa fa-phone-volume" style={{ color: 'white' }}></i>
                                 </button>
-                                <button onClick={endCall} className='call-button-decline call-button bg-danger'>
-                                    <i className="fa fa-phone-slash" style={{ color: 'white' }}></i>
-                                </button>
                             </>
                         )}
                     </div>
                 </div>
             </ModalContainer>
-            <audio ref={ringtoneAudio} loop>
-                <track kind="captions" />
-            </audio>
+            {receivingCall && incomingCall && (
+                <audio ref={ringtoneAudio} loop preload="none">
+                    <track kind="captions" />
+                </audio>
+            )}
         </div>
     );
 };

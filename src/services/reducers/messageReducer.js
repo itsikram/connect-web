@@ -1,4 +1,5 @@
 import { ADD_MESSAGE, ADD_MESSAGES, NEW_MESSAGE, SEEN_MESSAGE } from "../constants/messageConsts";
+import {CLEAR_ALL_STATE} from '../constants/authConsts';
 const initialState = []
 const messageReducer = (state = initialState, action) => {
     switch (action.type) {
@@ -118,6 +119,9 @@ const messageReducer = (state = initialState, action) => {
                 return state;
             }
         }
+
+        case CLEAR_ALL_STATE:
+            return initialState
 
         // SEND_MESSAGE case removed since it's no longer used and was causing errors
 

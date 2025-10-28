@@ -7,7 +7,7 @@ import useIsMobile from '../../utils/useIsMobile';
 import ringtones from '../../config/ringtones.json';
 import api from '../../api/api';
 import { useCallMinimize } from '../../contexts/CallMinimizeContext';
-
+import config from '../../config/config.json';
 const VideoCall = ({ myId }) => {
     const mySettings = useSelector(state => state.setting);
     const [isVideoCall, setIsVideoCall] = useState(false);
@@ -34,10 +34,10 @@ const VideoCall = ({ myId }) => {
     const userVideo = useRef();
     const callEndBtn = useRef();
     const ringtoneAudio = useRef();
-    
+
     // Keep minimized bar duration in sync while minimized
     const minimizedDurationInterval = useRef(null);
-    
+
     // Agora RTC refs (fresh client per call)
     const clientRef = useRef(null);
     const localTracks = useRef([]);
@@ -61,8 +61,31 @@ const VideoCall = ({ myId }) => {
     const isMobile = useIsMobile();
     const { minimizeCall, restoreCall, endMinimizedCall, getMinimizedCall, updateMinimizedCall } = useCallMinimize();
 
-    const stopRingtone = () => ringtoneAudio?.current.pause();
-    const playRingtone = () => setTimeout(() => ringtoneAudio?.current.play(), 500);
+    const stopRingtone = () => {
+        if (ringtoneAudio?.current) {
+            const audio = ringtoneAudio.current;
+            audio.pause();
+            audio.currentTime = 0; // Reset to beginning
+        }
+    };
+    const playRingtone = () => {
+        setTimeout(() => {
+            if (ringtoneAudio?.current) {
+                ringtoneAudio.current.play().catch(error => {
+                    console.warn('Failed to play ringtone:', error);
+                });
+            } else {
+                // Retry after a short delay if audio element not yet mounted
+                setTimeout(() => {
+                    if (ringtoneAudio?.current) {
+                        ringtoneAudio.current.play().catch(error => {
+                            console.warn('Failed to play ringtone after retry:', error);
+                        });
+                    }
+                }, 300);
+            }
+        }, 500);
+    };
 
     const cleanupVideoCall = useCallback(async () => {
         stopRingtone();
@@ -88,7 +111,7 @@ const VideoCall = ({ myId }) => {
             if (clientRef.current && localTracks.current.length > 0) {
                 await clientRef.current.unpublish(localTracks.current);
             }
-        } catch (e) {}
+        } catch (e) { }
         try {
             await clientRef.current?.leave();
             clientRef.current?.removeAllListeners();
@@ -104,6 +127,8 @@ const VideoCall = ({ myId }) => {
         // Clear video elements
         if (myVideo.current) myVideo.current.innerHTML = '';
         if (userVideo.current) userVideo.current.innerHTML = '';
+
+        console.log('kutta vaiggo')
 
         setCallAccepted(false);
         setIsVideoCall(false);
@@ -126,19 +151,30 @@ const VideoCall = ({ myId }) => {
         }
     }, [currentChannel, endMinimizedCall]);
 
-    const endCall = useCallback(async () => {
+    const endCall = useCallback(async (isCancelled = false) => {
         stopRingtone();
-        
-        // Determine the friend ID to notify - use incomingCall.from if available, otherwise use caller
         const friendIdToNotify = incomingCall?.from || caller;
-        if (friendIdToNotify) {
-            socket.emit('leaveVideoCall', friendIdToNotify);
-            console.log('VideoCall: Emitting leaveVideoCall to friend:', friendIdToNotify);
+
+        if (!isCancelled) {
+            await cleanupVideoCall();
+            return;
+        }
+        if (!callAccepted) {
+            socket.emit('video-call-reject', { to: friendIdToNotify, friendId: myId, channelName: currentChannel });
+            await cleanupVideoCall();
+            return;
+        }
+
+        // Determine the friend ID to notify - use incomingCall.from if available, otherwise use caller
+        if (friendIdToNotify && callAccepted) {
+            socket.emit('video-call-ended', friendIdToNotify);
+            console.log('VideoCall: Emitting video-call-end to friend:', friendIdToNotify);
         }
 
         // Do local cleanup without re-emitting
         await cleanupVideoCall();
-    }, [incomingCall, caller, cleanupVideoCall]);
+    }, [incomingCall, caller, cleanupVideoCall, callAccepted, currentChannel]);
+
 
     const closeVideoCall = useCallback(() => {
         console.log('VideoCall: Modal close requested');
@@ -185,7 +221,7 @@ const VideoCall = ({ myId }) => {
             const callId = `video-${currentChannel}`;
             minimizedDurationInterval.current = setInterval(() => {
                 const elapsed = Math.floor((Date.now() - callStartTime.current) / 1000);
-                try { updateMinimizedCall(callId, { duration: elapsed }); } catch (e) {}
+                try { updateMinimizedCall(callId, { duration: elapsed }); } catch (e) { }
             }, 1000);
         }
         return () => {
@@ -208,7 +244,7 @@ const VideoCall = ({ myId }) => {
             console.log('Starting Agora call with channel:', channelName);
             setCallAccepted(true);
             setCurrentChannel(channelName);
-            
+
             // Set call start time for duration tracking
             if (!callStartTime.current) {
                 callStartTime.current = Date.now();
@@ -226,8 +262,8 @@ const VideoCall = ({ myId }) => {
 
             // Ensure previous client is disposed
             if (clientRef.current) {
-                try { await clientRef.current.leave(); } catch (e) {}
-                try { clientRef.current.removeAllListeners(); } catch (e) {}
+                try { await clientRef.current.leave(); } catch (e) { }
+                try { clientRef.current.removeAllListeners(); } catch (e) { }
                 clientRef.current = null;
             }
 
@@ -236,7 +272,7 @@ const VideoCall = ({ myId }) => {
             const client = clientRef.current;
             await client.join(appId, channelName, token, numericUid);
             console.log('Joined Agora channel successfully');
-            
+
             // Immediately check for existing users after joining
             setTimeout(() => {
                 const remoteUsers = client.remoteUsers;
@@ -259,7 +295,7 @@ const VideoCall = ({ myId }) => {
                     localTracks.current = [await AgoraRTC.createMicrophoneAudioTrack()];
                 }
                 console.log('Created local tracks');
-                
+
                 // Play local video in myVideo ref if exists
                 if (myVideo.current && localTracks.current[1]) {
                     localTracks.current[1].play(myVideo.current);
@@ -328,10 +364,10 @@ const VideoCall = ({ myId }) => {
                 try {
                     const remoteUsers = client.remoteUsers;
                     console.log('Checking for existing remote users:', remoteUsers.length);
-                    
+
                     for (const user of remoteUsers) {
                         console.log('Found existing remote user:', user.uid, 'hasVideo:', user.hasVideo, 'hasAudio:', user.hasAudio);
-                        
+
                         // Subscribe to video if available
                         if (user.hasVideo && !user.videoTrack) {
                             console.log('Subscribing to existing user video:', user.uid);
@@ -345,7 +381,7 @@ const VideoCall = ({ myId }) => {
                             user.videoTrack.play(userVideo.current);
                             console.log('Playing already subscribed remote video');
                         }
-                        
+
                         // Subscribe to audio if available
                         if (user.hasAudio && !user.audioTrack) {
                             console.log('Subscribing to existing user audio:', user.uid);
@@ -374,7 +410,7 @@ const VideoCall = ({ myId }) => {
                     const remoteUsers = client.remoteUsers;
                     if (remoteUsers.length > 0) {
                         console.log(`Periodic check ${checkCount}: Found ${remoteUsers.length} remote users`);
-                        
+
                         for (const user of remoteUsers) {
                             // Check if we have video but it's not playing
                             if (user.hasVideo && user.videoTrack && userVideo.current) {
@@ -387,7 +423,7 @@ const VideoCall = ({ myId }) => {
                             }
                         }
                     }
-                    
+
                     if (checkCount >= maxChecks) {
                         clearInterval(remoteUserCheckInterval.current);
                         remoteUserCheckInterval.current = null;
@@ -407,15 +443,29 @@ const VideoCall = ({ myId }) => {
     }, [myId, getToken]);
 
     useEffect(() => {
-        if (mySettings.ringtone) {
-            const ringtone = ringtones.find(r => r.id === mySettings.ringtone);
-            const toneSrc = ringtone?.src || '';
-            ringtoneAudio?.current.setAttribute('src', toneSrc);
+        if (ringtoneAudio?.current && receivingCall && incomingCall) {
+            // Use user's ringtone preference or fallback to default
+            const ringtone = mySettings.ringtone 
+                ? ringtones.find(r => r.id === mySettings.ringtone)
+                : null;
+            const toneSrc = ringtone?.src || config?.callingBeep || '';
+            
+            if (toneSrc) {
+                const audio = ringtoneAudio.current;
+                
+                // Only load if source hasn't been set yet
+                if (!audio.src || audio.src !== toneSrc) {
+                    audio.setAttribute('src', toneSrc);
+                    audio.load(); // Ensure the audio is loaded
+                }
+            }
         }
-    }, [mySettings]);
+    }, [mySettings, receivingCall, incomingCall]);
 
     useEffect(() => {
-        socket.on('agora-incoming-video-call', async ({ from, channelName, isAudio, callerName, callerProfilePic }) => {
+        socket.on('incoming-video-call', async ({ from, channelName, isAudio, callerName, callerProfilePic }) => {
+            socket.emit('update-call-status', { to: from, status: "Ringing..." });
+
             // Only handle video calls, ignore audio calls
             if (!isAudio) {
                 console.log('Incoming Agora video call from', from, 'channel:', channelName);
@@ -425,14 +475,14 @@ const VideoCall = ({ myId }) => {
                 setCaller(from);
                 setIncomingCall({ from, channelName, name: callerName || 'Unknown Caller', profilePic: callerProfilePic });
                 setCallerName(callerName || 'Unknown Caller');
-                setCallerProfilePic(callerProfilePic || 'https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png');
+                setCallerProfilePic(callerProfilePic || config?.defaultProfile);
                 setCurrentChannel(channelName);
-                
+
                 // Start local video immediately when receiving call
                 try {
                     console.log('Starting local video for incoming call preview');
                     localTracks.current = await AgoraRTC.createMicrophoneAndCameraTracks();
-                    
+
                     // Show local video immediately
                     if (myVideo.current && localTracks.current[1]) {
                         localTracks.current[1].play(myVideo.current);
@@ -441,12 +491,12 @@ const VideoCall = ({ myId }) => {
                 } catch (error) {
                     console.error('Failed to start local video preview:', error);
                 }
-                
-            playRingtone();
+
+                playRingtone();
             }
         });
 
-        socket.on('agora-call-accepted', ({ channelName, isAudio }) => {
+        socket.on('call-accepted', ({ channelName, isAudio }) => {
             // Only handle video call acceptance
             if (!isAudio) {
                 console.log('Agora video call accepted, joining channel:', channelName);
@@ -455,14 +505,21 @@ const VideoCall = ({ myId }) => {
             }
         });
 
-        socket.on('videoCallEnd', () => {
-            console.log('VideoCall: Received videoCallEnd event from remote user');
+        socket.on('video-call-ended', async () => {
+            console.log('VideoCall: Received video-call-ended event from remote user');
             // IMPORTANT: Do local cleanup ONLY. Do NOT re-emit end to avoid loops.
-            cleanupVideoCall();
+            stopRingtone();
+            endCall();
+        });
+        socket.on('video-call-cancelled', async () => {
+            console.log('VideoCall: Received video-call-cancelled event from remote user');
+            // IMPORTANT: Do local cleanup ONLY. Do NOT re-emit end to avoid loops.
+            stopRingtone();
+            endCall(true);
         });
 
 
-        socket.on('agora-apply-video-filter', ({ filter }) => {
+        socket.on('apply-video-filter', ({ filter }) => {
             if (filter !== '') {
                 setFilterFriendVideo(filter);
             } else {
@@ -471,24 +528,32 @@ const VideoCall = ({ myId }) => {
         });
 
         return () => {
-            socket.off('agora-incoming-video-call');
-            socket.off('agora-call-accepted');
-            socket.off('videoCallEnd');
-            socket.off('agora-apply-video-filter');
+            socket.off('incoming-video-call');
+            socket.off('call-accepted');
+            socket.off('video-call-ended');
+            socket.off('apply-video-filter');
+            stopRingtone(); // Stop ringtone on cleanup
         };
     }, [startCall, cleanupVideoCall, endCall]);
+
+    // Cleanup on component unmount
+    useEffect(() => {
+        return () => {
+            stopRingtone();
+        };
+    }, []);
 
     // Check for video input devices
     useEffect(() => {
         const checkVideoDevices = async () => {
-        try {
-            const devices = await navigator.mediaDevices.enumerateDevices();
-            const videoDevices = devices.filter(d => d.kind === 'videoinput');
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(d => d.kind === 'videoinput');
                 setHasVideoInput(videoDevices.length > 0);
-        } catch (err) {
+            } catch (err) {
                 console.error('Error checking video devices:', err);
-            setHasVideoInput(false);
-        }
+                setHasVideoInput(false);
+            }
         };
         checkVideoDevices();
     }, []);
@@ -498,10 +563,10 @@ const VideoCall = ({ myId }) => {
         if (!incomingCall) return;
 
         console.log('Answering Agora call');
-        
+
         // Local video should already be showing from when call was received
         // Just proceed to join the channel
-        socket.emit('agora-answer-call', { to: incomingCall.from, channelName: incomingCall.channelName });
+        socket.emit('answer-call', { to: incomingCall.from, channelName: incomingCall.channelName });
         await startCall(incomingCall.channelName);
     }, [incomingCall, startCall]);
 
@@ -592,29 +657,29 @@ const VideoCall = ({ myId }) => {
             try {
                 // Unpublish current video track
                 await clientRef.current.unpublish([videoTrack]);
-                
+
                 // Stop current video track
                 videoTrack.close();
-                
+
                 // Create new video track with switched camera
                 const newVideoTrack = await AgoraRTC.createCameraVideoTrack({
                     facingMode: isBackCamera ? "user" : "environment"
                 });
-                
+
                 // Replace the track in the array
                 const videoIndex = localTracks.current.findIndex(track => track.kind === 'video');
                 if (videoIndex !== -1) {
                     localTracks.current[videoIndex] = newVideoTrack;
                 }
-                
+
                 // Publish new track
                 await clientRef.current.publish([newVideoTrack]);
-                
+
                 // Play new track in local video element
                 if (myVideo.current) {
                     newVideoTrack.play(myVideo.current);
                 }
-                
+
                 setIsBackCamera(prev => !prev);
             } catch (error) {
                 console.error('Failed to switch camera:', error);
@@ -667,13 +732,13 @@ const VideoCall = ({ myId }) => {
 
     const toggleVideoFilter = useCallback(() => {
 
-        if(incomingCall?.from){
-        const filters = ['video-vivid-filter', 'video-vivid-warm', 'video-vivid-cool', 'video-vivid-dramatic' , ''];
-        const currentIndex = filters.indexOf(filterMyVideo);
-        const nextIndex = (currentIndex + 1) % filters.length;
-        const newFilter = filters[nextIndex];
-        setFilterMyVideo(newFilter);
-        socket.emit('agora-filter-video', { to: incomingCall.from, filter: newFilter });
+        if (incomingCall?.from) {
+            const filters = ['video-vivid-filter', 'video-vivid-warm', 'video-vivid-cool', 'video-vivid-dramatic', ''];
+            const currentIndex = filters.indexOf(filterMyVideo);
+            const nextIndex = (currentIndex + 1) % filters.length;
+            const newFilter = filters[nextIndex];
+            setFilterMyVideo(newFilter);
+            socket.emit('filter-video', { to: incomingCall.from, filter: newFilter });
 
         }
     }, [filterMyVideo, incomingCall]);
@@ -755,7 +820,7 @@ const VideoCall = ({ myId }) => {
                                             objectFit: 'cover'
                                         }}
                                         onError={(e) => {
-                                            e.target.src = 'https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png';
+                                            e.target.src = config?.defaultProfile;
                                         }}
                                     />
                                 ) : (
@@ -778,42 +843,42 @@ const VideoCall = ({ myId }) => {
                         </div>
                     )} */}
 
-                    <div className={`video-call-container ${isMobile ? 'mobile' : ''}`} style={{ 
-                        width: '100%', 
-                        height: '400px', 
+                    <div className={`video-call-container ${isMobile ? 'mobile' : ''}`} style={{
+                        width: '100%',
+                        height: '400px',
                         position: 'relative',
                         overflow: 'hidden'
                     }}>
-                        <div 
-                            ref={userVideo} 
-                            className={`receive-friends-video ${filterFriendVideo}`} 
-                            style={{ 
-                                width: '100%', 
+                        <div
+                            ref={userVideo}
+                            className={`receive-friends-video ${filterFriendVideo}`}
+                            style={{
+                                width: '100%',
                                 height: '100%',
                                 minHeight: '400px',
-                                display: callAccepted ? 'block' : 'none', 
+                                display: callAccepted ? 'block' : 'none',
                                 background: '#000',
                                 border: filterFriendVideo ? '3px solid #29B1A9' : 'none', // Green border when filter is active
                                 objectFit: 'contain'
-                            }} 
+                            }}
                             data-video-type="friend-remote-video"
                         />
-                        <div 
-                            ref={myVideo} 
-                            className={`receive-my-video ${filterMyVideo}`} 
-                            style={{ 
-                                width: '150px', 
-                                height: '100px', 
-                                position: 'absolute', 
-                                bottom: '10px', 
-                                right: '10px', 
+                        <div
+                            ref={myVideo}
+                            className={`receive-my-video ${filterMyVideo}`}
+                            style={{
+                                width: '150px',
+                                height: '100px',
+                                position: 'absolute',
+                                bottom: '10px',
+                                right: '10px',
                                 background: '#222',
                                 display: (isVideoCall || receivingCall) ? 'block' : 'none',
                                 borderRadius: '8px',
                                 zIndex: 10,
                                 border: '2px solid gray', // Red border to identify local video
                                 objectFit: 'contain'
-                            }} 
+                            }}
                             data-video-type="my-local-video"
                         />
                     </div>
@@ -873,18 +938,19 @@ const VideoCall = ({ myId }) => {
 
                         {!callAccepted && receivingCall && (
                             <>
-                            <button onClick={answerCall} className='call-button-receive call-button bg-success' style={mobileActionButtonStyle}>
-                                <i className="fa fa-phone-volume" style={{ color: 'white' }}></i>
-                            </button>
-                                <button onClick={endCall} className='call-button-decline call-button bg-danger' style={mobileActionButtonStyle}>
-                                    <i className="fa fa-phone-slash" style={{ color: 'white' }}></i>
+                                <button onClick={answerCall} className='call-button-receive call-button bg-success' style={mobileActionButtonStyle}>
+                                    <i className="fa fa-phone-volume" style={{ color: 'white' }}></i>
                                 </button>
                             </>
                         )}
                     </div>
                 </div>
             </ModalContainer>
-            <audio ref={ringtoneAudio} loop />
+            {receivingCall && incomingCall && (
+                <audio ref={ringtoneAudio} loop preload="none">
+                    <track kind="captions" />
+                </audio>
+            )}
         </div>
     );
 };
