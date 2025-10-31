@@ -242,7 +242,7 @@ let HeaderRight = ({ dispatch, useSelector }) => {
                                                                             <img className="hr-notification-icon" src={notification.icon} alt="Notification Icon" />
                                                                         </div>
                                                                     </div>
-                                                                    <div className="hr-notification-col-10"> <p className="hr-notification-text">{notification.text} . <Moment fromNow>{notification.timestamp}</Moment></p></div>
+                                                                    <div className="hr-notification-col-10"> <p className="hr-notification-text" style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{notification.text} . <Moment fromNow>{notification.timestamp}</Moment></p></div>
                                                                 </div>
                                                             </Link>
                                                         </li>)

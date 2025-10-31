@@ -60,9 +60,9 @@ let HeaderNav = () => {
 
                         </div>
                     </NavLink> */}
-                    <NavLink to="/downloads" onClick={addActiveClass} className="header-nav-menu-item" title="Story">
+                    <NavLink to="/menu" onClick={addActiveClass} className="header-nav-menu-item" title="Menu">
                         <div className="header-nav-menu-icon">
-                            <i className="fas fa-download"></i>
+                            <i className="fas fa-bars"></i>
 
                         </div>
                     </NavLink>

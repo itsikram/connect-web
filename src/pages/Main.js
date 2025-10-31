@@ -15,6 +15,7 @@ import Friends from "./Friends";
 import Video from "./Video.js";
 import Marketplace from './Marketplace'
 import Groups from './Groups'
+import Menu from './Menu'
 import YtDownload from "./YtDownload.js";
 import Message from "./Message";
 import Story from "./Story";
@@ -76,6 +77,7 @@ import Youtebe from "./Youtebe.js";
 
 import SingleVideo from "../components/downloads/SingleVideo.js";
 import SavedVideos from "./SavedVideos.js";
+import LudoGame from "./LudoGame";
 
 // import MicRecorder from 'mic-recorder-to-mp3';
 // const recorder = new MicRecorder({ bitRate: 128 });
@@ -608,6 +610,7 @@ const Main = () => {
 
                     <Routes>
                         <Route path="/">
+                            <Route path="menu" element={<Menu />}></Route>
                             <Route path="video-call" element={<VideoCallPage socket={socket} />}></Route>
                             <Route path="youtube" element={<Youtebe />}></Route>
                             <Route path="downloads" element={<SavedVideos />}></Route>
@@ -673,6 +676,8 @@ const Main = () => {
                                 <Route path=":profile/" element={<Profile />}></Route>
 
                             </Route>
+
+                            <Route path="/ludo-game" element={<LudoGame />}> </Route>
                             {/* <Route path="/call" element={<Call />}> </Route> */}
                             <Route path="/marketplace" element={<ProtectedRoute><Marketplace /></ProtectedRoute>}> </Route>
 

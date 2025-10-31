@@ -782,7 +782,7 @@ body {
   width: 100%;
 }
 #left-sidebar .ls-nav-menu .ls-nav-menu-item .ls-icon {
-  background-image: url("http://localhost:3000/assets/images/icons.png");
+  background-image: url("/assets/images/icons.png");
   width: 36px;
   height: 36px;
   background-repeat: no-repeat;
@@ -816,7 +816,7 @@ body {
   background-position: 0 -457px;
 }
 #left-sidebar .ls-nav-menu .ls-nav-menu-item .lsi-star {
-  background-image: url("http://localhost:3000/assets/images/star-icon.png");
+  background-image: url(/assets/images/star-icon.png);
   width: 36px;
   height: 36px;
   background-repeat: no-repeat;
@@ -826,7 +826,7 @@ body {
   transform: scale(0.8);
 }
 #left-sidebar .ls-nav-menu .ls-nav-menu-item .lsi-card {
-  background-image: url("http://localhost:3000/assets/images/card-icon.png");
+  background-image: url(/assets/images/card-icon.png);
   width: 36px;
   height: 36px;
   background-repeat: no-repeat;
@@ -908,7 +908,7 @@ body {
   width: 100%;
 }
 #right-sidebar .rs-nav-menu .rs-nav-menu-item .rs-icon {
-  background-image: url("http://localhost:3000/assets/images/icons.png");
+  background-image: url("/assets/images/icons.png");
   width: 36px;
   height: 36px;
   background-repeat: no-repeat;
@@ -1006,7 +1006,7 @@ body {
   transition: all 0.2s ease;
 }
 .nf-create-post .bottom .button-container li .button-icon {
-  background-image: url(http://localhost:3000/assets/images/new-icons.png);
+  background-image: url(/assets/images/new-icons.png);
   margin-right: 8px;
   background-position: 0px -26px;
   background-size: 26px 302px;

@@ -1,6 +1,20 @@
-import React from 'react';
+import React, { useCallback } from 'react';
+
+import api from '../../api/api';
 
 const NotificationSetting = () => {
+
+    const handleUnregisterAllDevices = useCallback(async () => {
+        const confirmed = window.confirm('Unregister all browsers and devices for your account? This will sign you out everywhere.');
+        if (!confirmed) return;
+        try {
+            await api.post('/web-notification/unregister-all-browsers');
+            alert('All devices have been unregistered. You may need to sign in again.');
+        } catch (error) {
+            console.error('Failed to unregister devices', error);
+            alert('Failed to unregister devices. Please try again.');
+        }
+    }, [])
     return (
         <>
             <div className='message-setting'>
@@ -44,7 +58,12 @@ const NotificationSetting = () => {
                             <small id="newFriendWatchHelp" className="form-text text-muted">We Will sent you notification for each Frieds's new Watch</small>
                         </div>
 
-                        <hr/>
+
+                        <button type="button" className="btn btn-danger" onClick={(e) => { e.preventDefault(); handleUnregisterAllDevices(); }}>
+                            Unregister all browsers & devices
+                        </button>
+
+                        <hr />
 
                         <h4 className='text-center'>Email Notifications</h4>
 

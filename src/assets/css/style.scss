@@ -1413,7 +1413,7 @@ body {
 
 
             .lsi-star {
-                background-image: url(http://localhost:3000/assets/images/star-icon.png);
+                background-image: url(/assets/images/star-icon.png);
                 width: 36px;
                 height: 36px;
                 background-repeat: no-repeat;
@@ -1424,7 +1424,7 @@ body {
             }
 
             .lsi-card {
-                background-image: url(http://localhost:3000/assets/images/card-icon.png);
+                background-image: url(/assets/images/card-icon.png);
                 width: 36px;
                 height: 36px;
                 background-repeat: no-repeat;
@@ -1698,7 +1698,7 @@ body {
                 cursor: pointer;
 
                 .button-icon {
-                    background-image: url(http://localhost:3000/assets/images/new-icons.png);
+                    background-image: url(/assets/images/new-icons.png);
                     margin-right: 5px;
                     background-position: 0px -26px;
                     background-size: 26px 302px;
@@ -7103,7 +7103,7 @@ body {
                             transform: translate(-50%, -50%);
 
                             .plus-icon {
-                                background-image: url(http://localhost:3000/assets/images/icons.png);
+                                background-image: url(/assets/images/icons.png);
                                 background-position: 0px -83px;
                                 background-size: auto;
                                 width: 20px;
@@ -7134,7 +7134,7 @@ body {
                     .post-meta-buttons {
 
                         .attachment-button-file {
-                            background-image: url(http://localhost:3000/assets/images/new-icons.png);
+                            background-image: url(/assets/images/new-icons.png);
                             margin-right: 5px;
                             background-position: 0px -181px;
                             background-size: 26px 302px;
@@ -7215,21 +7215,21 @@ body {
 }
 
 #left-sidebar .ls-nav-menu .ls-nav-menu-item .ls-icon {
-    background-image: url(http://localhost:3000/assets/images/icons.png) !important;
+    background-image: url(/assets/images/icons.png) !important;
 
 }
 
 #left-sidebar .ls-nav-menu .ls-nav-menu-item .lsi-star {
-    background-image: url(http://localhost:3000/assets/images/star-icon.png) !important;
+    background-image: url(/assets/images/star-icon.png) !important;
 
 }
 
 #left-sidebar .ls-nav-menu .ls-nav-menu-item .lsi-card {
-    background-image: url(http://localhost:3000/assets/images/card-icon.png) !important;
+    background-image: url(/assets/images/card-icon.png) !important;
 }
 
 .nf-create-post .bottom .button-container li .button-icon {
-    background-image: url(http://localhost:3000/assets/images/new-icons.png) !important;
+    background-image: url(/assets/images/new-icons.png) !important;
 }
 
 
@@ -8127,7 +8127,7 @@ h6 {
         border-radius: 50%;
         margin-right: 0px;
         border: 2px solid rgba(41, 177, 169, 0.3);
-        background-image: url(http://localhost:3000/assets/images/default-profilePic.png);
+        background-image: url(/assets/images/default-profilePic.png);
         background-position: center;
         background-size: contain;
     }
