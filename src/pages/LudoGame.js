@@ -1854,6 +1854,10 @@ const LudoGame = () => {
             x += dx;
             y += dy;
         }
+        // Center the token inside the target cell to avoid visual drift on small screens
+        const centerOffset = (CELL_SIZE - tokenSize) / 2;
+        x += centerOffset;
+        y += centerOffset;
         const isCurrentPlayer = playerIndex === currentPlayer;
         const isActivePlayer = playerIndex < selectedPlayerCount;
         const canMove = isCurrentPlayer && diceValue > 0 && (
@@ -1865,7 +1869,7 @@ const LudoGame = () => {
                 position: 'absolute',
                 left: 0,
                 top: 0,
-                transform: `translate(${x}px, ${y}px)`,
+                transform: `translate3d(${x}px, ${y}px, 0)`,
                 width: tokenSize,
                 height: tokenSize,
                 zIndex: 10,
