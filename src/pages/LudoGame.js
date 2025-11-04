@@ -614,28 +614,47 @@ const LudoGame = () => {
     // Determine if host should wait in lobby for invited players
     const recomputeWaitingState = useCallback(() => {
         try {
-            // Only host should gate start on waiting
-            if (!onlineMode || myProfile?._id == null || myPlayerIndex !== 0) {
+            // Gate waiting in online games for both host and invitees
+            if (!onlineMode || myProfile?._id == null) {
                 setWaitingForPlayers(false);
                 return;
             }
             const invitedMap = invitedStatusByFriendId || {};
             const reservedMap = invitedSlotByFriendId || {};
             const invitedIds = Object.keys(invitedMap);
-            const hasInvites = invitedIds.length > 0;
-            if (!hasInvites) {
-                setWaitingForPlayers(false);
+            const maxPlayers = Math.max(2, Math.min(4, selectedPlayerCount));
+            // Compute actual joined seats (excluding host at 0)
+            const joinedIds = new Set(
+                players
+                    .slice(1, maxPlayers)
+                    .map(p => (p && p.profileId ? String(p.profileId) : null))
+                    .filter(Boolean)
+            );
+
+            // If no invites tracked, rely purely on seat occupancy
+            if (invitedIds.length === 0) {
+                const allSeatsFilled = joinedIds.size >= (maxPlayers - 1);
+                setWaitingForPlayers(!allSeatsFilled);
+                if (!allSeatsFilled) setCanRollDice(false);
                 return;
             }
-            // Wait only for friends still in 'invited' status OR reserved slots not yet bound
-            const stillInvited = invitedIds.some(fid => invitedMap[fid] === 'invited');
-            const reservedSlots = new Set(Object.values(reservedMap).map(n => Number(n)).filter(n => Number.isFinite(n)));
+
+            // Wait only if an invited friend hasn't actually joined yet
+            const stillInvited = invitedIds.some(fid => invitedMap[fid] === 'invited' && !joinedIds.has(String(fid)));
+
+            // Also consider reserved slots whose intended profile hasn't appeared in any seat yet
             let missingProfiles = false;
-            for (const slot of reservedSlots) {
-                const prof = players?.[slot]?.profileId;
-                if (!prof) { missingProfiles = true; break; }
+            for (const [fid, slotIndexRaw] of Object.entries(reservedMap)) {
+                const fidStr = String(fid);
+                const slotIndex = Number(slotIndexRaw);
+                if (!Number.isFinite(slotIndex)) continue;
+                if (!joinedIds.has(fidStr)) { missingProfiles = true; break; }
             }
-            const shouldWait = Boolean(stillInvited || missingProfiles);
+
+            // If every non-host seat is filled, do not wait regardless of stale invite map
+            const allSeatsFilled = joinedIds.size >= (maxPlayers - 1);
+            const shouldWait = allSeatsFilled ? false : Boolean(stillInvited || missingProfiles);
+
             try {
                 console.log('[LUDO][client] recomputeWaitingState', {
                     onlineMode,
@@ -644,14 +663,26 @@ const LudoGame = () => {
                     invitedSlotByFriendId,
                     selectedPlayerCount,
                     playersProfileIds: players.map(p => p?.profileId || null),
+                    joinedIds: Array.from(joinedIds),
                     stillInvited,
-                    reservedSlots: Array.from(reservedSlots),
                     missingProfiles,
+                    allSeatsFilled,
                     shouldWait
                 });
             } catch (_e) {}
             setWaitingForPlayers(shouldWait);
-            if (shouldWait) setCanRollDice(false);
+            if (shouldWait) {
+                setCanRollDice(false);
+            } else {
+                // Seats are filled; ensure dice can roll and clear stale invite maps to prevent future flicker
+                setCanRollDice(true);
+                if (allSeatsFilled) {
+                    try {
+                        setInvitedStatusByFriendId({});
+                        setInvitedSlotByFriendId({});
+                    } catch (_e) {}
+                }
+            }
         } catch (_e) {
             setWaitingForPlayers(false);
         }
@@ -909,11 +940,14 @@ const LudoGame = () => {
         });
     };
 
-    const animateTokenMovement = (playerIndex, pieceIndex, toSteps, onComplete) => {
+    const animateTokenMovement = (playerIndex, pieceIndex, toSteps, fromStepsOverride, onComplete) => {
         // Web simulation: step through updates to piece.steps to visualize movement
-        const updated = players.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
-        const piece = updated[playerIndex].pieces[pieceIndex];
-        const fromSteps = piece.steps;
+        const currentPlayers = playersRef.current && Array.isArray(playersRef.current) ? playersRef.current : players;
+        const safePlayer = currentPlayers[playerIndex];
+        const safePiece = safePlayer && Array.isArray(safePlayer.pieces) ? safePlayer.pieces[pieceIndex] : null;
+        const fromSteps = (typeof fromStepsOverride === 'number' && Number.isFinite(fromStepsOverride))
+            ? fromStepsOverride
+            : (safePiece && typeof safePiece.steps === 'number' ? safePiece.steps : 0);
         const stepsToGo = toSteps - fromSteps;
         if (stepsToGo <= 0) {
             onComplete && onComplete();
@@ -976,7 +1010,7 @@ const LudoGame = () => {
                     if (onlineMode && socketRef.current && gameId) {
                         try { socketRef.current.emit('ludo:move', { gameId, by: myProfile?._id, playerIndex: currentPlayer, pieceIndex: pieceId, toSteps: newSteps, fromSteps: oldSteps, rolled: rolledNow }); } catch (_e) { }
                     }
-                    animateTokenMovement(currentPlayer, pieceId, newSteps, () => {
+                    animateTokenMovement(currentPlayer, pieceId, newSteps, undefined, () => {
                         // After animation, run capture/win checks
                         setPlayers(prev => {
                             const updatedPlayers = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
@@ -1101,6 +1135,10 @@ const LudoGame = () => {
         const onPlayers = (payload) => {
             try {
                 if (!payload || payload.gameId !== gameId) return;
+                // Host keeps authoritative local state; ignore snapshots that might be stale
+                if (myPlayerIndex === 0) {
+                    return;
+                }
                 if (Array.isArray(payload.players)) {
                     const next = payload.players.map(p => ({
                         ...p,
@@ -1144,6 +1182,26 @@ const LudoGame = () => {
                             if (myCover) next[resolvedMyIndex].cover = myCover;
                         }
                     } catch (_e) {}
+                    // Merge with previous known seats to avoid wiping already joined players if snapshot is momentarily incomplete
+                    try {
+                        const maxPlayers = Math.max(2, Math.min(4, typeof payload.selectedPlayerCount === 'number' ? payload.selectedPlayerCount : selectedPlayerCountRef.current));
+                        const prev = playersRef.current || [];
+                        for (let i = 0; i < maxPlayers; i++) {
+                            const hasIncomingId = next[i] && next[i].profileId;
+                            const prevId = prev[i] && prev[i].profileId;
+                            if (!hasIncomingId && prevId) {
+                                next[i] = {
+                                    id: typeof next[i]?.id === 'number' ? next[i].id : (prev[i]?.id ?? i),
+                                    name: next[i]?.name || prev[i]?.name,
+                                    color: next[i]?.color || prev[i]?.color,
+                                    avatar: next[i]?.avatar || prev[i]?.avatar,
+                                    cover: next[i]?.cover || prev[i]?.cover,
+                                    profileId: prevId,
+                                    pieces: Array.isArray(next[i]?.pieces) ? next[i].pieces : (Array.isArray(prev[i]?.pieces) ? prev[i].pieces.map(pc => ({ ...pc })) : [])
+                                };
+                            }
+                        }
+                    } catch (_e) {}
                     setPlayers(next);
                 }
                 if (typeof payload.selectedPlayerCount === 'number') {
@@ -1159,9 +1217,9 @@ const LudoGame = () => {
         const onMove = (payload) => {
             if (!payload || payload.gameId !== gameId) return;
             if (payload.by && myProfile?._id && String(payload.by) === String(myProfile._id)) return;
-            const { playerIndex, pieceIndex, toSteps } = payload;
+            const { playerIndex, pieceIndex, toSteps, fromSteps } = payload;
             const mover = typeof playerIndex === 'number' ? playerIndex : currentPlayerRef.current;
-            animateTokenMovement(mover, pieceIndex, toSteps, () => {
+            animateTokenMovement(mover, pieceIndex, toSteps, (typeof fromSteps === 'number' ? fromSteps : undefined), () => {
                 setPlayers(prev => {
                     const updatedPlayers = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
                     updatedPlayers[mover].pieces[pieceIndex].steps = toSteps;
@@ -2007,8 +2065,8 @@ const LudoGame = () => {
                             {waitingForPlayers && (
                                 <div style={{ position: 'absolute', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                     <div style={{ background: 'rgba(26, 35, 50, 0.95)', border: '2px solid rgba(255, 215, 0, 0.5)', color: 'white', padding: 16, borderRadius: 16, textAlign: 'center' }}>
-                                        <div style={{ fontWeight: 800, marginBottom: 6 }}>Waiting for players to join…</div>
-                                        <div style={{ fontSize: 12, color: '#B0B0B0' }}>Invites sent. The game will begin once your friends join.</div>
+                                        <div style={{ fontWeight: 800, marginBottom: 6 }}>{myPlayerIndex === 0 ? 'Waiting for players to join…' : 'Waiting for other players…'}</div>
+                                        <div style={{ fontSize: 12, color: '#B0B0B0' }}>{myPlayerIndex === 0 ? 'Invites sent. The game will begin once your friends join.' : 'The game will begin once all players have joined.'}</div>
                                     </div>
                                 </div>
                             )}
