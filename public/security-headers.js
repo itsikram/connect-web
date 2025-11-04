@@ -14,11 +14,10 @@ const csp = isDevelopment ? `
   img-src 'self' data: https: http: blob:;
   media-src 'self' https: http: blob:;
   connect-src 'self' http://localhost:* http://127.0.0.1:* https: wss: ws:;
-  frame-src 'self' https://www.google.com;
+  frame-src 'self' https://www.google.com https://www.youtube.com https://www.youtube-nocookie.com;
   object-src 'none';
   base-uri 'self';
   form-action 'self';
-  frame-ancestors 'none';
 ` : `
   default-src 'self';
   script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.google.com https://www.gstatic.com https://apis.google.com https://cdn.jsdelivr.net;
@@ -27,11 +26,10 @@ const csp = isDevelopment ? `
   img-src 'self' data: https: blob:;
   media-src 'self' https: blob:;
   connect-src 'self' https: wss: ws:;
-  frame-src 'self' https://www.google.com;
+  frame-src 'self' https://www.google.com https://www.youtube.com https://www.youtube-nocookie.com;
   object-src 'none';
   base-uri 'self';
   form-action 'self';
-  frame-ancestors 'none';
 `;
 
 // Apply CSP if not already set

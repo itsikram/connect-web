@@ -40,7 +40,7 @@ root.render(
   <React.StrictMode>
     <Provider store={store}>
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-      <BR>
+      <BR future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <App />
       </BR>
     </Provider>

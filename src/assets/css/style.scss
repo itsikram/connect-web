@@ -1376,6 +1376,10 @@ body {
                 transform: scale(0.8);
             }
 
+            .ls-icon.lsi-ludo {
+                background-image: unset !important;
+            }
+
             .ls-icon.lsi-friends {
                 background-position: 0 -304px;
             }

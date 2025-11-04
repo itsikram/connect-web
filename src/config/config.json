@@ -1,6 +1,7 @@
 {
     "logo": "/assets/images/logo.png",
-    "siteUrl": "https://connect-zfgx.onrender.com/",
+    "siteUrl": "http://localhost:3000/",
+    "siteUrlLive": "https://connect-zfgx.onrender.com/",
     "loadingUrl": "/assets/images/loading.gif",
     "defaultCover": "/assets/images/default-cover.png",
     "defaultProfile": "/assets/images/default-profile-pic.png",

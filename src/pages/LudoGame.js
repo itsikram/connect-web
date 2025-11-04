@@ -28,7 +28,7 @@ const LudoGame = () => {
     const colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00'];
     const playerNames = ['Red', 'Green', 'Blue', 'Yellow'];
     const playerEmojis = ['🔴', '🟢', '🔵', '🟡'];
-    const maxSteps = 59; // 52 main + 7 home stretch
+    const DEFAULT_MAX_STEPS = 59; // fallback if PATH length cannot be derived
 
     // Utility to darken or lighten a hex color
     const adjustHexColor = (hex, amt) => {
@@ -50,7 +50,7 @@ const LudoGame = () => {
         }
     };
 
-    
+
 
     // Precomputed board paths (identical to RN)
     const PATHS = useMemo(() => ({
@@ -116,6 +116,16 @@ const LudoGame = () => {
         ]
     }), [winSize.width, winSize.height]);
 
+    // Use exact path length as the true max steps (prevents overruns near home)
+    const maxSteps = useMemo(() => {
+        try {
+            const len0 = Array.isArray(PATHS?.[0]) ? PATHS[0].length : undefined;
+            return (typeof len0 === 'number' && len0 > 0) ? len0 : DEFAULT_MAX_STEPS;
+        } catch (_e) {
+            return DEFAULT_MAX_STEPS;
+        }
+    }, [PATHS]);
+
     // State (mirrors RN)
     const myProfile = useSelector(state => state.profile);
     const [players, setPlayers] = useState([]);
@@ -126,12 +136,19 @@ const LudoGame = () => {
     const [winners, setWinners] = useState([]);
     const [showWinnerModal, setShowWinnerModal] = useState(false);
     const [gameEnded, setGameEnded] = useState(false);
-  const [diceRolling, setDiceRolling] = useState(false);
-  const [canRollDice, setCanRollDice] = useState(true);
-  const [diceRotateX, setDiceRotateX] = useState(0);
-  const [diceRotateY, setDiceRotateY] = useState(0);
+    const [diceRolling, setDiceRolling] = useState(false);
+    const [canRollDice, setCanRollDice] = useState(true);
+    const [diceRotateX, setDiceRotateX] = useState(0);
+    const [diceRotateY, setDiceRotateY] = useState(0);
     const [showPlayerSelection, setShowPlayerSelection] = useState(false);
     const [selectedPlayerCount, setSelectedPlayerCount] = useState(4);
+    // Refs to avoid re-binding socket listeners on every state change
+    const playersRef = useRef(players);
+    const currentPlayerRef = useRef(currentPlayer);
+    const selectedPlayerCountRef = useRef(selectedPlayerCount);
+    const winnersRef = useRef(winners);
+    const maxStepsRef = useRef(0);
+    const lastDiceValueRef = useRef(0);
     // Online friends selection
     const [onlineMode, setOnlineMode] = useState(false);
     const [selectedFriends, setSelectedFriends] = useState([]); // [{ _id, fullName, profilePic }]
@@ -139,9 +156,20 @@ const LudoGame = () => {
     const [searchResults, setSearchResults] = useState([]);
     const [loadingSearch, setLoadingSearch] = useState(false);
     const [friendList, setFriendList] = useState([]);
+    const [invitedStatusByFriendId, setInvitedStatusByFriendId] = useState({}); // { friendId: 'invited'|'joined'|'declined' }
+    const [invitedSlotByFriendId, setInvitedSlotByFriendId] = useState({}); // { friendId: slotIndex }
     const searchTimeoutRef = useRef(null);
+    const inviteHandlersAttachedRef = useRef(false);
     const [incomingInvite, setIncomingInvite] = useState(null);
     const [inviteCopied, setInviteCopied] = useState(false);
+    const [incomingInviteRequest, setIncomingInviteRequest] = useState(null); // { from, name, avatar, gameId, slotIndex, playerCount }
+    const [pendingInvites, setPendingInvites] = useState([]); // [{ from, name, avatar, gameId, slotIndex, playerCount, ts }]
+    // Player editor modal
+    const [showPlayerEditor, setShowPlayerEditor] = useState(false);
+    const [editingPlayerIndex, setEditingPlayerIndex] = useState(null);
+    const [editName, setEditName] = useState('');
+    const [editAvatarUrl, setEditAvatarUrl] = useState('');
+    const avatarFileInputRef = useRef(null);
     // Online play socket state
     const socketRef = useRef(null);
     const [gameId, setGameId] = useState(null);
@@ -152,6 +180,57 @@ const LudoGame = () => {
             return url.replace(/\/$/, '');
         } catch (_e) {
             return window.location.origin;
+        }
+    }, []);
+
+    useEffect(() => { playersRef.current = players; }, [players]);
+    useEffect(() => { currentPlayerRef.current = currentPlayer; }, [currentPlayer]);
+    useEffect(() => { selectedPlayerCountRef.current = selectedPlayerCount; }, [selectedPlayerCount]);
+    useEffect(() => { winnersRef.current = winners; }, [winners]);
+    useEffect(() => { maxStepsRef.current = maxSteps; }, [maxSteps]);
+
+    // Ensure socket connection (used before game start for invites)
+    const ensureSocketConnected = useCallback(() => {
+        try {
+            if (!myProfile?._id) return;
+            if (!socketRef.current) {
+                try { console.log('[LUDO][client] creating socket', { baseUrl: socketBaseUrl, profile: myProfile?._id }); } catch (_e) { }
+                socketRef.current = io(socketBaseUrl, {
+                    transports: ['polling', 'websocket'],
+                    path: '/socket.io',
+                    query: { profile: myProfile?._id },
+                    timeout: 40000,
+                    reconnection: true,
+                    reconnectionAttempts: Infinity,
+                    reconnectionDelay: 1000,
+                    reconnectionDelayMax: 5000,
+                    forceNew: true
+                });
+                try {
+                    socketRef.current.on('connect', () => {
+                        try { console.log('[LUDO][client] socket connected', { id: socketRef.current?.id }); } catch (_e) { }
+                        try { console.log('[LUDO][client] emit ludo:invites:get (on connect)'); socketRef.current?.emit('ludo:invites:get'); } catch (_e) { }
+                    });
+                    socketRef.current.on('connect_error', (err) => {
+                        try { console.error('[LUDO][client] connect_error', { message: err?.message }); } catch (_e) { }
+                    });
+                    socketRef.current.on('error', (err) => {
+                        try { console.error('[LUDO][client] socket error', err); } catch (_e) { }
+                    });
+                    socketRef.current.on('disconnect', (reason) => {
+                        try { console.log('[LUDO][client] socket disconnect', { reason }); } catch (_e) { }
+                    });
+                } catch (_e) { }
+            }
+        } catch (_e) { }
+    }, [myProfile?._id, socketBaseUrl]);
+
+    // Debug flag (show dev-only controls on localhost)
+    const isDebug = useMemo(() => {
+        try {
+            return /localhost|127\.0\.0\.1/.test(window.location.hostname);
+        } catch (_e) {
+            return false;
         }
     }, []);
 
@@ -241,12 +320,15 @@ const LudoGame = () => {
         const newPlayers = [];
         const names = [];
         const avatars = [];
+        const covers = [];
         names[0] = myProfile?.fullName || 'You';
         avatars[0] = myProfile?.profilePic;
+        covers[0] = myProfile?.coverPhoto || myProfile?.coverPic || myProfile?.cover || myProfile?.profileCover || undefined;
         for (let i = 1; i < playerCount; i++) {
             const f = selectedFriends[i - 1];
             names[i] = f?.fullName || playerNames[i];
             avatars[i] = f?.profilePic;
+            covers[i] = f?.coverPhoto || f?.coverPic || f?.cover || f?.profileCover || undefined;
         }
         for (let i = 0; i < playerCount; i++) {
             const pieces = [];
@@ -267,7 +349,8 @@ const LudoGame = () => {
                 pieces,
                 isActive: i === 0,
                 avatar: avatars[i],
-                profileId: undefined,
+                cover: covers[i],
+                profileId: i === 0 ? (myProfile?._id || 'local') : undefined,
             });
         }
         setPlayers(newPlayers);
@@ -277,6 +360,25 @@ const LudoGame = () => {
         initializeGame();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Connect socket early at mount (so we can receive invites even if not in online mode yet)
+    useEffect(() => {
+        ensureSocketConnected();
+    }, [ensureSocketConnected]);
+
+    // Also connect when profile becomes available (initial load race fix)
+    useEffect(() => {
+        if (!myProfile?._id) return;
+        if (!socketRef.current || socketRef.current.disconnected) {
+            ensureSocketConnected();
+        }
+    }, [myProfile?._id, ensureSocketConnected]);
+
+    // Fetch pending invites on connect/profile available
+    useEffect(() => {
+        if (!socketRef.current || !myProfile?._id) return;
+        try { console.log('[LUDO][client] emit ludo:invites:get'); socketRef.current.emit('ludo:invites:get'); } catch (_e) { }
+    }, [myProfile?._id]);
 
     // Parse invite tokens from URL (?ludoInvite=BASE64)
     useEffect(() => {
@@ -291,14 +393,14 @@ const LudoGame = () => {
                 if (payload.gameId) {
                     setGameId(payload.gameId);
                     setOnlineMode(true);
-                    if (payload.playerCount && [2,3,4].includes(payload.playerCount)) {
+                    if (payload.playerCount && [2, 3, 4].includes(payload.playerCount)) {
                         setSelectedPlayerCount(payload.playerCount);
                     }
                 }
                 // Open start modal if not started yet
                 if (!gameStarted) setShowPlayerSelection(true);
             }
-        } catch (_e) {}
+        } catch (_e) { }
     }, [gameStarted]);
 
     // Optional: load default friend list when opening player selection
@@ -316,6 +418,74 @@ const LudoGame = () => {
             }
         })();
     }, [showPlayerSelection]);
+
+    // Compute next open player slot (excluding host at 0)
+    const getNextOpenSlot = useCallback(() => {
+        const max = Math.max(2, Math.min(4, selectedPlayerCount));
+        for (let i = 1; i < max; i++) {
+            const p = players[i];
+            if (!p) return i;
+            if (!p.profileId) return i;
+        }
+        return null;
+    }, [players, selectedPlayerCount]);
+
+    const emitPlayersState = useCallback((gid) => {
+        if (!onlineMode || !socketRef.current || !gid) return;
+        try {
+            const minimalPlayers = players.map(p => ({
+                id: p.id,
+                name: p.name,
+                color: p.color,
+                avatar: p.avatar,
+                cover: p.cover,
+                profileId: p.profileId,
+                // keep piece steps so remotes can render tokens
+                pieces: (Array.isArray(p.pieces) ? p.pieces.map(pc => ({ id: pc.id, steps: pc.steps, isHome: pc.isHome, isInPlay: pc.isInPlay })) : [])
+            }));
+            socketRef.current.emit('ludo:players', { gameId: gid, players: minimalPlayers, selectedPlayerCount, currentPlayer });
+        } catch (_e) { }
+    }, [players, selectedPlayerCount, currentPlayer, onlineMode]);
+
+    const inviteFriend = useCallback((friend) => {
+        if (!friend || !friend._id) return;
+        // Must be online mode to invite
+        if (!onlineMode) setOnlineMode(true);
+        ensureSocketConnected();
+        const gid = gameId || generateGameId();
+        if (!gameId) setGameId(gid);
+        // Reserve a slot for friend
+        const slot = getNextOpenSlot();
+        if (slot == null) return; // no open slot
+        try { console.log('[LUDO][client] inviteFriend', { targetId: friend?._id, gid, slot, selectedPlayerCount }); } catch (_e) { }
+        // Update local players with reservation
+        setPlayers(prev => {
+            const copy = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
+            if (!copy[slot]) return prev;
+            copy[slot].name = friend.fullName || copy[slot].name;
+            copy[slot].avatar = friend.profilePic || copy[slot].avatar;
+            copy[slot].profileId = friend._id;
+            return copy;
+        });
+        setInvitedStatusByFriendId(prev => ({ ...prev, [friend._id]: 'invited' }));
+        setInvitedSlotByFriendId(prev => ({ ...prev, [friend._id]: slot }));
+        try {
+            const targetId = friend?._id || friend?.id;
+            if (!targetId) return;
+            socketRef.current && socketRef.current.emit('ludo:invite', {
+                to: targetId,
+                by: myProfile?._id,
+                name: myProfile?.fullName || 'Player',
+                avatar: myProfile?.profilePic,
+                gameId: gid,
+                slotIndex: slot,
+                playerCount: selectedPlayerCount,
+            });
+            try { console.log('[LUDO][client] emitted ludo:invite', { to: targetId, gid, slot }); } catch (_e) { }
+            // Join/create room for host immediately
+            try { console.log('[LUDO][client] emit ludo:join', { gid }); socketRef.current && socketRef.current.emit('ludo:join', { gameId: gid }); } catch (_e) { }
+        } catch (_e) { }
+    }, [onlineMode, ensureSocketConnected, gameId, myProfile?._id, myProfile?.fullName, myProfile?.profilePic, selectedPlayerCount, getNextOpenSlot]);
 
     const onChangeFriendSearch = (text) => {
         setFriendSearchQuery(text);
@@ -368,18 +538,33 @@ const LudoGame = () => {
 
     const rollDice = () => {
         if (!canRollDice || diceRolling) return;
+        if (onlineMode && myPlayerIndex !== currentPlayer) return; // only active player may roll online
         setDiceRolling(true);
         setCanRollDice(false);
-    // Animate 3D spin
-    setDiceRotateX(prev => prev + 360);
-    setDiceRotateY(prev => prev + 360);
+        // Optional debug value entry (localhost only)
+        let debugChosenValue = null;
+        if (isDebug) {
+            try {
+                const input = window.prompt('Enter dice value (1-6). Cancel = random');
+                const n = Number(input);
+                if (Number.isFinite(n) && n >= 1 && n <= 6) {
+                    debugChosenValue = Math.floor(n);
+                }
+            } catch (_e) { }
+        }
+        // Animate 3D spin
+        setDiceRotateX(prev => prev + 360);
+        setDiceRotateY(prev => prev + 360);
         // simple spin delay
         setTimeout(() => {
-            const value = Math.floor(Math.random() * 6) + 1;
+            const value = (debugChosenValue && debugChosenValue >= 1 && debugChosenValue <= 6)
+                ? debugChosenValue
+                : (Math.floor(Math.random() * 6) + 1);
             setDiceValue(value);
+            lastDiceValueRef.current = value;
             setDiceRolling(false);
             if (onlineMode && socketRef.current && gameId) {
-                try { socketRef.current.emit('ludo:roll', { gameId, value, by: myProfile?._id }); } catch (_e) {}
+                try { socketRef.current.emit('ludo:roll', { gameId, value, by: myProfile?._id }); } catch (_e) { }
             }
 
             const currentPlayerData = players[currentPlayer];
@@ -400,36 +585,36 @@ const LudoGame = () => {
         }, 500);
     };
 
-  const DiceSVG = ({ value, size = 80 }) => {
-    const pipR = 7;
-    const scaleFactor = 0.75; // 10% smaller
-    const pip = (cx, cy, key) => (
-      <circle key={key} cx={cx} cy={cy} r={pipR} fill="#111" />
-    );
-    const positions = {
-      1: [[50, 50]],
-      2: [[30, 30], [70, 70]],
-      3: [[30, 30], [50, 50], [70, 70]],
-      4: [[30, 30], [70, 30], [30, 70], [70, 70]],
-      5: [[30, 30], [70, 30], [50, 50], [30, 70], [70, 70]],
-      6: [[30, 25], [70, 25], [30, 50], [70, 50], [30, 75], [70, 75]],
+    const DiceSVG = ({ value, size = 80, strokeColor = '#d0d0d0' }) => {
+        const pipR = 7;
+        const scaleFactor = 0.75; // 10% smaller
+        const pip = (cx, cy, key) => (
+            <circle key={key} cx={cx} cy={cy} r={pipR} fill="#111" />
+        );
+        const positions = {
+            1: [[50, 50]],
+            2: [[30, 30], [70, 70]],
+            3: [[30, 30], [50, 50], [70, 70]],
+            4: [[30, 30], [70, 30], [30, 70], [70, 70]],
+            5: [[30, 30], [70, 30], [50, 50], [30, 70], [70, 70]],
+            6: [[30, 25], [70, 25], [30, 50], [70, 50], [30, 75], [70, 75]],
+        };
+        const pts = (value && positions[value]) ? positions[value] : [];
+        return (
+            <svg width={size} height={size} viewBox="0 0 100 100" style={{ display: 'block', filter: 'drop-shadow(0 6px 10px rgba(0,0,0,0.4))' }}>
+                <defs>
+                    <linearGradient id="diceGrad" x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0%" stopColor="#ffffff" />
+                        <stop offset="100%" stopColor="#e9e9e9" />
+                    </linearGradient>
+                </defs>
+                <g transform={`translate(50,50) scale(${scaleFactor}) translate(-50,-50)`}>
+                    <rect x="5" y="5" width="90" height="90" rx="18" ry="18" fill="url(#diceGrad)" stroke={strokeColor} strokeWidth="3" />
+                    {pts.map(([x, y], idx) => pip(x, y, idx))}
+                </g>
+            </svg>
+        );
     };
-    const pts = positions[value] || [];
-    return (
-      <svg width={size} height={size} viewBox="0 0 100 100" style={{ display: 'block', filter: 'drop-shadow(0 6px 10px rgba(0,0,0,0.4))' }}>
-        <defs>
-          <linearGradient id="diceGrad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#ffffff" />
-            <stop offset="100%" stopColor="#e9e9e9" />
-          </linearGradient>
-        </defs>
-        <g transform={`translate(50,50) scale(${scaleFactor}) translate(-50,-50)`}>
-          <rect x="5" y="5" width="90" height="90" rx="18" ry="18" fill="url(#diceGrad)" stroke="#d0d0d0" strokeWidth="2" />
-          {pts.map(([x, y], idx) => pip(x, y, idx))}
-        </g>
-      </svg>
-    );
-  };
 
     // Animated background matching site's accent colors
     const AnimatedBackground = () => {
@@ -453,16 +638,62 @@ const LudoGame = () => {
         );
     };
 
+    // Lightweight confetti for winner modal
+    const WinnerConfetti = ({ count = 60 }) => {
+        const pieces = Array.from({ length: count }).map((_, i) => {
+            const left = Math.random() * 100; // vw percentage
+            const size = 6 + Math.random() * 6;
+            const hue = Math.floor(Math.random() * 360);
+            const delay = (Math.random() * 1.5).toFixed(2) + 's';
+            const duration = (2 + Math.random() * 2.5).toFixed(2) + 's';
+            const rotate = Math.random() * 360;
+            return (
+                <div key={i} style={{
+                    position: 'absolute',
+                    top: -20,
+                    left: left + '%',
+                    width: size,
+                    height: size * 0.36,
+                    background: `hsl(${hue} 85% 60%)`,
+                    transform: `rotate(${rotate}deg)`,
+                    borderRadius: 2,
+                    animation: `confettiFall ${duration} ease-in forwards`,
+                    animationDelay: delay,
+                    boxShadow: '0 0 6px rgba(0,0,0,0.15)'
+                }} />
+            );
+        });
+        return (
+            <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden' }}>
+                <style>{`
+                    @keyframes confettiFall {
+                        0% { transform: translateY(-20px) rotate(0deg); opacity: 0; }
+                        10% { opacity: 1; }
+                        100% { transform: translateY(100vh) rotate(720deg); opacity: 0.9; }
+                    }
+                    @keyframes winnerPop { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); }
+                    }
+                    @keyframes winnerGlow { 0% { opacity: 0.6; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.05);} 100% { opacity: 0.6; transform: scale(0.9);} }
+                    @keyframes textShine { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+                `}</style>
+                {pieces}
+            </div>
+        );
+    };
+
     const captureToken = (playerIndex, pieceIndex) => {
-        const updated = players.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
-        const capturedPiece = updated[playerIndex].pieces[pieceIndex];
-        updated[playerIndex].pieces[pieceIndex] = {
-            ...capturedPiece,
-            isHome: true,
-            isInPlay: false,
-            steps: 0,
-        };
-        setPlayers(updated);
+        setPlayers(prev => {
+            const updated = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
+            const capturedPiece = updated[playerIndex]?.pieces?.[pieceIndex];
+            if (!capturedPiece) return prev;
+            updated[playerIndex].pieces[pieceIndex] = {
+                ...capturedPiece,
+                isHome: true,
+                isInPlay: false,
+                steps: 0,
+            };
+            return updated;
+        });
     };
 
     const animateTokenMovement = (playerIndex, pieceIndex, toSteps, onComplete) => {
@@ -496,6 +727,7 @@ const LudoGame = () => {
 
     const movePiece = (pieceId) => {
         if (diceValue === 0) return;
+        const rolledNow = diceValue;
         const currentPlayerData = players[currentPlayer];
         const piece = currentPlayerData.pieces[pieceId];
 
@@ -514,7 +746,7 @@ const LudoGame = () => {
                 };
                 setPlayers(updated);
                 if (onlineMode && socketRef.current && gameId) {
-                    try { socketRef.current.emit('ludo:move', { gameId, by: myProfile?._id, playerIndex: currentPlayer, pieceIndex: pieceId, toSteps: 1, fromSteps: 0 }); } catch (_e) {}
+                    try { socketRef.current.emit('ludo:move', { gameId, by: myProfile?._id, playerIndex: currentPlayer, pieceIndex: pieceId, toSteps: 1, fromSteps: 0, rolled: 6 }); } catch (_e) { }
                 }
 
                 // Capture at start position
@@ -529,7 +761,7 @@ const LudoGame = () => {
                 const newSteps = piece.steps + diceValue;
                 if (newSteps <= maxSteps) {
                     if (onlineMode && socketRef.current && gameId) {
-                        try { socketRef.current.emit('ludo:move', { gameId, by: myProfile?._id, playerIndex: currentPlayer, pieceIndex: pieceId, toSteps: newSteps, fromSteps: oldSteps }); } catch (_e) {}
+                        try { socketRef.current.emit('ludo:move', { gameId, by: myProfile?._id, playerIndex: currentPlayer, pieceIndex: pieceId, toSteps: newSteps, fromSteps: oldSteps, rolled: rolledNow }); } catch (_e) { }
                     }
                     animateTokenMovement(currentPlayer, pieceId, newSteps, () => {
                         // After animation, run capture/win checks
@@ -539,9 +771,11 @@ const LudoGame = () => {
                             return updatedPlayers;
                         });
 
+                        let didCapture = false;
                         if (newSteps < maxSteps) {
                             const newPosition = getPositionOnPath(currentPlayer, newSteps);
                             const capturedPieces = checkForCapture(currentPlayer, newPosition);
+                            didCapture = Array.isArray(capturedPieces) && capturedPieces.length > 0;
                             capturedPieces.forEach(({ playerIndex, pieceIndex }) => captureToken(playerIndex, pieceIndex));
                         }
 
@@ -565,14 +799,15 @@ const LudoGame = () => {
                         }
 
                         setDiceValue(0);
-                        if (diceValue !== 6) {
+                        const keepTurn = (rolledNow === 6) || didCapture;
+                        if (keepTurn) {
+                            setCanRollDice(true);
+                        } else {
                             setTimeout(() => {
                                 const nextPlayer = getNextActivePlayer(currentPlayer);
                                 setCurrentPlayer(nextPlayer);
                                 setCanRollDice(true);
                             }, 300);
-                        } else {
-                            setCanRollDice(true);
                         }
                     });
                 }
@@ -582,7 +817,7 @@ const LudoGame = () => {
         globalMove();
     };
 
-    // Online socket listeners (moved below state/helpers to avoid temporal dead zone)
+    // Online socket listeners (gameplay + sync)
     useEffect(() => {
         const s = socketRef.current;
         if (!s || !onlineMode) return;
@@ -593,15 +828,16 @@ const LudoGame = () => {
             const value = payload.value;
             setDiceValue(value);
             setDiceRolling(false);
-            const currentPlayerData = players[currentPlayer];
+            lastDiceValueRef.current = value;
+            const currentPlayerData = playersRef.current[currentPlayerRef.current];
             const canMove = currentPlayerData?.pieces?.some(piece => {
                 if (piece.isHome && value === 6) return true;
-                if (piece.isInPlay && piece.steps + value <= maxSteps) return true;
+                if (piece.isInPlay && piece.steps + value <= maxStepsRef.current) return true;
                 return false;
             });
             if (!canMove) {
                 setTimeout(() => {
-                    const nextPlayer = getNextActivePlayer(currentPlayer);
+                    const nextPlayer = getNextActivePlayer(currentPlayerRef.current);
                     setCurrentPlayer(nextPlayer);
                     setDiceValue(0);
                     setCanRollDice(true);
@@ -609,11 +845,65 @@ const LudoGame = () => {
             }
         };
 
+        const onAccepted = (payload) => {
+            try {
+                if (!payload || payload.gameId !== gameId) return;
+                // Host updates: friend joined; update status and broadcast players
+                if (payload.friend && payload.friend._id) {
+                    setInvitedStatusByFriendId(prev => ({ ...prev, [payload.friend._id]: 'joined' }));
+                }
+                if (typeof payload.slotIndex === 'number') {
+                    setPlayers(prev => {
+                        const copy = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
+                        const slot = payload.slotIndex;
+                        if (copy[slot]) {
+                            copy[slot].name = payload.friend?.fullName || copy[slot].name;
+                            copy[slot].avatar = payload.friend?.profilePic || copy[slot].avatar;
+                            copy[slot].profileId = payload.friend?._id || copy[slot].profileId;
+                        }
+                        return copy;
+                    });
+                }
+                // Broadcast current players snapshot
+                try {
+                    const minimalPlayers = playersRef.current.map(p => ({
+                        id: p.id,
+                        name: p.name,
+                        color: p.color,
+                        avatar: p.avatar,
+                        cover: p.cover,
+                        profileId: p.profileId,
+                        pieces: (Array.isArray(p.pieces) ? p.pieces.map(pc => ({ id: pc.id, steps: pc.steps, isHome: pc.isHome, isInPlay: pc.isInPlay })) : [])
+                    }));
+                    s.emit('ludo:players', { gameId: payload.gameId, players: minimalPlayers, selectedPlayerCount: selectedPlayerCountRef.current, currentPlayer: currentPlayerRef.current });
+                } catch (_e) { }
+            } catch (_e) { }
+        };
+
+        const onPlayers = (payload) => {
+            try {
+                if (!payload || payload.gameId !== gameId) return;
+                if (Array.isArray(payload.players)) {
+                    setPlayers(payload.players.map(p => ({
+                        ...p,
+                        pieces: Array.isArray(p.pieces) ? p.pieces.map(pc => ({ ...pc })) : []
+                    })));
+                }
+                if (typeof payload.selectedPlayerCount === 'number') {
+                    setSelectedPlayerCount(payload.selectedPlayerCount);
+                }
+                if (typeof payload.currentPlayer === 'number') {
+                    setCurrentPlayer(payload.currentPlayer);
+                }
+                if (!gameStarted) setGameStarted(true);
+            } catch (_e) { }
+        };
+
         const onMove = (payload) => {
             if (!payload || payload.gameId !== gameId) return;
             if (payload.by && myProfile?._id && String(payload.by) === String(myProfile._id)) return;
             const { playerIndex, pieceIndex, toSteps } = payload;
-            const mover = typeof playerIndex === 'number' ? playerIndex : currentPlayer;
+            const mover = typeof playerIndex === 'number' ? playerIndex : currentPlayerRef.current;
             animateTokenMovement(mover, pieceIndex, toSteps, () => {
                 setPlayers(prev => {
                     const updatedPlayers = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
@@ -621,23 +911,25 @@ const LudoGame = () => {
                     return updatedPlayers;
                 });
 
-                if (toSteps < maxSteps) {
+                let didCapture = false;
+                if (toSteps < maxStepsRef.current) {
                     const newPosition = getPositionOnPath(mover, toSteps);
                     const capturedPieces = checkForCapture(mover, newPosition);
+                    didCapture = Array.isArray(capturedPieces) && capturedPieces.length > 0;
                     capturedPieces.forEach(({ playerIndex: pi, pieceIndex: pj }) => captureToken(pi, pj));
                 }
 
-                if (toSteps === maxSteps) {
+                if (toSteps === maxStepsRef.current) {
                     setPlayers(prev => {
                         const updatedPlayers = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
-                        const finishedCount = updatedPlayers[mover].pieces.filter(p => p.steps === maxSteps).length;
+                        const finishedCount = updatedPlayers[mover].pieces.filter(p => p.steps === maxStepsRef.current).length;
                         if (finishedCount === 4) {
                             const winnerPlayer = updatedPlayers[mover];
-                            const newWinners = [...winners, winnerPlayer];
+                            const newWinners = [...winnersRef.current, winnerPlayer];
                             setWinners(newWinners);
                             setWinner(winnerPlayer);
                             setShowWinnerModal(true);
-                            const remainingPlayers = updatedPlayers.filter((_, idx) => idx < selectedPlayerCount);
+                            const remainingPlayers = updatedPlayers.filter((_, idx) => idx < selectedPlayerCountRef.current);
                             if (newWinners.length >= remainingPlayers.length - 1) {
                                 setGameEnded(true);
                             }
@@ -647,21 +939,98 @@ const LudoGame = () => {
                 }
 
                 setDiceValue(0);
-                setTimeout(() => {
-                    const nextPlayer = getNextActivePlayer(mover);
-                    setCurrentPlayer(nextPlayer);
+                const rolled = Number(payload?.rolled);
+                const keepTurn = rolled === 6 || didCapture;
+                if (!keepTurn) {
+                    setTimeout(() => {
+                        const nextPlayer = getNextActivePlayer(mover);
+                        setCurrentPlayer(nextPlayer);
+                        setCanRollDice(true);
+                    }, 300);
+                } else {
                     setCanRollDice(true);
-                }, 300);
+                }
             });
         };
 
         s.on('ludo:roll', onRoll);
+        s.on('ludo:accepted', onAccepted);
+        s.on('ludo:players', onPlayers);
         s.on('ludo:move', onMove);
         return () => {
             s.off('ludo:roll', onRoll);
+            s.off('ludo:accepted', onAccepted);
+            s.off('ludo:players', onPlayers);
             s.off('ludo:move', onMove);
         };
-    }, [onlineMode, socketRef.current, gameId, myProfile?._id, players, currentPlayer, maxSteps, selectedPlayerCount, winners]);
+    }, [onlineMode, gameId, myProfile?._id]);
+
+    // Invite listeners attached regardless of onlineMode, so users receive invites anytime
+    useEffect(() => {
+        let retryTimer = null;
+        let usedSocket = null;
+        const attach = () => {
+            const s = socketRef.current;
+            if (!s) { retryTimer = setTimeout(attach, 300); return; }
+            if (inviteHandlersAttachedRef.current) return;
+            const onInvite = (payload) => {
+                try {
+                    if (!payload) return;
+                    if (payload.to && myProfile?._id && String(payload.to) !== String(myProfile._id)) return;
+                    try { console.log('[LUDO][client] on ludo:invite', payload); } catch (_e) { }
+                    setPendingInvites(prev => {
+                        const exists = prev.find(i => String(i.gameId) === String(payload.gameId) && String(i.from) === String(payload.by));
+                        if (exists) return prev;
+                        const inv = {
+                            from: payload.by,
+                            name: payload.name,
+                            avatar: payload.avatar,
+                            gameId: payload.gameId,
+                            slotIndex: payload.slotIndex,
+                            playerCount: payload.playerCount,
+                            ts: payload.ts || Date.now(),
+                        };
+                        return [inv, ...prev].slice(0, 20);
+                    });
+                } catch (_e) { }
+            };
+            const onInvites = (payload) => {
+                try {
+                    const arr = Array.isArray(payload?.invites) ? payload.invites : [];
+                    try { console.log('[LUDO][client] on ludo:invites', { count: arr.length, invites: arr }); } catch (_e) { }
+                    const normalized = arr.map(x => ({
+                        from: x.by ?? x.from,
+                        name: x.name,
+                        avatar: x.avatar,
+                        gameId: x.gameId,
+                        slotIndex: x.slotIndex,
+                        playerCount: x.playerCount,
+                        ts: x.ts || Date.now()
+                    }));
+                    setPendingInvites(normalized);
+                } catch (_e) { }
+            };
+            s.on('ludo:invite', onInvite);
+            s.on('ludo:invites', onInvites);
+            usedSocket = s;
+            inviteHandlersAttachedRef.current = true;
+            // store handlers on socket for cleanup
+            s.__ludoInviteHandlers = { onInvite, onInvites };
+        };
+        attach();
+        return () => {
+            if (retryTimer) clearTimeout(retryTimer);
+            try {
+                const s = usedSocket || socketRef.current;
+                const h = s && s.__ludoInviteHandlers;
+                if (s && h) {
+                    s.off('ludo:invite', h.onInvite);
+                    s.off('ludo:invites', h.onInvites);
+                }
+            } catch (_e) { }
+            inviteHandlersAttachedRef.current = false;
+        };
+    }, [myProfile?._id]);
 
     // Cleanup socket on unmount
     useEffect(() => {
@@ -671,9 +1040,16 @@ const LudoGame = () => {
                     socketRef.current.disconnect();
                     socketRef.current = null;
                 }
-            } catch (_e) {}
+            } catch (_e) { }
         };
     }, []);
+
+    // Request latest players snapshot after joining a game (late join sync)
+    useEffect(() => {
+        const s = socketRef.current;
+        if (!s || !onlineMode || !gameId) return;
+        try { s.emit('ludo:players:get', { gameId }); } catch (_e) { }
+    }, [onlineMode, gameId]);
 
     const startGame = () => {
         setShowPlayerSelection(true);
@@ -688,6 +1064,22 @@ const LudoGame = () => {
         setCanRollDice(true);
         setDiceRolling(false);
         initializeGame(selectedPlayerCount);
+        // Re-apply any reserved invited slots to the fresh players list
+        if (onlineMode && invitedSlotByFriendId && Object.keys(invitedSlotByFriendId).length > 0) {
+            setPlayers(prev => {
+                const copy = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
+                Object.entries(invitedSlotByFriendId).forEach(([fid, slotStr]) => {
+                    const slot = Number(slotStr);
+                    const friend = [...selectedFriends, ...friendList, ...searchResults].find(f => String(f?._id) === String(fid));
+                    if (copy[slot] && friend) {
+                        copy[slot].name = friend.fullName || copy[slot].name;
+                        copy[slot].avatar = friend.profilePic || copy[slot].avatar;
+                        copy[slot].profileId = friend._id;
+                    }
+                });
+                return copy;
+            });
+        }
         // Setup online room/socket
         if (onlineMode && myProfile?._id) {
             const gid = gameId || generateGameId();
@@ -702,7 +1094,9 @@ const LudoGame = () => {
                 }
                 socketRef.current.emit('ludo:join', { gameId: gid });
                 setMyPlayerIndex(0);
-            } catch (_e) {}
+                // Broadcast players snapshot so remotes sync
+                emitPlayersState(gid);
+            } catch (_e) { }
         }
     };
 
@@ -721,6 +1115,17 @@ const LudoGame = () => {
         setWinner(null);
     };
 
+    // Debug: trigger celebration modal
+    const triggerDebugCelebration = () => {
+        try {
+            const winnerPlayer = players[currentPlayer];
+            if (!winnerPlayer) return;
+            setWinner(winnerPlayer);
+            setShowWinnerModal(true);
+            setWinners(prev => (prev.some(w => w?.id === winnerPlayer?.id) ? prev : [...prev, winnerPlayer]));
+        } catch (_e) { }
+    };
+
     const resetGame = () => {
         moveTimersRef.current.forEach(t => clearTimeout(t));
         moveTimersRef.current = [];
@@ -735,14 +1140,116 @@ const LudoGame = () => {
         setDiceRolling(false);
         setShowPlayerSelection(false);
         initializeGame(selectedPlayerCount);
+        setInvitedStatusByFriendId({});
+        setInvitedSlotByFriendId({});
+        setIncomingInviteRequest(null);
+    };
+
+    // Accept / decline an incoming invite
+    const acceptIncomingInvite = async () => {
+        const payload = incomingInviteRequest;
+        if (!payload) return;
+        try {
+            setOnlineMode(true);
+            setGameId(payload.gameId);
+            setSelectedPlayerCount([2, 3, 4].includes(payload.playerCount) ? payload.playerCount : selectedPlayerCount);
+            ensureSocketConnected();
+            if (socketRef.current) {
+                try { socketRef.current.emit('ludo:join', { gameId: payload.gameId }); } catch (_e) { }
+            }
+            setMyPlayerIndex(payload.slotIndex);
+            // Update local players for quick UI before host snapshot arrives
+            initializeGame([2, 3, 4].includes(payload.playerCount) ? payload.playerCount : selectedPlayerCount);
+            setPlayers(prev => {
+                const copy = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
+                const slot = payload.slotIndex;
+                if (copy[slot]) {
+                    copy[slot].name = myProfile?.fullName || copy[slot].name;
+                    copy[slot].avatar = myProfile?.profilePic || copy[slot].avatar;
+                    copy[slot].profileId = myProfile?._id || copy[slot].profileId;
+                }
+                return copy;
+            });
+            // Notify host we accepted
+            try {
+                socketRef.current && socketRef.current.emit('ludo:accept', {
+                    gameId: payload.gameId,
+                    slotIndex: payload.slotIndex,
+                    friend: { _id: myProfile?._id, fullName: myProfile?.fullName, profilePic: myProfile?.profilePic },
+                    from: payload.from
+                });
+            } catch (_e) { }
+        } finally {
+            setIncomingInviteRequest(null);
+            // Set game started view; host will sync board via ludo:players
+            setGameStarted(true);
+            // Remove invite from list locally
+            setPendingInvites(prev => prev.filter(i => !(String(i.gameId) === String(payload.gameId) && String(i.from) === String(payload.from))));
+        }
+    };
+
+    const declineIncomingInvite = () => {
+        const payload = incomingInviteRequest;
+        setIncomingInviteRequest(null);
+        if (payload && socketRef.current) {
+            try { socketRef.current.emit('ludo:invites:dismiss', { gameId: payload.gameId, by: payload.from }); } catch (_e) { }
+        }
+    };
+
+    const acceptInvite = (inv) => {
+        if (!inv) return;
+        setIncomingInviteRequest(inv);
+        setTimeout(() => acceptIncomingInvite(), 0);
+    };
+
+    const dismissInvite = (inv) => {
+        if (!inv) return;
+        setPendingInvites(prev => prev.filter(i => !(String(i.gameId) === String(inv.gameId) && String(i.from) === String(inv.from))));
+        try { socketRef.current && socketRef.current.emit('ludo:invites:dismiss', { gameId: inv.gameId, by: inv.from }); } catch (_e) { }
+    };
+
+    // Player editor helpers
+    const openPlayerEditor = (index) => {
+        if (index == null || !players[index]) return;
+        setEditingPlayerIndex(index);
+        setEditName(players[index]?.name || '');
+        setEditAvatarUrl(players[index]?.avatar || '');
+        setShowPlayerEditor(true);
+    };
+
+    const closePlayerEditor = () => {
+        setShowPlayerEditor(false);
+        setEditingPlayerIndex(null);
+    };
+
+    const onPickAvatarFile = (e) => {
+        try {
+            const f = e?.target?.files?.[0];
+            if (!f) return;
+            const url = URL.createObjectURL(f);
+            setEditAvatarUrl(url);
+        } catch (_e) { }
+    };
+
+    const savePlayerEditor = () => {
+        if (editingPlayerIndex == null) return closePlayerEditor();
+        setPlayers(prev => {
+            const updated = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
+            const target = updated[editingPlayerIndex];
+            if (!target) return prev;
+            target.name = (editName && editName.trim().length > 0) ? editName.trim() : target.name;
+            target.avatar = (editAvatarUrl && editAvatarUrl.trim().length > 0) ? editAvatarUrl.trim() : undefined;
+            return updated;
+        });
+        closePlayerEditor();
     };
 
     // Rendering helpers
     const homePositions = [
-        [ { x: 2, y: 2 }, { x: 3, y: 2 }, { x: 2, y: 3 }, { x: 3, y: 3 } ],
-        [ { x: 11, y: 2 }, { x: 12, y: 2 }, { x: 11, y: 3 }, { x: 12, y: 3 } ],
-        [ { x: 2, y: 11 }, { x: 3, y: 11 }, { x: 2, y: 12 }, { x: 3, y: 12 } ],
-        [ { x: 11, y: 11 }, { x: 12, y: 11 }, { x: 11, y: 12 }, { x: 12, y: 12 } ],
+        [{ x: 2, y: 2 }, { x: 3, y: 2 }, { x: 2, y: 3 }, { x: 3, y: 3 }],
+        [{ x: 11, y: 2 }, { x: 12, y: 2 }, { x: 11, y: 3 }, { x: 12, y: 3 }],
+        [{ x: 2, y: 11 }, { x: 3, y: 11 }, { x: 2, y: 12 }, { x: 3, y: 12 }],
+        [{ x: 11, y: 11 }, { x: 12, y: 11 }, { x: 11, y: 12 }, { x: 12, y: 12 }],
     ];
 
     // Compute overlapping tokens in the same board cell for better visibility
@@ -762,7 +1269,8 @@ const LudoGame = () => {
     }, [players]);
 
     const getOverlapOffset = (count, index) => {
-        const delta = CELL_SIZE * 0.28; // spread tokens within the cell
+        // Keep overlapping tokens within the same cell
+        const delta = CELL_SIZE * 0.35;
         if (count <= 1) return { dx: 0, dy: 0 };
         if (count === 2) {
             return { dx: index === 0 ? -delta / 2 : delta / 2, dy: 0 };
@@ -770,17 +1278,17 @@ const LudoGame = () => {
         if (count === 3) {
             const positions = [
                 { dx: -delta / 2, dy: -delta / 2 },
-                { dx:  delta / 2, dy: -delta / 2 },
-                { dx: 0, dy:  delta / 2 },
+                { dx: delta / 2, dy: -delta / 2 },
+                { dx: 0, dy: delta / 2 },
             ];
             return positions[index] || { dx: 0, dy: 0 };
         }
         // 4 or more - use 2x2 grid for first 4
         const grid = [
             { dx: -delta / 2, dy: -delta / 2 },
-            { dx:  delta / 2, dy: -delta / 2 },
-            { dx: -delta / 2, dy:  delta / 2 },
-            { dx:  delta / 2, dy:  delta / 2 },
+            { dx: delta / 2, dy: -delta / 2 },
+            { dx: -delta / 2, dy: delta / 2 },
+            { dx: delta / 2, dy: delta / 2 },
         ];
         return grid[index % 4];
     };
@@ -809,22 +1317,41 @@ const LudoGame = () => {
     const renderStaticRects = () => {
         const elems = [];
         // Corner home areas (colored border with inner white)
-        const drawHome = (x0, y0, color) => {
+        const drawHome = (x0, y0, color, idx) => {
             elems.push(<rect key={`home-outer-${x0}-${y0}`} x={x0 * CELL_SIZE} y={y0 * CELL_SIZE} width={CELL_SIZE * 6} height={CELL_SIZE * 6} fill={color} stroke="#000" strokeWidth={2} />);
-            elems.push(<rect key={`home-inner-${x0}-${y0}`} x={(x0 + 1) * CELL_SIZE} y={(y0 + 1) * CELL_SIZE} width={CELL_SIZE * 4} height={CELL_SIZE * 4} fill="#FFFFFF" stroke="#000" strokeWidth={2} />);
+            const innerX = (x0 + 1) * CELL_SIZE;
+            const innerY = (y0 + 1) * CELL_SIZE;
+            const innerW = CELL_SIZE * 4;
+            const innerH = CELL_SIZE * 4;
+            // Background cover image
+            const coverUrl = players[idx]?.cover || players[idx]?.avatar;
+            if (coverUrl && idx < selectedPlayerCount) {
+                elems.push((
+                    <image key={`home-cover-${x0}-${y0}`} href={coverUrl} x={innerX} y={innerY} width={innerW} height={innerH} preserveAspectRatio="xMidYMid slice" />
+                ));
+                // Dark overlay over background image for contrast
+                elems.push(
+                    <rect key={`home-cover-overlay-${x0}-${y0}`} x={innerX} y={innerY} width={innerW} height={innerH} fill="rgba(0,0,0,0.5)" />
+                );
+                // Border frame over the image
+                elems.push(<rect key={`home-inner-border-${x0}-${y0}`} x={innerX} y={innerY} width={innerW} height={innerH} fill="none" stroke="#000" strokeWidth={2} />);
+            } else {
+                // Fallback white background
+                elems.push(<rect key={`home-inner-${x0}-${y0}`} x={innerX} y={innerY} width={innerW} height={innerH} fill="#FFFFFF" stroke="#000" strokeWidth={2} />);
+            }
             // four pips
             const cx = (x0 + 1) * CELL_SIZE + CELL_SIZE * 2;
             const cy = (y0 + 1) * CELL_SIZE + CELL_SIZE * 2;
             const r = CELL_SIZE * 0.35;
-            const offsets = [ [-r, -r], [r, -r], [-r, r], [r, r] ];
+            const offsets = [[-r, -r], [r, -r], [-r, r], [r, r]];
             offsets.forEach((o, i) => {
                 elems.push(<circle key={`pip-${x0}-${y0}-${i}`} cx={cx + o[0]} cy={cy + o[1]} r={CELL_SIZE * 0.35} fill={color} stroke="#000" strokeWidth={2} />);
             });
         };
-        drawHome(0, 0, colors[0]); // red
-        drawHome(9, 0, colors[1]); // green
-        drawHome(0, 9, colors[2]); // blue
-        drawHome(9, 9, colors[3]); // yellow
+        drawHome(0, 0, colors[0], 0); // red
+        drawHome(9, 0, colors[1], 1); // green
+        drawHome(0, 9, colors[2], 2); // blue
+        drawHome(9, 9, colors[3], 3); // yellow
 
         // Cross paths - single width
         for (let c = 0; c < 15; c++) {
@@ -838,21 +1365,40 @@ const LudoGame = () => {
 
         // Colored home columns (five squares towards center)
         for (let r = 1; r <= 5; r++) elems.push(<rect key={`green-col-${r}`} x={7 * CELL_SIZE} y={r * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[1]} stroke="#000" strokeWidth={1} />);
-        for (let c = 9; c <= 13; c++) elems.push(<rect key={`yellow-row-${c}`} x={c * CELL_SIZE} y={7 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[2]} stroke="#000" strokeWidth={1} />);
-        for (let r = 9; r <= 12; r++) elems.push(<rect key={`blue-col-${r}`} x={7 * CELL_SIZE} y={r * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[3]} stroke="#000" strokeWidth={1} />);
+        for (let c = 9; c <= 13; c++) elems.push(<rect key={`yellow-row-${c}`} x={c * CELL_SIZE} y={7 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[3]} stroke="#000" strokeWidth={1} />);
+        for (let r = 9; r <= 12; r++) elems.push(<rect key={`blue-col-${r}`} x={7 * CELL_SIZE} y={r * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[2]} stroke="#000" strokeWidth={1} />);
         for (let c = 1; c <= 5; c++) elems.push(<rect key={`red-row-${c}`} x={c * CELL_SIZE} y={7 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[0]} stroke="#000" strokeWidth={1} />);
 
-        // Center triangles
-        const cx = 7 * CELL_SIZE, cy = 7 * CELL_SIZE, s = CELL_SIZE;
-        elems.push(<path key="tri-red" d={`M ${cx} ${cy} L ${cx} ${cy + s} L ${cx - s} ${cy + s/2} Z`} fill={colors[0]} stroke="#000" strokeWidth={1} />);
-        elems.push(<path key="tri-yellow" d={`M ${cx} ${cy} L ${cx + s} ${cy} L ${cx + s/2} ${cy + s} Z`} fill={colors[3]} stroke="#000" strokeWidth={1} />);
-        elems.push(<path key="tri-blue" d={`M ${cx} ${cy + s} L ${cx + s/2} ${cy} L ${cx - s/2} ${cy} Z`} fill={colors[2]} stroke="#000" strokeWidth={1} />);
-        elems.push(<path key="tri-green" d={`M ${cx} ${cy} L ${cx} ${cy - s} L ${cx + s} ${cy - s/2} Z`} fill={colors[1]} stroke="#000" strokeWidth={1} />);
+        // Center pinwheel across the full 3x3 center (cells 6..8,6..8)
+        // Coordinates of the 3x3 center square
+        const cx = (7.5) * CELL_SIZE; // center point
+        const cy = (7.5) * CELL_SIZE;
+        const xLeft = 6 * CELL_SIZE;
+        const xRight = 9 * CELL_SIZE;
+        const yTop = 6 * CELL_SIZE;
+        const yBottom = 9 * CELL_SIZE;
+        // Top (green)
+        elems.push(<path key="center-tri-green" d={`M ${xLeft} ${yTop} L ${xRight} ${yTop} L ${cx} ${cy} Z`} fill={colors[1]} stroke="#000" strokeWidth={1} />);
+        // Right (yellow)
+        elems.push(<path key="center-tri-yellow" d={`M ${xRight} ${yTop} L ${xRight} ${yBottom} L ${cx} ${cy} Z`} fill={colors[3]} stroke="#000" strokeWidth={1} />);
+        // Bottom (blue)
+        elems.push(<path key="center-tri-blue" d={`M ${xLeft} ${yBottom} L ${xRight} ${yBottom} L ${cx} ${cy} Z`} fill={colors[2]} stroke="#000" strokeWidth={1} />);
+        // Left (red)
+        elems.push(<path key="center-tri-red" d={`M ${xLeft} ${yTop} L ${xLeft} ${yBottom} L ${cx} ${cy} Z`} fill={colors[0]} stroke="#000" strokeWidth={1} />);
+
+        // Highlight entry cells for all players
+        elems.push(<rect key="highlight-1-6" x={1 * CELL_SIZE} y={6 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[0]} stroke="#000" strokeWidth={1} />);   // Red entry
+        elems.push(<rect key="highlight-8-1" x={8 * CELL_SIZE} y={1 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[1]} stroke="#000" strokeWidth={1} />);   // Green entry
+        elems.push(<rect key="highlight-6-13" x={6 * CELL_SIZE} y={13 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[2]} stroke="#000" strokeWidth={1} />); // Blue entry
+        elems.push(<rect key="highlight-13-8" x={13 * CELL_SIZE} y={8 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[3]} stroke="#000" strokeWidth={1} />); // Yellow entry
+
+        // Ensure cell (7,12) is blue
+        elems.push(<rect key="force-blue-7-12" x={7 * CELL_SIZE} y={13 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[2]} stroke="#000" strokeWidth={1} />);
 
         return (<>{elems}</>);
     };
 
-    const tokenSize = CELL_SIZE * 1.1;
+    const tokenSize = CELL_SIZE * 0.9;
     const boardStyle = {
         position: 'relative',
         width: BOARD_SIZE + 'px',
@@ -899,14 +1445,14 @@ const LudoGame = () => {
                 transition: `transform ${stepDurationMs}ms ease`
             }}>
                 <button
-                    onClick={() => { if (isActivePlayer && isCurrentPlayer && diceValue > 0) movePiece(pieceIndex); }}
+                    onClick={() => { if ((!onlineMode || myPlayerIndex === currentPlayer) && isActivePlayer && isCurrentPlayer && diceValue > 0) movePiece(pieceIndex); }}
                     disabled={!isActivePlayer || !isCurrentPlayer || diceValue === 0}
                     style={{
                         width: '100%',
                         height: '100%',
                         borderRadius: tokenSize / 2,
-                        background: piece.color,
-                        border: '4px solid #FFFFFF',
+                        background: "black",
+                        border: `3px solid ${adjustHexColor(piece.color, -30)}`,
                         boxShadow: isActivePlayer ? `0 6px 8px ${piece.color}66` : 'none',
                         opacity: isActivePlayer ? 1 : 0.3,
                         position: 'relative',
@@ -971,15 +1517,15 @@ const LudoGame = () => {
     }
 
     if (showPlayerSelection) {
-    return (
-            <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.8)', padding: 20 }}>
+        return (
+            <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.8)', padding: 20, position: 'fixed', inset: 0, zIndex: 2000 }}>
                 <div style={{ width: '100%', maxWidth: 420, background: 'rgba(26, 35, 50, 0.95)', borderRadius: 24, padding: 28, border: '1px solid rgba(255, 215, 0, 0.3)', color: 'white' }}>
                     <div style={{ textAlign: 'center', marginBottom: 20 }}>
                         <div style={{ fontSize: 32, color: '#FFD700', fontWeight: 'bold' }}>Select Players</div>
                         <div style={{ color: '#B0B0B0' }}>Choose how many players will join the game</div>
                     </div>
                     <div>
-                        {[2,3,4].map(count => (
+                        {[2, 3, 4].map(count => (
                             <button key={count} onClick={() => setSelectedPlayerCount(count)} style={{
                                 width: '100%',
                                 textAlign: 'left',
@@ -1014,7 +1560,7 @@ const LudoGame = () => {
                             <button onClick={() => setOnlineMode(!onlineMode)} style={{ padding: '6px 12px', borderRadius: 16, background: onlineMode ? '#29B1A9' : 'rgba(255,255,255,0.1)', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 600 }}>{onlineMode ? 'On' : 'Off'}</button>
                         </div>
                         {onlineMode && (
-        <div>
+                            <div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(255,255,255,0.2)', borderRadius: 10, padding: '8px 10px' }}>
                                     <span role="img" aria-label="search">🔎</span>
                                     <input
@@ -1029,22 +1575,33 @@ const LudoGame = () => {
                                     {(friendSearchQuery ? searchResults : friendList).map((f) => {
                                         const key = f?._id || String(f?.id) || Math.random().toString(36);
                                         const isSelected = selectedFriends.some(sf => sf._id === f._id);
+                                        const inviteStatus = invitedStatusByFriendId[f?._id];
+                                        const canInvite = !inviteStatus && getNextOpenSlot() != null;
                                         return (
-                                            <button key={key} onClick={() => {
+                                            <div key={key} onClick={() => {
                                                 setSelectedFriends(prev => {
                                                     if (isSelected) return prev.filter(p => p._id !== f._id);
                                                     const next = [...prev, f];
                                                     return next.slice(0, Math.max(0, selectedPlayerCount - 1));
                                                 });
-                                            }} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'transparent', border: 'none', color: 'white', padding: '8px 0', cursor: 'pointer' }}>
+                                            }} role="button" tabIndex={0} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'transparent', border: 'none', color: 'white', padding: '8px 0', cursor: 'pointer' }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                                     <div style={{ width: 28, height: 28, borderRadius: 14, overflow: 'hidden', background: '#333' }}>
                                                         {f?.profilePic ? <img src={f.profilePic} alt=" " style={{ width: 28, height: 28, objectFit: 'cover' }} /> : null}
                                                     </div>
                                                     <div style={{ fontSize: 14 }}>{f?.fullName || 'Unknown'}</div>
                                                 </div>
-                                                <div>{isSelected ? '✅' : '⭕'}</div>
-                                            </button>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                    <span>{isSelected ? '✅' : '⭕'}</span>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); inviteFriend(f); }}
+                                                        disabled={!canInvite}
+                                                        style={{ padding: '4px 8px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)', background: inviteStatus ? 'rgba(255,255,255,0.1)' : '#29B1A9', color: 'white', cursor: canInvite ? 'pointer' : 'default', fontSize: 12 }}
+                                                    >
+                                                        {inviteStatus === 'joined' ? 'Joined' : inviteStatus === 'invited' ? 'Invited' : 'Invite'}
+                                                    </button>
+                                                </div>
+                                            </div>
                                         );
                                     })}
                                 </div>
@@ -1068,9 +1625,9 @@ const LudoGame = () => {
                         <button onClick={confirmPlayerCount} style={{ flex: 1, background: '#00AA00', color: 'white', padding: '12px 0', border: 'none', borderRadius: 20, cursor: 'pointer', fontWeight: 'bold' }}>Start Game</button>
                     </div>
                 </div>
-        </div>
-    );
-}
+            </div>
+        );
+    }
 
     return (
         <div style={{ minHeight: '100vh', background: '#1a1a2e', color: 'white', position: 'relative', zIndex: 10 }}>
@@ -1079,32 +1636,49 @@ const LudoGame = () => {
                 @keyframes tokenPulseScale { 0% { transform: scale(1); } 50% { transform: scale(1.12); } 100% { transform: scale(1); } }
                 @keyframes tokenGlow { 0% { box-shadow: 0 0 10px rgba(255,215,0,0.4), 0 0 20px rgba(255,215,0,0.2); } 50% { box-shadow: 0 0 16px rgba(255,215,0,0.9), 0 0 30px rgba(255,215,0,0.6); } 100% { box-shadow: 0 0 10px rgba(255,215,0,0.4), 0 0 20px rgba(255,215,0,0.2); } }
             `}</style>
-            <div style={{ padding: '10px 20px', background: 'rgba(26, 35, 50, 0.9)', borderBottom: '1px solid rgba(255, 215, 0, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ padding: '10px 20px', background: 'rgba(26, 35, 50, 0.9)', borderBottom: '1px solid rgba(255, 215, 0, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'space-around' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ color: '#FFD700', fontSize: 28, fontWeight: 'bold' }}>Ludo Classic</div>
+                    <div style={{ color: '#00D4FF', fontSize: 28, fontWeight: 'bold' }}>Ludo Classic</div>
                 </div>
-                <div style={{ display: 'flex', gap: 10 }}>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                     {!gameStarted ? (
-                        <button onClick={startGame} style={{ background: '#00AA00', color: 'white', padding: '10px 16px', border: 'none', borderRadius: 20, cursor: 'pointer', fontWeight: 'bold' }}>Start</button>
+                        <button onClick={startGame} style={{ background: '#00D4FF', color: 'white', padding: '8px 36px', border: 'none', borderRadius: 20, cursor: 'pointer', fontWeight: 'bold' }}>Start</button>
                     ) : (
                         <button onClick={resetGame} style={{ background: '#4444FF', color: 'white', padding: '10px 16px', border: 'none', borderRadius: 20, cursor: 'pointer', fontWeight: 'bold' }}>Reset</button>
+                    )}
+                    {isDebug && (
+                        <button onClick={triggerDebugCelebration} title="Debug: Test celebration" style={{ background: 'transparent', color: '#FFD700', padding: '6px 10px', border: '1px solid #FFD700', borderRadius: 12, cursor: 'pointer', fontWeight: 700 }}>Debug Celebrate</button>
                     )}
                 </div>
             </div>
 
-            {gameStarted && (
-                <div style={{ padding: 20 }}>
-                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(26, 35, 50, 0.8)', padding: 16, borderRadius: 16, border: '1px solid rgba(255, 215, 0, 0.2)', width: BOARD_SIZE }}>
-                            <div>
-                                <div style={{ fontSize: 12, color: '#B0B0B0', marginBottom: 4 }}>Current Turn</div>
-                                <div style={{ display: 'flex',width: '100%', alignItems: 'center', gap: 8, background: players[currentPlayer]?.color, padding: '6px 12px', borderRadius: 20 }}>
-                                    <div>{playerEmojis[currentPlayer]}</div>
-                                    <div style={{ fontWeight: 'bold' }}>{players[currentPlayer]?.name}</div>
+            {/* Pending invitations banner/list */}
+            {pendingInvites.length > 0 && (
+                <div style={{ padding: '10px 20px', background: 'rgba(26, 35, 50, 0.85)', borderBottom: '1px dashed rgba(255, 215, 0, 0.2)' }}>
+                    <div style={{ color: '#FFD700', fontWeight: 800, marginBottom: 8 }}>Invitations</div>
+                    <div style={{ display: 'grid', gap: 8 }}>
+                        {pendingInvites.map((inv, idx) => (
+                            <div key={`${inv.gameId}-${inv.from}-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.04)', padding: 8, borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)' }}>
+                                <div style={{ width: 28, height: 28, borderRadius: 14, overflow: 'hidden', background: '#333', border: '2px solid #FFD700' }}>
+                                    {inv.avatar ? <img src={inv.avatar} alt=" " style={{ width: 28, height: 28, objectFit: 'cover' }} /> : null}
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ fontSize: 13, fontWeight: 700 }}>{inv.name || 'Friend'} invited you</div>
+                                    <div style={{ color: '#B0B0B0', fontSize: 11 }}>Players: {inv.playerCount} • Slot #{(inv.slotIndex ?? 0) + 1}</div>
+                                </div>
+                                <div style={{ display: 'flex', gap: 6 }}>
+                                    <button onClick={() => dismissInvite(inv)} style={{ background: 'transparent', color: '#ccc', padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.15)', cursor: 'pointer', fontWeight: 600 }}>Dismiss</button>
+                                    <button onClick={() => acceptInvite(inv)} style={{ background: '#29B1A9', color: 'white', padding: '6px 10px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 800 }}>Accept</button>
                                 </div>
                             </div>
-                        </div>
+                        ))}
                     </div>
+                </div>
+            )}
+
+            {gameStarted && (
+                <div style={{ padding: 20 }}>
+
 
                     <div style={{ display: 'flex', justifyContent: 'center' }}>
                         <div style={boardStyle}>
@@ -1127,9 +1701,13 @@ const LudoGame = () => {
                                     <div style={{ width: 108, height: 108, perspective: '800px' }}>
                                         <div style={{ width: '100%', height: '100%', transformStyle: 'preserve-3d', display: 'flex', alignItems: 'center', justifyContent: 'center', transform: `rotateX(${diceRotateX}deg) rotateY(${diceRotateY}deg)`, transition: 'transform 0.7s ease-in-out' }}>
                                             {(!diceRolling && canRollDice && diceValue === 0) ? (
-                                                <img src={siteConfig.logo} alt="Connect" style={{ width: 80, height: 80, borderRadius: "50%", objectFit: 'contain', background: 'transparent', boxShadow: '0 6px 10px rgba(0,0,0,0.35)' }} />
+                                                players[currentPlayer]?.avatar ? (
+                                                    <img src={players[currentPlayer].avatar} alt="current player" style={{ width: 80, height: 80, borderRadius: "50%", objectFit: 'cover', boxShadow: '0 6px 10px rgba(0,0,0,0.35)', border: `3px solid ${players[currentPlayer]?.color || '#FFD700'}` }} />
+                                                ) : (
+                                                    <img src={siteConfig.logo} alt="Connect" style={{ width: 80, height: 80, borderRadius: "50%", objectFit: 'contain', background: 'transparent', boxShadow: '0 6px 10px rgba(0,0,0,0.35)', border: `3px solid ${players[currentPlayer]?.color || '#FFD700'}` }} />
+                                                )
                                             ) : (
-                                                <DiceSVG value={diceValue || 6} size={108} />
+                                                <DiceSVG value={diceRolling ? null : diceValue} size={108} strokeColor={players[currentPlayer]?.color || '#FFD700'} />
                                             )}
                                         </div>
                                     </div>
@@ -1137,20 +1715,142 @@ const LudoGame = () => {
                             </div>
                         </div>
                     </div>
+                    {/* Current Turn panel moved below the board */}
+                    <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, background: 'rgba(26, 35, 50, 0.8)', padding: 16, borderRadius: 16, border: '1px solid rgba(255, 215, 0, 0.2)', width: BOARD_SIZE }}>
+                            <div style={{ fontSize: 12, color: '#B0B0B0' }}>Current Turn</div>
+                            <div style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 10, background: players[currentPlayer]?.color, padding: '8px 12px', borderRadius: 24 }}>
+                                {players[currentPlayer]?.avatar ? (
+                                    <img src={players[currentPlayer].avatar} alt="avatar" style={{ width: 26, height: 26, borderRadius: 13, objectFit: 'cover', border: '2px solid #111', background: '#fff' }} />
+                                ) : (
+                                    <div style={{ width: 26, height: 26, borderRadius: 13, background: '#fff', border: '2px solid #111' }} />
+                                )}
+                                <div style={{ fontWeight: 'bold', color: '#fff', flex: 1 }}>{players[currentPlayer]?.name}</div>
+                            </div>
+                            {/* Player settings buttons */}
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                {renderPlayerOrder.map((idx) => (
+                                    <button key={`pbtn-${idx}`} onClick={() => openPlayerEditor(idx)} title={players[idx]?.name || 'Player'} style={{
+                                        width: 32,
+                                        height: 32,
+                                        borderRadius: 16,
+                                        background: players[idx]?.color,
+                                        border: '2px solid #222',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                                    }} aria-label={`Edit ${players[idx]?.name || 'player'}`}>
+                                        {players[idx]?.avatar ? (
+                                            <img src={players[idx].avatar} alt=" " style={{ width: 24, height: 24, borderRadius: 12, objectFit: 'cover', border: '2px solid #fff' }} />
+                                        ) : (
+                                            <span style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>{['R', 'G', 'Y', 'B'][idx] || 'P'}</span>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
 
             {showWinnerModal && (
-                <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-                    <div style={{ width: '100%', maxWidth: 420, background: 'rgba(26, 35, 50, 0.95)', borderRadius: 24, padding: 24, border: '2px solid rgba(255, 215, 0, 0.5)', color: 'white', textAlign: 'center' }}>
-                        <div style={{ fontSize: 64, marginBottom: 8 }}>🏆</div>
-                        <div style={{ fontSize: 24, fontWeight: 'bold', color: '#FFD700', marginBottom: 8 }}>{winner?.name} Wins!</div>
-                        <div style={{ color: '#B0B0B0', marginBottom: 16 }}>Congratulations on your victory!</div>
-                        <div style={{ display: 'flex', gap: 12 }}>
-                            {!gameEnded && (
-                                <button onClick={continueGame} style={{ flex: 1, background: winner?.color || '#555', color: 'white', padding: '12px 0', border: 'none', borderRadius: 20, cursor: 'pointer', fontWeight: 'bold' }}>Continue Game</button>
-                            )}
-                            <button onClick={endGame} style={{ flex: 1, background: '#FF4444', color: 'white', padding: '12px 0', border: 'none', borderRadius: 20, cursor: 'pointer', fontWeight: 'bold' }}>End Game</button>
+                <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 3000 }}>
+                    <div style={{ width: '100%', maxWidth: 520, position: 'relative' }}>
+                        <WinnerConfetti />
+                        <div style={{
+                            background: 'linear-gradient(180deg, rgba(26,35,50,0.95), rgba(26,35,50,0.92))',
+                            borderRadius: 28,
+                            padding: 28,
+                            border: '2px solid rgba(255, 215, 0, 0.6)',
+                            color: 'white',
+                            textAlign: 'center',
+                            boxShadow: '0 12px 40px rgba(0,0,0,0.5)'
+                        }}>
+                            <div style={{ position: 'relative', marginBottom: 10 }}>
+                                <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: 160, height: 160, borderRadius: 80, background: winner?.color || '#FFD700', filter: 'blur(32px)', opacity: 0.6, animation: 'winnerGlow 2.2s ease-in-out infinite' }} />
+                                <div style={{ fontSize: 74, position: 'relative', animation: 'winnerPop 600ms ease forwards' }}>🏆</div>
+                            </div>
+                            <div style={{
+                                fontSize: 28,
+                                fontWeight: 900,
+                                marginBottom: 6,
+                                background: 'linear-gradient(90deg, #fff, #FFD700, #fff)',
+                                WebkitBackgroundClip: 'text',
+                                backgroundClip: 'text',
+                                color: 'transparent',
+                                backgroundSize: '200% 100%',
+                                animation: 'textShine 2.8s linear infinite'
+                            }}>{winner?.name} Wins!</div>
+                            <div style={{ color: '#B0B0B0', marginBottom: 18 }}>Congratulations on your victory!</div>
+                            <div style={{ display: 'flex', gap: 12 }}>
+                                {!gameEnded && (
+                                    <button onClick={continueGame} style={{ flex: 1, background: winner?.color || '#555', color: 'white', padding: '12px 0', border: 'none', borderRadius: 20, cursor: 'pointer', fontWeight: 'bold' }}>Continue Game</button>
+                                )}
+                                <button onClick={endGame} style={{ flex: 1, background: '#FF4444', color: 'white', padding: '12px 0', border: 'none', borderRadius: 20, cursor: 'pointer', fontWeight: 'bold' }}>End Game</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Incoming Invite Modal */}
+            {incomingInviteRequest && (
+                <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 3000 }}>
+                    <div style={{ width: '100%', maxWidth: 420, background: 'rgba(26, 35, 50, 0.95)', borderRadius: 24, padding: 22, border: '2px solid rgba(255, 215, 0, 0.5)', color: 'white' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                            <div style={{ width: 48, height: 48, borderRadius: 24, overflow: 'hidden', background: '#222', border: '2px solid #FFD700', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {incomingInviteRequest.avatar ? (
+                                    <img src={incomingInviteRequest.avatar} alt="inviter" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                ) : (
+                                    <span>🎲</span>
+                                )}
+                            </div>
+                            <div>
+                                <div style={{ fontWeight: 800, fontSize: 16 }}>Game Invite</div>
+                                <div style={{ color: '#B0B0B0', fontSize: 13 }}>{incomingInviteRequest.name || 'A friend'} invited you to play Ludo</div>
+                            </div>
+                        </div>
+                        <div style={{ color: '#B0B0B0', fontSize: 12, marginBottom: 12 }}>Players: {incomingInviteRequest.playerCount} • Slot #{(incomingInviteRequest.slotIndex ?? 0) + 1}</div>
+                        <div style={{ display: 'flex', gap: 10 }}>
+                            <button onClick={declineIncomingInvite} style={{ flex: 1, background: '#555', color: 'white', padding: '10px 0', border: 'none', borderRadius: 12, cursor: 'pointer', fontWeight: 'bold' }}>Decline</button>
+                            <button onClick={acceptIncomingInvite} style={{ flex: 1, background: '#29B1A9', color: 'white', padding: '10px 0', border: 'none', borderRadius: 12, cursor: 'pointer', fontWeight: 'bold' }}>Accept</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Player Editor Modal */}
+            {showPlayerEditor && editingPlayerIndex != null && (
+                <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 3000 }}>
+                    <div style={{ width: '100%', maxWidth: 460, background: 'rgba(26, 35, 50, 0.95)', borderRadius: 24, padding: 22, border: `2px solid ${players[editingPlayerIndex]?.color || 'rgba(255, 215, 0, 0.5)'}`, color: 'white' }}>
+                        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>Edit Player</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                            <div style={{ width: 56, height: 56, borderRadius: 28, overflow: 'hidden', border: `3px solid ${players[editingPlayerIndex]?.color || '#FFD700'}`, background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {editAvatarUrl ? (
+                                    <img src={editAvatarUrl} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                ) : (
+                                    <span style={{ fontSize: 22 }}>{playerEmojis[editingPlayerIndex]}</span>
+                                )}
+                            </div>
+                            <div>
+                                <div style={{ fontSize: 12, color: '#B0B0B0' }}>Player #{editingPlayerIndex + 1}</div>
+                                <div style={{ fontWeight: 700 }}>{players[editingPlayerIndex]?.name}</div>
+                            </div>
+                        </div>
+                        <div style={{ display: 'grid', gap: 10 }}>
+                            <input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Enter name" style={{ padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.06)', color: 'white' }} />
+                            <input value={editAvatarUrl} onChange={(e) => setEditAvatarUrl(e.target.value)} placeholder="Avatar image URL" style={{ padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.06)', color: 'white' }} />
+                            <div>
+                                <input ref={avatarFileInputRef} type="file" accept="image/*" onChange={onPickAvatarFile} style={{ display: 'none' }} />
+                                <button onClick={() => avatarFileInputRef.current && avatarFileInputRef.current.click()} style={{ background: '#4444FF', color: 'white', padding: '10px 12px', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 'bold' }}>Upload Picture</button>
+                            </div>
+                        </div>
+                        <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px dashed rgba(255,255,255,0.2)' }}>
+                            <div style={{ fontWeight: 700, marginBottom: 8 }}>Migrate to another device</div>
+                            <button onClick={copyInviteLink} style={{ background: '#29B1A9', color: 'white', padding: '10px 12px', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 'bold' }}>Copy Invite Link</button>
+                            {inviteCopied && <span style={{ color: '#B0FFB0', marginLeft: 10 }}>Copied!</span>}
+                        </div>
+                        <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+                            <button onClick={closePlayerEditor} style={{ flex: 1, background: '#555', color: 'white', padding: '10px 0', border: 'none', borderRadius: 12, cursor: 'pointer', fontWeight: 'bold' }}>Cancel</button>
+                            <button onClick={savePlayerEditor} style={{ flex: 1, background: players[editingPlayerIndex]?.color || '#00AA00', color: 'white', padding: '10px 0', border: 'none', borderRadius: 12, cursor: 'pointer', fontWeight: 'bold' }}>Save</button>
                         </div>
                     </div>
                 </div>

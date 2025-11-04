@@ -580,7 +580,7 @@ const Main = () => {
         stopAllAudio();
     }, [location.pathname]);
 
-    const isPortfolioRoute = location.pathname.startsWith('/portfolio');
+    const isHeaderHiddenRoute = location.pathname.startsWith('/portfolio') || location.pathname.startsWith('/youtube');
 
     return (
         <Fragment>
@@ -603,7 +603,7 @@ const Main = () => {
                     </div>)}
 
 
-                {!isPortfolioRoute && isAuthenticated && <Header />}
+                {!isHeaderHiddenRoute && isAuthenticated && <Header />}
 
                 <div id="main-container" className={isLoading ? 'loading' : ''}>
                     {/* <Face /> */}
