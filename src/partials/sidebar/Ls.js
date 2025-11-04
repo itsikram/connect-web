@@ -52,11 +52,11 @@ let LeftSidebar = () => {
                                     <svg style={{transform: 'scale(0.7)'}} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
                                         <defs>
                                             <linearGradient id="bgGradient" x1="0" y1="0" x2="1" y2="1">
-                                                <stop offset="0%" stop-color="#f9f9f9" />
-                                                <stop offset="100%" stop-color="#e0e0e0" />
+                                                <stop offset="0%" stopColor="#f9f9f9" />
+                                                <stop offset="100%" stopColor="#e0e0e0" />
                                             </linearGradient>
                                             <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
-                                                <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity="0.15" />
+                                                <feDropShadow dx="0" dy="4" stdDeviation="6" floodColor="#000" floodOpacity="0.15" />
                                             </filter>
                                         </defs>
 
@@ -67,7 +67,7 @@ let LeftSidebar = () => {
                                         <rect x="40" y="282" width="190" height="190" rx="28" fill="#33cc66" filter="url(#shadow)" />
                                         <rect x="282" y="282" width="190" height="190" rx="28" fill="#ffcc33" filter="url(#shadow)" />
 
-                                        <rect x="206" y="206" width="100" height="100" rx="20" fill="#fff" stroke="#ccc" stroke-width="3" filter="url(#shadow)" />
+                                        <rect x="206" y="206" width="100" height="100" rx="20" fill="#fff" stroke="#ccc" strokeWidth="3" filter="url(#shadow)" />
 
                                         <circle cx="256" cy="256" r="30" fill="#555" />
 
@@ -77,7 +77,7 @@ let LeftSidebar = () => {
                                         <circle cx="236" cy="276" r="6" fill="#fff" />
                                         <circle cx="276" cy="276" r="6" fill="#fff" />
 
-                                        <rect x="20" y="20" width="472" height="472" rx="80" fill="none" stroke="#ccc" stroke-width="4" />
+                                        <rect x="20" y="20" width="472" height="472" rx="80" fill="none" stroke="#ccc" strokeWidth="4" />
                                     </svg>
 
                                 </div>

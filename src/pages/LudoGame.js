@@ -164,6 +164,10 @@ const LudoGame = () => {
     const [inviteCopied, setInviteCopied] = useState(false);
     const [incomingInviteRequest, setIncomingInviteRequest] = useState(null); // { from, name, avatar, gameId, slotIndex, playerCount }
     const [pendingInvites, setPendingInvites] = useState([]); // [{ from, name, avatar, gameId, slotIndex, playerCount, ts }]
+    // Lobby/waiting state
+    const [waitingForPlayers, setWaitingForPlayers] = useState(false);
+    // Track inviter identity to fix seat 0 identity on invitee until host snapshot is correct
+    const [lastInviter, setLastInviter] = useState(null); // { id, name, avatar }
     // Player editor modal
     const [showPlayerEditor, setShowPlayerEditor] = useState(false);
     const [editingPlayerIndex, setEditingPlayerIndex] = useState(null);
@@ -176,11 +180,46 @@ const LudoGame = () => {
     const [myPlayerIndex, setMyPlayerIndex] = useState(0);
     const socketBaseUrl = useMemo(() => {
         try {
-            const url = (siteConfig?.siteUrl && typeof siteConfig.siteUrl === 'string') ? siteConfig.siteUrl : window.location.origin;
-            return url.replace(/\/$/, '');
+            const envUrl = (typeof process !== 'undefined' && process?.env?.REACT_APP_SOCKET_URL) ? process.env.REACT_APP_SOCKET_URL : null;
+            let url = envUrl || (siteConfig?.siteUrl && typeof siteConfig.siteUrl === 'string' ? siteConfig.siteUrl : window.location.origin);
+            // Dev heuristic: CRA at 3000, API at 5000
+            try {
+                const loc = window.location;
+                if (!envUrl && (!siteConfig?.siteUrl || siteConfig.siteUrl === '/') && /localhost|127\.|::1/.test(loc.hostname) && String(loc.port) === '3000') {
+                    url = `${loc.protocol}//${loc.hostname}:4000`;
+                }
+                // If siteConfig.siteUrl explicitly points to :3000 in dev, override to :4000
+                if (!envUrl && siteConfig?.siteUrl) {
+                    try {
+                        const raw = siteConfig.siteUrl;
+                        const parsed = new URL(raw, loc.origin);
+                        const isLocal = /localhost|127\.|::1/.test(parsed.hostname);
+                        const is3000 = parsed.port === '3000' || (!parsed.port && String(loc.port) === '3000');
+                        if (isLocal && is3000) {
+                            url = `${parsed.protocol}//${parsed.hostname}:4000`;
+                        }
+                    } catch (_e4) {}
+                }
+            } catch (_e2) {}
+            const normalized = url.replace(/\/$/, '');
+            try { console.log('[LUDO][client] socket base URL resolved', { envUrl, siteUrl: siteConfig?.siteUrl, final: normalized }); } catch (_e3) {}
+            return normalized;
         } catch (_e) {
             return window.location.origin;
         }
+    }, []);
+
+    // Safe helper to emit even if socket is still connecting
+    const emitSocket = useCallback((event, payload) => {
+        try {
+            const s = socketRef.current;
+            if (!s) return false;
+            const doEmit = () => { try { s.emit(event, payload); } catch (_e) { } };
+            if (s.connected) { doEmit(); return true; }
+            const onConnect = () => { doEmit(); s.off('connect', onConnect); };
+            s.on('connect', onConnect);
+            return true;
+        } catch (_e) { return false; }
     }, []);
 
     useEffect(() => { playersRef.current = players; }, [players]);
@@ -194,25 +233,50 @@ const LudoGame = () => {
         try {
             if (!myProfile?._id) return;
             if (!socketRef.current) {
-                try { console.log('[LUDO][client] creating socket', { baseUrl: socketBaseUrl, profile: myProfile?._id }); } catch (_e) { }
-                socketRef.current = io(socketBaseUrl, {
-                    transports: ['polling', 'websocket'],
-                    path: '/socket.io',
+                const socketPath = '/socket.io';
+                const opts = {
+                    transports: ['websocket', 'polling'],
+                    path: socketPath,
                     query: { profile: myProfile?._id },
                     timeout: 40000,
                     reconnection: true,
                     reconnectionAttempts: Infinity,
                     reconnectionDelay: 1000,
                     reconnectionDelayMax: 5000,
-                    forceNew: true
-                });
+                    forceNew: true,
+                    withCredentials: true
+                };
+                try { console.log('[LUDO][client] creating socket', { baseUrl: socketBaseUrl, profile: myProfile?._id, opts }); } catch (_e) { }
+                socketRef.current = io(socketBaseUrl, opts);
                 try {
                     socketRef.current.on('connect', () => {
                         try { console.log('[LUDO][client] socket connected', { id: socketRef.current?.id }); } catch (_e) { }
                         try { console.log('[LUDO][client] emit ludo:invites:get (on connect)'); socketRef.current?.emit('ludo:invites:get'); } catch (_e) { }
                     });
                     socketRef.current.on('connect_error', (err) => {
-                        try { console.error('[LUDO][client] connect_error', { message: err?.message }); } catch (_e) { }
+                        try { console.error('[LUDO][client] connect_error', { message: err?.message, baseUrl: socketBaseUrl, path: socketPath, query: { profile: myProfile?._id } }); } catch (_e) { }
+                        // Fallbacks: try window.origin if different; then try :4000 if on :3000
+                        try {
+                            const origin = window.location.origin.replace(/\/$/, '');
+                            const currentBase = (socketBaseUrl || '').replace(/\/$/, '');
+                            const isLocal3000 = /localhost|127\.|::1/.test(window.location.hostname) && String(window.location.port) === '3000';
+                            const alt4000 = `${window.location.protocol}//${window.location.hostname}:4000`;
+                            if (!socketRef.current.__triedFallback) {
+                                socketRef.current.__triedFallback = true;
+                                if (origin && currentBase && origin !== currentBase) {
+                                    console.log('[LUDO][client] attempting socket fallback to window.origin', { origin, currentBase });
+                                    try { socketRef.current.off(); socketRef.current.close(); } catch (_e2) {}
+                                    socketRef.current = io(origin, opts);
+                                    return;
+                                }
+                            }
+                            if (!socketRef.current.__triedDev4000 && isLocal3000) {
+                                socketRef.current.__triedDev4000 = true;
+                                console.log('[LUDO][client] attempting socket fallback to localhost:4000');
+                                try { socketRef.current.off(); socketRef.current.close(); } catch (_e4) {}
+                                socketRef.current = io(alt4000, opts);
+                            }
+                        } catch (_e3) {}
                     });
                     socketRef.current.on('error', (err) => {
                         try { console.error('[LUDO][client] socket error', err); } catch (_e) { }
@@ -298,8 +362,9 @@ const LudoGame = () => {
     };
 
     const checkForCapture = (movingPlayerIndex, newPosition) => {
+        const srcPlayers = playersRef.current && Array.isArray(playersRef.current) ? playersRef.current : players;
         const captured = [];
-        players.forEach((player, playerIndex) => {
+        srcPlayers.forEach((player, playerIndex) => {
             if (playerIndex === movingPlayerIndex) return;
             player.pieces.forEach((piece, pieceIndex) => {
                 if (piece.isInPlay) {
@@ -313,6 +378,7 @@ const LudoGame = () => {
                 }
             });
         });
+        try { if (captured.length > 0) console.log('[LUDO][client] capture detected', { movingPlayerIndex, newPosition, captured }); } catch (_e) {}
         return captured;
     };
 
@@ -380,7 +446,7 @@ const LudoGame = () => {
         try { console.log('[LUDO][client] emit ludo:invites:get'); socketRef.current.emit('ludo:invites:get'); } catch (_e) { }
     }, [myProfile?._id]);
 
-    // Parse invite tokens from URL (?ludoInvite=BASE64)
+    // Parse invite tokens from URL (?ludoInvite=BASE64) and auto-start / auto-accept
     useEffect(() => {
         try {
             const params = new URLSearchParams(window.location.search);
@@ -389,19 +455,62 @@ const LudoGame = () => {
             const json = atob(token);
             const payload = JSON.parse(json);
             if (payload && payload.type === 'ludo_invite') {
+                try { console.log('[LUDO][client][invite-link] token detected', { payload }); } catch (_e) {}
                 setIncomingInvite(payload);
-                if (payload.gameId) {
-                    setGameId(payload.gameId);
-                    setOnlineMode(true);
-                    if (payload.playerCount && [2, 3, 4].includes(payload.playerCount)) {
-                        setSelectedPlayerCount(payload.playerCount);
-                    }
+                const playerCountFromLink = (payload.playerCount && [2, 3, 4].includes(payload.playerCount)) ? payload.playerCount : undefined;
+                if (playerCountFromLink) setSelectedPlayerCount(playerCountFromLink);
+                const gid = payload.gameId || generateGameId();
+                setGameId(gid);
+                setOnlineMode(true);
+
+                const isInviter = myProfile?._id && payload.by && String(myProfile._id) === String(payload.by);
+                const slotFromLink = (typeof payload.slotIndex === 'number') ? payload.slotIndex : undefined;
+
+                // If current user is NOT the inviter, auto-accept the invite as the friend
+                if (!isInviter) {
+                    try { console.log('[LUDO][client][invite-link] acting as invitee, auto-accept', { gid, slotFromLink, playerCountFromLink }); } catch (_e) {}
+                    ensureSocketConnected();
+                    try { socketRef.current && socketRef.current.emit('ludo:invites:get'); } catch (_e) {}
+                    setIncomingInviteRequest({
+                        from: payload.by,
+                        name: payload.name,
+                        avatar: payload.avatar,
+                        gameId: gid,
+                        slotIndex: slotFromLink,
+                        playerCount: playerCountFromLink
+                    });
+                    setTimeout(() => acceptIncomingInvite(), 0);
+                    return;
                 }
-                // Open start modal if not started yet
-                if (!gameStarted) setShowPlayerSelection(true);
+
+                // Else, inviter migration: auto-start as host on this device
+                if (!gameStarted) {
+                    try { console.log('[LUDO][client][invite-link] acting as inviter (migration), auto-start host'); } catch (_e) {}
+                    setShowPlayerSelection(false);
+                    setGameStarted(true);
+                    setCurrentPlayer(0);
+                    setDiceValue(0);
+                    setWinner(null);
+                    setCanRollDice(true);
+                    setDiceRolling(false);
+                    initializeGame(playerCountFromLink || selectedPlayerCount);
+                    ensureSocketConnected();
+                    try {
+                        if (!socketRef.current) {
+                            socketRef.current = io(socketBaseUrl, {
+                                transports: ['websocket', 'polling'],
+                                path: '/socket.io',
+                                query: { profile: myProfile?._id }
+                            });
+                        }
+                        socketRef.current.emit('ludo:join', { gameId: gid });
+                        setMyPlayerIndex(0);
+                        emitPlayersState(gid);
+                    } catch (_e) { }
+                }
             }
         } catch (_e) { }
-    }, [gameStarted]);
+    }, [gameStarted, myProfile?._id]);
 
     // Optional: load default friend list when opening player selection
     useEffect(() => {
@@ -443,6 +552,13 @@ const LudoGame = () => {
                 // keep piece steps so remotes can render tokens
                 pieces: (Array.isArray(p.pieces) ? p.pieces.map(pc => ({ id: pc.id, steps: pc.steps, isHome: pc.isHome, isInPlay: pc.isInPlay })) : [])
             }));
+            try { console.log('[LUDO][client] emit ludo:players snapshot', { gameId: gid, ids: minimalPlayers.map(x => x.profileId) }); } catch (_e) {}
+            // Host guard: normalize seat 0 profileId to host
+            if (minimalPlayers[0]) {
+                minimalPlayers[0].profileId = myProfile?._id || minimalPlayers[0].profileId;
+                minimalPlayers[0].name = myProfile?.fullName || minimalPlayers[0].name;
+                minimalPlayers[0].avatar = myProfile?.profilePic || minimalPlayers[0].avatar;
+            }
             socketRef.current.emit('ludo:players', { gameId: gid, players: minimalPlayers, selectedPlayerCount, currentPlayer });
         } catch (_e) { }
     }, [players, selectedPlayerCount, currentPlayer, onlineMode]);
@@ -472,7 +588,10 @@ const LudoGame = () => {
         try {
             const targetId = friend?._id || friend?.id;
             if (!targetId) return;
-            socketRef.current && socketRef.current.emit('ludo:invite', {
+            // Join/create room for host immediately (do before sending invite)
+            try { console.log('[LUDO][client] emit ludo:join', { gid }); emitSocket('ludo:join', { gameId: gid }); } catch (_e) { }
+            // Send invite (queued if socket is still connecting)
+            emitSocket('ludo:invite', {
                 to: targetId,
                 by: myProfile?._id,
                 name: myProfile?.fullName || 'Player',
@@ -480,12 +599,59 @@ const LudoGame = () => {
                 gameId: gid,
                 slotIndex: slot,
                 playerCount: selectedPlayerCount,
+                ts: Date.now(),
             });
             try { console.log('[LUDO][client] emitted ludo:invite', { to: targetId, gid, slot }); } catch (_e) { }
-            // Join/create room for host immediately
-            try { console.log('[LUDO][client] emit ludo:join', { gid }); socketRef.current && socketRef.current.emit('ludo:join', { gameId: gid }); } catch (_e) { }
+            // Fire a web notification to the friend's active browsers
+            try { sendInviteNotificationToFriend(friend, gid, slot); } catch (_e) { }
         } catch (_e) { }
-    }, [onlineMode, ensureSocketConnected, gameId, myProfile?._id, myProfile?.fullName, myProfile?.profilePic, selectedPlayerCount, getNextOpenSlot]);
+    }, [onlineMode, ensureSocketConnected, gameId, myProfile?._id, myProfile?.fullName, myProfile?.profilePic, selectedPlayerCount, getNextOpenSlot, emitSocket]);
+
+    // Determine if host should wait in lobby for invited players
+    const recomputeWaitingState = useCallback(() => {
+        try {
+            // Only host should gate start on waiting
+            if (!onlineMode || myProfile?._id == null || myPlayerIndex !== 0) {
+                setWaitingForPlayers(false);
+                return;
+            }
+            const invitedMap = invitedStatusByFriendId || {};
+            const reservedMap = invitedSlotByFriendId || {};
+            const invitedIds = Object.keys(invitedMap);
+            const hasInvites = invitedIds.length > 0;
+            if (!hasInvites) {
+                setWaitingForPlayers(false);
+                return;
+            }
+            // Wait only for friends still in 'invited' status OR reserved slots not yet bound
+            const stillInvited = invitedIds.some(fid => invitedMap[fid] === 'invited');
+            const reservedSlots = new Set(Object.values(reservedMap).map(n => Number(n)).filter(n => Number.isFinite(n)));
+            let missingProfiles = false;
+            for (const slot of reservedSlots) {
+                const prof = players?.[slot]?.profileId;
+                if (!prof) { missingProfiles = true; break; }
+            }
+            const shouldWait = Boolean(stillInvited || missingProfiles);
+            try {
+                console.log('[LUDO][client] recomputeWaitingState', {
+                    onlineMode,
+                    isHost: myPlayerIndex === 0,
+                    invitedStatusByFriendId,
+                    invitedSlotByFriendId,
+                    selectedPlayerCount,
+                    playersProfileIds: players.map(p => p?.profileId || null),
+                    stillInvited,
+                    reservedSlots: Array.from(reservedSlots),
+                    missingProfiles,
+                    shouldWait
+                });
+            } catch (_e) {}
+            setWaitingForPlayers(shouldWait);
+            if (shouldWait) setCanRollDice(false);
+        } catch (_e) {
+            setWaitingForPlayers(false);
+        }
+    }, [onlineMode, myPlayerIndex, invitedStatusByFriendId, invitedSlotByFriendId, players, myProfile?._id, selectedPlayerCount]);
 
     const onChangeFriendSearch = (text) => {
         setFriendSearchQuery(text);
@@ -524,6 +690,47 @@ const LudoGame = () => {
         return btoa(JSON.stringify(payload));
     };
 
+    const sendInviteNotificationToFriend = async (friend, gid, slotIndex) => {
+        try {
+            const token = (() => {
+                try {
+                    const payload = {
+                        type: 'ludo_invite',
+                        by: myProfile?._id || 'anon',
+                        name: myProfile?.fullName || 'Player',
+                        ts: Date.now(),
+                        gameId: gid,
+                        playerCount: selectedPlayerCount,
+                        slotIndex
+                    };
+                    return btoa(JSON.stringify(payload));
+                } catch (_e) {
+                    return createInviteToken();
+                }
+            })();
+            const url = `${window.location.origin}${window.location.pathname}?ludoInvite=${encodeURIComponent(token)}`;
+            const notificationData = {
+                title: 'Ludo Invitation',
+                text: `${myProfile?.fullName || 'A friend'} invited you to play Ludo`,
+                icon: myProfile?.profilePic || siteConfig.logo,
+                link: url,
+                type: 'ludo_invite',
+                data: {
+                    gameId: gid,
+                    slotIndex,
+                    playerCount: selectedPlayerCount,
+                    inviterId: myProfile?._id,
+                    inviterName: myProfile?.fullName,
+                    inviterAvatar: myProfile?.profilePic,
+                }
+            };
+            await api.post('/web-notification/send-to-all-browsers', {
+                profileId: friend?._id,
+                notificationData
+            });
+        } catch (_e) { }
+    };
+
     const copyInviteLink = async () => {
         try {
             const token = createInviteToken();
@@ -537,6 +744,7 @@ const LudoGame = () => {
     };
 
     const rollDice = () => {
+        if (waitingForPlayers) return;
         if (!canRollDice || diceRolling) return;
         if (onlineMode && myPlayerIndex !== currentPlayer) return; // only active player may roll online
         setDiceRolling(true);
@@ -849,6 +1057,7 @@ const LudoGame = () => {
             try {
                 if (!payload || payload.gameId !== gameId) return;
                 // Host updates: friend joined; update status and broadcast players
+                try { console.log('[LUDO][client] on ludo:accepted', payload); } catch (_e) {}
                 if (payload.friend && payload.friend._id) {
                     setInvitedStatusByFriendId(prev => ({ ...prev, [payload.friend._id]: 'joined' }));
                 }
@@ -877,6 +1086,9 @@ const LudoGame = () => {
                     }));
                     s.emit('ludo:players', { gameId: payload.gameId, players: minimalPlayers, selectedPlayerCount: selectedPlayerCountRef.current, currentPlayer: currentPlayerRef.current });
                 } catch (_e) { }
+                // Update lobby state based on new join
+                recomputeWaitingState();
+                try { console.log('[LUDO][client] post-accept recompute done'); } catch (_e) {}
             } catch (_e) { }
         };
 
@@ -884,10 +1096,48 @@ const LudoGame = () => {
             try {
                 if (!payload || payload.gameId !== gameId) return;
                 if (Array.isArray(payload.players)) {
-                    setPlayers(payload.players.map(p => ({
+                    const next = payload.players.map(p => ({
                         ...p,
                         pieces: Array.isArray(p.pieces) ? p.pieces.map(pc => ({ ...pc })) : []
-                    })));
+                    }));
+                    // Invitee-side guard: ensure seat 0 is inviter, and my slot is me
+                    try {
+                        // Always enforce seat 0 = host (inviter) on invitee devices
+                        if (myPlayerIndex !== 0 && next[0] && lastInviter?.id) {
+                            next[0].profileId = lastInviter.id;
+                            if (lastInviter.name) next[0].name = lastInviter.name;
+                            if (lastInviter.avatar) next[0].avatar = lastInviter.avatar;
+                            if (lastInviter.avatar) next[0].cover = lastInviter.avatar;
+                        } else if (myPlayerIndex !== 0 && next[0]) {
+                            // If inviter not known yet but seat 0 equals me, clear mistaken identity to avoid showing me as host
+                            const looksLikeMe = next[0].profileId && myProfile?._id && String(next[0].profileId) === String(myProfile._id);
+                            if (looksLikeMe) {
+                                next[0].profileId = next[0].profileId || undefined;
+                                // keep name/avatar as-is; host snapshot should correct soon
+                            }
+                        }
+                        // Resolve my slot from snapshot by matching my profileId; fall back to current myPlayerIndex
+                        let resolvedMyIndex = undefined;
+                        const myId = myProfile?._id;
+                        if (myId) {
+                            const foundIdx = next.findIndex(p => p && p.profileId && String(p.profileId) === String(myId));
+                            if (foundIdx >= 0) {
+                                resolvedMyIndex = foundIdx;
+                                if (foundIdx !== myPlayerIndex) setMyPlayerIndex(foundIdx);
+                            }
+                        }
+                        if (resolvedMyIndex == null && typeof myPlayerIndex === 'number') {
+                            resolvedMyIndex = myPlayerIndex;
+                        }
+                        if (typeof resolvedMyIndex === 'number' && next[resolvedMyIndex]) {
+                            next[resolvedMyIndex].profileId = myProfile?._id || next[resolvedMyIndex].profileId;
+                            next[resolvedMyIndex].name = myProfile?.fullName || next[resolvedMyIndex].name;
+                            next[resolvedMyIndex].avatar = myProfile?.profilePic || next[resolvedMyIndex].avatar;
+                            // keep cover aligned with my avatar for local rendering
+                            if (myProfile?.profilePic) next[resolvedMyIndex].cover = myProfile.profilePic;
+                        }
+                    } catch (_e) {}
+                    setPlayers(next);
                 }
                 if (typeof payload.selectedPlayerCount === 'number') {
                     setSelectedPlayerCount(payload.selectedPlayerCount);
@@ -957,13 +1207,28 @@ const LudoGame = () => {
         s.on('ludo:accepted', onAccepted);
         s.on('ludo:players', onPlayers);
         s.on('ludo:move', onMove);
+        const onJoined = (payload) => { try { console.log('[LUDO][client] on ludo:joined', payload); } catch (_e) {} };
+        s.on('ludo:joined', onJoined);
         return () => {
             s.off('ludo:roll', onRoll);
             s.off('ludo:accepted', onAccepted);
             s.off('ludo:players', onPlayers);
             s.off('ludo:move', onMove);
+            s.off('ludo:joined', onJoined);
         };
     }, [onlineMode, gameId, myProfile?._id]);
+
+    // Recompute waiting state whenever invite statuses or players change
+    useEffect(() => {
+        recomputeWaitingState();
+    }, [invitedStatusByFriendId, players, selectedPlayerCount, onlineMode, myPlayerIndex, recomputeWaitingState]);
+
+    // When waiting ends, allow dice interactions again
+    useEffect(() => {
+        if (!waitingForPlayers && gameStarted) {
+            setCanRollDice(true);
+        }
+    }, [waitingForPlayers, gameStarted]);
 
     // Invite listeners attached regardless of onlineMode, so users receive invites anytime
     useEffect(() => {
@@ -977,7 +1242,10 @@ const LudoGame = () => {
                 try {
                     if (!payload) return;
                     if (payload.to && myProfile?._id && String(payload.to) !== String(myProfile._id)) return;
-                    try { console.log('[LUDO][client] on ludo:invite', payload); } catch (_e) { }
+                try { console.log('[LUDO][client] on ludo:invite', payload); } catch (_e) { }
+                try {
+                    if (payload?.by) setLastInviter({ id: payload.by, name: payload.name, avatar: payload.avatar });
+                } catch (_e) {}
                     setPendingInvites(prev => {
                         const exists = prev.find(i => String(i.gameId) === String(payload.gameId) && String(i.from) === String(payload.by));
                         if (exists) return prev;
@@ -1008,6 +1276,9 @@ const LudoGame = () => {
                         ts: x.ts || Date.now()
                     }));
                     setPendingInvites(normalized);
+                    try {
+                        if (normalized[0]?.from) setLastInviter({ id: normalized[0].from, name: normalized[0].name, avatar: normalized[0].avatar });
+                    } catch (_e) {}
                 } catch (_e) { }
             };
             s.on('ludo:invite', onInvite);
@@ -1092,11 +1363,15 @@ const LudoGame = () => {
                         query: { profile: myProfile?._id }
                     });
                 }
+                try { console.log('[LUDO][client] emit ludo:join (host)', { gid }); } catch (_e) {}
                 socketRef.current.emit('ludo:join', { gameId: gid });
                 setMyPlayerIndex(0);
                 // Broadcast players snapshot so remotes sync
                 emitPlayersState(gid);
             } catch (_e) { }
+            // Enter waiting lobby if invites are pending or slots not yet filled
+            recomputeWaitingState();
+            setCanRollDice(false);
         }
     };
 
@@ -1150,28 +1425,50 @@ const LudoGame = () => {
         const payload = incomingInviteRequest;
         if (!payload) return;
         try {
+                try { console.log('[LUDO][client] acceptIncomingInvite', payload); } catch (_e) {}
+                try { setLastInviter({ id: payload.from, name: payload.name, avatar: payload.avatar }); } catch (_e) {}
             setOnlineMode(true);
             setGameId(payload.gameId);
             setSelectedPlayerCount([2, 3, 4].includes(payload.playerCount) ? payload.playerCount : selectedPlayerCount);
             ensureSocketConnected();
             if (socketRef.current) {
-                try { socketRef.current.emit('ludo:join', { gameId: payload.gameId }); } catch (_e) { }
+                try { console.log('[LUDO][client] emit ludo:join (invitee)'); socketRef.current.emit('ludo:join', { gameId: payload.gameId }); } catch (_e) { }
             }
-            setMyPlayerIndex(payload.slotIndex);
+            if (typeof payload.slotIndex === 'number') {
+                setMyPlayerIndex(payload.slotIndex);
+            }
             // Update local players for quick UI before host snapshot arrives
             initializeGame([2, 3, 4].includes(payload.playerCount) ? payload.playerCount : selectedPlayerCount);
             setPlayers(prev => {
                 const copy = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
                 const slot = payload.slotIndex;
+                // Place invitee (me) into the reserved slot
                 if (copy[slot]) {
                     copy[slot].name = myProfile?.fullName || copy[slot].name;
-                    copy[slot].avatar = myProfile?.profilePic || copy[slot].avatar;
+                    copy[slot].avatar = myProfile?.profilePic || copy[slot].profilePic;
+                    copy[slot].cover = myProfile?.coverPic || copy[slot].coverPic;
                     copy[slot].profileId = myProfile?._id || copy[slot].profileId;
+                    if (myProfile?.profilePic) copy[slot].cover = myProfile.profilePic;
+                }
+                // Ensure host (inviter) appears in seat 0 locally until host snapshot arrives
+                // This prevents both players showing as the invitee
+                if (copy[0] && slot !== 0) {
+                    copy[0].name = payload?.name || copy[0].name;
+                    // If inviter avatar is provided, use it; otherwise preserve whatever is there
+                    if (payload?.avatar) {
+                        copy[0].avatar = payload.avatar;
+                        // align cover with inviter avatar for the home background
+                        copy[0].cover = payload.cover;
+                    }
+                    copy[0].profileId = payload?.from || copy[0].profileId;
                 }
                 return copy;
             });
+            // Broadcast a request for latest snapshot to ensure we get host identities
+            try { socketRef.current && socketRef.current.emit('ludo:players:get', { gameId: payload.gameId }); } catch (_e) {}
             // Notify host we accepted
             try {
+                console.log('[LUDO][client] emit ludo:accept', { gameId: payload.gameId, slotIndex: payload.slotIndex });
                 socketRef.current && socketRef.current.emit('ludo:accept', {
                     gameId: payload.gameId,
                     slotIndex: payload.slotIndex,
@@ -1342,10 +1639,11 @@ const LudoGame = () => {
             // four pips
             const cx = (x0 + 1) * CELL_SIZE + CELL_SIZE * 2;
             const cy = (y0 + 1) * CELL_SIZE + CELL_SIZE * 2;
-            const r = CELL_SIZE * 0.35;
-            const offsets = [[-r, -r], [r, -r], [-r, r], [r, r]];
+            const pipRadius = CELL_SIZE * 0.30;
+            const gap = CELL_SIZE * 0.45; // increase spacing between home placeholders
+            const offsets = [[-gap, -gap], [gap, -gap], [-gap, gap], [gap, gap]];
             offsets.forEach((o, i) => {
-                elems.push(<circle key={`pip-${x0}-${y0}-${i}`} cx={cx + o[0]} cy={cy + o[1]} r={CELL_SIZE * 0.35} fill={color} stroke="#000" strokeWidth={2} />);
+                elems.push(<circle key={`pip-${x0}-${y0}-${i}`} cx={cx + o[0]} cy={cy + o[1]} r={pipRadius} fill={color} stroke="#000" strokeWidth={2} />);
             });
         };
         drawHome(0, 0, colors[0], 0); // red
@@ -1695,6 +1993,15 @@ const LudoGame = () => {
                                     players[playerIndex]?.pieces.map((piece, pieceIndex) => tokenNode(playerIndex, pieceIndex, piece))
                                 ))}
                             </div>
+                            {/* Waiting lobby overlay for host */}
+                            {waitingForPlayers && (
+                                <div style={{ position: 'absolute', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <div style={{ background: 'rgba(26, 35, 50, 0.95)', border: '2px solid rgba(255, 215, 0, 0.5)', color: 'white', padding: 16, borderRadius: 16, textAlign: 'center' }}>
+                                        <div style={{ fontWeight: 800, marginBottom: 6 }}>Waiting for players to join…</div>
+                                        <div style={{ fontSize: 12, color: '#B0B0B0' }}>Invites sent. The game will begin once your friends join.</div>
+                                    </div>
+                                </div>
+                            )}
                             {/* Center dice overlay */}
                             <div style={{ position: 'absolute', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', pointerEvents: canRollDice ? 'auto' : 'none' }}>
                                 <button onClick={rollDice} disabled={!canRollDice || diceRolling} style={{ background: 'transparent', border: 'none', padding: 0, cursor: (canRollDice && !diceRolling) ? 'pointer' : 'default' }}>

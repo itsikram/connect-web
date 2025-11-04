@@ -130,6 +130,7 @@ const Main = () => {
     const params = useParams();
     const location = useLocation();
     const audioElement = useRef(null)
+    const [audioReady, setAudioReady] = useState(false)
 
     const [isTabActive, setIsTabActive] = useState(!document.hidden);
 
@@ -188,11 +189,20 @@ const Main = () => {
 
 
     const playSound = () => {
-        if (audioElement?.current) {
-            audioElement.current.play().catch(error => {
+        const el = audioElement?.current;
+        if (!el) return;
+        if (!audioReady) {
+            console.warn('Notification sound blocked until user interaction');
+            return;
+        }
+        try {
+            el.currentTime = 0;
+            el.muted = false;
+            el.play().catch(error => {
                 console.warn('Failed to play notification sound:', error);
-                // Try to play a fallback sound or just skip audio
             });
+        } catch (e) {
+            console.warn('Audio play error:', e);
         }
     }
     const notify = (text, senderName, senderPP, link) => {
@@ -238,6 +248,37 @@ const Main = () => {
 
 
     }, [profileId, token, isAuthenticated])
+
+    // Unlock audio on first user interaction (autoplay policy)
+    useEffect(() => {
+        const unlock = () => {
+            const el = audioElement?.current;
+            if (!el) return;
+            const tryUnlock = async () => {
+                try {
+                    el.muted = true;
+                    el.currentTime = 0;
+                    await el.play();
+                    el.pause();
+                    el.currentTime = 0;
+                    el.muted = false;
+                    setAudioReady(true);
+                    console.log('🔊 Notification audio unlocked');
+                } catch (e) {
+                    console.warn('Audio unlock attempt failed:', e);
+                }
+            };
+            tryUnlock();
+        };
+        window.addEventListener('click', unlock, { once: true });
+        window.addEventListener('keydown', unlock, { once: true });
+        window.addEventListener('touchstart', unlock, { once: true });
+        return () => {
+            window.removeEventListener('click', unlock);
+            window.removeEventListener('keydown', unlock);
+            window.removeEventListener('touchstart', unlock);
+        };
+    }, []);
 
     useEffect(() => {
         if (!profileId) return;
@@ -588,6 +629,7 @@ const Main = () => {
                 ref={audioElement} 
                 src={config?.defaultNotificationSound}
                 preload="auto"
+                muted
                 onError={(e) => {
                     console.warn('Audio file failed to load:', e.target.src);
                 }}
