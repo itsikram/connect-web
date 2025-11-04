@@ -389,12 +389,12 @@ const LudoGame = () => {
         const covers = [];
         names[0] = myProfile?.fullName || 'You';
         avatars[0] = myProfile?.profilePic;
-        covers[0] = myProfile?.coverPhoto || myProfile?.coverPic || myProfile?.cover || myProfile?.profileCover || undefined;
+        covers[0] = myProfile?.coverPic || myProfile?.coverPic || myProfile?.cover || myProfile?.profileCover || undefined;
         for (let i = 1; i < playerCount; i++) {
             const f = selectedFriends[i - 1];
             names[i] = f?.fullName || playerNames[i];
             avatars[i] = f?.profilePic;
-            covers[i] = f?.coverPhoto || f?.coverPic || f?.cover || f?.profileCover || undefined;
+            covers[i] = f?.coverPic || f?.coverPic || f?.cover || f?.profileCover || undefined;
         }
         for (let i = 0; i < playerCount; i++) {
             const pieces = [];
@@ -475,6 +475,7 @@ const LudoGame = () => {
                         from: payload.by,
                         name: payload.name,
                         avatar: payload.avatar,
+                        cover: payload.cover,
                         gameId: gid,
                         slotIndex: slotFromLink,
                         playerCount: playerCountFromLink
@@ -558,6 +559,7 @@ const LudoGame = () => {
                 minimalPlayers[0].profileId = myProfile?._id || minimalPlayers[0].profileId;
                 minimalPlayers[0].name = myProfile?.fullName || minimalPlayers[0].name;
                 minimalPlayers[0].avatar = myProfile?.profilePic || minimalPlayers[0].avatar;
+                minimalPlayers[0].cover = myProfile?.coverPic || minimalPlayers[0].cover;
             }
             socketRef.current.emit('ludo:players', { gameId: gid, players: minimalPlayers, selectedPlayerCount, currentPlayer });
         } catch (_e) { }
@@ -580,6 +582,7 @@ const LudoGame = () => {
             if (!copy[slot]) return prev;
             copy[slot].name = friend.fullName || copy[slot].name;
             copy[slot].avatar = friend.profilePic || copy[slot].avatar;
+            copy[slot].cover = friend.coverPic || copy[slot].cover;
             copy[slot].profileId = friend._id;
             return copy;
         });
@@ -596,6 +599,7 @@ const LudoGame = () => {
                 by: myProfile?._id,
                 name: myProfile?.fullName || 'Player',
                 avatar: myProfile?.profilePic,
+                cover: myProfile?.coverPic,
                 gameId: gid,
                 slotIndex: slot,
                 playerCount: selectedPlayerCount,
@@ -722,6 +726,7 @@ const LudoGame = () => {
                     inviterId: myProfile?._id,
                     inviterName: myProfile?.fullName,
                     inviterAvatar: myProfile?.profilePic,
+                    inviterCover: myProfile?.coverPic,
                 }
             };
             await api.post('/web-notification/send-to-all-browsers', {
@@ -1068,6 +1073,7 @@ const LudoGame = () => {
                         if (copy[slot]) {
                             copy[slot].name = payload.friend?.fullName || copy[slot].name;
                             copy[slot].avatar = payload.friend?.profilePic || copy[slot].avatar;
+                            copy[slot].cover = payload.friend?.coverPic || copy[slot].cover;
                             copy[slot].profileId = payload.friend?._id || copy[slot].profileId;
                         }
                         return copy;
@@ -1107,7 +1113,7 @@ const LudoGame = () => {
                             next[0].profileId = lastInviter.id;
                             if (lastInviter.name) next[0].name = lastInviter.name;
                             if (lastInviter.avatar) next[0].avatar = lastInviter.avatar;
-                            if (lastInviter.avatar) next[0].cover = lastInviter.avatar;
+                            if (lastInviter.cover) next[0].cover = lastInviter.cover;
                         } else if (myPlayerIndex !== 0 && next[0]) {
                             // If inviter not known yet but seat 0 equals me, clear mistaken identity to avoid showing me as host
                             const looksLikeMe = next[0].profileId && myProfile?._id && String(next[0].profileId) === String(myProfile._id);
@@ -1133,8 +1139,9 @@ const LudoGame = () => {
                             next[resolvedMyIndex].profileId = myProfile?._id || next[resolvedMyIndex].profileId;
                             next[resolvedMyIndex].name = myProfile?.fullName || next[resolvedMyIndex].name;
                             next[resolvedMyIndex].avatar = myProfile?.profilePic || next[resolvedMyIndex].avatar;
-                            // keep cover aligned with my avatar for local rendering
-                            if (myProfile?.profilePic) next[resolvedMyIndex].cover = myProfile.profilePic;
+                            // Prefer an actual cover image over avatar when available
+                            const myCover = myProfile?.coverPic || myProfile?.coverPic || myProfile?.coverPic || myProfile?.coverPic;
+                            if (myCover) next[resolvedMyIndex].cover = myCover;
                         }
                     } catch (_e) {}
                     setPlayers(next);
@@ -1244,7 +1251,7 @@ const LudoGame = () => {
                     if (payload.to && myProfile?._id && String(payload.to) !== String(myProfile._id)) return;
                 try { console.log('[LUDO][client] on ludo:invite', payload); } catch (_e) { }
                 try {
-                    if (payload?.by) setLastInviter({ id: payload.by, name: payload.name, avatar: payload.avatar });
+                    if (payload?.by) setLastInviter({ id: payload.by, name: payload.name, avatar: payload.avatar, cover: payload.cover });
                 } catch (_e) {}
                     setPendingInvites(prev => {
                         const exists = prev.find(i => String(i.gameId) === String(payload.gameId) && String(i.from) === String(payload.by));
@@ -1253,6 +1260,7 @@ const LudoGame = () => {
                             from: payload.by,
                             name: payload.name,
                             avatar: payload.avatar,
+                            cover: payload.cover,
                             gameId: payload.gameId,
                             slotIndex: payload.slotIndex,
                             playerCount: payload.playerCount,
@@ -1270,6 +1278,7 @@ const LudoGame = () => {
                         from: x.by ?? x.from,
                         name: x.name,
                         avatar: x.avatar,
+                        cover: x.cover,
                         gameId: x.gameId,
                         slotIndex: x.slotIndex,
                         playerCount: x.playerCount,
@@ -1345,6 +1354,7 @@ const LudoGame = () => {
                     if (copy[slot] && friend) {
                         copy[slot].name = friend.fullName || copy[slot].name;
                         copy[slot].avatar = friend.profilePic || copy[slot].avatar;
+                        copy[slot].cover = friend.coverPic || copy[slot].cover;
                         copy[slot].profileId = friend._id;
                     }
                 });
@@ -1446,9 +1456,9 @@ const LudoGame = () => {
                 if (copy[slot]) {
                     copy[slot].name = myProfile?.fullName || copy[slot].name;
                     copy[slot].avatar = myProfile?.profilePic || copy[slot].profilePic;
-                    copy[slot].cover = myProfile?.coverPic || copy[slot].coverPic;
+                    // Use cover fields if available; do not override with avatar
+                    copy[slot].cover = myProfile?.coverPic || myProfile?.coverPic || myProfile?.coverPic || myProfile?.coverPic || copy[slot].cover;
                     copy[slot].profileId = myProfile?._id || copy[slot].profileId;
-                    if (myProfile?.profilePic) copy[slot].cover = myProfile.profilePic;
                 }
                 // Ensure host (inviter) appears in seat 0 locally until host snapshot arrives
                 // This prevents both players showing as the invitee
@@ -1621,7 +1631,7 @@ const LudoGame = () => {
             const innerW = CELL_SIZE * 4;
             const innerH = CELL_SIZE * 4;
             // Background cover image
-            const coverUrl = players[idx]?.cover || players[idx]?.avatar;
+            const coverUrl = players[idx]?.cover || players[idx]?.cover;
             if (coverUrl && idx < selectedPlayerCount) {
                 elems.push((
                     <image key={`home-cover-${x0}-${y0}`} href={coverUrl} x={innerX} y={innerY} width={innerW} height={innerH} preserveAspectRatio="xMidYMid slice" />
