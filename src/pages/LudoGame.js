@@ -611,6 +611,28 @@ const LudoGame = () => {
         } catch (_e) { }
     }, [onlineMode, ensureSocketConnected, gameId, myProfile?._id, myProfile?.fullName, myProfile?.profilePic, selectedPlayerCount, getNextOpenSlot, emitSocket]);
 
+    // Offline: assign a searched friend/profile to the next open local seat (no socket)
+    const assignFriendOffline = useCallback((friend) => {
+        if (!friend || !friend._id) return;
+        const slot = getNextOpenSlot();
+        if (slot == null) return;
+        setPlayers(prev => {
+            const copy = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
+            if (!copy[slot]) return prev;
+            copy[slot].name = friend.fullName || copy[slot].name;
+            copy[slot].avatar = friend.profilePic || copy[slot].avatar;
+            copy[slot].cover = friend.coverPic || copy[slot].cover;
+            copy[slot].profileId = friend._id; // local-only association
+            return copy;
+        });
+        setSelectedFriends(prev => {
+            const already = prev.some(p => String(p?._id) === String(friend._id));
+            if (already) return prev;
+            const next = [...prev, friend];
+            return next.slice(0, Math.max(0, selectedPlayerCount - 1));
+        });
+    }, [getNextOpenSlot, selectedPlayerCount]);
+
     // Determine if host should wait in lobby for invited players
     const recomputeWaitingState = useCallback(() => {
         try {
@@ -743,7 +765,7 @@ const LudoGame = () => {
                     return createInviteToken();
                 }
             })();
-            const url = `${window.location.origin}${window.location.pathname}?ludoInvite=${encodeURIComponent(token)}`;
+            const url = `${window.location.origin}${window.location.pathname}`;
             const notificationData = {
                 title: 'Ludo Invitation',
                 text: `${myProfile?.fullName || 'A friend'} invited you to play Ludo`,
@@ -766,6 +788,21 @@ const LudoGame = () => {
             });
         } catch (_e) { }
     };
+
+    // Resolve invited friend's display name for a given slot index
+    const getInvitedNameForSlot = useCallback((slotIndex) => {
+        try {
+            const entries = Object.entries(invitedSlotByFriendId || {});
+            for (const [fid, slot] of entries) {
+                if (Number(slot) === Number(slotIndex)) {
+                    const pool = [...selectedFriends, ...friendList, ...searchResults];
+                    const f = pool.find(u => u && String(u._id) === String(fid));
+                    return f?.fullName || null;
+                }
+            }
+        } catch (_e) { }
+        return null;
+    }, [invitedSlotByFriendId, selectedFriends, friendList, searchResults]);
 
     const copyInviteLink = async () => {
         try {
@@ -1401,7 +1438,31 @@ const LudoGame = () => {
         setWinner(null);
         setCanRollDice(true);
         setDiceRolling(false);
-        initializeGame(selectedPlayerCount);
+        // Preserve any customizations made before starting; only adjust seat count and fill missing seats
+        setPlayers(prev => {
+            const max = Math.max(2, Math.min(4, selectedPlayerCount));
+            const next = [];
+            for (let i = 0; i < max; i++) {
+                const prevSeat = prev?.[i];
+                const baseName = (i === 0 ? (myProfile?.fullName || 'You') : playerNames[i]);
+                const baseAvatar = (i === 0 ? myProfile?.profilePic : undefined);
+                const baseCover = (i === 0 ? (myProfile?.coverPic || myProfile?.cover || undefined) : undefined);
+                const pieces = Array.isArray(prevSeat?.pieces) && prevSeat.pieces.length === 4
+                    ? prevSeat.pieces.map((pc, idx) => ({ id: idx, color: colors[i], position: { x: 0, y: 0 }, isHome: pc.isHome, isInPlay: pc.isInPlay, steps: pc.steps }))
+                    : Array.from({ length: 4 }).map((_, j) => ({ id: j, color: colors[i], position: { x: 0, y: 0 }, isHome: true, isInPlay: false, steps: 0 }));
+                next.push({
+                    id: i,
+                    name: prevSeat?.name || baseName,
+                    color: colors[i],
+                    pieces,
+                    isActive: i === 0,
+                    avatar: prevSeat?.avatar || baseAvatar,
+                    cover: prevSeat?.cover || baseCover,
+                    profileId: i === 0 ? (myProfile?._id || 'local') : (prevSeat?.profileId || undefined),
+                });
+            }
+            return next;
+        });
         // Re-apply any reserved invited slots to the fresh players list
         if (onlineMode && invitedSlotByFriendId && Object.keys(invitedSlotByFriendId).length > 0) {
             setPlayers(prev => {
@@ -1884,8 +1945,8 @@ const LudoGame = () => {
 
     if (showPlayerSelection) {
         return (
-            <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.8)', padding: 20, position: 'fixed', inset: 0, zIndex: 2000 }}>
-                <div style={{ width: '100%', maxWidth: 420, background: 'rgba(26, 35, 50, 0.95)', borderRadius: 24, padding: 28, border: '1px solid rgba(255, 215, 0, 0.3)', color: 'white' }}>
+            <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.8)', padding: 20, position: 'fixed', inset: 0, zIndex: 2000, overflowY: 'auto' }}>
+                <div style={{ width: '100%', maxWidth: 420, maxHeight: '85vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: 'rgba(26, 35, 50, 0.95)', borderRadius: 24, padding: 28, border: '1px solid rgba(255, 215, 0, 0.3)', color: 'white' }}>
                     <div style={{ textAlign: 'center', marginBottom: 20 }}>
                         <div style={{ fontSize: 32, color: '#FFD700', fontWeight: 'bold' }}>Select Players</div>
                         <div style={{ color: '#B0B0B0' }}>Choose how many players will join the game</div>
@@ -1925,55 +1986,99 @@ const LudoGame = () => {
                             <div style={{ fontWeight: 700 }}>Play Online with Friends</div>
                             <button onClick={() => setOnlineMode(!onlineMode)} style={{ padding: '6px 12px', borderRadius: 16, background: onlineMode ? '#29B1A9' : 'rgba(255,255,255,0.1)', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 600 }}>{onlineMode ? 'On' : 'Off'}</button>
                         </div>
-                        {onlineMode && (
-                            <div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(255,255,255,0.2)', borderRadius: 10, padding: '8px 10px' }}>
-                                    <span role="img" aria-label="search">🔎</span>
-                                    <input
-                                        placeholder="Search friends by name..."
-                                        value={friendSearchQuery}
-                                        onChange={(e) => onChangeFriendSearch(e.target.value)}
-                                        style={{ flex: 1, background: 'transparent', color: 'white', border: 'none', outline: 'none' }}
-                                    />
-                                </div>
-                                <div style={{ maxHeight: 220, overflow: 'auto', marginTop: 8 }}>
-                                    {loadingSearch && <div style={{ color: '#B0B0B0', fontSize: 12, marginTop: 6 }}>Searching...</div>}
-                                    {(friendSearchQuery ? searchResults : friendList).map((f) => {
-                                        const key = f?._id || String(f?.id) || Math.random().toString(36);
-                                        const isSelected = selectedFriends.some(sf => sf._id === f._id);
-                                        const inviteStatus = invitedStatusByFriendId[f?._id];
-                                        const canInvite = !inviteStatus && getNextOpenSlot() != null;
-                                        return (
-                                            <div key={key} onClick={() => {
-                                                setSelectedFriends(prev => {
-                                                    if (isSelected) return prev.filter(p => p._id !== f._id);
-                                                    const next = [...prev, f];
-                                                    return next.slice(0, Math.max(0, selectedPlayerCount - 1));
-                                                });
-                                            }} role="button" tabIndex={0} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'transparent', border: 'none', color: 'white', padding: '8px 0', cursor: 'pointer' }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                    <div style={{ width: 28, height: 28, borderRadius: 14, overflow: 'hidden', background: '#333' }}>
-                                                        {f?.profilePic ? <img src={f.profilePic} alt=" " style={{ width: 28, height: 28, objectFit: 'cover' }} /> : null}
-                                                    </div>
-                                                    <div style={{ fontSize: 14 }}>{f?.fullName || 'Unknown'}</div>
-                                                </div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                    <span>{isSelected ? '✅' : '⭕'}</span>
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); inviteFriend(f); }}
-                                                        disabled={!canInvite}
-                                                        style={{ padding: '4px 8px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)', background: inviteStatus ? 'rgba(255,255,255,0.1)' : '#29B1A9', color: 'white', cursor: canInvite ? 'pointer' : 'default', fontSize: 12 }}
-                                                    >
-                                                        {inviteStatus === 'joined' ? 'Joined' : inviteStatus === 'invited' ? 'Invited' : 'Invite'}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                <div style={{ color: '#B0B0B0', fontSize: 12, marginTop: 6 }}>Selected: {selectedFriends.length} / {Math.max(0, selectedPlayerCount - 1)}</div>
+                        <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(255,255,255,0.2)', borderRadius: 10, padding: '8px 10px' }}>
+                                <span role="img" aria-label="search">🔎</span>
+                                <input
+                                    placeholder="Search friends by name..."
+                                    value={friendSearchQuery}
+                                    onChange={(e) => onChangeFriendSearch(e.target.value)}
+                                    style={{ flex: 1, background: 'transparent', color: 'white', border: 'none', outline: 'none' }}
+                                />
                             </div>
-                        )}
+                            <div style={{ maxHeight: 220, overflow: 'auto', marginTop: 8 }}>
+                                {loadingSearch && <div style={{ color: '#B0B0B0', fontSize: 12, marginTop: 6 }}>Searching...</div>}
+                                {(friendSearchQuery ? searchResults : friendList).map((f) => {
+                                    const key = f?._id || String(f?.id) || Math.random().toString(36);
+                                    const isSelected = selectedFriends.some(sf => sf._id === f._id);
+                                    const inviteStatus = invitedStatusByFriendId[f?._id];
+                                    const maxPlayers = Math.max(2, Math.min(4, selectedPlayerCount));
+                                    const isAssignedOffline = !onlineMode && players.slice(1, maxPlayers).some(p => p?.profileId && String(p.profileId) === String(f?._id));
+                                    const canAction = onlineMode ? (!inviteStatus && getNextOpenSlot() != null) : (!isAssignedOffline && getNextOpenSlot() != null);
+                                    return (
+                                        <div key={key} onClick={() => {
+                                            setSelectedFriends(prev => {
+                                                if (isSelected) return prev.filter(p => p._id !== f._id);
+                                                const next = [...prev, f];
+                                                return next.slice(0, Math.max(0, selectedPlayerCount - 1));
+                                            });
+                                        }} role="button" tabIndex={0} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'transparent', border: 'none', color: 'white', padding: '8px 0', cursor: 'pointer' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                <div style={{ width: 28, height: 28, borderRadius: 14, overflow: 'hidden', background: '#333' }}>
+                                                    {f?.profilePic ? <img src={f.profilePic} alt=" " style={{ width: 28, height: 28, objectFit: 'cover' }} /> : null}
+                                                </div>
+                                                <div style={{ fontSize: 14 }}>{f?.fullName || 'Unknown'}</div>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                <span>{isSelected ? '✅' : '⭕'}</span>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); onlineMode ? inviteFriend(f) : assignFriendOffline(f); }}
+                                                    disabled={!canAction}
+                                                    style={{ padding: '4px 8px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)', background: onlineMode ? (inviteStatus ? 'rgba(255,255,255,0.1)' : '#29B1A9') : (isAssignedOffline ? 'rgba(255,255,255,0.1)' : '#29B1A9'), color: 'white', cursor: canAction ? 'pointer' : 'default', fontSize: 12 }}
+                                                >
+                                                    {onlineMode ? (inviteStatus === 'joined' ? 'Joined' : inviteStatus === 'invited' ? 'Invited' : 'Invite') : (isAssignedOffline ? 'Assigned' : 'Add')}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                                <div style={{ color: '#B0B0B0', fontSize: 12, marginTop: 6 }}>Selected: {selectedFriends.length} / {Math.max(0, selectedPlayerCount - 1)}</div>
+                                {onlineMode && (
+                                    <div style={{ marginTop: 10 }}>
+                                        <div style={{ fontWeight: 700, marginBottom: 6 }}>Seat status</div>
+                                        <div style={{ display: 'grid', gap: 6 }}>
+                                            {Array.from({ length: Math.max(2, Math.min(4, selectedPlayerCount)) }).map((_, i) => {
+                                                const seat = players[i];
+                                                const joined = i === 0 ? Boolean(seat?.profileId || myProfile?._id) : Boolean(seat?.profileId);
+                                                const name = seat?.name || (i === 0 ? (myProfile?.fullName || 'You') : `Seat ${i + 1}`);
+                                                const invitedName = !joined ? getInvitedNameForSlot(i) : null;
+                                                return (
+                                                    <div key={`preseat-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.04)', padding: '6px 8px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)' }}>
+                                                        <div style={{ width: 20, height: 20, borderRadius: 10, overflow: 'hidden', background: '#333', border: '2px solid #111', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                            {seat?.avatar ? <img src={seat.avatar} alt=" " style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 10 }}>{['R','G','Y','B'][i] || 'P'}</span>}
+                                                        </div>
+                                                        <div style={{ fontSize: 12, flex: 1, textAlign: 'left' }}>{name}</div>
+                                                        <div style={{ fontSize: 11, fontWeight: 700, color: joined ? '#B0FFB0' : '#FFD700' }}>{joined ? 'Joined' : (invitedName ? `Invited: ${invitedName}` : 'Waiting…')}</div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+                        </div>
+                    </div>
+                    {/* Offline/General: quick customize players before starting */}
+                    <div style={{ marginTop: 10 }}>
+                        <div style={{ fontWeight: 700, marginBottom: 8 }}>Customize Players</div>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {[0, 1, 3, 2].slice(0, selectedPlayerCount).map((idx) => (
+                                <button key={`preedit-${idx}`} onClick={() => openPlayerEditor(idx)} title={players[idx]?.name || 'Player'} style={{
+                                    width: 36,
+                                    height: 36,
+                                    borderRadius: 18,
+                                    background: players[idx]?.color,
+                                    border: '2px solid #222',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                                }} aria-label={`Edit ${players[idx]?.name || 'player'}`}>
+                                    {players[idx]?.avatar ? (
+                                        <img src={players[idx].avatar} alt=" " style={{ width: 28, height: 28, borderRadius: 14, objectFit: 'cover', border: '2px solid #fff' }} />
+                                    ) : (
+                                        <span style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>{['R', 'G', 'Y', 'B'][idx] || 'P'}</span>
+                                    )}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                     {/* Migrate to another device via invite link */}
                     <div style={{ marginTop: 4, paddingTop: 10, borderTop: '1px dashed rgba(255,255,255,0.2)' }}>
@@ -2064,9 +2169,37 @@ const LudoGame = () => {
                             {/* Waiting lobby overlay for host */}
                             {waitingForPlayers && (
                                 <div style={{ position: 'absolute', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    <div style={{ background: 'rgba(26, 35, 50, 0.95)', border: '2px solid rgba(255, 215, 0, 0.5)', color: 'white', padding: 16, borderRadius: 16, textAlign: 'center' }}>
+                                    <div style={{ background: 'rgba(26, 35, 50, 0.95)', border: '2px solid rgba(255, 215, 0, 0.5)', color: 'white', padding: 16, borderRadius: 16, textAlign: 'center', minWidth: 320 }}>
                                         <div style={{ fontWeight: 800, marginBottom: 6 }}>{myPlayerIndex === 0 ? 'Waiting for players to join…' : 'Waiting for other players…'}</div>
-                                        <div style={{ fontSize: 12, color: '#B0B0B0' }}>{myPlayerIndex === 0 ? 'Invites sent. The game will begin once your friends join.' : 'The game will begin once all players have joined.'}</div>
+                                        <div style={{ fontSize: 12, color: '#B0B0B0', marginBottom: 10 }}>{myPlayerIndex === 0 ? 'Invites sent. The game will begin once your friends join.' : 'The game will begin once all players have joined.'}</div>
+                                        {/* Joined status */}
+                                        <div style={{ fontSize: 12, color: '#B0B0B0', marginBottom: 6 }}>
+                                            {(() => {
+                                                const max = Math.max(2, Math.min(4, selectedPlayerCount));
+                                                const joined = Array.from({ length: max }).filter((_, i) => {
+                                                    if (i === 0) return Boolean(players[0]?.profileId || myProfile?._id);
+                                                    return Boolean(players[i]?.profileId);
+                                                }).length;
+                                                return `Joined ${joined}/${max}`;
+                                            })()}
+                                        </div>
+                                        <div style={{ display: 'grid', gap: 6 }}>
+                                            {Array.from({ length: Math.max(2, Math.min(4, selectedPlayerCount)) }).map((_, i) => {
+                                                const seat = players[i];
+                                                const joined = i === 0 ? Boolean(seat?.profileId || myProfile?._id) : Boolean(seat?.profileId);
+                                                const name = seat?.name || (i === 0 ? (myProfile?.fullName || 'You') : `Seat ${i + 1}`);
+                                                const invitedName = !joined ? getInvitedNameForSlot(i) : null;
+                                                return (
+                                                    <div key={`seatstat-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.04)', padding: '6px 8px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)' }}>
+                                                        <div style={{ width: 20, height: 20, borderRadius: 10, overflow: 'hidden', background: '#333', border: '2px solid #111', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                            {seat?.avatar ? <img src={seat.avatar} alt=" " style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 10 }}>{['R','G','Y','B'][i] || 'P'}</span>}
+                                                        </div>
+                                                        <div style={{ fontSize: 12, flex: 1, textAlign: 'left' }}>{name}</div>
+                                                        <div style={{ fontSize: 11, fontWeight: 700, color: joined ? '#B0FFB0' : '#FFD700' }}>{joined ? 'Joined' : (invitedName ? `Invited: ${invitedName}` : 'Waiting…')}</div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
                                 </div>
                             )}
