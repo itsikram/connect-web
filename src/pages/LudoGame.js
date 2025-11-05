@@ -16,7 +16,20 @@ const LudoGame = () => {
         return () => window.removeEventListener('resize', onResize);
     }, []);
 
-    const BOARD_SIZE = Math.min(winSize.width * 0.85, winSize.height * 0.6);
+    // Ensure board fits within viewport on very small screens
+    // Calculate responsive padding (5-20px based on screen size)
+    const responsivePadding = Math.min(20, Math.max(5, winSize.width * 0.05));
+    const totalPadding = responsivePadding * 2; // padding on both sides
+    // Account for padding and ensure board fits
+    const availableWidth = Math.max(200, winSize.width - totalPadding);
+    const availableHeight = Math.max(200, winSize.height - totalPadding);
+    const maxBoardSize = 600; // Maximum size for larger screens
+    // Calculate board size based on available space, ensuring it fits
+    const calculatedBoardSize = Math.min(availableWidth * 0.98, availableHeight * 0.65, maxBoardSize);
+    // Ensure minimum board size but don't exceed available space
+    const minBoardSize = Math.min(250, availableWidth * 0.95); // Minimum but respect viewport
+    const BOARD_SIZE = Math.max(minBoardSize, Math.min(maxBoardSize, calculatedBoardSize));
+    // Calculate CELL_SIZE precisely - use exact division to maintain grid alignment
     const CELL_SIZE = BOARD_SIZE / 15;
 
     // Types mirrored from RN (JS only)
@@ -1696,10 +1709,12 @@ const LudoGame = () => {
 
     const getOverlapOffset = (count, index) => {
         // Keep overlapping tokens within the same cell
-        const delta = CELL_SIZE * 0.35;
+        // Use a fraction of cell size for spacing, rounded to whole pixels
+        const delta = Math.round(CELL_SIZE * 0.35);
         if (count <= 1) return { dx: 0, dy: 0 };
         if (count === 2) {
-            return { dx: index === 0 ? -delta / 2 : delta / 2, dy: 0 };
+            const dx = index === 0 ? -delta / 2 : delta / 2;
+            return { dx: Math.round(dx), dy: 0 };
         }
         if (count === 3) {
             const positions = [
@@ -1707,7 +1722,11 @@ const LudoGame = () => {
                 { dx: delta / 2, dy: -delta / 2 },
                 { dx: 0, dy: delta / 2 },
             ];
-            return positions[index] || { dx: 0, dy: 0 };
+            const pos = positions[index] || { dx: 0, dy: 0 };
+            return { 
+                dx: Math.round(pos.dx), 
+                dy: Math.round(pos.dy) 
+            };
         }
         // 4 or more - use 2x2 grid for first 4
         const grid = [
@@ -1716,7 +1735,11 @@ const LudoGame = () => {
             { dx: -delta / 2, dy: delta / 2 },
             { dx: delta / 2, dy: delta / 2 },
         ];
-        return grid[index % 4];
+        const pos = grid[index % 4];
+        return { 
+            dx: Math.round(pos.dx), 
+            dy: Math.round(pos.dy) 
+        };
     };
 
     const renderBoardGrid = () => {
@@ -1825,15 +1848,24 @@ const LudoGame = () => {
         return (<>{elems}</>);
     };
 
-    const tokenSize = CELL_SIZE * 0.9;
+    // Calculate token size - round to whole pixels for precise rendering
+    // Ensure minimum token size of 10px for very small screens to maintain visibility
+    const tokenSize = Math.max(10, Math.round(CELL_SIZE * 0.9));
     const boardStyle = {
         position: 'relative',
-        width: BOARD_SIZE + 'px',
-        height: BOARD_SIZE + 'px',
+        width: `${BOARD_SIZE}px`,
+        height: `${BOARD_SIZE}px`,
+        maxWidth: '100%',
+        maxHeight: '100%',
         borderRadius: '15px',
         overflow: 'hidden',
         background: '#fff',
-        boxShadow: '0 6px 12px rgba(0,0,0,0.4)'
+        boxShadow: '0 6px 12px rgba(0,0,0,0.4)',
+        // Ensure proper scaling on mobile devices
+        transform: 'translateZ(0)', // Hardware acceleration
+        willChange: 'transform',
+        // Prevent board from overflowing on very small screens
+        boxSizing: 'border-box'
     };
 
     const tokenNode = (playerIndex, pieceIndex, piece) => {
@@ -1841,12 +1873,28 @@ const LudoGame = () => {
         let y = 0;
         if (piece.isHome) {
             const pos = homePositions[playerIndex][pieceIndex];
-            x = pos.x * CELL_SIZE;
-            y = pos.y * CELL_SIZE;
+            // Calculate cell center position precisely
+            // Cell left edge is at pos.x * CELL_SIZE, right edge at (pos.x + 1) * CELL_SIZE
+            // Center is exactly halfway: pos.x * CELL_SIZE + CELL_SIZE / 2 = (pos.x + 0.5) * CELL_SIZE
+            const cellLeft = pos.x * CELL_SIZE;
+            const cellTop = pos.y * CELL_SIZE;
+            const cellCenterX = cellLeft + CELL_SIZE / 2;
+            const cellCenterY = cellTop + CELL_SIZE / 2;
+            // Position token so its center aligns with cell center
+            // Token left = cell center - half token width
+            x = cellCenterX - tokenSize / 2;
+            y = cellCenterY - tokenSize / 2;
         } else if (piece.isInPlay) {
             const pos = getPositionOnPath(playerIndex, piece.steps);
-            x = pos.x * CELL_SIZE;
-            y = pos.y * CELL_SIZE;
+            // Calculate cell center position precisely
+            const cellLeft = pos.x * CELL_SIZE;
+            const cellTop = pos.y * CELL_SIZE;
+            const cellCenterX = cellLeft + CELL_SIZE / 2;
+            const cellCenterY = cellTop + CELL_SIZE / 2;
+            // Position token so its center aligns with cell center
+            x = cellCenterX - tokenSize / 2;
+            y = cellCenterY - tokenSize / 2;
+            // Apply overlap offset for multiple tokens in same cell
             const key = `${pos.x},${pos.y}`;
             const group = cellOccupancy.get(key) || [];
             const idxInGroup = group.findIndex(g => g.playerIndex === playerIndex && g.pieceIndex === pieceIndex);
@@ -1854,10 +1902,18 @@ const LudoGame = () => {
             x += dx;
             y += dy;
         }
-        // Center the token inside the target cell to avoid visual drift on small screens
-        const centerOffset = (CELL_SIZE - tokenSize) / 2;
-        x += centerOffset;
-        y += centerOffset;
+        // Round to whole pixels to avoid sub-pixel rendering issues
+        // Critical for mobile devices like iPhone 12 mini
+        x = Math.round(x);
+        y = Math.round(y);
+        
+        // Mobile device detection and adjustment
+        const isMobile = winSize.width <= 500 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        if (isMobile) {
+            // Add -10px margin top adjustment for mobile devices
+            y = y - 8.5;
+        }
+        
         const isCurrentPlayer = playerIndex === currentPlayer;
         const isActivePlayer = playerIndex < selectedPlayerCount;
         const canMove = isCurrentPlayer && diceValue > 0 && (
@@ -1867,13 +1923,14 @@ const LudoGame = () => {
         return (
             <div key={`token-${playerIndex}-${pieceIndex}`} style={{
                 position: 'absolute',
-                left: 0,
-                top: 0,
-                transform: `translate3d(${x}px, ${y}px, 0)`,
-                width: tokenSize,
-                height: tokenSize,
+                left: `${x}px`,
+                top: `${y}px`,
+                width: `${tokenSize}px`,
+                height: `${tokenSize}px`,
                 zIndex: 10,
-                transition: `transform ${stepDurationMs}ms ease`
+                transition: `left ${stepDurationMs}ms ease, top ${stepDurationMs}ms ease`,
+                // Ensure pixel-perfect alignment on mobile devices
+                willChange: 'left, top'
             }}>
                 <button
                     onClick={() => { if ((!onlineMode || myPlayerIndex === currentPlayer) && isActivePlayer && isCurrentPlayer && diceValue > 0) movePiece(pieceIndex); }}
@@ -1881,7 +1938,7 @@ const LudoGame = () => {
                     style={{
                         width: '100%',
                         height: '100%',
-                        borderRadius: tokenSize / 2,
+                        borderRadius: '50%',
                         background: "black",
                         border: `3px solid ${adjustHexColor(piece.color, -30)}`,
                         boxShadow: isActivePlayer ? `0 6px 8px ${piece.color}66` : 'none',
@@ -1889,7 +1946,10 @@ const LudoGame = () => {
                         position: 'relative',
                         overflow: 'hidden',
                         cursor: (isActivePlayer && isCurrentPlayer && diceValue > 0) ? 'pointer' : 'default',
-                        animation: canMove ? 'tokenPulseScale 900ms ease-in-out infinite, tokenGlow 1200ms ease-in-out infinite' : 'none'
+                        animation: canMove ? 'tokenPulseScale 900ms ease-in-out infinite, tokenGlow 1200ms ease-in-out infinite' : 'none',
+                        // Ensure proper rendering on mobile
+                        transform: 'translateZ(0)',
+                        backfaceVisibility: 'hidden'
                     }}
                     aria-label={`Piece ${pieceIndex + 1} of ${playerNames[playerIndex]}`}
                 >
@@ -2152,20 +2212,35 @@ const LudoGame = () => {
             )}
 
             {gameStarted && (
-                <div style={{ padding: 20 }}>
+                <div style={{ padding: responsivePadding }}>
 
 
                     <div style={{ display: 'flex', justifyContent: 'center' }}>
                         <div style={boardStyle}>
-                            <svg width={BOARD_SIZE} height={BOARD_SIZE} viewBox={`0 0 ${BOARD_SIZE} ${BOARD_SIZE}`}>
+                            <svg 
+                                width={BOARD_SIZE} 
+                                height={BOARD_SIZE} 
+                                viewBox={`0 0 ${BOARD_SIZE} ${BOARD_SIZE}`}
+                                preserveAspectRatio="none"
+                                style={{ display: 'block', width: `${BOARD_SIZE}px`, height: `${BOARD_SIZE}px` }}
+                            >
                                 <rect x="0" y="0" width={BOARD_SIZE} height={BOARD_SIZE} fill="#FFFFFF" stroke="#000000" strokeWidth="2" rx="10" ry="10" />
                                 {renderBoardGrid()}
                                 {renderStaticRects()}
                                 {/* Safe zone markers filled with matching piece color */}
 
                             </svg>
-                            {/* Tokens overlay */}
-                            <div style={{ position: 'absolute', inset: 0 }}>
+                            {/* Tokens overlay - positioned absolutely to match SVG coordinates exactly */}
+                            <div style={{ 
+                                position: 'absolute', 
+                                left: 0, 
+                                top: 0, 
+                                width: `${BOARD_SIZE}px`, 
+                                height: `${BOARD_SIZE}px`,
+                                // Ensure pixel-perfect alignment on mobile devices
+                                transform: 'translateZ(0)',
+                                willChange: 'contents'
+                            }}>
                                 {renderPlayerOrder.map((playerIndex) => (
                                     players[playerIndex]?.pieces.map((piece, pieceIndex) => tokenNode(playerIndex, pieceIndex, piece))
                                 ))}
@@ -2210,19 +2285,28 @@ const LudoGame = () => {
                             {/* Center dice overlay */}
                             <div style={{ position: 'absolute', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', pointerEvents: canRollDice ? 'auto' : 'none' }}>
                                 <button onClick={rollDice} disabled={!canRollDice || diceRolling} style={{ background: 'transparent', border: 'none', padding: 0, cursor: (canRollDice && !diceRolling) ? 'pointer' : 'default' }}>
-                                    <div style={{ width: 108, height: 108, perspective: '800px' }}>
-                                        <div style={{ width: '100%', height: '100%', transformStyle: 'preserve-3d', display: 'flex', alignItems: 'center', justifyContent: 'center', transform: `rotateX(${diceRotateX}deg) rotateY(${diceRotateY}deg)`, transition: 'transform 0.7s ease-in-out' }}>
-                                            {(!diceRolling && canRollDice && diceValue === 0) ? (
-                                                players[currentPlayer]?.avatar ? (
-                                                    <img src={players[currentPlayer].avatar} alt="current player" style={{ width: 80, height: 80, borderRadius: "50%", objectFit: 'cover', boxShadow: '0 6px 10px rgba(0,0,0,0.35)', border: `3px solid ${players[currentPlayer]?.color || '#FFD700'}` }} />
-                                                ) : (
-                                                    <img src={siteConfig.logo} alt="Connect" style={{ width: 80, height: 80, borderRadius: "50%", objectFit: 'contain', background: 'transparent', boxShadow: '0 6px 10px rgba(0,0,0,0.35)', border: `3px solid ${players[currentPlayer]?.color || '#FFD700'}` }} />
-                                                )
-                                            ) : (
-                                                <DiceSVG value={diceRolling ? null : diceValue} size={108} strokeColor={players[currentPlayer]?.color || '#FFD700'} />
-                                            )}
-                                        </div>
-                                    </div>
+                                    {(() => {
+                                        // Mobile device detection
+                                        const isMobile = winSize.width <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                                        // Reduce dice size for mobile devices
+                                        const diceSize = isMobile ? 72 : 108;
+                                        const avatarSize = isMobile ? 56 : 80;
+                                        return (
+                                            <div style={{ width: diceSize, height: diceSize, perspective: '800px' }}>
+                                                <div style={{ width: '100%', height: '100%', transformStyle: 'preserve-3d', display: 'flex', alignItems: 'center', justifyContent: 'center', transform: `rotateX(${diceRotateX}deg) rotateY(${diceRotateY}deg)`, transition: 'transform 0.7s ease-in-out' }}>
+                                                    {(!diceRolling && canRollDice && diceValue === 0) ? (
+                                                        players[currentPlayer]?.avatar ? (
+                                                            <img src={players[currentPlayer].avatar} alt="current player" style={{ width: avatarSize, height: avatarSize, borderRadius: "50%", objectFit: 'cover', boxShadow: '0 6px 10px rgba(0,0,0,0.35)', border: `3px solid ${players[currentPlayer]?.color || '#FFD700'}` }} />
+                                                        ) : (
+                                                            <img src={siteConfig.logo} alt="Connect" style={{ width: avatarSize, height: avatarSize, borderRadius: "50%", objectFit: 'contain', background: 'transparent', boxShadow: '0 6px 10px rgba(0,0,0,0.35)', border: `3px solid ${players[currentPlayer]?.color || '#FFD700'}` }} />
+                                                        )
+                                                    ) : (
+                                                        <DiceSVG value={diceRolling ? null : diceValue} size={diceSize} strokeColor={players[currentPlayer]?.color || '#FFD700'} />
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
                                 </button>
                             </div>
                         </div>
