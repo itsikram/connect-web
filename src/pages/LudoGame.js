@@ -193,32 +193,22 @@ const LudoGame = () => {
     const [myPlayerIndex, setMyPlayerIndex] = useState(0);
     const socketBaseUrl = useMemo(() => {
         try {
+            // Production socket server URL
+            const PRODUCTION_SOCKET_URL = 'https://connect-server-y1ku.onrender.com';
             const envUrl = (typeof process !== 'undefined' && process?.env?.REACT_APP_SOCKET_URL) ? process.env.REACT_APP_SOCKET_URL : null;
-            let url = envUrl || (siteConfig?.siteUrl && typeof siteConfig.siteUrl === 'string' ? siteConfig.siteUrl : window.location.origin);
-            // Dev heuristic: CRA at 3000, API at 5000
+            let url = envUrl || PRODUCTION_SOCKET_URL;
+            // Dev heuristic: use localhost:4000 for local development
             try {
                 const loc = window.location;
-                if (!envUrl && (!siteConfig?.siteUrl || siteConfig.siteUrl === '/') && /localhost|127\.|::1/.test(loc.hostname) && String(loc.port) === '3000') {
+                if (!envUrl && /localhost|127\.|::1/.test(loc.hostname) && String(loc.port) === '3000') {
                     url = `${loc.protocol}//${loc.hostname}:4000`;
-                }
-                // If siteConfig.siteUrl explicitly points to :3000 in dev, override to :4000
-                if (!envUrl && siteConfig?.siteUrl) {
-                    try {
-                        const raw = siteConfig.siteUrl;
-                        const parsed = new URL(raw, loc.origin);
-                        const isLocal = /localhost|127\.|::1/.test(parsed.hostname);
-                        const is3000 = parsed.port === '3000' || (!parsed.port && String(loc.port) === '3000');
-                        if (isLocal && is3000) {
-                            url = `${parsed.protocol}//${parsed.hostname}:4000`;
-                        }
-                    } catch (_e4) {}
                 }
             } catch (_e2) {}
             const normalized = url.replace(/\/$/, '');
-            try { console.log('[LUDO][client] socket base URL resolved', { envUrl, siteUrl: siteConfig?.siteUrl, final: normalized }); } catch (_e3) {}
+            try { console.log('[LUDO][client] socket base URL resolved', { envUrl, productionUrl: PRODUCTION_SOCKET_URL, final: normalized }); } catch (_e3) {}
             return normalized;
         } catch (_e) {
-            return window.location.origin;
+            return 'https://connect-server-y1ku.onrender.com';
         }
     }, []);
 
