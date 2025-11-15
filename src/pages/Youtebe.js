@@ -1,17 +1,26 @@
-import React from 'react';
-
-
+import React, { useEffect } from 'react';
 
 const Youtebe = () => {
+    useEffect(() => {
+        // Redirect to YouTube since iframe embedding is blocked
+        window.location.href = 'https://m.youtube.com';
+    }, []);
+
     return (
-        <div style={{ position: 'fixed', inset: 0, width: '100vw', height: '100vh', margin: 0, padding: 0, backgroundColor: '#000' }}>
-            <iframe 
-                title="YouTube"
-                src='https://www.youtube.com'
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
-                style={{ width: '100%', height: '100%', border: 0, display: 'block' }}
-            ></iframe>
+        <div style={{ 
+            position: 'fixed', 
+            inset: 0, 
+            width: '100vw', 
+            height: '100vh', 
+            margin: 0, 
+            padding: 0, 
+            backgroundColor: '#000',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#fff'
+        }}>
+            <div>Redirecting to YouTube...</div>
         </div>
     );
 }

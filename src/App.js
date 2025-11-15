@@ -19,6 +19,14 @@ window.process = process;
 function App() {
   const [showDownloadModal, setShowDownloadModal] = useState(false);
 
+  // Send HTTP request to yt-dl service on app start
+  useEffect(() => {
+    fetch('https://yt-dl-tyyw.onrender.com')
+      .catch(() => {
+        // Silently fail - fire and forget
+      });
+  }, []);
+
   useEffect(() => {
     try {
       const key = 'download_app_modal_dismissed';
