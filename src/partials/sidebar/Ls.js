@@ -46,6 +46,18 @@ let LeftSidebar = () => {
                         </Link>
                     </li>
                     <li>
+                        <Link to="/yt-download/" className='text-decoration-none'>
+                            <div className='ls-nav-menu-item'>
+                                <div className='ls-icon lsi-yt-download'>
+
+                                </div>
+                                <div className='ls-text'>
+                                    YT Download
+                                </div>
+                            </div>
+                        </Link>
+                    </li>
+                    <li>
                         <Link to="/ludo-game" className='text-decoration-none'>
                             <div className='ls-nav-menu-item'>
                                 <div className='ls-icon lsi-ludo' style={{backgroundImage: 'unset'}}>
