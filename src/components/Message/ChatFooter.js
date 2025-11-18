@@ -19,6 +19,7 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
     const [actionEmoji, setActionEmoji] = useState('👍')
     const [isAi, setIsAi] = useState(false);
     const [isSendingMessage, setIsSendingMessage] = useState(false)
+    const isSendingRef = useRef(false) // Ref to track sending state synchronously
     const [isUploadingFile, setIsUploadingFile] = useState(false)
     const [isUploadingImage, setIsUploadingImage] = useState(false)
     const [isLiveVoiceConnecting, setIsLiveVoiceConnecting] = useState(false)
@@ -73,41 +74,56 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
 
     const handleSendMessage = useCallback((e) => {
         e.preventDefault();
+        e.stopPropagation(); // Prevent event bubbling
 
         const isDisabled = $(e.target).hasClass('button-disabled') || false
-        if (isDisabled || isSendingMessage) return;
+        
+        // Use ref for synchronous check to prevent race conditions
+        if (isDisabled || isSendingRef.current) {
+            console.log('Message send blocked:', { isDisabled, isSending: isSendingRef.current });
+            return;
+        }
 
-        setIsSendingMessage(true)
+        // Check if message is empty
+        if (!inputValue.trim() && !attachmentUrl) {
+            return;
+        }
+
+        // Set both state and ref immediately
+        isSendingRef.current = true;
+        setIsSendingMessage(true);
 
         const roomId = room || [userId, friendId].sort().join('_')
 
         if (roomId) {
-
+            const messageContent = inputValue.trim();
+            
             if (isReplying) {
-                const data = { room: roomId, senderId: userId, receiverId: friendId, message: inputValue, attachment: attachmentUrl, parent: replyData.messageId, isAi }
+                const data = { room: roomId, senderId: userId, receiverId: friendId, message: messageContent, attachment: attachmentUrl, parent: replyData.messageId, isAi }
                 socket.emit('sendMessage', data);
                 setIsTyping(false)
-                // Remove dispatch(sendMessage(data)) to prevent the error
                 scrollToLastMessage();
             } else {
-                const data = { room: roomId, senderId: userId, receiverId: friendId, message: inputValue, attachment: attachmentUrl, parent: false, isAi }
+                const data = { room: roomId, senderId: userId, receiverId: friendId, message: messageContent, attachment: attachmentUrl, parent: false, isAi }
                 socket.emit('sendMessage', data);
                 setIsTyping(false)
-                // Remove dispatch(sendMessage(data)) to prevent the error
                 scrollToLastMessage();
-
             }
-
         }
+        
+        // Clear input and reset state
         setInputValue('')
-
         setIsReplying(false)
         setIsPreview(false)
         setAttachmentUrl('')
         setReplyData({ messageId: null, body: null })
-        setIsPreview(false)
-        setIsSendingMessage(false)
-    },[messages,inputValue,attachmentUrl])
+        
+        // Reset sending flag after a short delay to prevent rapid duplicate sends
+        setTimeout(() => {
+            isSendingRef.current = false;
+            setIsSendingMessage(false)
+        }, 500)
+    },[messages, inputValue, attachmentUrl, room, userId, friendId, isReplying, replyData, isAi])
 
 
 
@@ -134,9 +150,13 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
     });
 
     const handleKeyPress = (event) => {
-        if (event.key === "Enter") {
-            handleSendMessage(event)
-            setInputValue(""); // Clear input after action
+        if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault(); // Prevent form submission
+            event.stopPropagation(); // Prevent event bubbling
+            // Use ref for synchronous check
+            if (!isSendingRef.current) {
+                handleSendMessage(event)
+            }
         }
     };
 

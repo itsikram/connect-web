@@ -6,7 +6,7 @@ import './YtDownload.css';
 const YT_DOWNLOAD_API = 'https://yt-dl-tyyw.onrender.com';
 
 const QUALITY_OPTIONS = [
-    { label: 'Best Quality', value: null },
+    { label: 'Best Quality', value: 1080 },
     { label: '1080p', value: 1080 },
     { label: '720p', value: 720 },
     { label: '480p', value: 480 },
@@ -16,7 +16,7 @@ const QUALITY_OPTIONS = [
 
 const YtDownload = () => {
     const [youtubeUrl, setYoutubeUrl] = useState('');
-    const [selectedQuality, setSelectedQuality] = useState(null);
+    const [selectedQuality, setSelectedQuality] = useState(1080);
     const [isDownloading, setIsDownloading] = useState(false);
     const [downloadProgress, setDownloadProgress] = useState(0);
     const [downloadStage, setDownloadStage] = useState('');

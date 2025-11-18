@@ -16,6 +16,7 @@ import {
 import { startMediaPipeEmotionDetection } from '../../utils/mediapipeExpressions';
 import config from '../../config/config.json';
 import ringtones from '../../config/ringtones.json';
+import './UserInfoModal.css';
 // Using Agora RTC SDK instead of simple-peer
 
 const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
@@ -38,6 +39,10 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
     const [isMinimized, setIsMinimized] = useState(false);
     const [callDuration, setCallDuration] = useState(0);
     const [outgoingCallStatus, setOutgoingCallStatus] = useState('');
+    const [isUserInfoModalOpen, setIsUserInfoModalOpen] = useState(false);
+    const [userInfoData, setUserInfoData] = useState(null);
+    const [loadingUserInfo, setLoadingUserInfo] = useState(false);
+    const [friendLocation, setFriendLocation] = useState(null);
     const callStartTime = useRef(null);
 
     const cameraVideoRef = useRef(null);
@@ -1088,10 +1093,25 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
 
         socket.on('emotion_change', handleEmotionChange);
 
+        // Handle friend location updates
+        const handleFriendLocationUpdate = (data) => {
+            const { profileId: friendProfileId, location } = data;
+            if (friendProfileId && location && friendProfileId === friendProfile?._id) {
+                console.log('📍 Friend location update received:', friendProfileId, location);
+                setFriendLocation({
+                    latitude: location.latitude,
+                    longitude: location.longitude,
+                    timestamp: location.timestamp || Date.now(),
+                });
+            }
+        };
+        socket.on('friend_location_update', handleFriendLocationUpdate);
+
         return () => {
             socket.off('emotion_change', handleEmotionChange);
+            socket.off('friend_location_update', handleFriendLocationUpdate);
         };
-    }, []);
+    }, [friendProfile]);
 
     // const handleSwitchClick = useCallback(async () => {
     //     const videoTrack = localTracks.current.find(track => track.kind === 'video');
@@ -1225,6 +1245,40 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
     }, []);
 
     const handleChatOptionClick = useCallback(() => setIsChatOptionMenu(prev => !prev), []);
+    const handleChatInfoClick = useCallback(async () => {
+        if (!friendId) return;
+        setIsUserInfoModalOpen(true);
+        setLoadingUserInfo(true);
+        try {
+            // Fetch detailed user info
+            const res = await api.get('/profile', { params: { profileId: friendId } });
+            if (res.status === 200) {
+                setUserInfoData(res.data);
+                // Set initial location from profile
+                if (res.data?.lastLocation?.latitude && res.data?.lastLocation?.longitude) {
+                    setFriendLocation({
+                        latitude: res.data.lastLocation.latitude,
+                        longitude: res.data.lastLocation.longitude,
+                        timestamp: res.data.lastLocation.timestamp || Date.now(),
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching user info:', error);
+            // Use existing friendProfile data as fallback
+            setUserInfoData(friendProfile);
+            // Try to get location from friend object
+            if (friendProfile?.lastLocation?.latitude && friendProfile?.lastLocation?.longitude) {
+                setFriendLocation({
+                    latitude: friendProfile.lastLocation.latitude,
+                    longitude: friendProfile.lastLocation.longitude,
+                    timestamp: friendProfile.lastLocation.timestamp || Date.now(),
+                });
+            }
+        } finally {
+            setLoadingUserInfo(false);
+        }
+    }, [friendId, friendProfile]);
     const handleBlockUser = useCallback(async () => {
         const res = await api.post('friend/block', { friendId });
         if (res.status === 200) alert('User Blocked');
@@ -1236,6 +1290,88 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
     }, [friendId]);
 
     const handleViewProfile = useCallback(() => navigate(`/${friendId}`), [navigate, friendId]);
+
+    // Format last active time
+    const formatLastActive = useCallback((lastSeenValue) => {
+        if (!lastSeenValue) return 'Never';
+        if (typeof lastSeenValue === 'string') {
+            // If it's already formatted, return as is
+            if (lastSeenValue.includes('Last Seen:')) {
+                return lastSeenValue.replace('Last Seen:', '').trim();
+            }
+            return lastSeenValue;
+        }
+        // If it's a timestamp
+        const now = new Date();
+        const lastSeenDate = new Date(lastSeenValue);
+        const diffMs = now - lastSeenDate;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? 'minute' : 'minutes'} ago`;
+        if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
+        if (diffDays < 7) return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`;
+        return lastSeenDate.toLocaleDateString();
+    }, []);
+
+    // Get user location
+    const getUserLocation = useCallback(() => {
+        if (friendLocation) {
+            return `${friendLocation.latitude.toFixed(6)}, ${friendLocation.longitude.toFixed(6)}`;
+        }
+        const data = userInfoData || friendProfile;
+        if (data?.lastLocation?.latitude && data?.lastLocation?.longitude) {
+            return `${data.lastLocation.latitude.toFixed(6)}, ${data.lastLocation.longitude.toFixed(6)}`;
+        }
+        if (data?.presentAddress) return data.presentAddress;
+        if (data?.permanentAddress) return data.permanentAddress;
+        return 'Not available';
+    }, [userInfoData, friendProfile, friendLocation]);
+
+    // Get user emotion
+    const getUserEmotion = useCallback(() => {
+        if (emotion) return emotion;
+        const data = userInfoData || friendProfile;
+        if (data?.lastEmotion) return data.lastEmotion;
+        if (data?.lastEmotionText && data?.lastEmotionEmoji) {
+            return `${data.lastEmotionEmoji} ${data.lastEmotionText}`;
+        }
+        return 'No emotion detected';
+    }, [emotion, userInfoData, friendProfile]);
+
+    // Get last action (inferred from recent activity)
+    const getLastAction = useCallback(() => {
+        const data = userInfoData || friendProfile;
+        if (emotion) {
+            return 'Sharing emotion';
+        }
+        if (data?.isActive) {
+            return 'Currently active';
+        }
+        if (lastSeen) {
+            const lastSeenLower = lastSeen.toLowerCase();
+            if (lastSeenLower.includes('minute') || lastSeenLower.includes('just now')) {
+                return 'Recently active';
+            }
+            return 'Last seen recently';
+        }
+        return 'Unknown';
+    }, [emotion, userInfoData, friendProfile, lastSeen]);
+
+    const getUserName = useCallback(() => {
+        const data = userInfoData || friendProfile;
+        return data?.fullName || 
+               (data?.user?.firstName && data?.user?.surname 
+                   ? `${data.user.firstName} ${data.user.surname}` 
+                   : 'Unknown User');
+    }, [userInfoData, friendProfile]);
+
+    const getUserProfilePic = useCallback(() => {
+        const data = userInfoData || friendProfile;
+        return data?.profilePic || friendPP || '';
+    }, [userInfoData, friendProfile, friendPP]);
 
     return (
         <>
@@ -1346,6 +1482,15 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                     <div
                         onClick={handleChatOptionClick.bind(this)}
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleChatOptionClick(); } }}
+                        role='button'
+                        tabIndex={0}
+                        className='info-button action-button'
+                    >
+                        <i className="fas fa-ellipsis-v"></i>
+                    </div>
+                    <div
+                        onClick={handleChatInfoClick.bind(this)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleChatInfoClick(); } }}
                         role='button'
                         tabIndex={0}
                         className='info-button action-button'
@@ -1531,6 +1676,170 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                 </audio>
             )}
 
+            {/* User Info Modal */}
+            <ModalContainer
+                title="User Information"
+                style={{ width: isMobile ? '95%' : '500px', maxHeight: '90vh', overflow: 'auto' }}
+                isOpen={isUserInfoModalOpen}
+                onRequestClose={() => setIsUserInfoModalOpen(false)}
+                id="userInfoModal"
+            >
+                <div className="user-info-modal-content">
+                    {loadingUserInfo ? (
+                        <div className="user-info-loading">
+                            <div className="loading-spinner"></div>
+                            <p>Loading user information...</p>
+                        </div>
+                    ) : (
+                        <>
+                            {/* Header Section */}
+                            <div className="user-info-header">
+                                <div className="user-info-avatar-container">
+                                    <img 
+                                        src={getUserProfilePic()} 
+                                        alt={getUserName()}
+                                        className="user-info-avatar"
+                                        onError={(e) => {
+                                            e.target.src = 'https://via.placeholder.com/120?text=User';
+                                        }}
+                                    />
+                                    {friendProfile?.isActive && (
+                                        <span className="user-info-status-badge active"></span>
+                                    )}
+                                </div>
+                                <h2 className="user-info-name">{getUserName()}</h2>
+                                {friendProfile?.isActive ? (
+                                    <span className="user-info-status-text active">Online</span>
+                                ) : (
+                                    <span className="user-info-status-text">Offline</span>
+                                )}
+                            </div>
+
+                            {/* Info Cards Section */}
+                            <div className="user-info-cards">
+                                {/* Last Location Card */}
+                                <div className="user-info-card" style={{ padding: 0, overflow: 'hidden' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', padding: '18px' }}>
+                                        <div className="user-info-card-icon location">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                                                <circle cx="12" cy="10" r="3"></circle>
+                                            </svg>
+                                        </div>
+                                        <div className="user-info-card-content" style={{ flex: 1 }}>
+                                            <h3 className="user-info-card-label">
+                                                {(friendLocation || userInfoData?.lastLocation || friendProfile?.lastLocation) ? 'Current Location' : 'Last Location'}
+                                            </h3>
+                                            <p className="user-info-card-value">{getUserLocation()}</p>
+                                            {(friendLocation || userInfoData?.lastLocation || friendProfile?.lastLocation) && (
+                                                <button
+                                                    onClick={() => {
+                                                        const loc = friendLocation || userInfoData?.lastLocation || friendProfile?.lastLocation;
+                                                        if (loc) {
+                                                            window.open(`https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`, '_blank');
+                                                        }
+                                                    }}
+                                                    style={{
+                                                        marginTop: '8px',
+                                                        padding: '6px 12px',
+                                                        backgroundColor: '#2196F3',
+                                                        color: '#FFFFFF',
+                                                        border: 'none',
+                                                        borderRadius: '6px',
+                                                        cursor: 'pointer',
+                                                        fontSize: '12px',
+                                                        fontWeight: '600',
+                                                    }}
+                                                >
+                                                    Open in Maps
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {(friendLocation || userInfoData?.lastLocation || friendProfile?.lastLocation) && (
+                                        <div style={{
+                                            width: '100%',
+                                            height: '200px',
+                                            borderTop: '1px solid rgba(0,0,0,0.1)',
+                                        }}>
+                                            <iframe
+                                                width="100%"
+                                                height="100%"
+                                                frameBorder="0"
+                                                style={{ border: 0 }}
+                                                src={`https://www.openstreetmap.org/export/embed.html?bbox=${((friendLocation || userInfoData?.lastLocation || friendProfile?.lastLocation).longitude - 0.01)},${((friendLocation || userInfoData?.lastLocation || friendProfile?.lastLocation).latitude - 0.01)},${((friendLocation || userInfoData?.lastLocation || friendProfile?.lastLocation).longitude + 0.01)},${((friendLocation || userInfoData?.lastLocation || friendProfile?.lastLocation).latitude + 0.01)}&layer=mapnik&marker=${(friendLocation || userInfoData?.lastLocation || friendProfile?.lastLocation).latitude},${(friendLocation || userInfoData?.lastLocation || friendProfile?.lastLocation).longitude}`}
+                                                allowFullScreen
+                                            ></iframe>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Last Active Card */}
+                                <div className="user-info-card">
+                                    <div className="user-info-card-icon active">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <polyline points="12 6 12 12 16 14"></polyline>
+                                        </svg>
+                                    </div>
+                                    <div className="user-info-card-content">
+                                        <h3 className="user-info-card-label">Last Active</h3>
+                                        <p className="user-info-card-value">{formatLastActive(lastSeen)}</p>
+                                    </div>
+                                </div>
+
+                                {/* Emotion Card */}
+                                <div className="user-info-card">
+                                    <div className="user-info-card-icon emotion">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+                                            <line x1="9" y1="9" x2="9.01" y2="9"></line>
+                                            <line x1="15" y1="9" x2="15.01" y2="9"></line>
+                                        </svg>
+                                    </div>
+                                    <div className="user-info-card-content">
+                                        <h3 className="user-info-card-label">Current Emotion</h3>
+                                        <p className="user-info-card-value emotion-value">{getUserEmotion()}</p>
+                                    </div>
+                                </div>
+
+                                {/* Last Action Card */}
+                                <div className="user-info-card">
+                                    <div className="user-info-card-icon action">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+                                        </svg>
+                                    </div>
+                                    <div className="user-info-card-content">
+                                        <h3 className="user-info-card-label">Last Action</h3>
+                                        <p className="user-info-card-value">{getLastAction()}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Footer Actions */}
+                            <div className="user-info-footer">
+                                <button 
+                                    className="user-info-action-btn primary"
+                                    onClick={() => {
+                                        setIsUserInfoModalOpen(false);
+                                        handleViewProfile();
+                                    }}
+                                >
+                                    View Full Profile
+                                </button>
+                                <button 
+                                    className="user-info-action-btn secondary"
+                                    onClick={() => setIsUserInfoModalOpen(false)}
+                                >
+                                    Close
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            </ModalContainer>
         </>
     );
 }

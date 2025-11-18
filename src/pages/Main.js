@@ -122,6 +122,10 @@ const speakText = (text) => {
     window.speechSynthesis.speak(speech);
 };
 
+// Track recently processed messages to prevent duplicate toasts (shared across component instances)
+const recentMessageToasts = new Map(); // messageId -> timestamp
+const TOAST_DEDUP_WINDOW = 3000; // 3 seconds
+
 const Main = () => {
     const dispatch = useDispatch();
     const { token, user, isAuthenticated } = useAuth();
@@ -286,10 +290,13 @@ const Main = () => {
         // socket.on('oldNotifications', data => {
         //     dispatch(addNotifications(data.reverse(), true))
         // })
-        socket.on('newNotification', data => {
-            dispatch(addNotification(data))
-            notify(data.text, false, data.icon, data.link)
-        })
+        // socket.on('newNotification', data => {
+        //     dispatch(addNotification(data))
+        //     // Skip toast for message notifications - they're handled by newMessageToUser
+        //     if (data.type !== 'message') {
+        //         notify(data.text, false, data.icon, data.link)
+        //     }
+        // })
 
         // Listen for browser-specific notifications
         socket.on('browserNotification', data => {
@@ -297,30 +304,33 @@ const Main = () => {
             
             // Show in-app notification
             dispatch(addNotification(data))
-            notify(data.text, false, data.icon, data.link)
-            
-            // Show browser notification if permission is granted
-            if (webNotificationService.isPermissionGranted) {
-                const notification = new Notification(data.title || 'Connect', {
-                    body: data.text,
-                    icon: data.icon || '/logo192.png',
-                    tag: `notification_${data._id || Date.now()}`,
-                    data: {
-                        url: data.link || '/',
-                        notificationId: data._id
-                    }
-                });
+            // Skip toast and browser notification for message types - they're handled by newMessageToUser
+            if (data.type !== 'message') {
+                notify(data.text, false, data.icon, data.link)
+                
+                // Show browser notification if permission is granted
+                if (webNotificationService.isPermissionGranted) {
+                    const notification = new Notification(data.title || 'Connect', {
+                        body: data.text,
+                        icon: data.icon || '/logo192.png',
+                        tag: `notification_${data._id || Date.now()}`,
+                        data: {
+                            url: data.link || '/',
+                            notificationId: data._id
+                        }
+                    });
 
-                // Handle click event
-                notification.onclick = () => {
-                    window.open(data.link || '/', '_self');
-                    notification.close();
-                };
+                    // Handle click event
+                    notification.onclick = () => {
+                        window.open(data.link || '/', '_self');
+                        notification.close();
+                    };
 
-                // Auto close after 5 seconds
-                setTimeout(() => {
-                    notification.close();
-                }, 5000);
+                    // Auto close after 5 seconds
+                    setTimeout(() => {
+                        notification.close();
+                    }, 5000);
+                }
             }
         })
 
@@ -331,6 +341,27 @@ const Main = () => {
 
         socket.on('newMessageToUser', ({ updatedMessage, senderName, senderPP }) => {
             dispatch(newMessage(updatedMessage))
+            
+            // Client-side deduplication: Check if we've already shown a toast for this message
+            const messageId = updatedMessage._id?.toString() || updatedMessage._id;
+            const now = Date.now();
+            const lastToastTime = recentMessageToasts.get(messageId);
+            
+            if (lastToastTime && (now - lastToastTime) < TOAST_DEDUP_WINDOW) {
+                console.log(`Skipping duplicate toast for message ${messageId} (shown ${now - lastToastTime}ms ago)`);
+                return; // Skip showing duplicate toast
+            }
+            
+            // Mark this message as having shown a toast
+            recentMessageToasts.set(messageId, now);
+            
+            // Clean up old entries
+            for (const [msgId, timestamp] of recentMessageToasts.entries()) {
+                if (now - timestamp > TOAST_DEDUP_WINDOW) {
+                    recentMessageToasts.delete(msgId);
+                }
+            }
+            
             notify(updatedMessage.message, senderName, senderPP, '/message/' + updatedMessage.senderId)
 
             // Show browser notification for new messages
@@ -546,6 +577,26 @@ const Main = () => {
     useEffect(() => {
         socket.on('notification', (msg, senderName, senderPP) => {
             if (isTabActive == true) {
+                // Client-side deduplication: Check if we've already shown a toast for this message
+                const messageId = msg._id?.toString() || msg._id || `${msg.senderId}_${msg.message?.substring(0, 50)}`;
+                const now = Date.now();
+                const lastToastTime = recentMessageToasts.get(messageId);
+                
+                if (lastToastTime && (now - lastToastTime) < TOAST_DEDUP_WINDOW) {
+                    console.log(`Skipping duplicate toast for notification message ${messageId} (shown ${now - lastToastTime}ms ago)`);
+                    return; // Skip showing duplicate toast
+                }
+                
+                // Mark this message as having shown a toast
+                recentMessageToasts.set(messageId, now);
+                
+                // Clean up old entries
+                for (const [msgId, timestamp] of recentMessageToasts.entries()) {
+                    if (now - timestamp > TOAST_DEDUP_WINDOW) {
+                        recentMessageToasts.delete(msgId);
+                    }
+                }
+                
                 notify(msg.message, senderName, senderPP, '/message/' + msg.senderId)
                 dispatch(newMessage(msg))
             } else {

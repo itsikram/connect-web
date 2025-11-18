@@ -148,7 +148,9 @@
     margin-top: 30px;
     display: flex;
     justify-content: center;
+    align-items: center;
     gap: 15px;
+    width: 100%;
 }
 
 .yt-download-btn,
@@ -164,6 +166,7 @@
     align-items: center;
     justify-content: center;
     min-width: 180px;
+    margin: 0;
 }
 
 .yt-download-btn {
@@ -172,7 +175,7 @@
 }
 
 .yt-download-btn:hover:not(:disabled) {
-    transform: translateY(-2px);
+    /* transform: translateY(-2px); */
     box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
 }
 
@@ -188,7 +191,7 @@
 
 .yt-cancel-btn:hover {
     background: #c0392b;
-    transform: translateY(-2px);
+    /* transform: translateY(-2px); */
     box-shadow: 0 8px 20px rgba(231, 76, 60, 0.4);
 }
 
@@ -298,9 +301,9 @@
     }
 }
 
-.yt-download-btn:disabled {
+/* .yt-download-btn:disabled {
     animation: pulse 2s infinite;
-}
+} */
 
 
 

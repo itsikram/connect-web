@@ -29,7 +29,7 @@ let HeaderRight = ({ dispatch, useSelector }) => {
 
 
     let notificationMenuHeight = optionData.bodyHeight - optionData.headerHeight - 100
-    let notificationMenuStyle = { maxHeight: notificationMenuHeight + 'px', overflowY: 'scroll' }
+    let notificationMenuStyle = { maxHeight: notificationMenuHeight + 'px' }
 
 
     useEffect(() => {

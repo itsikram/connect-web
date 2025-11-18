@@ -5,11 +5,15 @@ import api from '../../api/api';
 const NotificationSetting = () => {
 
     const handleUnregisterAllDevices = useCallback(async () => {
-        const confirmed = window.confirm('Unregister all browsers and devices for your account? This will sign you out everywhere.');
+        const confirmed = window.confirm('Unregister all browsers and devices for notifications? This will unregister all other devices except the current one.');
         if (!confirmed) return;
         try {
+            // Unregister all browsers
             await api.post('/web-notification/unregister-all-browsers');
-            alert('All devices have been unregistered. You may need to sign in again.');
+            // Unregister all device tokens (mobile app devices)
+            // Pass empty currentToken to unregister all device tokens
+            await api.post('/notification/token/unregister-all-others', { currentToken: '' });
+            alert('All other devices have been unregistered for notifications.');
         } catch (error) {
             console.error('Failed to unregister devices', error);
             alert('Failed to unregister devices. Please try again.');

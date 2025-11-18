@@ -191,6 +191,12 @@ const LudoGame = () => {
     const socketRef = useRef(null);
     const [gameId, setGameId] = useState(null);
     const [myPlayerIndex, setMyPlayerIndex] = useState(0);
+    // Reconnection state
+    const [isReconnecting, setIsReconnecting] = useState(false);
+    const [reconnectAttempts, setReconnectAttempts] = useState(0);
+    const [showReconnectModal, setShowReconnectModal] = useState(false);
+    const savedGameStateRef = useRef(null);
+    const reconnectAttemptsRef = useRef(0);
     const socketBaseUrl = useMemo(() => {
         try {
             // Production socket server URL
@@ -225,6 +231,140 @@ const LudoGame = () => {
         } catch (_e) { return false; }
     }, []);
 
+    // Save game state to localStorage for reconnection
+    const saveGameState = useCallback(() => {
+        try {
+            if (!gameId || !onlineMode) {
+                localStorage.removeItem('ludo_game_state');
+                return;
+            }
+            const state = {
+                gameId,
+                myPlayerIndex,
+                onlineMode,
+                selectedPlayerCount,
+                timestamp: Date.now()
+            };
+            localStorage.setItem('ludo_game_state', JSON.stringify(state));
+            savedGameStateRef.current = state;
+        } catch (_e) { }
+    }, [gameId, myPlayerIndex, onlineMode, selectedPlayerCount]);
+
+    // Load saved game state from localStorage
+    const loadGameState = useCallback(() => {
+        try {
+            const saved = localStorage.getItem('ludo_game_state');
+            if (!saved) return null;
+            const state = JSON.parse(saved);
+            // Only restore if saved within last 24 hours
+            const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+            if (Date.now() - (state.timestamp || 0) > maxAge) {
+                localStorage.removeItem('ludo_game_state');
+                return null;
+            }
+            savedGameStateRef.current = state;
+            return state;
+        } catch (_e) {
+            localStorage.removeItem('ludo_game_state');
+            return null;
+        }
+    }, []);
+
+    // Clear saved game state
+    const clearGameState = useCallback(() => {
+        try {
+            localStorage.removeItem('ludo_game_state');
+            savedGameStateRef.current = null;
+        } catch (_e) { }
+    }, []);
+
+    // Attempt to reconnect to a saved game
+    const attemptReconnect = useCallback(async () => {
+        const saved = loadGameState();
+        if (!saved || !saved.gameId) {
+            setShowReconnectModal(false);
+            return false;
+        }
+
+        reconnectAttemptsRef.current += 1;
+        const currentAttempts = reconnectAttemptsRef.current;
+        setReconnectAttempts(currentAttempts);
+
+        // Give up after 3 attempts
+        if (currentAttempts >= 3) {
+            clearGameState();
+            setShowReconnectModal(false);
+            setIsReconnecting(false);
+            reconnectAttemptsRef.current = 0;
+            setReconnectAttempts(0);
+            return false;
+        }
+
+        setIsReconnecting(true);
+
+        try {
+            // Restore game state
+            setGameId(saved.gameId);
+            setMyPlayerIndex(saved.myPlayerIndex || 0);
+            setOnlineMode(true);
+            if (saved.selectedPlayerCount) {
+                setSelectedPlayerCount(saved.selectedPlayerCount);
+            }
+
+            // Ensure socket is connected
+            ensureSocketConnected();
+
+            // Wait for socket connection
+            const waitForSocket = () => {
+                return new Promise((resolve) => {
+                    if (socketRef.current?.connected) {
+                        resolve(true);
+                        return;
+                    }
+                    const checkInterval = setInterval(() => {
+                        if (socketRef.current?.connected) {
+                            clearInterval(checkInterval);
+                            resolve(true);
+                        }
+                    }, 100);
+                    setTimeout(() => {
+                        clearInterval(checkInterval);
+                        resolve(false);
+                    }, 5000);
+                });
+            };
+
+            const connected = await waitForSocket();
+            if (!connected) {
+                throw new Error('Socket connection timeout');
+            }
+
+            // Rejoin the game room
+            try {
+                console.log('[LUDO][client] reconnecting to game', { gameId: saved.gameId });
+                socketRef.current.emit('ludo:join', { gameId: saved.gameId });
+            } catch (_e) { }
+
+            // Request latest game state
+            try {
+                socketRef.current.emit('ludo:players:get', { gameId: saved.gameId });
+            } catch (_e) { }
+
+            // Set game as started (will be synced by server)
+            setGameStarted(true);
+            setIsReconnecting(false);
+            setShowReconnectModal(false);
+            reconnectAttemptsRef.current = 0;
+            setReconnectAttempts(0);
+            return true;
+        } catch (error) {
+            console.error('[LUDO][client] reconnect failed', error);
+            setIsReconnecting(false);
+            // Will retry on next call if attempts < 3
+            return false;
+        }
+    }, [loadGameState, ensureSocketConnected, clearGameState]);
+
     useEffect(() => { playersRef.current = players; }, [players]);
     useEffect(() => { currentPlayerRef.current = currentPlayer; }, [currentPlayer]);
     useEffect(() => { selectedPlayerCountRef.current = selectedPlayerCount; }, [selectedPlayerCount]);
@@ -255,6 +395,14 @@ const LudoGame = () => {
                     socketRef.current.on('connect', () => {
                         try { console.log('[LUDO][client] socket connected', { id: socketRef.current?.id }); } catch (_e) { }
                         try { console.log('[LUDO][client] emit ludo:invites:get (on connect)'); socketRef.current?.emit('ludo:invites:get'); } catch (_e) { }
+                        // Auto-reconnect to saved game if we have one
+                        if (savedGameStateRef.current?.gameId && onlineMode && gameId === savedGameStateRef.current.gameId) {
+                            try {
+                                console.log('[LUDO][client] auto-rejoining game on reconnect', { gameId: savedGameStateRef.current.gameId });
+                                socketRef.current.emit('ludo:join', { gameId: savedGameStateRef.current.gameId });
+                                socketRef.current.emit('ludo:players:get', { gameId: savedGameStateRef.current.gameId });
+                            } catch (_e) { }
+                        }
                     });
                     socketRef.current.on('connect_error', (err) => {
                         try { console.error('[LUDO][client] connect_error', { message: err?.message, baseUrl: socketBaseUrl, path: socketPath, query: { profile: myProfile?._id } }); } catch (_e) { }
@@ -286,6 +434,44 @@ const LudoGame = () => {
                     });
                     socketRef.current.on('disconnect', (reason) => {
                         try { console.log('[LUDO][client] socket disconnect', { reason }); } catch (_e) { }
+                        // If we were in an online game, show reconnect option
+                        if (onlineMode && gameId && gameStarted && !gameEnded) {
+                            setIsReconnecting(true);
+                            // Auto-attempt reconnect after a short delay
+                            setTimeout(() => {
+                                if (socketRef.current && !socketRef.current.connected) {
+                                    setShowReconnectModal(true);
+                                }
+                            }, 2000);
+                        }
+                    });
+                    socketRef.current.on('reconnect', (attemptNumber) => {
+                        try { console.log('[LUDO][client] socket reconnected', { attemptNumber }); } catch (_e) { }
+                        setIsReconnecting(false);
+                        setShowReconnectModal(false);
+                        // Auto-rejoin game if we have one
+                        if (savedGameStateRef.current?.gameId && onlineMode) {
+                            try {
+                                socketRef.current.emit('ludo:join', { gameId: savedGameStateRef.current.gameId });
+                                socketRef.current.emit('ludo:players:get', { gameId: savedGameStateRef.current.gameId });
+                            } catch (_e) { }
+                        }
+                    });
+                    socketRef.current.on('reconnect_attempt', (attemptNumber) => {
+                        try { console.log('[LUDO][client] reconnect attempt', { attemptNumber }); } catch (_e) { }
+                        if (onlineMode && gameId && gameStarted) {
+                            setIsReconnecting(true);
+                        }
+                    });
+                    socketRef.current.on('reconnect_error', (error) => {
+                        try { console.error('[LUDO][client] reconnect error', error); } catch (_e) { }
+                    });
+                    socketRef.current.on('reconnect_failed', () => {
+                        try { console.error('[LUDO][client] reconnect failed'); } catch (_e) { }
+                        setIsReconnecting(false);
+                        if (onlineMode && gameId && gameStarted) {
+                            setShowReconnectModal(true);
+                        }
                     });
                 } catch (_e) { }
             }
@@ -429,6 +615,22 @@ const LudoGame = () => {
         initializeGame();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Check for saved game state on mount and offer reconnection
+    useEffect(() => {
+        const saved = loadGameState();
+        if (saved && saved.gameId && myProfile?._id) {
+            // Show reconnect modal if we have a saved game
+            setShowReconnectModal(true);
+        }
+    }, [myProfile?._id, loadGameState]);
+
+    // Save game state whenever it changes
+    useEffect(() => {
+        if (gameId && onlineMode && gameStarted) {
+            saveGameState();
+        }
+    }, [gameId, onlineMode, myPlayerIndex, selectedPlayerCount, gameStarted, saveGameState]);
 
     // Connect socket early at mount (so we can receive invites even if not in online mode yet)
     useEffect(() => {
@@ -819,6 +1021,21 @@ const LudoGame = () => {
         }
     };
 
+    // Helper to find all playable pieces for a given dice value
+    const getPlayablePieces = useCallback((playerIndex, diceVal) => {
+        const playerData = players[playerIndex];
+        if (!playerData || !Array.isArray(playerData.pieces)) return [];
+        const playable = [];
+        playerData.pieces.forEach((piece, pieceIndex) => {
+            if (piece.isHome && diceVal === 6) {
+                playable.push(pieceIndex);
+            } else if (piece.isInPlay && piece.steps + diceVal <= maxSteps) {
+                playable.push(pieceIndex);
+            }
+        });
+        return playable;
+    }, [players, maxSteps]);
+
     const rollDice = () => {
         if (waitingForPlayers) return;
         if (!canRollDice || diceRolling) return;
@@ -852,20 +1069,23 @@ const LudoGame = () => {
             }
 
             const currentPlayerData = players[currentPlayer];
-            const canMove = currentPlayerData?.pieces?.some(piece => {
-                if (piece.isHome && value === 6) return true;
-                if (piece.isInPlay && piece.steps + value <= maxSteps) return true;
-                return false;
-            });
+            const playablePieces = getPlayablePieces(currentPlayer, value);
 
-            if (!canMove) {
+            if (playablePieces.length === 0) {
+                // No moves available
                 setTimeout(() => {
                     const nextPlayer = getNextActivePlayer(currentPlayer);
                     setCurrentPlayer(nextPlayer);
                     setDiceValue(0);
                     setCanRollDice(true);
                 }, 600);
+            } else if (playablePieces.length === 1) {
+                // Only one playable piece - move it automatically
+                setTimeout(() => {
+                    movePiece(playablePieces[0]);
+                }, 300);
             }
+            // If multiple pieces are playable, wait for user to choose
         }, 500);
     };
 
@@ -1111,18 +1331,23 @@ const LudoGame = () => {
 
         const onRoll = (payload) => {
             if (!payload || payload.gameId !== gameId) return;
+            // Skip if this roll was from the current user (handled in rollDice)
             if (payload.by && myProfile?._id && String(payload.by) === String(myProfile._id)) return;
             const value = payload.value;
             setDiceValue(value);
             setDiceRolling(false);
             lastDiceValueRef.current = value;
             const currentPlayerData = playersRef.current[currentPlayerRef.current];
+            
+            // Check if current player can move (for display purposes)
             const canMove = currentPlayerData?.pieces?.some(piece => {
                 if (piece.isHome && value === 6) return true;
                 if (piece.isInPlay && piece.steps + value <= maxStepsRef.current) return true;
                 return false;
             });
+            
             if (!canMove) {
+                // No moves available - advance turn
                 setTimeout(() => {
                     const nextPlayer = getNextActivePlayer(currentPlayerRef.current);
                     setCurrentPlayer(nextPlayer);
@@ -1130,6 +1355,8 @@ const LudoGame = () => {
                     setCanRollDice(true);
                 }, 600);
             }
+            // Note: Auto-move for single playable piece is handled in rollDice, not here
+            // This handler is for receiving rolls from other players
         };
 
         const onAccepted = (payload) => {
@@ -1520,6 +1747,8 @@ const LudoGame = () => {
         setShowWinnerModal(false);
         setGameEnded(true);
         setWinner(null);
+        // Clear saved game state when game ends
+        clearGameState();
     };
 
     // Debug: trigger celebration modal
@@ -1550,6 +1779,10 @@ const LudoGame = () => {
         setInvitedStatusByFriendId({});
         setInvitedSlotByFriendId({});
         setIncomingInviteRequest(null);
+        // Clear saved game state when resetting
+        clearGameState();
+        setGameId(null);
+        setOnlineMode(false);
     };
 
     // Accept / decline an incoming invite
@@ -2160,6 +2393,7 @@ const LudoGame = () => {
             <style>{`
                 @keyframes tokenPulseScale { 0% { transform: scale(1); } 50% { transform: scale(1.12); } 100% { transform: scale(1); } }
                 @keyframes tokenGlow { 0% { box-shadow: 0 0 10px rgba(255,215,0,0.4), 0 0 20px rgba(255,215,0,0.2); } 50% { box-shadow: 0 0 16px rgba(255,215,0,0.9), 0 0 30px rgba(255,215,0,0.6); } 100% { box-shadow: 0 0 10px rgba(255,215,0,0.4), 0 0 20px rgba(255,215,0,0.2); } }
+                @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
             `}</style>
             <div style={{ padding: '10px 20px', background: 'rgba(26, 35, 50, 0.9)', borderBottom: '1px solid rgba(255, 215, 0, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'space-around' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -2400,6 +2634,95 @@ const LudoGame = () => {
                             <button onClick={acceptIncomingInvite} style={{ flex: 1, background: '#29B1A9', color: 'white', padding: '10px 0', border: 'none', borderRadius: 12, cursor: 'pointer', fontWeight: 'bold' }}>Accept</button>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Reconnection Modal */}
+            {showReconnectModal && (
+                <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 3000 }}>
+                    <div style={{ width: '100%', maxWidth: 420, background: 'rgba(26, 35, 50, 0.95)', borderRadius: 24, padding: 22, border: '2px solid rgba(255, 215, 0, 0.5)', color: 'white' }}>
+                        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 12, textAlign: 'center' }}>Reconnect to Game?</div>
+                        <div style={{ color: '#B0B0B0', fontSize: 13, marginBottom: 16, textAlign: 'center' }}>
+                            {isReconnecting 
+                                ? `Reconnecting... (Attempt ${reconnectAttempts})`
+                                : 'You have an active game. Would you like to reconnect?'}
+                        </div>
+                        {savedGameStateRef.current && (
+                            <div style={{ background: 'rgba(255,255,255,0.04)', padding: 12, borderRadius: 10, marginBottom: 16 }}>
+                                <div style={{ fontSize: 12, color: '#B0B0B0', marginBottom: 4 }}>Game ID</div>
+                                <div style={{ fontSize: 11, fontFamily: 'monospace', color: '#FFD700' }}>{savedGameStateRef.current.gameId}</div>
+                            </div>
+                        )}
+                        <div style={{ display: 'flex', gap: 10 }}>
+                            <button 
+                                onClick={() => {
+                                    clearGameState();
+                                    setShowReconnectModal(false);
+                                    setIsReconnecting(false);
+                                }} 
+                                disabled={isReconnecting}
+                                style={{ 
+                                    flex: 1, 
+                                    background: '#555', 
+                                    color: 'white', 
+                                    padding: '10px 0', 
+                                    border: 'none', 
+                                    borderRadius: 12, 
+                                    cursor: isReconnecting ? 'default' : 'pointer', 
+                                    fontWeight: 'bold',
+                                    opacity: isReconnecting ? 0.5 : 1
+                                }}
+                            >
+                                Start New Game
+                            </button>
+                            <button 
+                                onClick={attemptReconnect} 
+                                disabled={isReconnecting}
+                                style={{ 
+                                    flex: 1, 
+                                    background: isReconnecting ? '#666' : '#29B1A9', 
+                                    color: 'white', 
+                                    padding: '10px 0', 
+                                    border: 'none', 
+                                    borderRadius: 12, 
+                                    cursor: isReconnecting ? 'default' : 'pointer', 
+                                    fontWeight: 'bold',
+                                    opacity: isReconnecting ? 0.7 : 1
+                                }}
+                            >
+                                {isReconnecting ? 'Reconnecting...' : 'Reconnect'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Connection Status Indicator */}
+            {onlineMode && gameStarted && !gameEnded && (
+                <div style={{ 
+                    position: 'fixed', 
+                    top: 10, 
+                    right: 10, 
+                    zIndex: 1000, 
+                    background: isReconnecting ? 'rgba(255, 165, 0, 0.9)' : (socketRef.current?.connected ? 'rgba(0, 200, 0, 0.9)' : 'rgba(255, 0, 0, 0.9)'),
+                    color: 'white',
+                    padding: '6px 12px',
+                    borderRadius: 20,
+                    fontSize: 12,
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+                }}>
+                    <div style={{ 
+                        width: 8, 
+                        height: 8, 
+                        borderRadius: '50%', 
+                        background: isReconnecting ? '#FFA500' : (socketRef.current?.connected ? '#00FF00' : '#FF0000'),
+                        animation: isReconnecting ? 'pulse 1.5s ease-in-out infinite' : 'none'
+                    }} />
+                    {isReconnecting ? 'Reconnecting...' : (socketRef.current?.connected ? 'Connected' : 'Disconnected')}
                 </div>
             )}
 

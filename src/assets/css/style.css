@@ -511,6 +511,7 @@ body {
 #header .header-container .header-right .header-quick-menu-container .hr-mm-container {
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 #header .header-container .header-right .header-quick-menu-container .hr-mm-container a {
   text-decoration: none;
@@ -4512,6 +4513,11 @@ body {
   margin-bottom: -5px;
   margin-right: 5px;
 }
+#chatBox .chat-header .chat-header-action {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
 #chatBox .chat-header .chat-header-action .chat-header-action-btn-container {
   display: flex;
   align-items: center;
@@ -5258,6 +5264,10 @@ body {
 .hr-notification-menu-container {
   padding: 10px;
   padding-right: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 .hr-notification-menu-container .notification-leftside-header {
   display: flex;
@@ -5309,6 +5319,9 @@ body {
   list-style: none;
   padding: 0;
   margin: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
 }
 .hr-notification-menu-container .hr-notification-menu .hr-notification-item {
   margin-bottom: 4px;

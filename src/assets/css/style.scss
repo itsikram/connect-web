@@ -934,6 +934,7 @@ body {
                 .hr-mm-container {
                     display: flex;
                     flex-direction: column;
+                    overflow: hidden;
 
                     a {
                         text-decoration: none;
@@ -6252,6 +6253,9 @@ body {
         }
 
         .chat-header-action {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
 
             .chat-header-action-btn-container {
                 display: flex;
@@ -7246,6 +7250,10 @@ body {
 .hr-notification-menu-container {
     padding: 10px;
     padding-right: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
 
     .notification-leftside-header {
         display: flex;
@@ -7307,6 +7315,9 @@ body {
         list-style: none;
         padding: 0;
         margin: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        flex: 1;
 
         .hr-notification-item {
             margin-bottom: 4px;
