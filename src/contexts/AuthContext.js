@@ -4,7 +4,11 @@ import { jwtDecode } from 'jwt-decode';
 import axios from 'axios';
 import { useDispatch } from 'react-redux';
 import { clearAllState } from '../services/actions/authActions';
-import socket from '../common/socket';
+// Import socket lazily to avoid circular dependency at module load time
+const getSocket = () => {
+    // Dynamic import to break circular dependency
+    return require('../common/socket').default;
+};
 
 export const AuthContext = createContext(null);
 
@@ -273,8 +277,9 @@ export const AuthProvider = ({ children }) => {
     const handleLogout = useCallback(() => {
         console.log('🚪 Logging out user...');
         
-        // Disconnect socket connection
+        // Disconnect socket connection (lazy import to avoid circular dependency)
         try {
+            const socket = getSocket();
             if (socket && socket.connected) {
                 socket.disconnect();
                 console.log('🔌 Socket disconnected');
