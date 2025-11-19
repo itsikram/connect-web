@@ -175,28 +175,45 @@ const YtDownload = () => {
             setIsPostingWatch(true);
             showInfoToast('Uploading video to Watch...', { title: 'Posting', autoClose: 3000 });
 
-            // Create FormData for video upload
+            // Step 1: Upload video file to /upload/video endpoint
             const videoFormData = new FormData();
             const videoFile = new File([blob], `${sanitizeFileName(fileName)}.mp4`, { type: 'video/mp4' });
-            videoFormData.append('video', videoFile);
-            videoFormData.append('caption', videoTitle || fileName);
+            videoFormData.append('attachment', videoFile);
 
-            // Upload video to watch endpoint
-            const uploadResponse = await api.post('/watch/create', videoFormData, {
+            const uploadResponse = await api.post('/upload/video', videoFormData, {
                 headers: {
                     'Content-Type': 'multipart/form-data'
                 }
             });
 
-            if (uploadResponse.status === 200 || uploadResponse.status === 201) {
+            if (uploadResponse.status !== 200 || !uploadResponse.data?.secure_url) {
+                throw new Error('Video upload failed');
+            }
+
+            // Step 2: Get the secure_url from upload response
+            const videoUrl = uploadResponse.data.secure_url;
+
+            // Step 3: Create watch with videoUrl and caption
+            const watchFormData = new FormData();
+            watchFormData.append('caption', videoTitle || fileName);
+            watchFormData.append('videoUrl', videoUrl);
+
+            const createWatchResponse = await api.post('/watch/create', watchFormData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                }
+            });
+
+            if (createWatchResponse.status === 200 || createWatchResponse.status === 201) {
                 showSuccessToast('Video posted to Watch successfully!', { title: 'Posted to Watch' });
                 return true;
             } else {
-                throw new Error('Upload failed');
+                throw new Error('Watch creation failed');
             }
         } catch (error) {
             console.error('Error posting video to watch:', error);
-            showErrorToast('Failed to post video to Watch. Video downloaded successfully.', { title: 'Watch Post Error' });
+            const errorMessage = error.response?.data?.error || error.message || 'Unknown error';
+            showErrorToast(`Failed to post video to Watch: ${errorMessage}. Video downloaded successfully.`, { title: 'Watch Post Error' });
             return false;
         } finally {
             setIsPostingWatch(false);
