@@ -165,6 +165,7 @@ const LudoGame = () => {
     const diceValueRef = useRef(diceValue);
     const gameStartedRef = useRef(gameStarted);
     const gameEndedRef = useRef(gameEnded);
+    const autoStartTriggeredRef = useRef(false); // Track if auto-start has been triggered
     // Online friends selection
     const [onlineMode, setOnlineMode] = useState(false);
     const [selectedFriends, setSelectedFriends] = useState([]); // [{ _id, fullName, profilePic }]
@@ -1022,15 +1023,24 @@ const LudoGame = () => {
                 isActive: p.isActive !== undefined ? p.isActive : true,
                 pieces: (Array.isArray(p.pieces) ? p.pieces.map(pc => ({ id: pc.id, steps: pc.steps, isHome: pc.isHome, isInPlay: pc.isInPlay })) : [])
             }));
+            // Use current dice value from ref
+            // IMPORTANT: Always use the ref value, which is updated immediately when dice is rolled
+            const currentDiceValue = diceValueRef.current || 0;
+            
             socketRef.current.emit('ludo:players', { 
                 gameId, 
                 players: minimalPlayers, 
                 selectedPlayerCount: selectedPlayerCountRef.current, 
                 currentPlayer: currentPlayerRef.current,
-                diceValue: diceValueRef.current || 0,
+                diceValue: currentDiceValue,
                 gameStarted: gameStartedRef.current || false,
                 gameEnded: gameEndedRef.current || false,
                 winners: winnersRef.current || []
+            });
+            console.log('[LUDO][client] Broadcast game state', { 
+                currentPlayer: currentPlayerRef.current, 
+                diceValue: currentDiceValue,
+                myPlayerIndex 
             });
         } catch (_e) {}
     }, [myPlayerIndex, onlineMode, gameId, gameStarted]);
@@ -1145,8 +1155,8 @@ const LudoGame = () => {
             // Check if all required seats are filled
             const allSeatsFilled = joinedSeats.length >= (maxPlayers - 1);
             
-            // Also check if game has started - if started, don't wait
-            if (gameStarted) {
+            // Also check if game has started - if started, don't wait (use ref to avoid stale closure)
+            if (gameStartedRef.current) {
                 setWaitingForPlayers(false);
                 setCanRollDice(true);
                 return;
@@ -1164,7 +1174,8 @@ const LudoGame = () => {
                     joinedSeats,
                     allSeatsFilled,
                     shouldWait,
-                    gameStarted
+                    gameStarted: gameStartedRef.current,
+                    autoStartTriggered: autoStartTriggeredRef.current
                 });
             } catch (_e) {}
             
@@ -1176,13 +1187,18 @@ const LudoGame = () => {
                 setCanRollDice(true);
                 
                 // If all players joined and game hasn't started yet, automatically start the game (host only)
-                if (!gameStarted && allSeatsFilled && myPlayerIndex === 0 && onlineMode && gameId) {
+                // Use refs to prevent infinite loop and multiple triggers
+                if (!gameStartedRef.current && !autoStartTriggeredRef.current && allSeatsFilled && myPlayerIndex === 0 && onlineMode && gameId) {
+                    // Mark as triggered immediately to prevent multiple calls
+                    autoStartTriggeredRef.current = true;
+                    
                     // Auto-start the game when all players have joined
                     setTimeout(() => {
                         // Use the latest players state
                         const currentPlayers = playersRef.current && Array.isArray(playersRef.current) ? playersRef.current : players;
                         
                         setGameStarted(true);
+                        gameStartedRef.current = true; // Update ref immediately
                         setCurrentPlayer(0);
                         setDiceValue(0);
                         setCanRollDice(true);
@@ -1223,7 +1239,7 @@ const LudoGame = () => {
         } catch (_e) {
             setWaitingForPlayers(false);
         }
-    }, [onlineMode, myPlayerIndex, players, myProfile?._id, selectedPlayerCount, gameStarted, gameId]);
+    }, [onlineMode, myPlayerIndex, players, myProfile?._id, selectedPlayerCount, gameId]);
 
     const onChangeFriendSearch = (text) => {
         setFriendSearchQuery(text);
@@ -1350,6 +1366,36 @@ const LudoGame = () => {
         if (waitingForPlayers) return;
         if (!canRollDice || diceRolling) return;
         if (onlineMode && myPlayerIndex !== currentPlayer) return; // only active player may roll online
+        // Ensure game is started when rolling dice
+        if (!gameStarted) {
+            setGameStarted(true);
+            gameStartedRef.current = true; // Update ref immediately
+            // Broadcast game start state if in online mode
+            if (onlineMode && socketRef.current && gameId) {
+                try {
+                    const minimalPlayers = playersRef.current.map(p => ({
+                        id: p.id,
+                        name: p.name,
+                        color: p.color,
+                        avatar: p.avatar,
+                        cover: p.cover,
+                        profileId: p.profileId,
+                        isActive: p.isActive !== undefined ? p.isActive : true,
+                        pieces: (Array.isArray(p.pieces) ? p.pieces.map(pc => ({ id: pc.id, steps: pc.steps, isHome: pc.isHome, isInPlay: pc.isInPlay })) : [])
+                    }));
+                    socketRef.current.emit('ludo:players', {
+                        gameId,
+                        players: minimalPlayers,
+                        selectedPlayerCount: selectedPlayerCountRef.current,
+                        currentPlayer: currentPlayerRef.current,
+                        diceValue: 0,
+                        gameStarted: true,
+                        gameEnded: false,
+                        winners: []
+                    });
+                } catch (_e) {}
+            }
+        }
         setDiceRolling(true);
         setCanRollDice(false);
         // Optional debug value entry (localhost only)
@@ -1372,6 +1418,7 @@ const LudoGame = () => {
                 ? debugChosenValue
                 : (Math.floor(Math.random() * 6) + 1);
             setDiceValue(value);
+            diceValueRef.current = value; // Update ref immediately
             lastDiceValueRef.current = value;
             setDiceRolling(false);
             if (onlineMode && socketRef.current && gameId) {
@@ -1380,6 +1427,7 @@ const LudoGame = () => {
 
             const currentPlayerData = players[currentPlayer];
             const playablePieces = getPlayablePieces(currentPlayer, value);
+            console.log('[LUDO][client] Dice rolled', { value, currentPlayer, myPlayerIndex, onlineMode, gameStarted, playablePiecesCount: playablePieces.length });
 
             if (playablePieces.length === 0) {
                 // No moves available
@@ -1394,8 +1442,15 @@ const LudoGame = () => {
                 setTimeout(() => {
                     movePiece(playablePieces[0]);
                 }, 300);
+            } else {
+                // Multiple pieces are playable - allow user to choose
+                // Keep canRollDice false (can't roll again until move is made)
+                // But ensure game is started and dice value is set for token interaction
+                if (!gameStarted) {
+                    setGameStarted(true);
+                    gameStartedRef.current = true; // Update ref immediately
+                }
             }
-            // If multiple pieces are playable, wait for user to choose
         }, 500);
     };
 
@@ -1549,19 +1604,40 @@ const LudoGame = () => {
             return;
         }
         
-        if (diceValue === 0) return;
-        const rolledNow = diceValue;
+        // Use ref value if state is 0 but ref has a value (prevents move from being blocked due to state sync issues)
+        const effectiveDiceValue = (diceValue === 0 && diceValueRef.current > 0) ? diceValueRef.current : diceValue;
+        
+        if (effectiveDiceValue === 0) {
+            console.log('[LUDO][client] Cannot move: diceValue is 0', { state: diceValue, ref: diceValueRef.current });
+            return;
+        }
+        
+        // In online mode, only allow moves if it's the current player's turn
+        if (onlineMode && myPlayerIndex !== currentPlayer) {
+            console.log('[LUDO][client] Cannot move: not your turn', { myPlayerIndex, currentPlayer, onlineMode });
+            return;
+        }
+        
+        const rolledNow = effectiveDiceValue;
         const currentPlayerData = players[currentPlayer];
+        if (!currentPlayerData) {
+            console.log('[LUDO][client] Cannot move: no current player data', { currentPlayer, players: players.length });
+            return;
+        }
         const piece = currentPlayerData.pieces[pieceId];
+        if (!piece) {
+            console.log('[LUDO][client] Cannot move: piece not found', { pieceId, piecesCount: currentPlayerData.pieces?.length });
+            return;
+        }
 
-        if (piece.isHome && diceValue !== 6) return;
-        if (piece.isInPlay && piece.steps + diceValue > maxSteps) return;
+        if (piece.isHome && effectiveDiceValue !== 6) return;
+        if (piece.isInPlay && piece.steps + effectiveDiceValue > maxSteps) return;
 
         // Set moving flag to prevent duplicate moves
         isMovingRef.current = true;
 
         const globalMove = () => {
-            if (piece.isHome && diceValue === 6) {
+            if (piece.isHome && effectiveDiceValue === 6) {
                 // Move out
                 const updated = players.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
                 updated[currentPlayer].pieces[pieceId] = {
@@ -1586,7 +1662,7 @@ const LudoGame = () => {
             } else if (piece.isInPlay) {
                 const oldSteps = piece.steps;
                 const oldPosition = getPositionOnPath(currentPlayer, oldSteps);
-                const newSteps = piece.steps + diceValue;
+                const newSteps = piece.steps + effectiveDiceValue;
                 if (newSteps <= maxSteps) {
                     if (onlineMode && socketRef.current && gameId) {
                         try { socketRef.current.emit('ludo:move', { gameId, by: myProfile?._id, playerIndex: currentPlayer, pieceIndex: pieceId, toSteps: newSteps, fromSteps: oldSteps, rolled: rolledNow }); } catch (_e) { }
@@ -1771,12 +1847,22 @@ const LudoGame = () => {
                     setCanRollDice(true);
                 }
                 
-                // For host: only restore state if rejoining, otherwise keep authoritative local state
-                if (myPlayerIndex === 0 && !isRejoining) {
+                // For host: keep authoritative local state
+                // Always ignore broadcasts if host is current player and has active dice (in the middle of their turn)
+                // Also ignore if not rejoining (normal gameplay, host is authoritative)
+                const isMyTurn = currentPlayerRef.current === myPlayerIndex;
+                const hasActiveDice = diceValueRef.current > 0;
+                const isHost = myPlayerIndex === 0;
+                const shouldIgnoreAsHost = isHost && (!isRejoining || (isMyTurn && hasActiveDice));
+                
+                if (shouldIgnoreAsHost) {
                     // But still update waiting state if players joined
                     setTimeout(() => {
                         recomputeWaitingState();
                     }, 100);
+                    // Don't update diceValue, currentPlayer, or other game state for host
+                    // Host is authoritative for game state
+                    console.log('[LUDO][client] Host ignoring broadcast', { isRejoining, isMyTurn, hasActiveDice, diceValue: diceValueRef.current, payloadDiceValue: payload.diceValue });
                     return;
                 }
                 
@@ -1860,11 +1946,44 @@ const LudoGame = () => {
                 if (typeof payload.selectedPlayerCount === 'number') {
                     setSelectedPlayerCount(payload.selectedPlayerCount);
                 }
+                
+                // Check dice value BEFORE updating currentPlayer to avoid race conditions
+                // We need to check if it's our turn using BOTH current ref and payload value
+                if (typeof payload.diceValue === 'number') {
+                    const localDiceValue = diceValueRef.current || 0;
+                    const currentTurnFromRef = currentPlayerRef.current === myPlayerIndex;
+                    const currentTurnFromPayload = typeof payload.currentPlayer === 'number' && payload.currentPlayer === myPlayerIndex;
+                    const isMyTurn = currentTurnFromRef || currentTurnFromPayload;
+                    const shouldPreserve = isMyTurn && localDiceValue > 0;
+                    
+                    if (shouldPreserve) {
+                        // Keep local dice value, don't overwrite from payload
+                        console.log('[LUDO][client] Preserving local dice value (my turn)', { 
+                            myPlayerIndex, 
+                            currentPlayerRef: currentPlayerRef.current,
+                            currentPlayerPayload: payload.currentPlayer,
+                            local: localDiceValue, 
+                            payload: payload.diceValue,
+                            isMyTurn
+                        });
+                    } else {
+                        // Only update if the payload value is different and we're not in the middle of our turn
+                        if (payload.diceValue !== localDiceValue) {
+                            console.log('[LUDO][client] Updating dice value from payload', { 
+                                myPlayerIndex, 
+                                currentPlayerRef: currentPlayerRef.current,
+                                currentPlayerPayload: payload.currentPlayer,
+                                local: localDiceValue, 
+                                payload: payload.diceValue,
+                                isMyTurn
+                            });
+                            setDiceValue(payload.diceValue);
+                        }
+                    }
+                }
+                
                 if (typeof payload.currentPlayer === 'number') {
                     setCurrentPlayer(payload.currentPlayer);
-                }
-                if (typeof payload.diceValue === 'number') {
-                    setDiceValue(payload.diceValue);
                 }
                 if (payload.gameStarted !== undefined) {
                     setGameStarted(payload.gameStarted);
@@ -2129,6 +2248,8 @@ const LudoGame = () => {
     const confirmPlayerCount = () => {
         setShowPlayerSelection(false);
         setGameStarted(true);
+        gameStartedRef.current = true; // Update ref immediately
+        autoStartTriggeredRef.current = false; // Reset since we're manually starting
         setCurrentPlayer(0);
         setDiceValue(0);
         setWinner(null);
@@ -2244,6 +2365,8 @@ const LudoGame = () => {
         
         // Reset game state
         setGameStarted(false);
+        gameStartedRef.current = false; // Reset ref
+        autoStartTriggeredRef.current = false; // Reset auto-start trigger
         setWinner(null);
         setWinners([]);
         setGameEnded(false);
@@ -2665,8 +2788,10 @@ const LudoGame = () => {
         
         const isCurrentPlayer = playerIndex === currentPlayer;
         const isActivePlayer = playerIndex < selectedPlayerCount;
-        const canMove = isCurrentPlayer && diceValue > 0 && (
-            (piece.isHome && diceValue === 6) || (piece.isInPlay && piece.steps + diceValue <= maxSteps)
+        // Use ref value if state is 0 but ref has a value (prevents button from being disabled due to state sync issues)
+        const effectiveDiceValue = (diceValue === 0 && diceValueRef.current > 0 && isCurrentPlayer) ? diceValueRef.current : diceValue;
+        const canMove = isCurrentPlayer && effectiveDiceValue > 0 && (
+            (piece.isHome && effectiveDiceValue === 6) || (piece.isInPlay && piece.steps + effectiveDiceValue <= maxSteps)
         );
         const avatar = players[playerIndex]?.avatar;
         return (
@@ -2682,8 +2807,8 @@ const LudoGame = () => {
                 willChange: 'left, top'
             }}>
                 <button
-                    onClick={() => { if ((!onlineMode || myPlayerIndex === currentPlayer) && isActivePlayer && isCurrentPlayer && diceValue > 0) movePiece(pieceIndex); }}
-                    disabled={!isActivePlayer || !isCurrentPlayer || diceValue === 0}
+                    onClick={() => { if ((!onlineMode || myPlayerIndex === currentPlayer) && isActivePlayer && isCurrentPlayer && effectiveDiceValue > 0) movePiece(pieceIndex); }}
+                    disabled={!isActivePlayer || !isCurrentPlayer || effectiveDiceValue === 0}
                     style={{
                         width: '100%',
                         height: '100%',
@@ -2694,7 +2819,7 @@ const LudoGame = () => {
                         opacity: isActivePlayer ? 1 : 0.3,
                         position: 'relative',
                         overflow: 'hidden',
-                        cursor: (isActivePlayer && isCurrentPlayer && diceValue > 0) ? 'pointer' : 'default',
+                        cursor: (isActivePlayer && isCurrentPlayer && effectiveDiceValue > 0) ? 'pointer' : 'default',
                         animation: canMove ? 'tokenPulseScale 900ms ease-in-out infinite, tokenGlow 1200ms ease-in-out infinite' : 'none',
                         // Ensure proper rendering on mobile
                         transform: 'translateZ(0)',
