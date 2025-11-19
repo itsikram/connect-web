@@ -496,7 +496,7 @@ const LudoGame = () => {
                 setCurrentPlayer(saved.currentPlayer);
             }
             if (typeof saved.diceValue === 'number') {
-                setDiceValue(saved.diceValue);
+                setDiceValueImmediate(saved.diceValue);
             }
             if (saved.gameStarted) {
                 setGameStarted(true);
@@ -536,6 +536,11 @@ const LudoGame = () => {
     useEffect(() => { winnersRef.current = winners; }, [winners]);
     useEffect(() => { maxStepsRef.current = maxSteps; }, [maxSteps]);
     useEffect(() => { diceValueRef.current = diceValue; }, [diceValue]);
+
+    const setDiceValueImmediate = useCallback((value) => {
+        setDiceValue(value);
+        diceValueRef.current = value;
+    }, []);
     useEffect(() => { gameStartedRef.current = gameStarted; }, [gameStarted]);
     useEffect(() => { gameEndedRef.current = gameEnded; }, [gameEnded]);
 
@@ -905,7 +910,7 @@ const LudoGame = () => {
                     setShowPlayerSelection(false);
                     setGameStarted(true);
                     setCurrentPlayer(0);
-                    setDiceValue(0);
+                    setDiceValueImmediate(0);
                     setWinner(null);
                     setCanRollDice(true);
                     setDiceRolling(false);
@@ -1200,7 +1205,7 @@ const LudoGame = () => {
                         setGameStarted(true);
                         gameStartedRef.current = true; // Update ref immediately
                         setCurrentPlayer(0);
-                        setDiceValue(0);
+                        setDiceValueImmediate(0);
                         setCanRollDice(true);
                         setDiceRolling(false);
                         setWaitingForPlayers(false);
@@ -1417,8 +1422,7 @@ const LudoGame = () => {
             const value = (debugChosenValue && debugChosenValue >= 1 && debugChosenValue <= 6)
                 ? debugChosenValue
                 : (Math.floor(Math.random() * 6) + 1);
-            setDiceValue(value);
-            diceValueRef.current = value; // Update ref immediately
+            setDiceValueImmediate(value);
             lastDiceValueRef.current = value;
             setDiceRolling(false);
             if (onlineMode && socketRef.current && gameId) {
@@ -1433,9 +1437,9 @@ const LudoGame = () => {
                 // No moves available
                 setTimeout(() => {
                     const nextPlayer = getNextActivePlayer(currentPlayer);
-                    setCurrentPlayer(nextPlayer);
-                    setDiceValue(0);
-                    setCanRollDice(true);
+                setCurrentPlayer(nextPlayer);
+                setDiceValueImmediate(0);
+                setCanRollDice(true);
                 }, 600);
             } else if (playablePieces.length === 1) {
                 // Only one playable piece - move it automatically
@@ -1656,7 +1660,7 @@ const LudoGame = () => {
                 const capturedPieces = checkForCapture(currentPlayer, newPosition);
                 capturedPieces.forEach(({ playerIndex, pieceIndex }) => captureToken(playerIndex, pieceIndex));
 
-                setDiceValue(0);
+                setDiceValueImmediate(0);
                 isMovingRef.current = false; // Reset moving flag
                 setCanRollDice(true); // keep turn on 6
             } else if (piece.isInPlay) {
@@ -1715,7 +1719,7 @@ const LudoGame = () => {
                             });
                         }
 
-                        setDiceValue(0);
+                        setDiceValueImmediate(0);
                         isMovingRef.current = false; // Reset moving flag
                         const keepTurn = (rolledNow === 6) || didCapture;
                         if (keepTurn) {
@@ -1751,7 +1755,7 @@ const LudoGame = () => {
             // Skip if this roll was from the current user (handled in rollDice)
             if (payload.by && myProfile?._id && String(payload.by) === String(myProfile._id)) return;
             const value = payload.value;
-            setDiceValue(value);
+            setDiceValueImmediate(value);
             setDiceRolling(false);
             lastDiceValueRef.current = value;
             const currentPlayerData = playersRef.current[currentPlayerRef.current];
@@ -1767,9 +1771,9 @@ const LudoGame = () => {
                 // No moves available - advance turn
                 setTimeout(() => {
                     const nextPlayer = getNextActivePlayer(currentPlayerRef.current);
-                    setCurrentPlayer(nextPlayer);
-                    setDiceValue(0);
-                    setCanRollDice(true);
+                setCurrentPlayer(nextPlayer);
+                setDiceValueImmediate(0);
+                setCanRollDice(true);
                 }, 600);
             }
             // Note: Auto-move for single playable piece is handled in rollDice, not here
@@ -1977,7 +1981,7 @@ const LudoGame = () => {
                                 payload: payload.diceValue,
                                 isMyTurn
                             });
-                            setDiceValue(payload.diceValue);
+                            setDiceValueImmediate(payload.diceValue);
                         }
                     }
                 }
@@ -2057,7 +2061,7 @@ const LudoGame = () => {
                     });
                 }
 
-                setDiceValue(0);
+                setDiceValueImmediate(0);
                 const rolled = Number(payload?.rolled);
                 const keepTurn = rolled === 6 || didCapture;
                 if (!keepTurn) {
@@ -2251,7 +2255,7 @@ const LudoGame = () => {
         gameStartedRef.current = true; // Update ref immediately
         autoStartTriggeredRef.current = false; // Reset since we're manually starting
         setCurrentPlayer(0);
-        setDiceValue(0);
+        setDiceValueImmediate(0);
         setWinner(null);
         setCanRollDice(true);
         setDiceRolling(false);
@@ -2326,7 +2330,7 @@ const LudoGame = () => {
         setWinner(null);
         const nextPlayer = getNextActivePlayer(currentPlayer);
         setCurrentPlayer(nextPlayer);
-        setDiceValue(0);
+        setDiceValueImmediate(0);
         setCanRollDice(true);
     };
 
@@ -2371,7 +2375,7 @@ const LudoGame = () => {
         setWinners([]);
         setGameEnded(false);
         setShowWinnerModal(false);
-        setDiceValue(0);
+        setDiceValueImmediate(0);
         setCurrentPlayer(0);
         setCanRollDice(true);
         setDiceRolling(false);
