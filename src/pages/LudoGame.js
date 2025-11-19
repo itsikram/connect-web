@@ -162,6 +162,9 @@ const LudoGame = () => {
     const winnersRef = useRef(winners);
     const maxStepsRef = useRef(0);
     const lastDiceValueRef = useRef(0);
+    const diceValueRef = useRef(diceValue);
+    const gameStartedRef = useRef(gameStarted);
+    const gameEndedRef = useRef(gameEnded);
     // Online friends selection
     const [onlineMode, setOnlineMode] = useState(false);
     const [selectedFriends, setSelectedFriends] = useState([]); // [{ _id, fullName, profilePic }]
@@ -243,12 +246,36 @@ const LudoGame = () => {
                 myPlayerIndex,
                 onlineMode,
                 selectedPlayerCount,
+                players: players.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    color: p.color,
+                    avatar: p.avatar,
+                    cover: p.cover,
+                    profileId: p.profileId,
+                    isActive: p.isActive,
+                    pieces: p.pieces.map(pc => ({
+                        id: pc.id,
+                        steps: pc.steps,
+                        isHome: pc.isHome,
+                        isInPlay: pc.isInPlay
+                    }))
+                })),
+                currentPlayer,
+                diceValue,
+                gameStarted,
+                gameEnded,
+                winners: winners.map(w => ({
+                    id: w.id,
+                    name: w.name,
+                    color: w.color
+                })),
                 timestamp: Date.now()
             };
             localStorage.setItem('ludo_game_state', JSON.stringify(state));
             savedGameStateRef.current = state;
         } catch (_e) { }
-    }, [gameId, myPlayerIndex, onlineMode, selectedPlayerCount]);
+    }, [gameId, myPlayerIndex, onlineMode, selectedPlayerCount, players, currentPlayer, diceValue, gameStarted, gameEnded, winners]);
 
     // Load saved game state from localStorage
     const loadGameState = useCallback(() => {
@@ -278,100 +305,8 @@ const LudoGame = () => {
         } catch (_e) { }
     }, []);
 
-    // Attempt to reconnect to a saved game
-    const attemptReconnect = useCallback(async () => {
-        const saved = loadGameState();
-        if (!saved || !saved.gameId) {
-            setShowReconnectModal(false);
-            return false;
-        }
-
-        reconnectAttemptsRef.current += 1;
-        const currentAttempts = reconnectAttemptsRef.current;
-        setReconnectAttempts(currentAttempts);
-
-        // Give up after 3 attempts
-        if (currentAttempts >= 3) {
-            clearGameState();
-            setShowReconnectModal(false);
-            setIsReconnecting(false);
-            reconnectAttemptsRef.current = 0;
-            setReconnectAttempts(0);
-            return false;
-        }
-
-        setIsReconnecting(true);
-
-        try {
-            // Restore game state
-            setGameId(saved.gameId);
-            setMyPlayerIndex(saved.myPlayerIndex || 0);
-            setOnlineMode(true);
-            if (saved.selectedPlayerCount) {
-                setSelectedPlayerCount(saved.selectedPlayerCount);
-            }
-
-            // Ensure socket is connected
-            ensureSocketConnected();
-
-            // Wait for socket connection
-            const waitForSocket = () => {
-                return new Promise((resolve) => {
-                    if (socketRef.current?.connected) {
-                        resolve(true);
-                        return;
-                    }
-                    const checkInterval = setInterval(() => {
-                        if (socketRef.current?.connected) {
-                            clearInterval(checkInterval);
-                            resolve(true);
-                        }
-                    }, 100);
-                    setTimeout(() => {
-                        clearInterval(checkInterval);
-                        resolve(false);
-                    }, 5000);
-                });
-            };
-
-            const connected = await waitForSocket();
-            if (!connected) {
-                throw new Error('Socket connection timeout');
-            }
-
-            // Rejoin the game room
-            try {
-                console.log('[LUDO][client] reconnecting to game', { gameId: saved.gameId });
-                socketRef.current.emit('ludo:join', { gameId: saved.gameId });
-            } catch (_e) { }
-
-            // Request latest game state
-            try {
-                socketRef.current.emit('ludo:players:get', { gameId: saved.gameId });
-            } catch (_e) { }
-
-            // Set game as started (will be synced by server)
-            setGameStarted(true);
-            setIsReconnecting(false);
-            setShowReconnectModal(false);
-            reconnectAttemptsRef.current = 0;
-            setReconnectAttempts(0);
-            return true;
-        } catch (error) {
-            console.error('[LUDO][client] reconnect failed', error);
-            setIsReconnecting(false);
-            // Will retry on next call if attempts < 3
-            return false;
-        }
-    }, [loadGameState, ensureSocketConnected, clearGameState]);
-
-    useEffect(() => { playersRef.current = players; }, [players]);
-    useEffect(() => { currentPlayerRef.current = currentPlayer; }, [currentPlayer]);
-    useEffect(() => { selectedPlayerCountRef.current = selectedPlayerCount; }, [selectedPlayerCount]);
-    useEffect(() => { winnersRef.current = winners; }, [winners]);
-    useEffect(() => { maxStepsRef.current = maxSteps; }, [maxSteps]);
-
     // Ensure socket connection (used before game start for invites)
+    // Must be defined before attemptReconnect to avoid TDZ error
     const ensureSocketConnected = useCallback(() => {
         try {
             if (!myProfile?._id) return;
@@ -476,7 +411,132 @@ const LudoGame = () => {
                 } catch (_e) { }
             }
         } catch (_e) { }
-    }, [myProfile?._id, socketBaseUrl]);
+    }, [myProfile?._id, socketBaseUrl, onlineMode, gameId, gameStarted, gameEnded]);
+
+    // Attempt to reconnect to a saved game
+    const attemptReconnect = useCallback(async () => {
+        const saved = loadGameState();
+        if (!saved || !saved.gameId) {
+            setShowReconnectModal(false);
+            return false;
+        }
+
+        reconnectAttemptsRef.current += 1;
+        const currentAttempts = reconnectAttemptsRef.current;
+        setReconnectAttempts(currentAttempts);
+
+        // Give up after 3 attempts
+        if (currentAttempts >= 3) {
+            clearGameState();
+            setShowReconnectModal(false);
+            setIsReconnecting(false);
+            reconnectAttemptsRef.current = 0;
+            setReconnectAttempts(0);
+            return false;
+        }
+
+        setIsReconnecting(true);
+
+        try {
+            // Restore game state
+            setGameId(saved.gameId);
+            setMyPlayerIndex(saved.myPlayerIndex || 0);
+            setOnlineMode(true);
+            if (saved.selectedPlayerCount) {
+                setSelectedPlayerCount(saved.selectedPlayerCount);
+            }
+
+            // Ensure socket is connected
+            ensureSocketConnected();
+
+            // Wait for socket connection
+            const waitForSocket = () => {
+                return new Promise((resolve) => {
+                    if (socketRef.current?.connected) {
+                        resolve(true);
+                        return;
+                    }
+                    const checkInterval = setInterval(() => {
+                        if (socketRef.current?.connected) {
+                            clearInterval(checkInterval);
+                            resolve(true);
+                        }
+                    }, 100);
+                    setTimeout(() => {
+                        clearInterval(checkInterval);
+                        resolve(false);
+                    }, 5000);
+                });
+            };
+
+            const connected = await waitForSocket();
+            if (!connected) {
+                throw new Error('Socket connection timeout');
+            }
+
+            // Rejoin the game room
+            try {
+                console.log('[LUDO][client] reconnecting to game', { gameId: saved.gameId });
+                socketRef.current.emit('ludo:join', { gameId: saved.gameId });
+            } catch (_e) { }
+
+            // Restore local state from saved data first (as fallback)
+            if (saved.players && Array.isArray(saved.players)) {
+                setPlayers(saved.players.map(p => ({
+                    ...p,
+                    pieces: Array.isArray(p.pieces) ? p.pieces.map(pc => ({
+                        ...pc,
+                        isHome: typeof pc.isHome === 'boolean' ? pc.isHome : (pc.steps === 0),
+                        isInPlay: typeof pc.isInPlay === 'boolean' ? pc.isInPlay : (pc.steps > 0 && pc.steps < maxSteps)
+                    })) : []
+                })));
+            }
+            if (typeof saved.currentPlayer === 'number') {
+                setCurrentPlayer(saved.currentPlayer);
+            }
+            if (typeof saved.diceValue === 'number') {
+                setDiceValue(saved.diceValue);
+            }
+            if (saved.gameStarted) {
+                setGameStarted(true);
+            }
+            if (saved.gameEnded) {
+                setGameEnded(true);
+            }
+            if (Array.isArray(saved.winners)) {
+                setWinners(saved.winners);
+            }
+
+            // Request latest game state from server (will override local state if more recent)
+            try {
+                socketRef.current.emit('ludo:players:get', { gameId: saved.gameId });
+            } catch (_e) { }
+
+            // Wait a bit for server response, then mark as reconnected
+            setTimeout(() => {
+                setIsReconnecting(false);
+                setShowReconnectModal(false);
+                reconnectAttemptsRef.current = 0;
+                setReconnectAttempts(0);
+            }, 1000);
+            
+            return true;
+        } catch (error) {
+            console.error('[LUDO][client] reconnect failed', error);
+            setIsReconnecting(false);
+            // Will retry on next call if attempts < 3
+            return false;
+        }
+    }, [loadGameState, ensureSocketConnected, clearGameState]);
+
+    useEffect(() => { playersRef.current = players; }, [players]);
+    useEffect(() => { currentPlayerRef.current = currentPlayer; }, [currentPlayer]);
+    useEffect(() => { selectedPlayerCountRef.current = selectedPlayerCount; }, [selectedPlayerCount]);
+    useEffect(() => { winnersRef.current = winners; }, [winners]);
+    useEffect(() => { maxStepsRef.current = maxSteps; }, [maxSteps]);
+    useEffect(() => { diceValueRef.current = diceValue; }, [diceValue]);
+    useEffect(() => { gameStartedRef.current = gameStarted; }, [gameStarted]);
+    useEffect(() => { gameEndedRef.current = gameEnded; }, [gameEnded]);
 
     // Debug flag (show dev-only controls on localhost)
     const isDebug = useMemo(() => {
@@ -500,12 +560,15 @@ const LudoGame = () => {
         while (attempts < order.length) {
             idx = (idx + 1) % order.length;
             const candidate = order[idx];
+            const player = players[candidate];
+            // Skip offline players and winners
             const playerWon = winners.some(w => w.id === candidate);
-            if (!playerWon) return candidate;
+            const isOffline = player && player.isOffline && !player.isBot;
+            if (!playerWon && !isOffline) return candidate;
             attempts++;
         }
         return fromIndex;
-    }, [selectedPlayerCount, winners]);
+    }, [selectedPlayerCount, winners, players]);
 
     // Rendering order to match dice sequence
     const renderPlayerOrder = useMemo(() => {
@@ -515,6 +578,7 @@ const LudoGame = () => {
     // Animation timing (web simulation)
     const stepDurationMs = 300;
     const moveTimersRef = useRef([]);
+    const isMovingRef = useRef(false); // Prevent multiple moves from single dice roll
     useEffect(() => () => {
         moveTimersRef.current.forEach(t => clearTimeout(t));
     }, []);
@@ -553,21 +617,166 @@ const LudoGame = () => {
     const checkForCapture = (movingPlayerIndex, newPosition) => {
         const srcPlayers = playersRef.current && Array.isArray(playersRef.current) ? playersRef.current : players;
         const captured = [];
+        
+        // Count tokens per player at the target position (including the moving player)
+        const tokensAtPosition = new Map(); // playerIndex -> count
+        
         srcPlayers.forEach((player, playerIndex) => {
-            if (playerIndex === movingPlayerIndex) return;
+            let count = 0;
             player.pieces.forEach((piece, pieceIndex) => {
                 if (piece.isInPlay) {
-                    if (piece.steps >= 52) return;
+                    if (piece.steps >= 52) return; // Skip finished pieces
                     const piecePosition = getPositionOnPath(playerIndex, piece.steps);
                     if (piecePosition.x === newPosition.x && piecePosition.y === newPosition.y) {
-                        if (!isSafePosition(playerIndex, piecePosition)) {
-                            captured.push({ playerIndex, pieceIndex });
-                        }
+                        count++;
                     }
                 }
             });
+            if (count > 0) {
+                tokensAtPosition.set(playerIndex, count);
+            }
         });
-        try { if (captured.length > 0) console.log('[LUDO][client] capture detected', { movingPlayerIndex, newPosition, captured }); } catch (_e) {}
+        
+        // Get the moving player's token count at the new position
+        const movingPlayerTokenCount = tokensAtPosition.get(movingPlayerIndex) || 0;
+        
+        // Check captures for each opponent
+        tokensAtPosition.forEach((count, playerIndex) => {
+            if (playerIndex === movingPlayerIndex) return; // Skip the moving player
+            
+            const player = srcPlayers[playerIndex];
+            
+            // Find the first piece at this position to check if it's safe
+            let firstPieceAtPosition = null;
+            for (const piece of player.pieces) {
+                if (piece.isInPlay && piece.steps < 52) {
+                    const piecePosition = getPositionOnPath(playerIndex, piece.steps);
+                    if (piecePosition.x === newPosition.x && piecePosition.y === newPosition.y) {
+                        firstPieceAtPosition = piecePosition;
+                        break;
+                    }
+                }
+            }
+            
+            // Skip safe positions
+            if (firstPieceAtPosition && isSafePosition(playerIndex, firstPieceAtPosition)) return;
+            
+            // Rule 1: If moving player has 2+ tokens and opponent has 2 tokens, capture both opponent tokens
+            if (movingPlayerTokenCount >= 2 && count === 2) {
+                // Capture both opponent tokens
+                player.pieces.forEach((piece, pieceIndex) => {
+                    if (piece.isInPlay && piece.steps < 52) {
+                        const piecePosition = getPositionOnPath(playerIndex, piece.steps);
+                        if (piecePosition.x === newPosition.x && piecePosition.y === newPosition.y) {
+                            captured.push({ playerIndex, pieceIndex });
+                        }
+                    }
+                });
+            }
+            // Rule 2: If moving player has 1 token and opponent has 1 token, capture the opponent's token
+            else if (movingPlayerTokenCount === 1 && count === 1) {
+                // Capture the single opponent token
+                player.pieces.forEach((piece, pieceIndex) => {
+                    if (piece.isInPlay && piece.steps < 52) {
+                        const piecePosition = getPositionOnPath(playerIndex, piece.steps);
+                        if (piecePosition.x === newPosition.x && piecePosition.y === newPosition.y) {
+                            captured.push({ playerIndex, pieceIndex });
+                        }
+                    }
+                });
+            }
+            // If moving player has 2+ tokens and opponent has only 1 token, capture the single token
+            else if (movingPlayerTokenCount >= 2 && count === 1) {
+                // Moving player has double tokens, can capture single opponent token
+                player.pieces.forEach((piece, pieceIndex) => {
+                    if (piece.isInPlay && piece.steps < 52) {
+                        const piecePosition = getPositionOnPath(playerIndex, piece.steps);
+                        if (piecePosition.x === newPosition.x && piecePosition.y === newPosition.y) {
+                            captured.push({ playerIndex, pieceIndex });
+                        }
+                    }
+                });
+            }
+            // If opponent has 2+ tokens and moving player has 1 token, opponent is safe (no capture)
+        });
+        
+        try { if (captured.length > 0) console.log('[LUDO][client] capture detected', { movingPlayerIndex, newPosition, movingPlayerTokenCount, captured }); } catch (_e) {}
+        return captured;
+    };
+    
+    // Check for captures when a token moves AWAY from a position (rule 2: friend moves token away)
+    const checkForCaptureAfterMoveAway = (movingPlayerIndex, oldPosition) => {
+        const srcPlayers = playersRef.current && Array.isArray(playersRef.current) ? playersRef.current : players;
+        const captured = [];
+        
+        // Count tokens per player at the old position (after the move)
+        const tokensAtPosition = new Map(); // playerIndex -> count
+        
+        srcPlayers.forEach((player, playerIndex) => {
+            let count = 0;
+            player.pieces.forEach((piece, pieceIndex) => {
+                if (piece.isInPlay) {
+                    if (piece.steps >= 52) return; // Skip finished pieces
+                    const piecePosition = getPositionOnPath(playerIndex, piece.steps);
+                    if (piecePosition.x === oldPosition.x && piecePosition.y === oldPosition.y) {
+                        count++;
+                    }
+                }
+            });
+            if (count > 0) {
+                tokensAtPosition.set(playerIndex, count);
+            }
+        });
+        
+        // Check if any player now has a single token that should be captured
+        tokensAtPosition.forEach((count, playerIndex) => {
+            if (playerIndex === movingPlayerIndex) {
+                // Check if moving player left behind tokens that can capture others
+                if (count >= 2) {
+                    // Moving player has 2+ tokens left, can capture single tokens of others
+                    srcPlayers.forEach((opponent, opponentIndex) => {
+                        if (opponentIndex === playerIndex) return;
+                        const opponentCount = tokensAtPosition.get(opponentIndex) || 0;
+                        if (opponentCount === 1) {
+                            // Capture the single opponent token
+                            opponent.pieces.forEach((piece, pieceIndex) => {
+                                if (piece.isInPlay && piece.steps < 52) {
+                                    const piecePosition = getPositionOnPath(opponentIndex, piece.steps);
+                                    if (piecePosition.x === oldPosition.x && piecePosition.y === oldPosition.y) {
+                                        const position = getPositionOnPath(opponentIndex, piece.steps);
+                                        if (!isSafePosition(opponentIndex, position)) {
+                                            captured.push({ playerIndex: opponentIndex, pieceIndex });
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                    });
+                }
+            } else {
+                // Check if this player's single token should be captured by remaining tokens
+                if (count === 1) {
+                    const movingPlayerRemainingCount = tokensAtPosition.get(movingPlayerIndex) || 0;
+                    if (movingPlayerRemainingCount >= 2) {
+                        // Moving player left 2+ tokens, can capture this single token
+                        const player = srcPlayers[playerIndex];
+                        player.pieces.forEach((piece, pieceIndex) => {
+                            if (piece.isInPlay && piece.steps < 52) {
+                                const piecePosition = getPositionOnPath(playerIndex, piece.steps);
+                                if (piecePosition.x === oldPosition.x && piecePosition.y === oldPosition.y) {
+                                    const position = getPositionOnPath(playerIndex, piece.steps);
+                                    if (!isSafePosition(playerIndex, position)) {
+                                        captured.push({ playerIndex, pieceIndex });
+                                    }
+                                }
+                            }
+                        });
+                    }
+                }
+            }
+        });
+        
+        try { if (captured.length > 0) console.log('[LUDO][client] capture after move away detected', { movingPlayerIndex, oldPosition, captured }); } catch (_e) {}
         return captured;
     };
 
@@ -630,7 +839,7 @@ const LudoGame = () => {
         if (gameId && onlineMode && gameStarted) {
             saveGameState();
         }
-    }, [gameId, onlineMode, myPlayerIndex, selectedPlayerCount, gameStarted, saveGameState]);
+    }, [gameId, onlineMode, myPlayerIndex, selectedPlayerCount, gameStarted, players, currentPlayer, diceValue, gameEnded, winners, saveGameState]);
 
     // Connect socket early at mount (so we can receive invites even if not in online mode yet)
     useEffect(() => {
@@ -755,6 +964,7 @@ const LudoGame = () => {
                 avatar: p.avatar,
                 cover: p.cover,
                 profileId: p.profileId,
+                isActive: p.isActive !== undefined ? p.isActive : true,
                 // keep piece steps so remotes can render tokens
                 pieces: (Array.isArray(p.pieces) ? p.pieces.map(pc => ({ id: pc.id, steps: pc.steps, isHome: pc.isHome, isInPlay: pc.isInPlay })) : [])
             }));
@@ -766,9 +976,83 @@ const LudoGame = () => {
                 minimalPlayers[0].avatar = myProfile?.profilePic || minimalPlayers[0].avatar;
                 minimalPlayers[0].cover = myProfile?.coverPic || minimalPlayers[0].cover;
             }
-            socketRef.current.emit('ludo:players', { gameId: gid, players: minimalPlayers, selectedPlayerCount, currentPlayer });
+            socketRef.current.emit('ludo:players', { 
+                gameId: gid, 
+                players: minimalPlayers, 
+                selectedPlayerCount, 
+                currentPlayer,
+                diceValue: diceValueRef.current || 0,
+                gameStarted: gameStartedRef.current || false,
+                gameEnded: gameEndedRef.current || false,
+                winners: winnersRef.current || []
+            });
         } catch (_e) { }
-    }, [players, selectedPlayerCount, currentPlayer, onlineMode]);
+    }, [players, selectedPlayerCount, currentPlayer, onlineMode, myProfile]);
+
+    // Handle offline player actions (host only)
+    const replacePlayerWithBot = useCallback((playerIndex) => {
+        if (myPlayerIndex !== 0 || !onlineMode || !gameId) return;
+        try {
+            if (socketRef.current) {
+                socketRef.current.emit('ludo:replace:bot', { gameId, playerIndex });
+            }
+        } catch (_e) {}
+    }, [myPlayerIndex, onlineMode, gameId]);
+
+    const removeOfflinePlayer = useCallback((playerIndex) => {
+        if (myPlayerIndex !== 0 || !onlineMode || !gameId) return;
+        try {
+            if (socketRef.current) {
+                socketRef.current.emit('ludo:remove:player', { gameId, playerIndex });
+            }
+        } catch (_e) {}
+    }, [myPlayerIndex, onlineMode, gameId]);
+
+    // Broadcast game state periodically (host only)
+    const broadcastGameState = useCallback(() => {
+        if (myPlayerIndex !== 0 || !onlineMode || !gameId || !gameStarted || !socketRef.current) return;
+        try {
+            const minimalPlayers = playersRef.current.map(p => ({
+                id: p.id,
+                name: p.name,
+                color: p.color,
+                avatar: p.avatar,
+                cover: p.cover,
+                profileId: p.profileId,
+                isActive: p.isActive !== undefined ? p.isActive : true,
+                pieces: (Array.isArray(p.pieces) ? p.pieces.map(pc => ({ id: pc.id, steps: pc.steps, isHome: pc.isHome, isInPlay: pc.isInPlay })) : [])
+            }));
+            socketRef.current.emit('ludo:players', { 
+                gameId, 
+                players: minimalPlayers, 
+                selectedPlayerCount: selectedPlayerCountRef.current, 
+                currentPlayer: currentPlayerRef.current,
+                diceValue: diceValueRef.current || 0,
+                gameStarted: gameStartedRef.current || false,
+                gameEnded: gameEndedRef.current || false,
+                winners: winnersRef.current || []
+            });
+        } catch (_e) {}
+    }, [myPlayerIndex, onlineMode, gameId, gameStarted]);
+
+    // Periodically broadcast game state (host only)
+    useEffect(() => {
+        if (myPlayerIndex !== 0 || !onlineMode || !gameId || !gameStarted) return;
+        const interval = setInterval(() => {
+            broadcastGameState();
+        }, 5000); // Broadcast every 5 seconds
+        return () => clearInterval(interval);
+    }, [myPlayerIndex, onlineMode, gameId, gameStarted, broadcastGameState]);
+
+    // Also broadcast when game state changes significantly
+    useEffect(() => {
+        if (myPlayerIndex === 0 && onlineMode && gameId && gameStarted) {
+            const timeout = setTimeout(() => {
+                broadcastGameState();
+            }, 500); // Debounce rapid changes
+            return () => clearTimeout(timeout);
+        }
+    }, [players, currentPlayer, diceValue, gameStarted, gameEnded, winners, myPlayerIndex, onlineMode, gameId, broadcastGameState]);
 
     const inviteFriend = useCallback((friend) => {
         if (!friend || !friend._id) return;
@@ -846,74 +1130,100 @@ const LudoGame = () => {
                 setWaitingForPlayers(false);
                 return;
             }
-            const invitedMap = invitedStatusByFriendId || {};
-            const reservedMap = invitedSlotByFriendId || {};
-            const invitedIds = Object.keys(invitedMap);
+            
             const maxPlayers = Math.max(2, Math.min(4, selectedPlayerCount));
-            // Compute actual joined seats (excluding host at 0)
-            const joinedIds = new Set(
-                players
-                    .slice(1, maxPlayers)
-                    .map(p => (p && p.profileId ? String(p.profileId) : null))
-                    .filter(Boolean)
-            );
-
-            // If no invites tracked, rely purely on seat occupancy
-            if (invitedIds.length === 0) {
-                const allSeatsFilled = joinedIds.size >= (maxPlayers - 1);
-                setWaitingForPlayers(!allSeatsFilled);
-                if (!allSeatsFilled) setCanRollDice(false);
+            
+            // Compute actual joined seats - check if each seat (excluding host at 0) has a profileId
+            const joinedSeats = [];
+            for (let i = 1; i < maxPlayers; i++) {
+                const player = players[i];
+                if (player && player.profileId) {
+                    joinedSeats.push(i);
+                }
+            }
+            
+            // Check if all required seats are filled
+            const allSeatsFilled = joinedSeats.length >= (maxPlayers - 1);
+            
+            // Also check if game has started - if started, don't wait
+            if (gameStarted) {
+                setWaitingForPlayers(false);
+                setCanRollDice(true);
                 return;
             }
-
-            // Wait only if an invited friend hasn't actually joined yet
-            const stillInvited = invitedIds.some(fid => invitedMap[fid] === 'invited' && !joinedIds.has(String(fid)));
-
-            // Also consider reserved slots whose intended profile hasn't appeared in any seat yet
-            let missingProfiles = false;
-            for (const [fid, slotIndexRaw] of Object.entries(reservedMap)) {
-                const fidStr = String(fid);
-                const slotIndex = Number(slotIndexRaw);
-                if (!Number.isFinite(slotIndex)) continue;
-                if (!joinedIds.has(fidStr)) { missingProfiles = true; break; }
-            }
-
-            // If every non-host seat is filled, do not wait regardless of stale invite map
-            const allSeatsFilled = joinedIds.size >= (maxPlayers - 1);
-            const shouldWait = allSeatsFilled ? false : Boolean(stillInvited || missingProfiles);
+            
+            const shouldWait = !allSeatsFilled;
 
             try {
                 console.log('[LUDO][client] recomputeWaitingState', {
                     onlineMode,
                     isHost: myPlayerIndex === 0,
-                    invitedStatusByFriendId,
-                    invitedSlotByFriendId,
                     selectedPlayerCount,
-                    playersProfileIds: players.map(p => p?.profileId || null),
-                    joinedIds: Array.from(joinedIds),
-                    stillInvited,
-                    missingProfiles,
+                    maxPlayers,
+                    playersProfileIds: players.map((p, idx) => ({ slot: idx, profileId: p?.profileId || null, name: p?.name || null })),
+                    joinedSeats,
                     allSeatsFilled,
-                    shouldWait
+                    shouldWait,
+                    gameStarted
                 });
             } catch (_e) {}
+            
             setWaitingForPlayers(shouldWait);
             if (shouldWait) {
                 setCanRollDice(false);
             } else {
-                // Seats are filled; ensure dice can roll and clear stale invite maps to prevent future flicker
+                // Seats are filled; ensure dice can roll
                 setCanRollDice(true);
-                if (allSeatsFilled) {
-                    try {
-                        setInvitedStatusByFriendId({});
-                        setInvitedSlotByFriendId({});
-                    } catch (_e) {}
+                
+                // If all players joined and game hasn't started yet, automatically start the game (host only)
+                if (!gameStarted && allSeatsFilled && myPlayerIndex === 0 && onlineMode && gameId) {
+                    // Auto-start the game when all players have joined
+                    setTimeout(() => {
+                        // Use the latest players state
+                        const currentPlayers = playersRef.current && Array.isArray(playersRef.current) ? playersRef.current : players;
+                        
+                        setGameStarted(true);
+                        setCurrentPlayer(0);
+                        setDiceValue(0);
+                        setCanRollDice(true);
+                        setDiceRolling(false);
+                        setWaitingForPlayers(false);
+                        
+                        // Broadcast game start to all players
+                        if (socketRef.current) {
+                            try {
+                                const minimalPlayers = currentPlayers.map(p => ({
+                                    id: p.id,
+                                    name: p.name,
+                                    color: p.color,
+                                    avatar: p.avatar,
+                                    cover: p.cover,
+                                    profileId: p.profileId,
+                                    isActive: p.isActive !== undefined ? p.isActive : true,
+                                    pieces: (Array.isArray(p.pieces) ? p.pieces.map(pc => ({ id: pc.id, steps: pc.steps, isHome: pc.isHome, isInPlay: pc.isInPlay })) : [])
+                                }));
+                                socketRef.current.emit('ludo:players', {
+                                    gameId,
+                                    players: minimalPlayers,
+                                    selectedPlayerCount: selectedPlayerCountRef.current,
+                                    currentPlayer: 0,
+                                    diceValue: 0,
+                                    gameStarted: true,
+                                    gameEnded: false,
+                                    winners: []
+                                });
+                                console.log('[LUDO][client] Auto-started game - all players joined', { gameId, playerCount: minimalPlayers.length });
+                            } catch (_e) {
+                                console.error('[LUDO][client] Error broadcasting game start', _e);
+                            }
+                        }
+                    }, 500); // Small delay to ensure UI updates
                 }
             }
         } catch (_e) {
             setWaitingForPlayers(false);
         }
-    }, [onlineMode, myPlayerIndex, invitedStatusByFriendId, invitedSlotByFriendId, players, myProfile?._id, selectedPlayerCount]);
+    }, [onlineMode, myPlayerIndex, players, myProfile?._id, selectedPlayerCount, gameStarted, gameId]);
 
     const onChangeFriendSearch = (text) => {
         setFriendSearchQuery(text);
@@ -1233,6 +1543,12 @@ const LudoGame = () => {
     };
 
     const movePiece = (pieceId) => {
+        // Prevent multiple moves from a single dice roll
+        if (isMovingRef.current) {
+            console.log('[LUDO][client] Move already in progress, ignoring duplicate click');
+            return;
+        }
+        
         if (diceValue === 0) return;
         const rolledNow = diceValue;
         const currentPlayerData = players[currentPlayer];
@@ -1240,6 +1556,9 @@ const LudoGame = () => {
 
         if (piece.isHome && diceValue !== 6) return;
         if (piece.isInPlay && piece.steps + diceValue > maxSteps) return;
+
+        // Set moving flag to prevent duplicate moves
+        isMovingRef.current = true;
 
         const globalMove = () => {
             if (piece.isHome && diceValue === 6) {
@@ -1262,9 +1581,11 @@ const LudoGame = () => {
                 capturedPieces.forEach(({ playerIndex, pieceIndex }) => captureToken(playerIndex, pieceIndex));
 
                 setDiceValue(0);
+                isMovingRef.current = false; // Reset moving flag
                 setCanRollDice(true); // keep turn on 6
             } else if (piece.isInPlay) {
                 const oldSteps = piece.steps;
+                const oldPosition = getPositionOnPath(currentPlayer, oldSteps);
                 const newSteps = piece.steps + diceValue;
                 if (newSteps <= maxSteps) {
                     if (onlineMode && socketRef.current && gameId) {
@@ -1281,9 +1602,22 @@ const LudoGame = () => {
                         let didCapture = false;
                         if (newSteps < maxSteps) {
                             const newPosition = getPositionOnPath(currentPlayer, newSteps);
+                            
+                            // Check for captures at the new position
                             const capturedPieces = checkForCapture(currentPlayer, newPosition);
                             didCapture = Array.isArray(capturedPieces) && capturedPieces.length > 0;
                             capturedPieces.forEach(({ playerIndex, pieceIndex }) => captureToken(playerIndex, pieceIndex));
+                            
+                            // Check for captures at the old position (when token moves away)
+                            // This handles the case where friend has double tokens and moves one away,
+                            // leaving a single token that should be captured
+                            if (oldSteps > 0 && oldSteps < maxSteps) {
+                                const capturedAfterMoveAway = checkForCaptureAfterMoveAway(currentPlayer, oldPosition);
+                                if (capturedAfterMoveAway.length > 0) {
+                                    didCapture = true; // Count this as a capture for turn purposes
+                                    capturedAfterMoveAway.forEach(({ playerIndex, pieceIndex }) => captureToken(playerIndex, pieceIndex));
+                                }
+                            }
                         }
 
                         if (newSteps === maxSteps) {
@@ -1306,6 +1640,7 @@ const LudoGame = () => {
                         }
 
                         setDiceValue(0);
+                        isMovingRef.current = false; // Reset moving flag
                         const keepTurn = (rolledNow === 6) || didCapture;
                         if (keepTurn) {
                             setCanRollDice(true);
@@ -1317,7 +1652,13 @@ const LudoGame = () => {
                             }, 300);
                         }
                     });
+                } else {
+                    // Invalid move, reset flag
+                    isMovingRef.current = false;
                 }
+            } else {
+                // Invalid move, reset flag
+                isMovingRef.current = false;
             }
         };
 
@@ -1376,41 +1717,80 @@ const LudoGame = () => {
                             copy[slot].avatar = payload.friend?.profilePic || copy[slot].avatar;
                             copy[slot].cover = payload.friend?.coverPic || copy[slot].cover;
                             copy[slot].profileId = payload.friend?._id || copy[slot].profileId;
+                            copy[slot].isActive = true;
                         }
                         return copy;
                     });
+                    
+                    // Use setTimeout to ensure state update completes before recomputing
+                    setTimeout(() => {
+                        // Broadcast current players snapshot with full game state
+                        try {
+                            const minimalPlayers = playersRef.current.map(p => ({
+                                id: p.id,
+                                name: p.name,
+                                color: p.color,
+                                avatar: p.avatar,
+                                cover: p.cover,
+                                profileId: p.profileId,
+                                isActive: p.isActive !== undefined ? p.isActive : true,
+                                pieces: (Array.isArray(p.pieces) ? p.pieces.map(pc => ({ id: pc.id, steps: pc.steps, isHome: pc.isHome, isInPlay: pc.isInPlay })) : [])
+                            }));
+                            s.emit('ludo:players', { 
+                                gameId: payload.gameId, 
+                                players: minimalPlayers, 
+                                selectedPlayerCount: selectedPlayerCountRef.current, 
+                                currentPlayer: currentPlayerRef.current,
+                                diceValue: diceValueRef.current || 0,
+                                gameStarted: gameStartedRef.current || false,
+                                gameEnded: gameEndedRef.current || false,
+                                winners: winnersRef.current || []
+                            });
+                        } catch (_e) { }
+                        // Update lobby state based on new join
+                        recomputeWaitingState();
+                        try { console.log('[LUDO][client] post-accept recompute done'); } catch (_e) {}
+                    }, 100);
+                } else {
+                    // If no slot index, still recompute
+                    recomputeWaitingState();
                 }
-                // Broadcast current players snapshot
-                try {
-                    const minimalPlayers = playersRef.current.map(p => ({
-                        id: p.id,
-                        name: p.name,
-                        color: p.color,
-                        avatar: p.avatar,
-                        cover: p.cover,
-                        profileId: p.profileId,
-                        pieces: (Array.isArray(p.pieces) ? p.pieces.map(pc => ({ id: pc.id, steps: pc.steps, isHome: pc.isHome, isInPlay: pc.isInPlay })) : [])
-                    }));
-                    s.emit('ludo:players', { gameId: payload.gameId, players: minimalPlayers, selectedPlayerCount: selectedPlayerCountRef.current, currentPlayer: currentPlayerRef.current });
-                } catch (_e) { }
-                // Update lobby state based on new join
-                recomputeWaitingState();
-                try { console.log('[LUDO][client] post-accept recompute done'); } catch (_e) {}
             } catch (_e) { }
         };
 
         const onPlayers = (payload) => {
             try {
                 if (!payload || payload.gameId !== gameId) return;
-                // Host keeps authoritative local state; ignore snapshots that might be stale
-                if (myPlayerIndex === 0) {
+                
+                // Check if this is a rejoin scenario (game already started but we're receiving state)
+                const isRejoining = gameStarted && payload.players && Array.isArray(payload.players) && payload.players.some(p => p.pieces && p.pieces.some(pc => pc.steps > 0));
+                
+                // If game has started (from payload or local state), clear waiting state immediately
+                if (payload.gameStarted || gameStarted || isRejoining) {
+                    setWaitingForPlayers(false);
+                    setCanRollDice(true);
+                }
+                
+                // For host: only restore state if rejoining, otherwise keep authoritative local state
+                if (myPlayerIndex === 0 && !isRejoining) {
+                    // But still update waiting state if players joined
+                    setTimeout(() => {
+                        recomputeWaitingState();
+                    }, 100);
                     return;
                 }
+                
                 if (Array.isArray(payload.players)) {
                     const next = payload.players.map(p => ({
                         ...p,
-                        pieces: Array.isArray(p.pieces) ? p.pieces.map(pc => ({ ...pc })) : []
+                        pieces: Array.isArray(p.pieces) ? p.pieces.map(pc => ({ 
+                            id: pc.id || pc.id,
+                            steps: typeof pc.steps === 'number' ? pc.steps : 0,
+                            isHome: typeof pc.isHome === 'boolean' ? pc.isHome : (pc.steps === 0),
+                            isInPlay: typeof pc.isInPlay === 'boolean' ? pc.isInPlay : (pc.steps > 0 && pc.steps < maxStepsRef.current)
+                        })) : []
                     }));
+                    
                     // Invitee-side guard: ensure seat 0 is inviter, and my slot is me
                     try {
                         // Always enforce seat 0 = host (inviter) on invitee devices
@@ -1464,12 +1844,18 @@ const LudoGame = () => {
                                     avatar: next[i]?.avatar || prev[i]?.avatar,
                                     cover: next[i]?.cover || prev[i]?.cover,
                                     profileId: prevId,
+                                    isActive: next[i]?.isActive !== undefined ? next[i].isActive : (prev[i]?.isActive !== undefined ? prev[i].isActive : true),
                                     pieces: Array.isArray(next[i]?.pieces) ? next[i].pieces : (Array.isArray(prev[i]?.pieces) ? prev[i].pieces.map(pc => ({ ...pc })) : [])
                                 };
                             }
                         }
                     } catch (_e) {}
                     setPlayers(next);
+                    
+                    // Update waiting state after players state is updated
+                    setTimeout(() => {
+                        recomputeWaitingState();
+                    }, 100);
                 }
                 if (typeof payload.selectedPlayerCount === 'number') {
                     setSelectedPlayerCount(payload.selectedPlayerCount);
@@ -1477,7 +1863,23 @@ const LudoGame = () => {
                 if (typeof payload.currentPlayer === 'number') {
                     setCurrentPlayer(payload.currentPlayer);
                 }
-                if (!gameStarted) setGameStarted(true);
+                if (typeof payload.diceValue === 'number') {
+                    setDiceValue(payload.diceValue);
+                }
+                if (payload.gameStarted !== undefined) {
+                    setGameStarted(payload.gameStarted);
+                    // If game started, clear waiting state
+                    if (payload.gameStarted) {
+                        setWaitingForPlayers(false);
+                        setCanRollDice(true);
+                    }
+                }
+                if (payload.gameEnded !== undefined) {
+                    setGameEnded(payload.gameEnded);
+                }
+                if (Array.isArray(payload.winners)) {
+                    setWinners(payload.winners);
+                }
             } catch (_e) { }
         };
 
@@ -1486,7 +1888,10 @@ const LudoGame = () => {
             if (payload.by && myProfile?._id && String(payload.by) === String(myProfile._id)) return;
             const { playerIndex, pieceIndex, toSteps, fromSteps } = payload;
             const mover = typeof playerIndex === 'number' ? playerIndex : currentPlayerRef.current;
-            animateTokenMovement(mover, pieceIndex, toSteps, (typeof fromSteps === 'number' ? fromSteps : undefined), () => {
+            const oldSteps = typeof fromSteps === 'number' ? fromSteps : 0;
+            const oldPosition = oldSteps > 0 && oldSteps < maxStepsRef.current ? getPositionOnPath(mover, oldSteps) : null;
+            
+            animateTokenMovement(mover, pieceIndex, toSteps, oldSteps, () => {
                 setPlayers(prev => {
                     const updatedPlayers = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
                     updatedPlayers[mover].pieces[pieceIndex].steps = toSteps;
@@ -1496,9 +1901,22 @@ const LudoGame = () => {
                 let didCapture = false;
                 if (toSteps < maxStepsRef.current) {
                     const newPosition = getPositionOnPath(mover, toSteps);
+                    
+                    // Check for captures at the new position
                     const capturedPieces = checkForCapture(mover, newPosition);
                     didCapture = Array.isArray(capturedPieces) && capturedPieces.length > 0;
                     capturedPieces.forEach(({ playerIndex: pi, pieceIndex: pj }) => captureToken(pi, pj));
+                    
+                    // Check for captures at the old position (when token moves away)
+                    // This handles the case where friend has double tokens and moves one away,
+                    // leaving a single token that should be captured
+                    if (oldPosition && oldSteps > 0 && oldSteps < maxStepsRef.current) {
+                        const capturedAfterMoveAway = checkForCaptureAfterMoveAway(mover, oldPosition);
+                        if (capturedAfterMoveAway.length > 0) {
+                            didCapture = true;
+                            capturedAfterMoveAway.forEach(({ playerIndex: pi, pieceIndex: pj }) => captureToken(pi, pj));
+                        }
+                    }
                 }
 
                 if (toSteps === maxStepsRef.current) {
@@ -1535,10 +1953,44 @@ const LudoGame = () => {
             });
         };
 
+        const onPlayerOffline = (payload) => {
+            try {
+                if (!payload || payload.gameId !== gameId) return;
+                const pid = String(payload.profileId || '');
+                if (!pid) return;
+                console.log('[LUDO][client] player went offline', { profileId: pid });
+                // Update player status
+                setPlayers(prev => prev.map(p => {
+                    if (p.profileId && String(p.profileId) === pid) {
+                        return { ...p, isActive: false, isOffline: true, offlineSince: payload.timestamp };
+                    }
+                    return p;
+                }));
+            } catch (_e) {}
+        };
+
+        const onPlayerOnline = (payload) => {
+            try {
+                if (!payload || payload.gameId !== gameId) return;
+                const pid = String(payload.profileId || '');
+                if (!pid) return;
+                console.log('[LUDO][client] player came online', { profileId: pid });
+                // Update player status
+                setPlayers(prev => prev.map(p => {
+                    if (p.profileId && String(p.profileId) === pid) {
+                        return { ...p, isActive: true, isOffline: false, offlineSince: undefined };
+                    }
+                    return p;
+                }));
+            } catch (_e) {}
+        };
+
         s.on('ludo:roll', onRoll);
         s.on('ludo:accepted', onAccepted);
         s.on('ludo:players', onPlayers);
         s.on('ludo:move', onMove);
+        s.on('ludo:player:offline', onPlayerOffline);
+        s.on('ludo:player:online', onPlayerOnline);
         const onJoined = (payload) => { try { console.log('[LUDO][client] on ludo:joined', payload); } catch (_e) {} };
         s.on('ludo:joined', onJoined);
         return () => {
@@ -1546,6 +1998,8 @@ const LudoGame = () => {
             s.off('ludo:accepted', onAccepted);
             s.off('ludo:players', onPlayers);
             s.off('ludo:move', onMove);
+            s.off('ludo:player:offline', onPlayerOffline);
+            s.off('ludo:player:online', onPlayerOnline);
             s.off('ludo:joined', onJoined);
         };
     }, [onlineMode, gameId, myProfile?._id]);
@@ -1557,10 +2011,22 @@ const LudoGame = () => {
 
     // When waiting ends, allow dice interactions again
     useEffect(() => {
-        if (!waitingForPlayers && gameStarted) {
+        if (!waitingForPlayers && !gameStarted) {
+            // If not waiting and game hasn't started, allow dice roll only if all players joined
+            const maxPlayers = Math.max(2, Math.min(4, selectedPlayerCount));
+            const joinedSeats = players.slice(1, maxPlayers).filter(p => p && p.profileId).length;
+            const allSeatsFilled = joinedSeats >= (maxPlayers - 1);
+            if (allSeatsFilled) {
+                setCanRollDice(true);
+            } else {
+                setCanRollDice(false);
+            }
+        } else if (!waitingForPlayers && gameStarted) {
             setCanRollDice(true);
+        } else if (waitingForPlayers) {
+            setCanRollDice(false);
         }
-    }, [waitingForPlayers, gameStarted]);
+    }, [waitingForPlayers, gameStarted, players, selectedPlayerCount]);
 
     // Invite listeners attached regardless of onlineMode, so users receive invites anytime
     useEffect(() => {
@@ -1763,8 +2229,20 @@ const LudoGame = () => {
     };
 
     const resetGame = () => {
+        // Confirm restart if game is in progress
+        if (gameStarted && !gameEnded) {
+            const confirmed = window.confirm('Are you sure you want to restart the game? All progress will be lost.');
+            if (!confirmed) return;
+        }
+        
+        // Reset moving flag
+        isMovingRef.current = false;
+        
+        // Clear all move timers
         moveTimersRef.current.forEach(t => clearTimeout(t));
         moveTimersRef.current = [];
+        
+        // Reset game state
         setGameStarted(false);
         setWinner(null);
         setWinners([]);
@@ -1775,14 +2253,62 @@ const LudoGame = () => {
         setCanRollDice(true);
         setDiceRolling(false);
         setShowPlayerSelection(false);
+        setWaitingForPlayers(false);
+        
+        // Reinitialize game with current player count
         initializeGame(selectedPlayerCount);
+        
+        // Reset invite tracking
         setInvitedStatusByFriendId({});
         setInvitedSlotByFriendId({});
+        
         setIncomingInviteRequest(null);
+        
+        // If in online mode and host, notify other players and reset game state on server
+        // Use setTimeout to ensure state is updated after initializeGame
+        setTimeout(() => {
+            if (onlineMode && gameId && myPlayerIndex === 0 && socketRef.current) {
+                try {
+                    // Get fresh players state after initializeGame
+                    const resetPlayers = playersRef.current.map(p => ({
+                        id: p.id,
+                        name: p.name,
+                        color: p.color,
+                        avatar: p.avatar,
+                        cover: p.cover,
+                        profileId: p.profileId,
+                        isActive: p.isActive !== undefined ? p.isActive : true,
+                        pieces: p.pieces.map(pc => ({
+                            id: pc.id,
+                            steps: 0,
+                            isHome: true,
+                            isInPlay: false
+                        }))
+                    }));
+                    
+                    // Broadcast reset to all players
+                    socketRef.current.emit('ludo:players', {
+                        gameId,
+                        players: resetPlayers,
+                        selectedPlayerCount: selectedPlayerCountRef.current,
+                        currentPlayer: 0,
+                        diceValue: 0,
+                        gameStarted: false,
+                        gameEnded: false,
+                        winners: []
+                    });
+                } catch (_e) {}
+            }
+        }, 100);
+        
         // Clear saved game state when resetting
         clearGameState();
-        setGameId(null);
-        setOnlineMode(false);
+        
+        // Only clear game ID and online mode if not in an active online game
+        // This allows restarting without losing the game session
+        // Uncomment below if you want to fully reset online mode:
+        // setGameId(null);
+        // setOnlineMode(false);
     };
 
     // Accept / decline an incoming invite
@@ -2403,7 +2929,27 @@ const LudoGame = () => {
                     {!gameStarted ? (
                         <button onClick={startGame} style={{ background: '#00D4FF', color: 'white', padding: '8px 36px', border: 'none', borderRadius: 20, cursor: 'pointer', fontWeight: 'bold' }}>Start</button>
                     ) : (
-                        <button onClick={resetGame} style={{ background: '#4444FF', color: 'white', padding: '10px 16px', border: 'none', borderRadius: 20, cursor: 'pointer', fontWeight: 'bold' }}>Reset</button>
+                        <>
+                            <button 
+                                onClick={resetGame} 
+                                style={{ 
+                                    background: '#FF4444', 
+                                    color: 'white', 
+                                    padding: '10px 20px', 
+                                    border: 'none', 
+                                    borderRadius: 20, 
+                                    cursor: 'pointer', 
+                                    fontWeight: 'bold',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 6
+                                }}
+                                title="Restart the game from beginning"
+                            >
+                                <span>🔄</span>
+                                <span>Restart</span>
+                            </button>
+                        </>
                     )}
                     {isDebug && (
                         <button onClick={triggerDebugCelebration} title="Debug: Test celebration" style={{ background: 'transparent', color: '#FFD700', padding: '6px 10px', border: '1px solid #FFD700', borderRadius: 12, cursor: 'pointer', fontWeight: 700 }}>Debug Celebrate</button>
@@ -2489,7 +3035,9 @@ const LudoGame = () => {
                                         <div style={{ display: 'grid', gap: 6 }}>
                                             {Array.from({ length: Math.max(2, Math.min(4, selectedPlayerCount)) }).map((_, i) => {
                                                 const seat = players[i];
-                                                const joined = i === 0 ? Boolean(seat?.profileId || myProfile?._id) : Boolean(seat?.profileId);
+                                                // Check if player has actually joined by checking profileId
+                                                const hasProfileId = i === 0 ? Boolean(seat?.profileId || myProfile?._id) : Boolean(seat?.profileId);
+                                                const joined = hasProfileId;
                                                 const name = seat?.name || (i === 0 ? (myProfile?.fullName || 'You') : `Seat ${i + 1}`);
                                                 const invitedName = !joined ? getInvitedNameForSlot(i) : null;
                                                 return (
@@ -2498,7 +3046,7 @@ const LudoGame = () => {
                                                             {seat?.avatar ? <img src={seat.avatar} alt=" " style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 10 }}>{['R','G','Y','B'][i] || 'P'}</span>}
                                                         </div>
                                                         <div style={{ fontSize: 12, flex: 1, textAlign: 'left' }}>{name}</div>
-                                                        <div style={{ fontSize: 11, fontWeight: 700, color: joined ? '#B0FFB0' : '#FFD700' }}>{joined ? 'Joined' : (invitedName ? `Invited: ${invitedName}` : 'Waiting…')}</div>
+                                                        <div style={{ fontSize: 11, fontWeight: 700, color: joined ? '#00FF00' : '#FFD700', padding: '2px 8px', borderRadius: 4, background: joined ? 'rgba(0,255,0,0.1)' : 'rgba(255,215,0,0.1)' }}>{joined ? 'Joined' : (invitedName ? `Invited: ${invitedName}` : 'Waiting…')}</div>
                                                     </div>
                                                 );
                                             })}

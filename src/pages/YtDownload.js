@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { showSuccessToast, showErrorToast, showInfoToast } from '../utils/toastUtils';
 import axios from 'axios';
+import api from '../api/api';
 import './YtDownload.css';
 
 const YT_DOWNLOAD_API = 'https://yt-dl-tyyw.onrender.com';
@@ -24,6 +25,8 @@ const YtDownload = () => {
     const [currentDownload, setCurrentDownload] = useState(null);
     const [downloadHistory, setDownloadHistory] = useState([]);
     const [videoTitle, setVideoTitle] = useState('');
+    const [postAsWatch, setPostAsWatch] = useState(false);
+    const [isPostingWatch, setIsPostingWatch] = useState(false);
     
     const progressPollIntervalRef = useRef(null);
     const statusPollIntervalRef = useRef(null);
@@ -167,6 +170,39 @@ const YtDownload = () => {
         }, 800);
     };
 
+    const postVideoAsWatch = async (blob, fileName) => {
+        try {
+            setIsPostingWatch(true);
+            showInfoToast('Uploading video to Watch...', { title: 'Posting', autoClose: 3000 });
+
+            // Create FormData for video upload
+            const videoFormData = new FormData();
+            const videoFile = new File([blob], `${sanitizeFileName(fileName)}.mp4`, { type: 'video/mp4' });
+            videoFormData.append('video', videoFile);
+            videoFormData.append('caption', videoTitle || fileName);
+
+            // Upload video to watch endpoint
+            const uploadResponse = await api.post('/watch/create', videoFormData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                }
+            });
+
+            if (uploadResponse.status === 200 || uploadResponse.status === 201) {
+                showSuccessToast('Video posted to Watch successfully!', { title: 'Posted to Watch' });
+                return true;
+            } else {
+                throw new Error('Upload failed');
+            }
+        } catch (error) {
+            console.error('Error posting video to watch:', error);
+            showErrorToast('Failed to post video to Watch. Video downloaded successfully.', { title: 'Watch Post Error' });
+            return false;
+        } finally {
+            setIsPostingWatch(false);
+        }
+    };
+
     const downloadFile = async (fileUrl, fileName) => {
         try {
             showInfoToast('Preparing download...', { title: 'Download', autoClose: 2000 });
@@ -185,6 +221,11 @@ const YtDownload = () => {
 
             // Get the blob
             const blob = await response.blob();
+            
+            // Post to watch if checkbox is checked
+            if (postAsWatch) {
+                await postVideoAsWatch(blob, fileName);
+            }
             
             // Create a blob URL
             const blobUrl = window.URL.createObjectURL(blob);
@@ -220,7 +261,10 @@ const YtDownload = () => {
             setDownloadStatus('completed');
             setCurrentDownload(null);
 
-            showSuccessToast('Video downloaded successfully!', { title: 'Download Complete' });
+            const successMessage = postAsWatch 
+                ? 'Video downloaded and posted to Watch successfully!' 
+                : 'Video downloaded successfully!';
+            showSuccessToast(successMessage, { title: 'Download Complete' });
 
             // Reset after 3 seconds
             setTimeout(() => {
@@ -417,6 +461,28 @@ const YtDownload = () => {
                                     </select>
                                 </div>
 
+                                <div className='form-group'>
+                                    <div className='form-check'>
+                                        <input
+                                            className='form-check-input'
+                                            type='checkbox'
+                                            id='post-as-watch'
+                                            checked={postAsWatch}
+                                            onChange={(e) => setPostAsWatch(e.target.checked)}
+                                            disabled={isDownloading || isPostingWatch}
+                                        />
+                                        <label className='form-check-label' htmlFor='post-as-watch'>
+                                            <i className='fas fa-video' style={{ marginRight: '8px', color: '#3B82F6' }}></i>
+                                            Post as Watch
+                                        </label>
+                                    </div>
+                                    {postAsWatch && (
+                                        <small className='form-text text-muted' style={{ marginTop: '4px', display: 'block' }}>
+                                            The downloaded video will be automatically posted to your Watch feed
+                                        </small>
+                                    )}
+                                </div>
+
                                 {isDownloading && (
                                     <div className='download-progress-container'>
                                         <div className='progress-info'>
@@ -433,7 +499,7 @@ const YtDownload = () => {
                                 )}
 
                                 <div className='yt-download-actions'>
-                                    {!isDownloading ? (
+                                    {!isDownloading && !isPostingWatch ? (
                                         <button
                                             className='btn btn-primary yt-download-btn'
                                             onClick={handleDownload}
@@ -441,6 +507,14 @@ const YtDownload = () => {
                                         >
                                             <i className='fas fa-download' style={{ marginRight: '8px' }}></i>
                                             Download Video
+                                        </button>
+                                    ) : isPostingWatch ? (
+                                        <button
+                                            className='btn btn-primary yt-download-btn'
+                                            disabled
+                                        >
+                                            <i className='fas fa-spinner fa-spin' style={{ marginRight: '8px' }}></i>
+                                            Posting to Watch...
                                         </button>
                                     ) : (
                                         <button

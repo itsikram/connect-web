@@ -4,7 +4,15 @@
  */
 
 // Content Security Policy
-const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+// Check if we're in development mode (localhost, 127.0.0.1, or local network IPs)
+const hostname = window.location.hostname;
+const isDevelopment = hostname === 'localhost' || 
+                      hostname === '127.0.0.1' ||
+                      hostname.startsWith('192.168.') ||
+                      hostname.startsWith('10.') ||
+                      (hostname.startsWith('172.') && 
+                       parseInt(hostname.split('.')[1]) >= 16 && 
+                       parseInt(hostname.split('.')[1]) <= 31);
 
 const csp = isDevelopment ? `
   default-src 'self';
@@ -13,7 +21,7 @@ const csp = isDevelopment ? `
   font-src 'self' https://fonts.gstatic.com;
   img-src 'self' data: https: http: blob:;
   media-src 'self' https: http: blob:;
-  connect-src 'self' http://localhost:* http://127.0.0.1:* https: wss: ws:;
+  connect-src 'self' http://localhost:* http://127.0.0.1:* http: https: wss: ws:;
   frame-src 'self' https://www.google.com https://www.youtube.com https://www.youtube-nocookie.com;
   object-src 'none';
   base-uri 'self';

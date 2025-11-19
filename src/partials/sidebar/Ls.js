@@ -100,6 +100,28 @@ let LeftSidebar = () => {
                         </Link>
                     </li>
                     <li>
+                        <Link to="/video-player" className='text-decoration-none'>
+                            <div className='ls-nav-menu-item'>
+                                <div className='ls-icon lsi-video-player' style={{backgroundImage: 'unset'}}>
+                                    <svg style={{transform: 'scale(0.7)'}} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+                                        <defs>
+                                            <linearGradient id="videoGradient" x1="0" y1="0" x2="1" y2="1">
+                                                <stop offset="0%" stopColor="#3B82F6" />
+                                                <stop offset="100%" stopColor="#2563EB" />
+                                            </linearGradient>
+                                        </defs>
+                                        <rect width="512" height="512" rx="80" fill="url(#videoGradient)" />
+                                        <polygon points="200,150 200,362 362,256" fill="#FFFFFF" />
+                                        <circle cx="256" cy="256" r="200" fill="none" stroke="#FFFFFF" strokeWidth="8" opacity="0.3" />
+                                    </svg>
+                                </div>
+                                <div className='ls-text'>
+                                    Video Player
+                                </div>
+                            </div>
+                        </Link>
+                    </li>
+                    <li>
                         <Link to="/downloads/" className='text-decoration-none'>
                             <div className='ls-nav-menu-item'>
                                 <div className='ls-icon lsi-downloads'>

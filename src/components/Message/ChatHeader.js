@@ -16,6 +16,8 @@ import {
 import { startMediaPipeEmotionDetection } from '../../utils/mediapipeExpressions';
 import config from '../../config/config.json';
 import ringtones from '../../config/ringtones.json';
+import { unlockAudio, playAudioWithWebAudio, initializeAudioUnlock } from '../../utils/audioUnlock';
+import { showCallNotification, closeCallNotification } from '../../utils/callNotification';
 import './UserInfoModal.css';
 // Using Agora RTC SDK instead of simple-peer
 
@@ -153,8 +155,11 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
 
     const closeVideoCall = () => { };
 
-    const playCallingBeep = () => {
-        setTimeout(() => {
+    const playCallingBeep = async () => {
+        // First, try to unlock audio if not already unlocked
+        await unlockAudio();
+        
+        setTimeout(async () => {
             if (callingBeepAudio?.current) {
                 const audio = callingBeepAudio.current;
                 
@@ -164,12 +169,37 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                     return;
                 }
                 
+                // Ensure audio is not muted and volume is set
+                audio.muted = false;
+                audio.volume = 1.0;
+                
                 // Wait for audio to be ready if not already loaded
                 if (audio.readyState < 2) {
-                    const handleCanPlay = () => {
-                        audio.play().catch(error => {
+                    const handleCanPlay = async () => {
+                        try {
+                            // Try Web Audio API first for better background playback
+                            await playAudioWithWebAudio(audio);
+                            console.log('Ringtone playing successfully');
+                        } catch (error) {
                             console.warn('Failed to play ringtone:', error);
-                        });
+                            // Fallback: try regular play
+                            try {
+                                await audio.play();
+                                console.log('Ringtone playing with fallback method');
+                            } catch (fallbackError) {
+                                console.warn('Fallback play also failed:', fallbackError);
+                                // If autoplay is blocked, try again when tab becomes visible
+                                if (fallbackError.name === 'NotAllowedError' || fallbackError.name === 'NotSupportedError') {
+                                    const handleVisibilityChange = () => {
+                                        if (document.visibilityState === 'visible' && incomingCall) {
+                                            playAudioWithWebAudio(audio).catch(e => console.warn('Retry play failed:', e));
+                                            document.removeEventListener('visibilitychange', handleVisibilityChange);
+                                        }
+                                    };
+                                    document.addEventListener('visibilitychange', handleVisibilityChange);
+                                }
+                            }
+                        }
                         audio.removeEventListener('canplaythrough', handleCanPlay);
                     };
                     audio.addEventListener('canplaythrough', handleCanPlay);
@@ -179,17 +209,41 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                         audio.removeEventListener('canplaythrough', handleCanPlay);
                     }, 3000);
                 } else {
-                    audio.play().catch(error => {
+                    try {
+                        // Try Web Audio API first for better background playback
+                        await playAudioWithWebAudio(audio);
+                        console.log('Ringtone playing successfully');
+                    } catch (error) {
                         console.warn('Failed to play ringtone:', error);
-                    });
+                        // Fallback: try regular play
+                        try {
+                            await audio.play();
+                            console.log('Ringtone playing with fallback method');
+                        } catch (fallbackError) {
+                            console.warn('Fallback play also failed:', fallbackError);
+                            // If autoplay is blocked, try again when tab becomes visible
+                            if (fallbackError.name === 'NotAllowedError' || fallbackError.name === 'NotSupportedError') {
+                                const handleVisibilityChange = () => {
+                                    if (document.visibilityState === 'visible' && incomingCall) {
+                                        playAudioWithWebAudio(audio).catch(e => console.warn('Retry play failed:', e));
+                                        document.removeEventListener('visibilitychange', handleVisibilityChange);
+                                    }
+                                };
+                                document.addEventListener('visibilitychange', handleVisibilityChange);
+                            }
+                        }
+                    }
                 }
             } else {
                 // Retry after a short delay if audio element not yet mounted
-                setTimeout(() => {
+                setTimeout(async () => {
                     if (callingBeepAudio?.current) {
-                        callingBeepAudio.current.play().catch(error => {
-                            console.warn('Failed to play ringtone after retry:', error);
-                        });
+                        await unlockAudio();
+                        try {
+                            await playAudioWithWebAudio(callingBeepAudio.current);
+                        } catch (error) {
+                            callingBeepAudio.current.play().catch(e => console.warn('Failed to play ringtone after retry:', e));
+                        }
                     }
                 }, 300);
             }
@@ -202,6 +256,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             audio.pause();
             audio.currentTime = 0; // Reset to beginning
         }
+        closeCallNotification(); // Close notification when beep stops
     };
 
     // Stop hidden emotion camera when a call starts or is accepted
@@ -469,6 +524,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
 
     const answerCall = useCallback(async (data) => {
         stopCallingBeep();
+        closeCallNotification(); // Close notification when call is answered
 
         // Start local video immediately when accepting call
         try {
@@ -580,6 +636,17 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                 setIncomingCall({ from, channelName, name: callerName || 'Unknown Caller', profilePic: callerProfilePic });
                 setIsVideoCalling(true);
                 playCallingBeep();
+                
+                // Show browser notification for incoming call
+                showCallNotification({
+                    callerName: callerName || 'Unknown Caller',
+                    callerProfilePic: callerProfilePic,
+                    callType: 'video',
+                    onClick: () => {
+                        // Focus the window when notification is clicked
+                        window.focus();
+                    }
+                });
             }
         });
 
@@ -594,7 +661,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
 
         socket.on('video-call-rejected', ({to: friendId, channelName}) => {
             console.log('ChatHeader: Received video-call-rejected event from server');
-            stopCallingBeep(); // Explicitly stop the beep
+            stopCallingBeep(); // Explicitly stop the beep (this also closes notification)
             cleanupVideoCall();
         });
 
@@ -618,7 +685,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
         socket.on('video-call-ended', () => {
             console.log('ChatHeader: Received videoCallEnd event from server');
             // IMPORTANT: Only do local cleanup, do NOT call handleLeaveCall which would re-emit
-            stopCallingBeep(); // Explicitly stop the beep
+            stopCallingBeep(); // Explicitly stop the beep (this also closes notification)
             cleanupVideoCall();
             setOutgoingCallStatus('');
         });
@@ -688,8 +755,53 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
         }
     }, [incomingCall, callAccepted, friendId]);
 
+    // Resume ringtone playback when tab becomes visible
     useEffect(() => {
-        const onWindowFocus = () => notifyFocusDuringIncomingCall();
+        const handleVisibilityChange = async () => {
+            if (document.visibilityState === 'visible' && incomingCall && !callAccepted && callingBeepAudio?.current) {
+                const audio = callingBeepAudio.current;
+                // Resume playback if it was paused due to tab being hidden
+                if (audio.paused && audio.src && audio.src !== window.location.href) {
+                    await unlockAudio();
+                    audio.muted = false;
+                    audio.volume = 1.0;
+                    try {
+                        await playAudioWithWebAudio(audio);
+                    } catch (error) {
+                        audio.play().catch(e => {
+                            console.warn('Failed to resume ringtone on visibility change:', e);
+                        });
+                    }
+                }
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [incomingCall, callAccepted]);
+
+    useEffect(() => {
+        const onWindowFocus = async () => {
+            notifyFocusDuringIncomingCall();
+            // Also try to resume ringtone on window focus
+            if (incomingCall && !callAccepted && callingBeepAudio?.current) {
+                const audio = callingBeepAudio.current;
+                if (audio.paused && audio.src && audio.src !== window.location.href) {
+                    await unlockAudio();
+                    audio.muted = false;
+                    audio.volume = 1.0;
+                    try {
+                        await playAudioWithWebAudio(audio);
+                    } catch (error) {
+                        audio.play().catch(e => {
+                            console.warn('Failed to resume ringtone on window focus:', e);
+                        });
+                    }
+                }
+            }
+        };
         const onVisibilityChange = () => {
             if (document.visibilityState === 'visible') notifyFocusDuringIncomingCall();
         };
@@ -699,7 +811,12 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             window.removeEventListener('focus', onWindowFocus);
             document.removeEventListener('visibilitychange', onVisibilityChange);
         };
-    }, [notifyFocusDuringIncomingCall]);
+    }, [notifyFocusDuringIncomingCall, incomingCall, callAccepted]);
+
+    // Initialize audio unlock on component mount
+    useEffect(() => {
+        initializeAudioUnlock();
+    }, []);
 
     // Setup ringtone based on user settings (only when audio element exists)
     useEffect(() => {
@@ -1670,11 +1787,15 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                 )
             }
 
-            {incomingCall && (
-                <audio ref={callingBeepAudio} loop preload="none">
-                    <track kind="captions" />
-                </audio>
-            )}
+            {/* Always render audio element to avoid autoplay issues when tab is not focused */}
+            <audio 
+                ref={callingBeepAudio} 
+                loop 
+                preload="auto"
+                style={{ display: 'none' }}
+            >
+                <track kind="captions" />
+            </audio>
 
             {/* User Info Modal */}
             <ModalContainer

@@ -8,6 +8,8 @@ import ringtones from '../../config/ringtones.json';
 import api from '../../api/api';
 import { useCallMinimize } from '../../contexts/CallMinimizeContext';
 import config from '../../config/config.json';
+import { unlockAudio, playAudioWithWebAudio, initializeAudioUnlock } from '../../utils/audioUnlock';
+import { showCallNotification, closeCallNotification } from '../../utils/callNotification';
 
 const AudioCall = ({ myId }) => {
     console.log('AudioCall - Component mounted/rendered with myId:', myId);
@@ -46,10 +48,14 @@ const AudioCall = ({ myId }) => {
             audio.pause();
             audio.currentTime = 0; // Reset to beginning
         }
+        closeCallNotification(); // Close notification when ringtone stops
     };
     
-    const playRingtone = () => {
-        setTimeout(() => {
+    const playRingtone = async () => {
+        // First, try to unlock audio if not already unlocked
+        await unlockAudio();
+        
+        setTimeout(async () => {
             if (ringtoneAudio?.current) {
                 const audio = ringtoneAudio.current;
                 
@@ -59,12 +65,37 @@ const AudioCall = ({ myId }) => {
                     return;
                 }
                 
+                // Ensure audio is not muted and volume is set
+                audio.muted = false;
+                audio.volume = 1.0;
+                
                 // Wait for audio to be ready if not already loaded
                 if (audio.readyState < 2) {
-                    const handleCanPlay = () => {
-                        audio.play().catch(error => {
+                    const handleCanPlay = async () => {
+                        try {
+                            // Try Web Audio API first for better background playback
+                            await playAudioWithWebAudio(audio);
+                            console.log('Ringtone playing successfully');
+                        } catch (error) {
                             console.warn('Failed to play ringtone:', error);
-                        });
+                            // Fallback: try regular play
+                            try {
+                                await audio.play();
+                                console.log('Ringtone playing with fallback method');
+                            } catch (fallbackError) {
+                                console.warn('Fallback play also failed:', fallbackError);
+                                // If autoplay is blocked, try again when tab becomes visible
+                                if (fallbackError.name === 'NotAllowedError' || fallbackError.name === 'NotSupportedError') {
+                                    const handleVisibilityChange = () => {
+                                        if (document.visibilityState === 'visible' && receivingCall && incomingCall) {
+                                            playAudioWithWebAudio(audio).catch(e => console.warn('Retry play failed:', e));
+                                            document.removeEventListener('visibilitychange', handleVisibilityChange);
+                                        }
+                                    };
+                                    document.addEventListener('visibilitychange', handleVisibilityChange);
+                                }
+                            }
+                        }
                         audio.removeEventListener('canplaythrough', handleCanPlay);
                     };
                     audio.addEventListener('canplaythrough', handleCanPlay);
@@ -74,17 +105,41 @@ const AudioCall = ({ myId }) => {
                         audio.removeEventListener('canplaythrough', handleCanPlay);
                     }, 3000);
                 } else {
-                    audio.play().catch(error => {
+                    try {
+                        // Try Web Audio API first for better background playback
+                        await playAudioWithWebAudio(audio);
+                        console.log('Ringtone playing successfully');
+                    } catch (error) {
                         console.warn('Failed to play ringtone:', error);
-                    });
+                        // Fallback: try regular play
+                        try {
+                            await audio.play();
+                            console.log('Ringtone playing with fallback method');
+                        } catch (fallbackError) {
+                            console.warn('Fallback play also failed:', fallbackError);
+                            // If autoplay is blocked, try again when tab becomes visible
+                            if (fallbackError.name === 'NotAllowedError' || fallbackError.name === 'NotSupportedError') {
+                                const handleVisibilityChange = () => {
+                                    if (document.visibilityState === 'visible' && receivingCall && incomingCall) {
+                                        playAudioWithWebAudio(audio).catch(e => console.warn('Retry play failed:', e));
+                                        document.removeEventListener('visibilitychange', handleVisibilityChange);
+                                    }
+                                };
+                                document.addEventListener('visibilitychange', handleVisibilityChange);
+                            }
+                        }
+                    }
                 }
             } else {
                 // Retry after a short delay if audio element not yet mounted
-                setTimeout(() => {
+                setTimeout(async () => {
                     if (ringtoneAudio?.current) {
-                        ringtoneAudio.current.play().catch(error => {
-                            console.warn('Failed to play ringtone after retry:', error);
-                        });
+                        await unlockAudio();
+                        try {
+                            await playAudioWithWebAudio(ringtoneAudio.current);
+                        } catch (error) {
+                            ringtoneAudio.current.play().catch(e => console.warn('Failed to play ringtone after retry:', e));
+                        }
                     }
                 }, 300);
             }
@@ -440,6 +495,17 @@ const AudioCall = ({ myId }) => {
                 setCallerProfilePic(callerProfilePic || config?.defaultProfile);
                 setCurrentChannel(channelName);
                 playRingtone();
+                
+                // Show browser notification for incoming call
+                showCallNotification({
+                    callerName: callerName || 'Unknown Caller',
+                    callerProfilePic: callerProfilePic || config?.defaultProfile,
+                    callType: 'audio',
+                    onClick: () => {
+                        // Focus the window when notification is clicked
+                        window.focus();
+                    }
+                });
             } else {
                 console.log('AudioCall - Ignoring video call (isAudio: false)');
             }
@@ -481,17 +547,17 @@ const AudioCall = ({ myId }) => {
             console.log('AudioCall: Current channel:', currentChannel);
             console.log('AudioCall: Incoming call:', incomingCall);
             // IMPORTANT: Only do local cleanup, do NOT call endCall which would re-emit
-            stopRingtone();
+            stopRingtone(); // This also closes notification
             await cleanupAudioCall();
         });
         socket.on('audio-call-cancelled', async () => {
             console.log('AudioCall: Received audio-call-cancelled event from server');
-            stopRingtone();
+            stopRingtone(); // This also closes notification
             await cleanupAudioCall();
         });
         socket.on('audio-call-rejected', async () => {
-            console.log('AudioCall: Received audio-call-cancelled event from server');
-            stopRingtone();
+            console.log('AudioCall: Received audio-call-rejected event from server');
+            stopRingtone(); // This also closes notification
             await cleanupAudioCall();
         });
 
@@ -517,6 +583,59 @@ const AudioCall = ({ myId }) => {
         };
     }, [startCall, cleanupAudioCall, caller, receivingCall, callAccepted]); // Include deps
 
+    // Resume ringtone playback when tab becomes visible
+    useEffect(() => {
+        const handleVisibilityChange = async () => {
+            if (document.visibilityState === 'visible' && receivingCall && !callAccepted && incomingCall && ringtoneAudio?.current) {
+                const audio = ringtoneAudio.current;
+                // Resume playback if it was paused due to tab being hidden
+                if (audio.paused && audio.src && audio.src !== window.location.href) {
+                    await unlockAudio();
+                    audio.muted = false;
+                    audio.volume = 1.0;
+                    try {
+                        await playAudioWithWebAudio(audio);
+                    } catch (error) {
+                        audio.play().catch(e => {
+                            console.warn('Failed to resume ringtone on visibility change:', e);
+                        });
+                    }
+                }
+            }
+        };
+
+        const handleWindowFocus = async () => {
+            // Also try to resume ringtone on window focus
+            if (receivingCall && !callAccepted && incomingCall && ringtoneAudio?.current) {
+                const audio = ringtoneAudio.current;
+                if (audio.paused && audio.src && audio.src !== window.location.href) {
+                    await unlockAudio();
+                    audio.muted = false;
+                    audio.volume = 1.0;
+                    try {
+                        await playAudioWithWebAudio(audio);
+                    } catch (error) {
+                        audio.play().catch(e => {
+                            console.warn('Failed to resume ringtone on window focus:', e);
+                        });
+                    }
+                }
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', handleWindowFocus);
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('focus', handleWindowFocus);
+        };
+    }, [receivingCall, callAccepted, incomingCall]);
+
+    // Initialize audio unlock on component mount
+    useEffect(() => {
+        initializeAudioUnlock();
+    }, []);
+
     // Cleanup on component unmount
     useEffect(() => {
         return () => {
@@ -525,7 +644,7 @@ const AudioCall = ({ myId }) => {
     }, []);
 
     const answerCall = useCallback(async () => {
-        stopRingtone();
+        stopRingtone(); // This also closes notification
         if (!incomingCall) return;
 
         console.log('Answering Agora audio call');
@@ -723,11 +842,15 @@ const AudioCall = ({ myId }) => {
                     </div>
                 </div>
             </ModalContainer>
-            {receivingCall && incomingCall && (
-                <audio ref={ringtoneAudio} loop preload="none">
-                    <track kind="captions" />
-                </audio>
-            )}
+            {/* Always render audio element to avoid autoplay issues when tab is not focused */}
+            <audio 
+                ref={ringtoneAudio} 
+                loop 
+                preload="auto"
+                style={{ display: 'none' }}
+            >
+                <track kind="captions" />
+            </audio>
         </div>
     );
 };

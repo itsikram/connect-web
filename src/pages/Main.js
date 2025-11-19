@@ -78,6 +78,7 @@ import Youtebe from "./Youtebe.js";
 import SingleVideo from "../components/downloads/SingleVideo.js";
 import SavedVideos from "./SavedVideos.js";
 import LudoGame from "./LudoGame";
+import VideoPlayer from "./VideoPlayer.js";
 
 // import MicRecorder from 'mic-recorder-to-mp3';
 // const recorder = new MicRecorder({ bitRate: 128 });
@@ -771,6 +772,7 @@ const Main = () => {
                             </Route>
 
                             <Route path="/ludo-game" element={<LudoGame />}> </Route>
+                            <Route path="/video-player" element={<ProtectedRoute><VideoPlayer /></ProtectedRoute>}> </Route>
                             {/* <Route path="/call" element={<Call />}> </Route> */}
                             <Route path="/marketplace" element={<ProtectedRoute><Marketplace /></ProtectedRoute>}> </Route>
 
