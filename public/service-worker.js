@@ -64,6 +64,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Skip audio files to prevent download manager interception
+  if (url.pathname.match(/\.(wav|mp3|ogg|m4a|aac)$/i)) {
+    return; // Let browser handle audio files directly, don't intercept
+  }
+
   // Cache-first strategy for static assets
   event.respondWith(
     caches.match(event.request)

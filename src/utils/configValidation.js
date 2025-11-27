@@ -1,22 +1,13 @@
 /**
  * Configuration validation utility
  * Ensures all required environment variables are present
+ * Provides fallbacks for offline/local development
  */
 
+import { getServerAddress } from './offlineUtils';
+
 export const validateConfig = () => {
-    const requiredEnvVars = [
-        'REACT_APP_SERVER_ADDR'
-    ];
-
-    const missingVars = [];
     const warnings = [];
-
-    // Check required environment variables
-    requiredEnvVars.forEach(varName => {
-        if (!process.env[varName]) {
-            missingVars.push(varName);
-        }
-    });
 
     // Check for common configuration issues
     if (process.env.REACT_APP_SERVER_ADDR) {
@@ -27,10 +18,11 @@ export const validateConfig = () => {
         }
     }
 
-    // Log errors and warnings
-    if (missingVars.length > 0) {
-        console.error('❌ Missing required environment variables:', missingVars);
-        console.error('Please check your .env file and ensure all required variables are set.');
+    // Warn if REACT_APP_SERVER_ADDR is missing, but don't fail (fallback will be used)
+    if (!process.env.REACT_APP_SERVER_ADDR) {
+        const fallbackUrl = getServerAddress();
+        warnings.push(`REACT_APP_SERVER_ADDR not set, using fallback: ${fallbackUrl}`);
+        console.warn('ℹ️ Using fallback server address for offline/local development');
     }
 
     if (warnings.length > 0) {
@@ -40,8 +32,7 @@ export const validateConfig = () => {
     }
 
     return {
-        isValid: missingVars.length === 0,
-        missingVars,
+        isValid: true, // Always valid now, with fallbacks
         warnings
     };
 };

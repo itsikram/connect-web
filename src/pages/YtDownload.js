@@ -2,9 +2,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import { showSuccessToast, showErrorToast, showInfoToast } from '../utils/toastUtils';
 import axios from 'axios';
 import api from '../api/api';
+import { getYtDownloadApiUrl, isOffline } from '../utils/offlineUtils';
 import './YtDownload.css';
 
-const YT_DOWNLOAD_API = 'https://yt-dl-tyyw.onrender.com';
+// Get YouTube download API URL with offline fallback
+const getYTDownloadAPI = () => getYtDownloadApiUrl();
 
 const QUALITY_OPTIONS = [
     { label: 'Best Quality', value: 1080 },
@@ -45,10 +47,19 @@ const YtDownload = () => {
 
     const buildDownloadUrl = (url, height) => {
         try {
+            // Check if offline and show appropriate message
+            if (isOffline()) {
+                showErrorToast('YouTube download is not available offline. Please connect to the internet.', {
+                    title: 'Offline Mode'
+                });
+                return null;
+            }
+            
             const normalized = (url || '').replace('m.youtube.com', 'www.youtube.com');
             const encoded = encodeURIComponent(normalized);
             const heightParam = height ? `&height=${height}` : '';
-            return `${YT_DOWNLOAD_API}/download?url=${encoded}&ext=mp4${heightParam}&disposition=inline&link_only=true&async_job=true`;
+            const apiUrl = getYTDownloadAPI();
+            return `${apiUrl}/download?url=${encoded}&ext=mp4${heightParam}&disposition=inline&link_only=true&async_job=true`;
         } catch (e) {
             console.error('Error building download URL:', e);
             return null;

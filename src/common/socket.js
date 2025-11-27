@@ -1,5 +1,6 @@
 
 import { io } from 'socket.io-client';
+import { getSocketUrl } from '../utils/offlineUtils';
 
 let socketInstance = null;
 let socketProxy = null;
@@ -9,16 +10,32 @@ const getSocket = () => {
         try {
             const user = localStorage.getItem("user") || '{}';
             const userJson = JSON.parse(user);
+            const socketUrl = getSocketUrl();
             
-            socketInstance = io.connect(process.env.REACT_APP_SERVER_ADDR, {
+            socketInstance = io.connect(socketUrl, {
                 query: {
                     profile: userJson.profile
-                }
+                },
+                // Preserve original timeout settings (20s like the app version)
+                timeout: 20000,
+                reconnection: true,
+                reconnectionDelay: 1000,
+                reconnectionAttempts: 5,
+                reconnectionDelayMax: 5000,
+                transports: ['websocket', 'polling']
             });
         } catch (error) {
             console.error('Error initializing socket:', error);
             // Create socket without profile query if localStorage fails
-            socketInstance = io.connect(process.env.REACT_APP_SERVER_ADDR);
+            const socketUrl = getSocketUrl();
+            socketInstance = io.connect(socketUrl, {
+                timeout: 20000,
+                reconnection: true,
+                reconnectionDelay: 1000,
+                reconnectionAttempts: 5,
+                reconnectionDelayMax: 5000,
+                transports: ['websocket', 'polling']
+            });
         }
     }
     return socketInstance;

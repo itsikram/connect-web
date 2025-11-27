@@ -1,9 +1,15 @@
 import axios from "axios";
+import { getServerAddress } from "../utils/offlineUtils";
+
+// Get server address with offline fallback - computed once at module load
+// This respects REACT_APP_SERVER_ADDR if set, otherwise uses fallback logic
+const serverAddr = getServerAddress();
+const baseURL = `${serverAddr}/api/`;
 
 // Create axios instance WITHOUT token in initial setup
 // Token will be added dynamically via interceptor for each request
 const api = axios.create({
-    baseURL: process.env.REACT_APP_SERVER_ADDR+'/api/',
+    baseURL: baseURL,
     headers: {
         "User-Agent": "MyCustomUserAgent",
         "Access-Control-Allow-Origin": "*",

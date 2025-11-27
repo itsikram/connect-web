@@ -137,6 +137,19 @@ const Main = () => {
     const audioElement = useRef(null)
     const [audioReady, setAudioReady] = useState(false)
 
+    // Create audio element dynamically only when needed
+    const getOrCreateAudioElement = () => {
+        if (!audioElement.current) {
+            const audio = document.createElement('audio');
+            audio.preload = 'none';
+            audio.muted = true;
+            audio.style.display = 'none';
+            document.body.appendChild(audio);
+            audioElement.current = audio;
+        }
+        return audioElement.current;
+    }
+
     const [isTabActive, setIsTabActive] = useState(!document.hidden);
 
     const profileId = user?.profile
@@ -194,13 +207,31 @@ const Main = () => {
 
 
     const playSound = () => {
-        const el = audioElement?.current;
-        if (!el) return;
         if (!audioReady) {
             console.warn('Notification sound blocked until user interaction');
             return;
         }
         try {
+            // Create audio element dynamically only when needed to play
+            const el = getOrCreateAudioElement();
+            
+            // Set src only at the very last moment, right before playing
+            // This minimizes the chance of IDM intercepting the request
+            const targetSrc = config?.defaultNotificationSound;
+            if (!targetSrc) {
+                console.warn('Notification sound URL not configured');
+                return;
+            }
+            
+            // Only set src if it's not already set to the correct file
+            const currentSrc = el.src || '';
+            if (!currentSrc || currentSrc.includes('data:audio') || currentSrc !== targetSrc) {
+                // Set src and immediately play to minimize download window
+                el.src = targetSrc;
+                // Use load() to ensure it's ready, but don't wait for it
+                el.load();
+            }
+            
             el.currentTime = 0;
             el.muted = false;
             el.play().catch(error => {
@@ -257,16 +288,21 @@ const Main = () => {
     // Unlock audio on first user interaction (autoplay policy)
     useEffect(() => {
         const unlock = () => {
-            const el = audioElement?.current;
-            if (!el) return;
             const tryUnlock = async () => {
                 try {
+                    // Create audio element dynamically only when unlocking
+                    const el = getOrCreateAudioElement();
+                    // Use silent audio data URL for unlocking (prevents downloading notification sound)
+                    const silentAudio = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+                    el.src = silentAudio;
                     el.muted = true;
                     el.currentTime = 0;
                     await el.play();
                     el.pause();
                     el.currentTime = 0;
                     el.muted = false;
+                    // Clear src after unlock so notification sound can be lazy loaded
+                    el.removeAttribute('src');
                     setAudioReady(true);
                     console.log('🔊 Notification audio unlocked');
                 } catch (e) {
@@ -675,20 +711,21 @@ const Main = () => {
 
     const isHeaderHiddenRoute = location.pathname.startsWith('/portfolio') || location.pathname.startsWith('/youtube');
 
+    // Cleanup audio element on unmount
+    useEffect(() => {
+        return () => {
+            if (audioElement.current) {
+                audioElement.current.pause();
+                if (audioElement.current.parentNode) {
+                    audioElement.current.parentNode.removeChild(audioElement.current);
+                }
+                audioElement.current = null;
+            }
+        };
+    }, []);
+
     return (
         <Fragment>
-            <audio 
-                ref={audioElement} 
-                src={config?.defaultNotificationSound}
-                preload="auto"
-                muted
-                onError={(e) => {
-                    console.warn('Audio file failed to load:', e.target.src);
-                }}
-            >
-                <track kind="captions" />
-            </audio>
-            
                 {
                     isLoading && (<div id="site-loader">
                         <div className="loader-logo-container">
