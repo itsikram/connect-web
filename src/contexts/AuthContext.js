@@ -4,6 +4,7 @@ import { jwtDecode } from 'jwt-decode';
 import axios from 'axios';
 import { useDispatch } from 'react-redux';
 import { clearAllState } from '../services/actions/authActions';
+import { getUserFromStorage, setUserInStorage, removeStorageItem } from '../utils/storageUtils';
 // Import socket lazily to avoid circular dependency at module load time
 const getSocket = () => {
     // Dynamic import to break circular dependency
@@ -31,24 +32,20 @@ export const AuthProvider = ({ children }) => {
 
     const initializeAuth = useCallback(() => {
         try {
-            const storedUser = localStorage.getItem(AUTH_STORAGE_KEY);
-            if (storedUser && storedUser !== '{}') {
-                const userData = JSON.parse(storedUser);
+            const userData = getUserFromStorage();
+            if (userData && userData.accessToken) {
+                const isExpired = checkTokenExpiration(userData.accessToken);
                 
-                if (userData.accessToken) {
-                    const isExpired = checkTokenExpiration(userData.accessToken);
-                    
-                    if (!isExpired) {
-                        setToken(userData.accessToken);
-                        setRefreshToken(userData.refreshToken);
-                        setUser(userData);
-                        setIsAuthenticated(true);
-                        scheduleTokenRefresh(userData.accessToken);
-                    } else {
-                        // Token expired, try to refresh or logout
-                        console.log('Token expired on initialization');
-                        // handleLogout();
-                    }
+                if (!isExpired) {
+                    setToken(userData.accessToken);
+                    setRefreshToken(userData.refreshToken);
+                    setUser(userData);
+                    setIsAuthenticated(true);
+                    scheduleTokenRefresh(userData.accessToken);
+                } else {
+                    // Token expired, try to refresh or logout
+                    console.log('Token expired on initialization');
+                    // handleLogout();
                 }
             }
         } catch (error) {
@@ -125,7 +122,7 @@ export const AuthProvider = ({ children }) => {
                     refreshToken: response.data.refreshToken || refreshToken
                 };
 
-                localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userData));
+                setUserInStorage(userData);
                 setToken(response.data.accessToken);
                 setRefreshToken(response.data.refreshToken || refreshToken);
                 setUser(userData);
@@ -159,20 +156,18 @@ export const AuthProvider = ({ children }) => {
                     tokenLength: userData.accessToken?.length
                 });
                 
-                // Store in localStorage with verification
-                try {
-                    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userData));
-                    
+                // Store in storage with fallback
+                const stored = setUserInStorage(userData);
+                if (stored) {
                     // Immediate verification
-                    const verification = localStorage.getItem(AUTH_STORAGE_KEY);
-                    const parsed = JSON.parse(verification);
+                    const verification = getUserFromStorage();
                     
-                    console.log('✅ Login Success - Stored in localStorage');
+                    console.log('✅ Login Success - Stored in storage');
                     console.log('✅ Token:', userData.accessToken?.substring(0, 30) + '...');
                     console.log('✅ Can read back:', !!verification);
-                    console.log('✅ Parsed token matches:', parsed.accessToken === userData.accessToken);
-                } catch (storageError) {
-                    console.error('❌ Error storing in localStorage:', storageError);
+                    console.log('✅ Parsed token matches:', verification?.accessToken === userData.accessToken);
+                } else {
+                    console.error('❌ Error storing user data in storage');
                 }
                 
                 // Update context state
@@ -213,7 +208,7 @@ export const AuthProvider = ({ children }) => {
             if ((response.status === 201 || response.status === 202) && response.data.accessToken) {
                 const userData = response.data;
                 
-                localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userData));
+                setUserInStorage(userData);
                 setToken(userData.accessToken);
                 setRefreshToken(userData.refreshToken);
                 setUser(userData);
@@ -250,7 +245,7 @@ export const AuthProvider = ({ children }) => {
             if (response.status === 201 && response.data.accessToken) {
                 const userData = response.data;
                 
-                localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userData));
+                setUserInStorage(userData);
                 setToken(userData.accessToken);
                 setRefreshToken(userData.refreshToken);
                 setUser(userData);
@@ -304,14 +299,14 @@ export const AuthProvider = ({ children }) => {
         setAuthError(null);
         setLoading(false);
 
-        // Clear localStorage
+        // Clear storage
         try {
-            localStorage.removeItem(AUTH_STORAGE_KEY);
+            removeStorageItem(AUTH_STORAGE_KEY);
             // Clear any other app-specific storage
-            localStorage.removeItem('lastPostId');
-            localStorage.removeItem('download_app_modal_dismissed');
+            removeStorageItem('lastPostId');
+            removeStorageItem('download_app_modal_dismissed');
         } catch (error) {
-            console.warn('Warning: Could not clear localStorage:', error);
+            console.warn('Warning: Could not clear storage:', error);
         }
         
         console.log('✅ User logged out successfully - All data cleared from Redux store');
@@ -320,10 +315,10 @@ export const AuthProvider = ({ children }) => {
     // Update user data (for profile updates, etc.)
     const updateUser = useCallback((userData) => {
         try {
-            const currentUser = JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) || '{}');
+            const currentUser = getUserFromStorage() || {};
             const updatedUser = { ...currentUser, ...userData };
             
-            localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updatedUser));
+            setUserInStorage(updatedUser);
             setUser(updatedUser);
             
             return { success: true };

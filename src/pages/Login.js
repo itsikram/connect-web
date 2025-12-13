@@ -62,20 +62,22 @@ let Login = (props) => {
                 console.log('🔐 Login result data:', result.data);
 
                 if(result.data.accessToken) {
-                    localStorage.setItem('user', JSON.stringify(result.data));
+                    // User data is already stored by AuthContext, but ensure it's there
+                    const { setUserInStorage } = require('../utils/storageUtils');
+                    setUserInStorage(result.data);
                 }
 
                 
                 // Small delay to ensure localStorage is synced
                 await new Promise(resolve => setTimeout(resolve, 100));
                 
-                // Verify token is in localStorage before navigation
-                const storedUser = localStorage.getItem('user');
+                // Verify token is in storage before navigation
+                const { getUserFromStorage } = require('../utils/storageUtils');
+                const storedUser = getUserFromStorage();
                 if (storedUser) {
-                    const user = JSON.parse(storedUser);
-                    console.log('✅ Token verified in localStorage before navigation:', !!user.accessToken);
+                    console.log('✅ Token verified in storage before navigation:', !!storedUser.accessToken);
                 } else {
-                    console.warn('⚠️ No user in localStorage after login!');
+                    console.warn('⚠️ No user in storage after login!');
                 }
                 
                 // Navigate to home page

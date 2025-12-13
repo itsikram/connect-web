@@ -19,8 +19,55 @@ export const unlockAudio = () => {
         if (!unlockAudioElement) {
             unlockAudioElement = document.createElement('audio');
             unlockAudioElement.preload = 'auto';
-            // Create a silent audio data URL (1 second of silence)
-            const silentAudio = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+            // Create a valid silent audio data URL (100ms of silence at 44.1kHz, 16-bit, mono)
+            // Generate a proper WAV file with valid headers and sample data
+            const sampleRate = 44100;
+            const duration = 0.1; // 100ms
+            const numSamples = Math.floor(sampleRate * duration);
+            const numChannels = 1;
+            const bitsPerSample = 16;
+            const bytesPerSample = bitsPerSample / 8;
+            const dataSize = numSamples * numChannels * bytesPerSample;
+            
+            // WAV file structure
+            const buffer = new ArrayBuffer(44 + dataSize);
+            const view = new DataView(buffer);
+            
+            // RIFF header
+            const writeString = (offset, string) => {
+                for (let i = 0; i < string.length; i++) {
+                    view.setUint8(offset + i, string.charCodeAt(i));
+                }
+            };
+            
+            writeString(0, 'RIFF');
+            view.setUint32(4, 36 + dataSize, true); // File size - 8
+            writeString(8, 'WAVE');
+            
+            // fmt chunk
+            writeString(12, 'fmt ');
+            view.setUint32(16, 16, true); // fmt chunk size
+            view.setUint16(20, 1, true); // Audio format (PCM)
+            view.setUint16(22, numChannels, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * numChannels * bytesPerSample, true); // Byte rate
+            view.setUint16(32, numChannels * bytesPerSample, true); // Block align
+            view.setUint16(34, bitsPerSample, true);
+            
+            // data chunk
+            writeString(36, 'data');
+            view.setUint32(40, dataSize, true);
+            // Data is already zeros (silence) since ArrayBuffer initializes to 0
+            
+            // Convert to base64
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            for (let i = 0; i < bytes.length; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            const base64 = btoa(binary);
+            const silentAudio = `data:audio/wav;base64,${base64}`;
+            
             unlockAudioElement.src = silentAudio;
             unlockAudioElement.volume = 0.01; // Very quiet but not silent
         }

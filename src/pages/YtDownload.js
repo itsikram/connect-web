@@ -3,6 +3,7 @@ import { showSuccessToast, showErrorToast, showInfoToast } from '../utils/toastU
 import axios from 'axios';
 import api from '../api/api';
 import { getYtDownloadApiUrl, isOffline } from '../utils/offlineUtils';
+import { useAuth } from '../hooks/useAuth';
 import './YtDownload.css';
 
 // Get YouTube download API URL with offline fallback
@@ -10,7 +11,6 @@ const getYTDownloadAPI = () => getYtDownloadApiUrl();
 
 const QUALITY_OPTIONS = [
     { label: 'Best Quality', value: 1080 },
-    { label: '1080p', value: 1080 },
     { label: '720p', value: 720 },
     { label: '480p', value: 480 },
     { label: '360p', value: 360 },
@@ -18,6 +18,7 @@ const QUALITY_OPTIONS = [
 ];
 
 const YtDownload = () => {
+    const { isAuthenticated, token } = useAuth();
     const [youtubeUrl, setYoutubeUrl] = useState('');
     const [selectedQuality, setSelectedQuality] = useState(1080);
     const [isDownloading, setIsDownloading] = useState(false);
@@ -183,6 +184,15 @@ const YtDownload = () => {
 
     const postVideoAsWatch = async (blob, fileName) => {
         try {
+            // Check authentication before attempting to post
+            if (!token || !isAuthenticated) {
+                showErrorToast('Please log in to post videos to Watch. Video will be downloaded only.', { 
+                    title: 'Authentication Required',
+                    autoClose: 5000
+                });
+                return false;
+            }
+
             setIsPostingWatch(true);
             showInfoToast('Uploading video to Watch...', { title: 'Posting', autoClose: 3000 });
 
@@ -191,11 +201,8 @@ const YtDownload = () => {
             const videoFile = new File([blob], `${sanitizeFileName(fileName)}.mp4`, { type: 'video/mp4' });
             videoFormData.append('attachment', videoFile);
 
-            const uploadResponse = await api.post('/upload/video', videoFormData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data'
-                }
-            });
+            // Don't set Content-Type explicitly - axios will set it automatically with boundary for FormData
+            const uploadResponse = await api.post('/upload/video', videoFormData);
 
             if (uploadResponse.status !== 200 || !uploadResponse.data?.secure_url) {
                 throw new Error('Video upload failed');
@@ -209,11 +216,8 @@ const YtDownload = () => {
             watchFormData.append('caption', videoTitle || fileName);
             watchFormData.append('videoUrl', videoUrl);
 
-            const createWatchResponse = await api.post('/watch/create', watchFormData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data'
-                }
-            });
+            // Don't set Content-Type explicitly - axios will set it automatically with boundary for FormData
+            const createWatchResponse = await api.post('/watch/create', watchFormData);
 
             if (createWatchResponse.status === 200 || createWatchResponse.status === 201) {
                 showSuccessToast('Video posted to Watch successfully!', { title: 'Posted to Watch' });
@@ -223,8 +227,20 @@ const YtDownload = () => {
             }
         } catch (error) {
             console.error('Error posting video to watch:', error);
-            const errorMessage = error.response?.data?.error || error.message || 'Unknown error';
-            showErrorToast(`Failed to post video to Watch: ${errorMessage}. Video downloaded successfully.`, { title: 'Watch Post Error' });
+            
+            // Handle authentication errors specifically
+            if (error.response?.status === 401) {
+                showErrorToast('Please log in to post videos to Watch. Video downloaded successfully.', { 
+                    title: 'Authentication Required',
+                    autoClose: 5000
+                });
+            } else {
+                const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || 'Unknown error';
+                showErrorToast(`Failed to post video to Watch: ${errorMessage}. Video downloaded successfully.`, { 
+                    title: 'Watch Post Error',
+                    autoClose: 5000
+                });
+            }
             return false;
         } finally {
             setIsPostingWatch(false);
@@ -250,9 +266,16 @@ const YtDownload = () => {
             // Get the blob
             const blob = await response.blob();
             
-            // Post to watch if checkbox is checked
-            if (postAsWatch) {
+            // Post to watch if checkbox is checked and user is authenticated
+            if (postAsWatch && isAuthenticated) {
                 await postVideoAsWatch(blob, fileName);
+            } else if (postAsWatch && !isAuthenticated) {
+                // User checked the box but is no longer authenticated
+                showErrorToast('Please log in to post videos to Watch. Video downloaded successfully.', { 
+                    title: 'Authentication Required',
+                    autoClose: 3000
+                });
+                setPostAsWatch(false); // Uncheck the box
             }
             
             // Create a blob URL
@@ -496,15 +519,33 @@ const YtDownload = () => {
                                             type='checkbox'
                                             id='post-as-watch'
                                             checked={postAsWatch}
-                                            onChange={(e) => setPostAsWatch(e.target.checked)}
-                                            disabled={isDownloading || isPostingWatch}
+                                            onChange={(e) => {
+                                                if (!isAuthenticated) {
+                                                    showErrorToast('Please log in to post videos to Watch', { 
+                                                        title: 'Authentication Required',
+                                                        autoClose: 3000
+                                                    });
+                                                    return;
+                                                }
+                                                setPostAsWatch(e.target.checked);
+                                            }}
+                                            disabled={isDownloading || isPostingWatch || !isAuthenticated}
                                         />
-                                        <label className='form-check-label' htmlFor='post-as-watch'>
+                                        <label className='form-check-label' htmlFor='post-as-watch' style={{ 
+                                            opacity: !isAuthenticated ? 0.6 : 1,
+                                            cursor: !isAuthenticated ? 'not-allowed' : 'pointer'
+                                        }}>
                                             <i className='fas fa-video' style={{ marginRight: '8px', color: '#3B82F6' }}></i>
                                             Post as Watch
                                         </label>
                                     </div>
-                                    {postAsWatch && (
+                                    {!isAuthenticated && (
+                                        <small className='form-text text-muted' style={{ marginTop: '4px', display: 'block', color: '#ff6b6b' }}>
+                                            <i className='fas fa-info-circle' style={{ marginRight: '4px' }}></i>
+                                            Please log in to use this feature
+                                        </small>
+                                    )}
+                                    {postAsWatch && isAuthenticated && (
                                         <small className='form-text text-muted' style={{ marginTop: '4px', display: 'block' }}>
                                             The downloaded video will be automatically posted to your Watch feed
                                         </small>

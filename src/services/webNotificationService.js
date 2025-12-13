@@ -20,11 +20,39 @@ class WebNotificationService {
   getBrowserId() {
     if (!this.browserId) {
       // Try to get from localStorage first
-      let storedId = localStorage.getItem('connect_browser_id');
+      let storedId = null;
+      
+      try {
+        storedId = localStorage.getItem('connect_browser_id');
+      } catch (error) {
+        // If localStorage fails (quota exceeded, etc.), try sessionStorage
+        console.warn('localStorage access failed, trying sessionStorage:', error);
+        try {
+          storedId = sessionStorage.getItem('connect_browser_id');
+        } catch (sessionError) {
+          console.error('Both localStorage and sessionStorage failed:', sessionError);
+        }
+      }
       
       if (!storedId) {
         storedId = this.generateBrowserId();
-        localStorage.setItem('connect_browser_id', storedId);
+        
+        // Try to store in localStorage, fallback to sessionStorage if quota exceeded
+        try {
+          localStorage.setItem('connect_browser_id', storedId);
+        } catch (error) {
+          if (error.name === 'QuotaExceededError' || error.name === 'DOMException') {
+            console.warn('localStorage quota exceeded, using sessionStorage for browser ID');
+            try {
+              sessionStorage.setItem('connect_browser_id', storedId);
+            } catch (sessionError) {
+              console.error('Failed to store browser ID in sessionStorage:', sessionError);
+              // Continue without storing - browser ID will be regenerated on next load
+            }
+          } else {
+            throw error;
+          }
+        }
       }
       
       this.browserId = storedId;
@@ -60,24 +88,134 @@ class WebNotificationService {
     }
 
     try {
-      this.registration = await navigator.serviceWorker.register('/sw.js');
+      // Check for existing service worker registrations
+      const allRegistrations = await navigator.serviceWorker.getRegistrations();
+      const currentScope = window.location.origin + '/';
+      
+      for (const registration of allRegistrations) {
+        try {
+          // Unregister service workers with different scopes
+          if (registration.scope !== currentScope) {
+            await registration.unregister();
+            console.log('Unregistered service worker with different scope:', registration.scope);
+            continue;
+          }
+          
+          // Check if the service worker is in a broken/redundant state
+          const installing = registration.installing;
+          const waiting = registration.waiting;
+          const active = registration.active;
+          
+          const isBroken = (installing && installing.state === 'redundant') || 
+                          (waiting && waiting.state === 'redundant') ||
+                          (!active && !installing && !waiting);
+          
+          if (isBroken) {
+            await registration.unregister();
+            console.log('Unregistered broken service worker:', registration.scope);
+            continue;
+          }
+          
+          // If we have an active service worker, use it
+          if (active && registration.scope === currentScope) {
+            console.log('Service Worker already registered and active');
+            this.registration = registration;
+            return this.registration;
+          }
+        } catch (unregisterError) {
+          console.warn('Error checking/unregistering service worker:', unregisterError);
+        }
+      }
+
+      // Register the service worker
+      this.registration = await navigator.serviceWorker.register('/sw.js', {
+        scope: '/',
+        updateViaCache: 'none' // Always fetch fresh service worker
+      });
+
+      // Wait for the service worker to be ready (handle all states)
+      const waitForReady = () => {
+        return new Promise((resolve, reject) => {
+          // If already active, resolve immediately
+          if (this.registration.active) {
+            resolve();
+            return;
+          }
+
+          // If installing, wait for it
+          if (this.registration.installing) {
+            const worker = this.registration.installing;
+            const handleStateChange = () => {
+              if (worker.state === 'activated' || worker.state === 'installed') {
+                worker.removeEventListener('statechange', handleStateChange);
+                resolve();
+              } else if (worker.state === 'redundant') {
+                worker.removeEventListener('statechange', handleStateChange);
+                reject(new Error('Service Worker installation failed - state: redundant'));
+              }
+            };
+            worker.addEventListener('statechange', handleStateChange);
+            
+            // Timeout after 10 seconds
+            setTimeout(() => {
+              worker.removeEventListener('statechange', handleStateChange);
+              reject(new Error('Service Worker registration timeout'));
+            }, 10000);
+            return;
+          }
+
+          // If waiting, wait for it to activate
+          if (this.registration.waiting) {
+            const worker = this.registration.waiting;
+            // Try to activate it
+            worker.postMessage({ type: 'SKIP_WAITING' });
+            const handleStateChange = () => {
+              if (worker.state === 'activated') {
+                worker.removeEventListener('statechange', handleStateChange);
+                resolve();
+              }
+            };
+            worker.addEventListener('statechange', handleStateChange);
+            
+            setTimeout(() => {
+              worker.removeEventListener('statechange', handleStateChange);
+              // If still waiting after timeout, resolve anyway (it will activate on next page load)
+              resolve();
+            }, 5000);
+            return;
+          }
+
+          // If we get here, the service worker might already be ready
+          resolve();
+        });
+      };
+
+      await waitForReady();
       console.log('Service Worker registered successfully:', this.registration);
       
       // Listen for updates
       this.registration.addEventListener('updatefound', () => {
         const newWorker = this.registration.installing;
-        newWorker.addEventListener('statechange', () => {
-          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-            // New content is available, notify user
-            console.log('New content is available; please refresh.');
-          }
-        });
+        if (newWorker) {
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // New content is available, notify user
+              console.log('New content is available; please refresh.');
+            }
+          });
+        }
       });
 
       return this.registration;
     } catch (error) {
-      console.error('Service Worker registration failed:', error);
-      throw error;
+      // Only log errors in development mode to reduce console noise
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Service Worker registration failed:', error);
+        console.debug('Continuing without service worker - notifications may be limited');
+      }
+      // Don't throw - allow the app to continue without service worker
+      // This is a non-critical feature
+      return null;
     }
   }
 
@@ -161,8 +299,13 @@ class WebNotificationService {
         return false;
       }
 
-      // Register service worker
-      await this.registerServiceWorker();
+      // Register service worker (non-blocking - continue even if it fails)
+      try {
+        await this.registerServiceWorker();
+      } catch (swError) {
+        console.warn('Service worker registration failed, continuing without it:', swError);
+        // Continue without service worker - notifications will still work but may be limited
+      }
 
       // Register browser ID with server
       await this.registerBrowserId(profileId, api);
@@ -191,7 +334,16 @@ class WebNotificationService {
   async cleanup(profileId, api) {
     try {
       await this.unregisterBrowserId(profileId, api);
-      localStorage.removeItem('connect_browser_id');
+      try {
+        localStorage.removeItem('connect_browser_id');
+      } catch (error) {
+        // If localStorage fails, try sessionStorage
+        try {
+          sessionStorage.removeItem('connect_browser_id');
+        } catch (sessionError) {
+          console.warn('Could not remove browser ID from storage:', sessionError);
+        }
+      }
       this.browserId = null;
       console.log('Web notification service cleaned up');
     } catch (error) {

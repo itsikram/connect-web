@@ -172,46 +172,46 @@ const ProfileSetting = () => {
                     <h3 className='text-center'>Profile Settings</h3>
                     <form>
                         <div className="form-group mb-2">
-                            <label for="firstName">First Name</label>
-                            <input type="text" onChange={handleInputChange.bind(this)} className="form-control" id="firstName" value={settings.firstName} name='firstName' placeholder="Enter Frist Name" />
+                            <label htmlFor="firstName">First Name</label>
+                            <input type="text" onChange={handleInputChange.bind(this)} className="form-control" id="firstName" value={settings.firstName || ''} name='firstName' placeholder="Enter Frist Name" />
                         </div>
                         <div className="form-group mb-2">
-                            <label for="surname">Surname</label>
-                            <input type="text" onChange={handleInputChange.bind(this)} className="form-control" value={settings.surname} id="surname" name='surname' placeholder="Enter Last Name" />
+                            <label htmlFor="surname">Surname</label>
+                            <input type="text" onChange={handleInputChange.bind(this)} className="form-control" value={settings.surname || ''} id="surname" name='surname' placeholder="Enter Last Name" />
                         </div>
                         <div className="form-group mb-2">
-                            <label for="username">Userame</label>
+                            <label htmlFor="username">Userame</label>
 
                             <div className='input-group'>
                                 <div className='input-group-prepend'>
                                     <span className='input-group-text'>@</span>
                                 </div>
-                                <input type="text" className="form-control" value={settings.username} name='username' onChange={handleInputChange.bind(this)} id="username" aria-describedby="emailHelp" placeholder="Enter Username" />
+                                <input type="text" className="form-control" value={settings.username || ''} name='username' onChange={handleInputChange.bind(this)} id="username" aria-describedby="emailHelp" placeholder="Enter Username" />
 
 
                             </div>
                         </div>
                         <div className="form-group mb-2">
-                            <label for="nickname">Nickname</label>
+                            <label htmlFor="nickname">Nickname</label>
 
-                            <input type="text" onChange={handleInputChange.bind(this)} value={settings.nickname} className="form-control" id="nickname" name='nickname' placeholder="Enter Nickname" />
+                            <input type="text" onChange={handleInputChange.bind(this)} value={settings.nickname || ''} className="form-control" id="nickname" name='nickname' placeholder="Enter Nickname" />
 
                         </div>
                         <div className="form-group mb-2">
-                            <label for="displayName">Display Name</label>
+                            <label htmlFor="displayName">Display Name</label>
 
-                            <input type="text" onChange={handleInputChange.bind(this)} value={settings.displayName} className="form-control" id="displayName" name='displayName' placeholder="Enter Display Name" />
+                            <input type="text" onChange={handleInputChange.bind(this)} value={settings.displayName || ''} className="form-control" id="displayName" name='displayName' placeholder="Enter Display Name" />
 
                         </div>
 
                         <div className="form-group mb-2">
-                            <label for="presentAddress">Present Address</label>
+                            <label htmlFor="presentAddress">Present Address</label>
 
                             <div className='input-group'>
                                 <div className='input-group-prepend'>
                                     <span className='input-group-text py-3'><i className='fas fa-home'></i></span>
                                 </div>
-                                <input type="text" value={myProfile.presentAddress} onChange={handleInputChange.bind(this)} className="form-control" id="presentAddress" name='presentAddress' placeholder="Enter Present Address" />
+                                <input type="text" value={myProfile?.presentAddress || ''} onChange={handleInputChange.bind(this)} className="form-control" id="presentAddress" name='presentAddress' placeholder="Enter Present Address" />
 
 
                             </div>
@@ -219,13 +219,13 @@ const ProfileSetting = () => {
 
                         </div>
                         <div className="form-group mb-2">
-                            <label for="permanentAddress">Permanent Address</label>
+                            <label htmlFor="permanentAddress">Permanent Address</label>
 
                             <div className='input-group'>
                                 <div className='input-group-prepend'>
                                     <span className='input-group-text py-3'> <i className='fa fa-globe'></i></span>
                                 </div>
-                                <input value={myProfile.permanentAddress} type="text" onChange={handleInputChange.bind(this)} className="form-control" id="permanentAddress" name='permanentAddress' placeholder="Enter Permanent Address" />
+                                <input value={myProfile?.permanentAddress || ''} type="text" onChange={handleInputChange.bind(this)} className="form-control" id="permanentAddress" name='permanentAddress' placeholder="Enter Permanent Address" />
 
                             </div>
 
@@ -236,7 +236,7 @@ const ProfileSetting = () => {
                         <div className='multiple-input-container schools-container my-3 p-3'>
                             <h4 className='text-center'>Your Schools</h4>
                             {schools.map((school, index) => (
-                                <div className='row border border-secondary border-round my-2'>
+                                <div key={index} className='row border border-secondary border-round my-2'>
                                     <div className='col'>
                                         <div key={index} className='form-group mb-2'>
                                             <label className='form-label'>Degree</label>
@@ -248,7 +248,7 @@ const ProfileSetting = () => {
                                                 </div>
                                                 <input
                                                     type="text"
-                                                    value={school.degree}
+                                                    value={school.degree || ''}
                                                     onChange={(e) => handleDynamicSclDegChange(index, e)}
                                                     placeholder={`Your Degree`}
                                                     className='form-control'
@@ -272,7 +272,7 @@ const ProfileSetting = () => {
                                                 </div>
                                                 <input
                                                     type="text"
-                                                    value={school.name}
+                                                    value={school.name || ''}
                                                     onChange={(e) => handleDynamicSclNameChange(index, e)}
                                                     placeholder={`School Name`}
                                                     className='form-control'
@@ -295,7 +295,7 @@ const ProfileSetting = () => {
                         <div className='multiple-input-container workplaces-container my-3 p-3'>
                             <h4 className='text-center'>Your Workplaces</h4>
                             {workPlaces.map((workplace, index) => (
-                                <div className='row border border-secondary border-round my-2'>
+                                <div key={index} className='row border border-secondary border-round my-2'>
                                     <div className='col'>
                                         <div key={index} className='form-group mb-2'>
                                             <label className='form-label'>Designation</label>
@@ -308,7 +308,7 @@ const ProfileSetting = () => {
                                                 </div>
                                                 <input
                                                     type="text"
-                                                    value={workplace.designation}
+                                                    value={workplace.designation || ''}
                                                     onChange={(e) => handleDynamicWpDesChange(index, e)}
                                                     placeholder={`Your Designation`}
                                                     className='form-control'
@@ -332,7 +332,7 @@ const ProfileSetting = () => {
                                                 </div>
                                                 <input
                                                     type="text"
-                                                    value={workplace.name}
+                                                    value={workplace.name || ''}
                                                     onChange={(e) => handleDynamicWpNameChange(index, e)}
                                                     placeholder={`Workplace Name`}
                                                     className='form-control'
