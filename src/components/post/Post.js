@@ -236,7 +236,7 @@ const Post = React.memo(({ data, postContainer, index }) => {
 
     let likeOnClick = useCallback(async (e) => {
         let target = e.currentTarget;
-        $(target).parents('.post-react-container').css('visibility', 'hidden');
+        $(target).parents('.post-react-container').css('display', 'none');
         if ($(target).hasClass('reacted')) {
             removeReact('post');
             $(target).removeClass('reacted')
@@ -248,7 +248,7 @@ const Post = React.memo(({ data, postContainer, index }) => {
             $(e.currentTarget).siblings().removeClass('reacted')
         }
         setTimeout(() => {
-            $(target).parents('.post-react-container').css('visibility', 'visible');
+            $(target).parents('.post-react-container').css('display', '');
 
         }, 500)
 
@@ -257,7 +257,7 @@ const Post = React.memo(({ data, postContainer, index }) => {
 
     let loveOnClick = useCallback((e) => {
         let target = e.currentTarget;
-        $(target).parents('.post-react-container').css('visibility', 'hidden');
+        $(target).parents('.post-react-container').css('display', 'none');
         if ($(e.currentTarget).hasClass('reacted')) {
             removeReact('post');
             $(e.currentTarget).removeClass('reacted')
@@ -268,7 +268,7 @@ const Post = React.memo(({ data, postContainer, index }) => {
             $(e.currentTarget).addClass('reacted')
         }
         setTimeout(() => {
-            $(target).parents('.post-react-container').css('visibility', 'visible');
+            $(target).parents('.post-react-container').css('display', '');
 
         }, 500)
 
@@ -276,7 +276,7 @@ const Post = React.memo(({ data, postContainer, index }) => {
 
     let hahaOnClick = useCallback((e) => {
         let target = e.currentTarget;
-        $(target).parents('.post-react-container').css('visibility', 'hidden');
+        $(target).parents('.post-react-container').css('display', 'none');
 
         if ($(e.currentTarget).hasClass('reacted')) {
             removeReact();
@@ -288,15 +288,14 @@ const Post = React.memo(({ data, postContainer, index }) => {
             $(e.currentTarget).addClass('reacted')
         }
         setTimeout(() => {
-            $(target).parents('.post-react-container').css('visibility', 'visible');
+            $(target).parents('.post-react-container').css('display', '');
 
         }, 500)
     }, [removeReact, placeReact])
 
     let likeMouseOver = useCallback(e => {
-        let target = e.currentTarget
-        $(target).children('.post-react-container').css('visibility', 'visible');
-
+        // Let CSS handle the hover display - no need to set inline style
+        // The CSS rule .react-buttons:hover .post-react-container will handle it
     }, [])
     
     let commentOnClick = useCallback((e) => {

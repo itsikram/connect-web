@@ -197,12 +197,16 @@ const YtDownload = () => {
             showInfoToast('Uploading video to Watch...', { title: 'Posting', autoClose: 3000 });
 
             // Step 1: Upload video file to /upload/video endpoint
+            // Use extended timeout for video uploads (5 minutes = 300000ms)
             const videoFormData = new FormData();
             const videoFile = new File([blob], `${sanitizeFileName(fileName)}.mp4`, { type: 'video/mp4' });
             videoFormData.append('attachment', videoFile);
 
             // Don't set Content-Type explicitly - axios will set it automatically with boundary for FormData
-            const uploadResponse = await api.post('/upload/video', videoFormData);
+            // Override timeout to 5 minutes for large video uploads
+            const uploadResponse = await api.post('/upload/video', videoFormData, {
+                timeout: 300000 // 5 minutes for video upload
+            });
 
             if (uploadResponse.status !== 200 || !uploadResponse.data?.secure_url) {
                 throw new Error('Video upload failed');
@@ -217,7 +221,10 @@ const YtDownload = () => {
             watchFormData.append('videoUrl', videoUrl);
 
             // Don't set Content-Type explicitly - axios will set it automatically with boundary for FormData
-            const createWatchResponse = await api.post('/watch/create', watchFormData);
+            // Use standard timeout for watch creation (should be quick)
+            const createWatchResponse = await api.post('/watch/create', watchFormData, {
+                timeout: 30000 // 30 seconds for watch creation
+            });
 
             if (createWatchResponse.status === 200 || createWatchResponse.status === 201) {
                 showSuccessToast('Video posted to Watch successfully!', { title: 'Posted to Watch' });
@@ -233,6 +240,12 @@ const YtDownload = () => {
                 showErrorToast('Please log in to post videos to Watch. Video downloaded successfully.', { 
                     title: 'Authentication Required',
                     autoClose: 5000
+                });
+            } else if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+                // Handle timeout errors specifically
+                showErrorToast('Video upload timed out. The video file may be too large or your connection is slow. Video downloaded successfully.', { 
+                    title: 'Upload Timeout',
+                    autoClose: 6000
                 });
             } else {
                 const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || 'Unknown error';
@@ -266,6 +279,15 @@ const YtDownload = () => {
             // Get the blob
             const blob = await response.blob();
             
+            // Add to download history immediately so it shows up in the history section
+            const downloadItem = {
+                id: Date.now(),
+                fileName: `${sanitizeFileName(fileName)}.mp4`,
+                url: fileUrl,
+                timestamp: new Date().toISOString(),
+            };
+            setDownloadHistory(prev => [downloadItem, ...prev]);
+            
             // Post to watch if checkbox is checked and user is authenticated
             if (postAsWatch && isAuthenticated) {
                 await postVideoAsWatch(blob, fileName);
@@ -296,15 +318,6 @@ const YtDownload = () => {
                 document.body.removeChild(link);
                 window.URL.revokeObjectURL(blobUrl);
             }, 100);
-
-            // Add to download history
-            const downloadItem = {
-                id: Date.now(),
-                fileName: `${sanitizeFileName(fileName)}.mp4`,
-                url: fileUrl,
-                timestamp: new Date().toISOString(),
-            };
-            setDownloadHistory(prev => [downloadItem, ...prev]);
 
             setIsDownloading(false);
             setDownloadProgress(100);
@@ -390,8 +403,10 @@ const YtDownload = () => {
         if (!name || name === 'video') return 'video';
         // Remove any file extension first
         let cleanName = name.replace(/\.[^/.]+$/, '');
-        // Sanitize and limit length
-        cleanName = cleanName.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+        // Replace underscores with spaces
+        cleanName = cleanName.replace(/_/g, ' ');
+        // Sanitize and limit length (allow spaces, dots, and hyphens)
+        cleanName = cleanName.replace(/[^a-zA-Z0-9. -]+/g, '-').replace(/^-+|-+$/g, '').replace(/\s+/g, ' ').trim();
         // Limit to 100 characters
         return cleanName.substring(0, 100) || 'video';
     };

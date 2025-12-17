@@ -179,6 +179,9 @@ const LudoGame = () => {
     const [friendList, setFriendList] = useState([]);
     const [invitedStatusByFriendId, setInvitedStatusByFriendId] = useState({}); // { friendId: 'invited'|'joined'|'declined' }
     const [invitedSlotByFriendId, setInvitedSlotByFriendId] = useState({}); // { friendId: slotIndex }
+    const invitedStatusByFriendIdRef = useRef({}); // Ref to track invited status for synchronous checks in event handlers
+    const invitedSlotByFriendIdRef = useRef({}); // Ref to track invited slots for synchronous checks
+    const inviteTimestampsRef = useRef({}); // Track when each friend was invited to prevent immediate accept events
     const searchTimeoutRef = useRef(null);
     const inviteHandlersAttachedRef = useRef(false);
     const [incomingInvite, setIncomingInvite] = useState(null);
@@ -426,6 +429,8 @@ const LudoGame = () => {
     useEffect(() => { currentPlayerRef.current = currentPlayer; }, [currentPlayer]);
     useEffect(() => { selectedPlayerCountRef.current = selectedPlayerCount; }, [selectedPlayerCount]);
     useEffect(() => { winnersRef.current = winners; }, [winners]);
+    useEffect(() => { invitedStatusByFriendIdRef.current = invitedStatusByFriendId; }, [invitedStatusByFriendId]);
+    useEffect(() => { invitedSlotByFriendIdRef.current = invitedSlotByFriendId; }, [invitedSlotByFriendId]);
     useEffect(() => { maxStepsRef.current = maxSteps; }, [maxSteps]);
     // Don't update ref here - it's updated in setDiceValueImmediate to avoid race conditions
     // Removed excessive logging to prevent infinite loops
@@ -1007,8 +1012,15 @@ const LudoGame = () => {
             copy[slot].profileId = friend._id;
             return copy;
         });
-        setInvitedStatusByFriendId(prev => ({ ...prev, [friend._id]: 'invited' }));
-        setInvitedSlotByFriendId(prev => ({ ...prev, [friend._id]: slot }));
+        const friendIdStr = String(friend._id);
+        setInvitedStatusByFriendId(prev => {
+            const updated = { ...prev, [friendIdStr]: 'invited' };
+            console.log(`[inviteFriend] Setting status to 'invited' for friend ${friend._id} (as string: ${friendIdStr}), slot ${slot}, updated status:`, updated);
+            return updated;
+        });
+        setInvitedSlotByFriendId(prev => ({ ...prev, [friendIdStr]: slot }));
+        // Track when this friend was invited to prevent processing accept events that arrive immediately
+        inviteTimestampsRef.current[friendIdStr] = Date.now();
         try {
             const targetId = friend?._id || friend?.id;
             if (!targetId) return;
@@ -1053,6 +1065,47 @@ const LudoGame = () => {
         });
     }, [getNextOpenSlot, selectedPlayerCount]);
 
+    // Helper to check if all required players have actually joined (for online mode)
+    const checkAllPlayersJoined = useCallback(() => {
+        if (!onlineMode) return true; // Offline mode doesn't need to wait
+        
+        const maxPlayers = Math.max(2, Math.min(4, selectedPlayerCount));
+        const currentPlayers = playersRef.current && Array.isArray(playersRef.current) ? playersRef.current : players;
+        const currentInvitedStatus = invitedStatusByFriendIdRef.current;
+        const currentInvitedSlots = invitedSlotByFriendIdRef.current;
+        
+        // Check each seat (excluding host at 0)
+        for (let i = 1; i < maxPlayers; i++) {
+            const seat = currentPlayers[i];
+            const hasProfileId = Boolean(seat?.profileId);
+            
+            if (!hasProfileId) {
+                // No profileId means seat is empty - not all players joined
+                return false;
+            }
+            
+            // If they have profileId, check if they actually joined (not just invited)
+            const profileIdStr = seat?.profileId ? String(seat.profileId) : null;
+            const inviteStatus = profileIdStr ? (currentInvitedStatus[profileIdStr] || currentInvitedStatus[seat.profileId]) : null;
+            const wasInvitedToThisSlot = profileIdStr && (currentInvitedSlots[profileIdStr] === i || currentInvitedSlots[seat.profileId] === i);
+            
+            // Consider them joined only if:
+            // - If they were invited to this slot: only joined if status is explicitly 'joined'
+            // - If they were NOT invited to this slot: joined (offline assignment)
+            const isJoined = wasInvitedToThisSlot 
+                ? inviteStatus === 'joined'  // If invited, only joined if status is 'joined'
+                : inviteStatus !== 'invited';  // If not invited, joined unless status is 'invited'
+            
+            if (!isJoined) {
+                // This player hasn't actually joined yet
+                return false;
+            }
+        }
+        
+        // All seats are filled and all players have joined
+        return true;
+    }, [onlineMode, selectedPlayerCount]);
+
     // Determine if host should wait in lobby for invited players
     const recomputeWaitingState = useCallback(() => {
         try {
@@ -1062,20 +1115,6 @@ const LudoGame = () => {
                 return;
             }
             
-            const maxPlayers = Math.max(2, Math.min(4, selectedPlayerCount));
-            
-            // Compute actual joined seats - check if each seat (excluding host at 0) has a profileId
-            const joinedSeats = [];
-            for (let i = 1; i < maxPlayers; i++) {
-                const player = players[i];
-                if (player && player.profileId) {
-                    joinedSeats.push(i);
-                }
-            }
-            
-            // Check if all required seats are filled
-            const allSeatsFilled = joinedSeats.length >= (maxPlayers - 1);
-            
             // Also check if game has started - if started, don't wait (use ref to avoid stale closure)
             if (gameStartedRef.current) {
                 setWaitingForPlayers(false);
@@ -1083,19 +1122,21 @@ const LudoGame = () => {
                 return;
             }
             
-            const shouldWait = !allSeatsFilled;
+            // Check if all players have actually joined
+            const allPlayersJoined = checkAllPlayersJoined();
+            const shouldWait = !allPlayersJoined;
 
             
             setWaitingForPlayers(shouldWait);
             if (shouldWait) {
                 setCanRollDice(false);
             } else {
-                // Seats are filled; ensure dice can roll
+                // All players joined; ensure dice can roll
                 setCanRollDice(true);
                 
                 // If all players joined and game hasn't started yet, automatically start the game (host only)
                 // Use refs to prevent infinite loop and multiple triggers
-                if (!gameStartedRef.current && !autoStartTriggeredRef.current && allSeatsFilled && myPlayerIndex === 0 && onlineMode && gameId) {
+                if (!gameStartedRef.current && !autoStartTriggeredRef.current && allPlayersJoined && myPlayerIndex === 0 && onlineMode && gameId) {
                     // Mark as triggered immediately to prevent multiple calls
                     autoStartTriggeredRef.current = true;
                     
@@ -1144,7 +1185,7 @@ const LudoGame = () => {
         } catch (_e) {
             setWaitingForPlayers(false);
         }
-    }, [onlineMode, myPlayerIndex, players, myProfile?._id, selectedPlayerCount, gameId]);
+    }, [onlineMode, myPlayerIndex, players, myProfile?._id, selectedPlayerCount, gameId, checkAllPlayersJoined]);
 
     const onChangeFriendSearch = (text) => {
         setFriendSearchQuery(text);
@@ -1955,9 +1996,61 @@ const LudoGame = () => {
         const onAccepted = (payload) => {
             try {
                 if (!payload || payload.gameId !== gameId) return;
+                // Only process accept events if we're the host (myPlayerIndex === 0)
+                // This ensures only the host processes friend join events
+                if (myPlayerIndex !== 0) {
+                    console.log(`[onAccepted] Ignoring accept event - not host (myPlayerIndex=${myPlayerIndex})`);
+                    return;
+                }
+                // Don't process accept events for ourselves
+                if (payload.friend && payload.friend._id && myProfile?._id && String(payload.friend._id) === String(myProfile._id)) {
+                    console.log(`[onAccepted] Ignoring accept event - friend is ourselves`);
+                    return;
+                }
                 // Host updates: friend joined; update status and broadcast players
+                // Only mark as 'joined' if the friend was actually invited (not already joined or declined)
                 if (payload.friend && payload.friend._id) {
-                    setInvitedStatusByFriendId(prev => ({ ...prev, [payload.friend._id]: 'joined' }));
+                    const friendId = payload.friend._id;
+                    const friendIdStr = String(friendId);
+                    // Use ref for synchronous check to avoid race conditions - try both string and original key
+                    // Note: payload.from is the host/inviter, payload.friend._id is the friend who accepted
+                    const currentStatus = invitedStatusByFriendIdRef.current[friendIdStr] || invitedStatusByFriendIdRef.current[friendId];
+                    const expectedSlot = invitedSlotByFriendIdRef.current[friendIdStr] || invitedSlotByFriendIdRef.current[friendId];
+                    console.log(`[onAccepted] friendId=${friendId} (as string: ${friendIdStr}), currentStatus=${currentStatus}, expectedSlot=${expectedSlot}, payload.slotIndex=${payload.slotIndex}, myPlayerIndex=${myPlayerIndex}, payload.from=${payload.from}`);
+                    
+                    // CRITICAL: Ignore accept events that arrive too soon after sending invite (within 1 second)
+                    // This prevents processing events that are incorrectly fired immediately after invite
+                    const inviteTimestamp = inviteTimestampsRef.current[friendIdStr] || inviteTimestampsRef.current[friendId];
+                    if (inviteTimestamp && Date.now() - inviteTimestamp < 1000) {
+                        console.log(`[onAccepted] Ignoring accept event - received too soon after invite (${Date.now() - inviteTimestamp}ms ago, need at least 1000ms)`);
+                        return;
+                    }
+                    
+                    // CRITICAL: Only process if friend was previously 'invited' - this ensures we don't process events that fire before friend accepts
+                    if (currentStatus !== 'invited') {
+                        console.log(`[onAccepted] Ignoring accept event - friend status is '${currentStatus}', not 'invited'`);
+                        return;
+                    }
+                    
+                    // Only update to 'joined' if:
+                    // 1. The friend was previously 'invited' (not already joined or declined) - checked above
+                    // 2. The slot index matches the slot we invited them to (if provided)
+                    const slotMatches = typeof payload.slotIndex !== 'number' || expectedSlot === undefined || Number(payload.slotIndex) === Number(expectedSlot);
+                    console.log(`[onAccepted] slotMatches=${slotMatches}, currentStatus === 'invited': ${currentStatus === 'invited'}`);
+                    if (slotMatches) {
+                        setInvitedStatusByFriendId(prev => {
+                            const updated = { ...prev, [friendIdStr]: 'joined' };
+                            console.log(`[onAccepted] Setting status to 'joined' for friend ${friendIdStr}, updated status:`, updated);
+                            return updated;
+                        });
+                    } else {
+                        console.log(`[onAccepted] Ignoring accept event - slot doesn't match (expected ${expectedSlot}, got ${payload.slotIndex})`);
+                        return;
+                    }
+                } else {
+                    // No friend data in payload, ignore
+                    console.log(`[onAccepted] Ignoring accept event - no friend data in payload`);
+                    return;
                 }
                 if (typeof payload.slotIndex === 'number') {
                     setPlayers(prev => {
@@ -2540,14 +2633,13 @@ const LudoGame = () => {
 
     const confirmPlayerCount = () => {
         setShowPlayerSelection(false);
-        setGameStarted(true);
-        gameStartedRef.current = true; // Update ref immediately
-        autoStartTriggeredRef.current = false; // Reset since we're manually starting
+        
+        // Initialize game state (but don't start yet in online mode if players haven't joined)
         setCurrentPlayer(0);
         setDiceValueImmediate(0);
         setWinner(null);
-        setCanRollDice(true);
         setDiceRolling(false);
+        
         // Preserve any customizations made before starting; only adjust seat count and fill missing seats
         setPlayers(prev => {
             const max = Math.max(2, Math.min(4, selectedPlayerCount));
@@ -2590,7 +2682,8 @@ const LudoGame = () => {
                 return copy;
             });
         }
-        // Setup online room/socket
+        
+        // Setup online room/socket and check if we should wait for players
         if (onlineMode && myProfile?._id) {
             const gid = gameId || generateGameId();
             setGameId(gid);
@@ -2618,9 +2711,62 @@ const LudoGame = () => {
                 }
             };
             setTimeout(waitAndEmit, 100);
-            // Enter waiting lobby if invites are pending or slots not yet filled
-            recomputeWaitingState();
-            setCanRollDice(false);
+            
+            // Check if all players have joined after state updates
+            // Use setTimeout to ensure state has updated
+            setTimeout(() => {
+                const allPlayersJoined = checkAllPlayersJoined();
+                
+                if (allPlayersJoined) {
+                    // All players have joined - start the game
+                    setGameStarted(true);
+                    gameStartedRef.current = true;
+                    autoStartTriggeredRef.current = false;
+                    setCanRollDice(true);
+                    
+                    // Broadcast game start
+                    if (socketRef.current && gid) {
+                        try {
+                            const minimalPlayers = playersRef.current.map(p => ({
+                                id: p.id,
+                                name: p.name,
+                                color: p.color,
+                                avatar: p.avatar,
+                                cover: p.cover,
+                                profileId: p.profileId,
+                                isActive: p.isActive !== undefined ? p.isActive : true,
+                                pieces: (Array.isArray(p.pieces) ? p.pieces.map(pc => ({ id: pc.id, steps: pc.steps, isHome: pc.isHome, isInPlay: pc.isInPlay })) : [])
+                            }));
+                            socketRef.current.emit('ludo:players', {
+                                gameId: gid,
+                                players: minimalPlayers,
+                                selectedPlayerCount: selectedPlayerCountRef.current,
+                                currentPlayer: 0,
+                                diceValue: 0,
+                                gameStarted: true,
+                                gameEnded: false,
+                                winners: []
+                            });
+                        } catch (_e) {}
+                    }
+                } else {
+                    // Not all players have joined - enter waiting mode
+                    setGameStarted(false);
+                    gameStartedRef.current = false;
+                    autoStartTriggeredRef.current = false;
+                    setCanRollDice(false);
+                    // recomputeWaitingState will be called by useEffect when players/invitedStatus changes
+                }
+                
+                // Always recompute waiting state to update UI
+                recomputeWaitingState();
+            }, 200);
+        } else {
+            // Offline mode - start immediately
+            setGameStarted(true);
+            gameStartedRef.current = true;
+            autoStartTriggeredRef.current = false;
+            setCanRollDice(true);
         }
     };
 
@@ -3421,7 +3567,7 @@ const LudoGame = () => {
                 </div>
             )}
 
-            {gameStarted && (
+            {(gameStarted || (onlineMode && waitingForPlayers)) && (
                 <div style={{ padding: responsivePadding }}>
 
 
@@ -3466,8 +3612,29 @@ const LudoGame = () => {
                                             {(() => {
                                                 const max = Math.max(2, Math.min(4, selectedPlayerCount));
                                                 const joined = Array.from({ length: max }).filter((_, i) => {
-                                                    if (i === 0) return Boolean(players[0]?.profileId || myProfile?._id);
-                                                    return Boolean(players[i]?.profileId);
+                                                    if (i === 0) {
+                                                        return Boolean(players[0]?.profileId || myProfile?._id);
+                                                    }
+                                                    const seat = players[i];
+                                                    const hasProfileId = Boolean(seat?.profileId);
+                                                    if (!hasProfileId) return false;
+                                                    // If they have profileId, check if they actually joined (not just invited)
+                                                    // Use String() to handle ObjectId vs string comparisons
+                                                    const profileIdStr = seat?.profileId ? String(seat.profileId) : null;
+                                                    const inviteStatus = profileIdStr ? (invitedStatusByFriendId[profileIdStr] || invitedStatusByFriendId[seat.profileId]) : null;
+                                                    // Check if this slot was reserved for an invited friend (try both string and original key)
+                                                    const wasInvitedToThisSlot = profileIdStr && (invitedSlotByFriendId[profileIdStr] === i || invitedSlotByFriendId[seat.profileId] === i);
+                                                    console.log(`[JoinedCount] Slot ${i}: profileId=${profileIdStr}, inviteStatus=${inviteStatus}, wasInvitedToThisSlot=${wasInvitedToThisSlot}, invitedStatusByFriendId keys:`, Object.keys(invitedStatusByFriendId), `invitedSlotByFriendId:`, invitedSlotByFriendId);
+                                                    // Consider them joined only if:
+                                                    // - If they were invited to this slot: only joined if status is explicitly 'joined'
+                                                    // - If they were NOT invited to this slot: joined (offline assignment)
+                                                    // If status is 'invited' OR they were invited but status is missing/undefined, they haven't joined yet
+                                                    const isJoined = wasInvitedToThisSlot 
+                                                        ? inviteStatus === 'joined'  // If invited, only joined if status is 'joined'
+                                                        : inviteStatus !== 'invited';  // If not invited, joined unless status is 'invited'
+                                                    console.log(`[JoinedCount] Slot ${i}: isJoined=${isJoined} (inviteStatus=${inviteStatus}, wasInvitedToThisSlot=${wasInvitedToThisSlot})`);
+                                                    console.log(`[JoinedCount] Slot ${i}: isJoined=${isJoined} (inviteStatus=${inviteStatus}, wasInvitedToThisSlot=${wasInvitedToThisSlot})`);
+                                                    return isJoined;
                                                 }).length;
                                                 return `Joined ${joined}/${max}`;
                                             })()}
@@ -3475,9 +3642,34 @@ const LudoGame = () => {
                                         <div style={{ display: 'grid', gap: 6 }}>
                                             {Array.from({ length: Math.max(2, Math.min(4, selectedPlayerCount)) }).map((_, i) => {
                                                 const seat = players[i];
-                                                // Check if player has actually joined by checking profileId
+                                                // Check if player has actually joined - must have profileId AND not just be invited
                                                 const hasProfileId = i === 0 ? Boolean(seat?.profileId || myProfile?._id) : Boolean(seat?.profileId);
-                                                const joined = hasProfileId;
+                                                // If they have profileId, check invited status - if status is 'invited', they haven't joined yet
+                                                // Use String() to handle ObjectId vs string comparisons
+                                                const profileIdStr = seat?.profileId ? String(seat.profileId) : null;
+                                                
+
+                                                const inviteStatus = (i === 0 ? null : (profileIdStr ? (invitedStatusByFriendId[profileIdStr] || invitedStatusByFriendId[seat.profileId]) : null));
+                                                // Check if this slot was reserved for an invited friend (even if status lookup failed)
+                                                const wasInvitedToThisSlot = profileIdStr && (invitedSlotByFriendId[profileIdStr] === i || invitedSlotByFriendId[seat.profileId] === i);
+                                                // Debug logging
+                                                if (i > 0 && seat?.profileId) {
+                                                    console.log(`[SeatStatus] Slot ${i}: profileId=${profileIdStr}, inviteStatus=${inviteStatus}, wasInvitedToThisSlot=${wasInvitedToThisSlot}, hasProfileId=${hasProfileId}, invitedStatusByFriendId keys:`, Object.keys(invitedStatusByFriendId), `invitedSlotByFriendId:`, invitedSlotByFriendId);
+                                                }
+                                                // Only consider joined if:
+                                                // - Slot 0 is always joined if hasProfileId (host)
+                                                // - OR has profileId AND:
+                                                //   - If they were invited to this slot: only joined if status is explicitly 'joined'
+                                                //   - If they were NOT invited to this slot: joined (offline assignment)
+                                                // If status is 'invited' OR they were invited but status is missing/undefined, they haven't joined yet
+                                                const joined = hasProfileId && (i === 0 || (
+                                                    wasInvitedToThisSlot 
+                                                        ? inviteStatus === 'joined'  // If invited, only joined if status is 'joined'
+                                                        : inviteStatus !== 'invited'  // If not invited, joined unless status is 'invited' (shouldn't happen)
+                                                ));
+                                                if (i > 0 && seat?.profileId) {
+                                                    console.log(`[SeatStatus] Slot ${i}: joined=${joined} (inviteStatus=${inviteStatus}, wasInvitedToThisSlot=${wasInvitedToThisSlot})`);
+                                                }
                                                 const name = seat?.name || (i === 0 ? (myProfile?.fullName || 'You') : `Seat ${i + 1}`);
                                                 const invitedName = !joined ? getInvitedNameForSlot(i) : null;
                                                 return (

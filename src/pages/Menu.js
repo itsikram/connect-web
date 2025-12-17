@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 
 const APPS = [
     { key: 'ludo', name: 'Ludo Game', desc: 'Play the classic board game', icon: '🎲', colorA: '#F43F5E', colorB: '#F59E0B', href: '/ludo-game' },
+    { key: 'chess', name: 'Chess Game', desc: 'Play the classic strategy game', icon: '♟️', colorA: '#8B5CF6', colorB: '#6366F1', href: '/chess-game' },
     { key: 'video-player', name: 'Video Player', desc: 'Play video songs in a continuous loop', icon: '🎬', colorA: '#3B82F6', colorB: '#2563EB', href: '/video-player' },
     { key: 'yt-download', name: 'YouTube Downloader', desc: 'Download YouTube videos in any quality', icon: '⬇️', colorA: '#FF0000', colorB: '#DC2626', href: '/yt-download' },
     { key: 'notes', name: 'Notes', desc: 'Quickly capture ideas and thoughts', icon: '📝', colorA: '#6366F1', colorB: '#8B5CF6' },
