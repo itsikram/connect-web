@@ -167,6 +167,7 @@ const LudoGame = () => {
     const gameEndedRef = useRef(gameEnded);
     const autoStartTriggeredRef = useRef(false); // Track if auto-start has been triggered
     const lastLocalDiceRollTimeRef = useRef(0); // Track when dice was last rolled locally (to prevent stale broadcasts from overwriting)
+    const currentPlayerUpdatedFromServerRef = useRef(false); // Track if currentPlayer was just updated from server (to prevent broadcast loop)
     const lastBroadcastRef = useRef(0); // Track last broadcast time for throttling
     const recentMovesRef = useRef(new Map()); // Track recent moves: pieceKey -> { toSteps, timestamp } to prevent overwrites
     const lastTurnAdvanceTimeRef = useRef(0); // Track when turn was last advanced locally (to prevent stale broadcasts from reverting it)
@@ -203,9 +204,16 @@ const LudoGame = () => {
     const socketCreatingRef = useRef(false); // Guard to prevent multiple simultaneous socket creations
     const [gameId, setGameId] = useState(null);
     const [myPlayerIndex, setMyPlayerIndex] = useState(0);
+    const myPlayerIndexRef = useRef(0);
     // Track last roll to prevent multiple rolls
     const lastRollTimeRef = useRef(0);
     const isRollingRef = useRef(false);
+    // Game state persistence for reconnection
+    const savedGameStateRef = useRef(null); // { gameId, myPlayerIndex, onlineMode, selectedPlayerCount }
+    const [isReconnecting, setIsReconnecting] = useState(false);
+    const [showReconnectModal, setShowReconnectModal] = useState(false);
+    const [disconnectedPlayers, setDisconnectedPlayers] = useState(new Set()); // Track disconnected friend profile IDs
+    const hasProcessedReconnectionStateRef = useRef(false); // Track if we've processed initial reconnection state
     const socketBaseUrl = useMemo(() => {
         try {
             // Use offline utils for fallback
@@ -276,6 +284,7 @@ const LudoGame = () => {
                         // If we were in an online game, show reconnect option
                         if (onlineMode && gameId && gameStarted && !gameEnded) {
                             setIsReconnecting(true);
+                            hasProcessedReconnectionStateRef.current = false; // Reset for new reconnection
                             // Auto-attempt reconnect after a short delay
                             setTimeout(() => {
                                 if (socketRef.current && !socketRef.current.connected) {
@@ -288,11 +297,21 @@ const LudoGame = () => {
         socket.on('reconnect', (attemptNumber) => {
                         setIsReconnecting(false);
                         setShowReconnectModal(false);
-                        // Auto-rejoin game if we have one
-                        if (savedGameStateRef.current?.gameId && onlineMode) {
+                        // Auto-rejoin game if we have one - check both current gameId and saved state
+                        const gidToRejoin = gameId || savedGameStateRef.current?.gameId;
+                        if (gidToRejoin) {
                             try {
-                    socket.emit('ludo:join', { gameId: savedGameStateRef.current.gameId });
-                    socket.emit('ludo:players:get', { gameId: savedGameStateRef.current.gameId });
+                                socket.emit('ludo:join', { gameId: gidToRejoin });
+                                socket.emit('ludo:players:get', { gameId: gidToRejoin });
+                                // Restore state if needed
+                                if (savedGameStateRef.current && !gameId) {
+                                    setGameId(savedGameStateRef.current.gameId);
+                                    setMyPlayerIndex(savedGameStateRef.current.myPlayerIndex || 0);
+                                    setOnlineMode(true);
+                                    if (savedGameStateRef.current.selectedPlayerCount) {
+                                        setSelectedPlayerCount(savedGameStateRef.current.selectedPlayerCount);
+                                    }
+                                }
                             } catch (_e) { }
                         }
                     });
@@ -300,6 +319,7 @@ const LudoGame = () => {
         socket.on('reconnect_attempt', (attemptNumber) => {
                         if (onlineMode && gameId && gameStarted) {
                             setIsReconnecting(true);
+                            hasProcessedReconnectionStateRef.current = false; // Reset for new reconnection
                         }
                     });
         
@@ -427,6 +447,7 @@ const LudoGame = () => {
 
     useEffect(() => { playersRef.current = players; }, [players]);
     useEffect(() => { currentPlayerRef.current = currentPlayer; }, [currentPlayer]);
+    useEffect(() => { myPlayerIndexRef.current = myPlayerIndex; }, [myPlayerIndex]);
     useEffect(() => { selectedPlayerCountRef.current = selectedPlayerCount; }, [selectedPlayerCount]);
     useEffect(() => { winnersRef.current = winners; }, [winners]);
     useEffect(() => { invitedStatusByFriendIdRef.current = invitedStatusByFriendId; }, [invitedStatusByFriendId]);
@@ -748,6 +769,60 @@ const LudoGame = () => {
         setPlayers(newPlayers);
     };
 
+    // Save game state to localStorage for reconnection
+    const saveGameState = useCallback(() => {
+        try {
+            if (onlineMode && gameId && myProfile?._id) {
+                const state = {
+                    gameId,
+                    myPlayerIndex,
+                    onlineMode,
+                    selectedPlayerCount,
+                    profileId: myProfile._id,
+                    timestamp: Date.now()
+                };
+                localStorage.setItem('ludo_game_state', JSON.stringify(state));
+                savedGameStateRef.current = state;
+            }
+        } catch (_e) {
+            // Ignore localStorage errors
+        }
+    }, [onlineMode, gameId, myPlayerIndex, selectedPlayerCount, myProfile?._id]);
+
+    // Load game state from localStorage
+    const loadGameState = useCallback(() => {
+        try {
+            const saved = localStorage.getItem('ludo_game_state');
+            if (!saved) return null;
+            const state = JSON.parse(saved);
+            // Only restore if it's recent (within 24 hours) and belongs to current user
+            const isRecent = state.timestamp && (Date.now() - state.timestamp) < 24 * 60 * 60 * 1000;
+            const isMyGame = state.profileId && myProfile?._id && String(state.profileId) === String(myProfile._id);
+            if (isRecent && isMyGame) {
+                savedGameStateRef.current = state;
+                return state;
+            } else {
+                // Clear stale state
+                localStorage.removeItem('ludo_game_state');
+                savedGameStateRef.current = null;
+            }
+        } catch (_e) {
+            localStorage.removeItem('ludo_game_state');
+            savedGameStateRef.current = null;
+        }
+        return null;
+    }, [myProfile?._id]);
+
+    // Clear saved game state
+    const clearGameState = useCallback(() => {
+        try {
+            localStorage.removeItem('ludo_game_state');
+            savedGameStateRef.current = null;
+        } catch (_e) {
+            // Ignore errors
+        }
+    }, []);
+
     useEffect(() => {
         initializeGame();
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -777,6 +852,49 @@ const LudoGame = () => {
             return () => clearTimeout(timer);
         }
     }, [myProfile?._id, ensureSocketConnected]);
+
+    // Load saved game state on mount and attempt to reconnect
+    useEffect(() => {
+        if (!myProfile?._id) return;
+        const savedState = loadGameState();
+        if (savedState && savedState.gameId) {
+            // Attempt to reconnect to the saved game
+            setGameId(savedState.gameId);
+            setMyPlayerIndex(savedState.myPlayerIndex || 0);
+            setOnlineMode(true);
+            if (savedState.selectedPlayerCount) {
+                setSelectedPlayerCount(savedState.selectedPlayerCount);
+            }
+            // Ensure socket is connected, then rejoin game
+            ensureSocketConnected();
+            const attemptRejoin = () => {
+                if (socketRef.current && socketRef.current.connected) {
+                    try {
+                        socketRef.current.emit('ludo:join', { gameId: savedState.gameId });
+                        socketRef.current.emit('ludo:players:get', { gameId: savedState.gameId });
+                    } catch (_e) {
+                        // Retry after a delay
+                        setTimeout(attemptRejoin, 1000);
+                    }
+                } else if (socketRef.current) {
+                    // Wait for connection
+                    socketRef.current.once('connect', () => {
+                        try {
+                            socketRef.current.emit('ludo:join', { gameId: savedState.gameId });
+                            socketRef.current.emit('ludo:players:get', { gameId: savedState.gameId });
+                        } catch (_e) {}
+                    });
+                } else {
+                    // Socket not ready yet, retry
+                    setTimeout(attemptRejoin, 500);
+                }
+            };
+            setIsReconnecting(true);
+            hasProcessedReconnectionStateRef.current = false; // Reset for new reconnection
+            setTimeout(attemptRejoin, 300);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [myProfile?._id, loadGameState, ensureSocketConnected]);
 
     // Fetch pending invites on connect/profile available
     useEffect(() => {
@@ -979,6 +1097,14 @@ const LudoGame = () => {
     // Also broadcast when game state changes significantly - optimized debounce
     useEffect(() => {
         if (myPlayerIndex === 0 && onlineMode && gameId && gameStarted) {
+            // CRITICAL: Don't broadcast if currentPlayer was just updated from server
+            // This prevents infinite loops where server update -> client update -> broadcast -> server update
+            if (currentPlayerUpdatedFromServerRef.current) {
+                // Reset the flag and skip broadcasting this time
+                currentPlayerUpdatedFromServerRef.current = false;
+                return;
+            }
+            
             const now = Date.now();
             // Throttle broadcasts to max once per 300ms
             const timeSinceLastBroadcast = now - lastBroadcastRef.current;
@@ -1313,12 +1439,31 @@ const LudoGame = () => {
         if (waitingForPlayers) return;
         if (!canRollDice || diceRolling) return;
         if (isRollingRef.current) return; // Additional guard
-        if (onlineMode && myPlayerIndex !== currentPlayer) return; // only active player may roll online
-        if (onlineMode && diceValueRef.current > 0) return; // Already have a dice value, wait for move
+        
+        // CRITICAL: Use refs to ensure we check the most current values (avoid stale closures)
+        // Only the current player can roll dice in online mode
+        if (onlineMode) {
+            const currentMyPlayerIndex = myPlayerIndexRef.current;
+            const currentPlayerIndex = currentPlayerRef.current;
+            if (currentMyPlayerIndex !== currentPlayerIndex) {
+                // Not the current player's turn - prevent roll
+                return;
+            }
+            if (diceValueRef.current > 0) {
+                // Already have a dice value, wait for move
+                return;
+            }
+        }
         
         // Prevent rapid successive rolls
         const timeSinceLastRoll = Date.now() - lastRollTimeRef.current;
         if (timeSinceLastRoll < 500) return; // Minimum 500ms between rolls
+        
+        // CRITICAL: Double-check conditions right before setting flags (prevent race conditions)
+        // Re-check canRollDice and diceValue one more time after potential state updates
+        if (!canRollDice || diceRolling || isRollingRef.current) return;
+        if (diceValueRef.current > 0 || diceValue > 0) return;
+        if (onlineMode && myPlayerIndexRef.current !== currentPlayerRef.current) return;
         
         // Set rolling flags immediately to prevent duplicate rolls
         isRollingRef.current = true;
@@ -1395,7 +1540,32 @@ const LudoGame = () => {
                         by: myProfile?._id,
                         currentPlayer: currentPlayerRef.current,
                         timestamp: Date.now()
-                    }); 
+                    });
+                    
+                    // Also broadcast full game state so all players see the dice value and current player
+                    if (myPlayerIndexRef.current === 0) {
+                        // Host broadcasts state
+                        const minimalPlayers = playersRef.current.map(p => ({
+                            id: p.id,
+                            name: p.name,
+                            color: p.color,
+                            avatar: p.avatar,
+                            cover: p.cover,
+                            profileId: p.profileId,
+                            isActive: p.isActive !== undefined ? p.isActive : true,
+                            pieces: (Array.isArray(p.pieces) ? p.pieces.map(pc => ({ id: pc.id, steps: pc.steps, isHome: pc.isHome, isInPlay: pc.isInPlay })) : [])
+                        }));
+                        socketRef.current.emit('ludo:players', {
+                            gameId,
+                            players: minimalPlayers,
+                            selectedPlayerCount: selectedPlayerCountRef.current,
+                            currentPlayer: currentPlayerRef.current,
+                            diceValue: value,
+                            gameStarted: gameStartedRef.current || false,
+                            gameEnded: gameEndedRef.current || false,
+                            winners: winnersRef.current || []
+                        });
+                    }
                 } catch (_e) { }
             }
 
@@ -1562,31 +1732,11 @@ const LudoGame = () => {
                 steps: 0,
             };
             
-            // Broadcast the capture in online mode
-            if (onlineMode && socketRef.current && gameId) {
-                try {
-                    const minimalPlayers = updated.map(p => ({
-                        id: p.id,
-                        name: p.name,
-                        color: p.color,
-                        avatar: p.avatar,
-                        cover: p.cover,
-                        profileId: p.profileId,
-                        isActive: p.isActive !== undefined ? p.isActive : true,
-                        pieces: (Array.isArray(p.pieces) ? p.pieces.map(pc => ({ id: pc.id, steps: pc.steps, isHome: pc.isHome, isInPlay: pc.isInPlay })) : [])
-                    }));
-                    socketRef.current.emit('ludo:players', {
-                        gameId,
-                        players: minimalPlayers,
-                        selectedPlayerCount: selectedPlayerCountRef.current,
-                        currentPlayer: currentPlayerRef.current,
-                        diceValue: diceValueRef.current || 0,
-                        gameStarted: gameStartedRef.current || false,
-                        gameEnded: gameEndedRef.current || false,
-                        winners: winnersRef.current || []
-                    });
-                } catch (_e) { }
-            }
+            // Update ref immediately to ensure state is synchronized
+            playersRef.current = updated;
+            
+            // Note: Don't broadcast here - broadcast will happen after all captures are processed
+            // in the move completion callback to ensure all captures are included in one broadcast
             
             return updated;
         });
@@ -1615,29 +1765,44 @@ const LudoGame = () => {
         const updateEvery = stepsToGo <= 3 ? 1 : Math.max(2, Math.floor(stepsToGo / 6));
         const timers = [];
         
-        // Update at intervals
+        // Update at intervals (only if state hasn't already reached target)
         for (let s = updateEvery; s < stepsToGo; s += updateEvery) {
             const timer = setTimeout(() => {
-                setPlayers(prev => {
-                    const copy = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
-                    copy[playerIndex].pieces[pieceIndex].steps = fromSteps + s;
-                    copy[playerIndex].pieces[pieceIndex].isHome = false;
-                    copy[playerIndex].pieces[pieceIndex].isInPlay = true;
-                    return copy;
-                });
+                // Check if state is already at or past target (for immediate updates)
+                const currentState = playersRef.current?.[playerIndex]?.pieces?.[pieceIndex];
+                const currentSteps = currentState?.steps ?? fromSteps;
+                // Only update if we're not already at or past the target
+                if (currentSteps < toSteps) {
+                    setPlayers(prev => {
+                        const copy = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
+                        copy[playerIndex].pieces[pieceIndex].steps = fromSteps + s;
+                        copy[playerIndex].pieces[pieceIndex].isHome = false;
+                        copy[playerIndex].pieces[pieceIndex].isInPlay = true;
+                        // Update ref immediately to keep in sync
+                        playersRef.current = copy;
+                        return copy;
+                    });
+                }
             }, s * stepDurationMs);
             timers.push(timer);
         }
         
-        // Final update to exact position
+        // Final update to exact position (only if not already there)
         const finalTimer = setTimeout(() => {
-            setPlayers(prev => {
-                const copy = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
-                copy[playerIndex].pieces[pieceIndex].steps = toSteps;
-                copy[playerIndex].pieces[pieceIndex].isHome = false;
-                copy[playerIndex].pieces[pieceIndex].isInPlay = true;
-                return copy;
-            });
+            const currentState = playersRef.current?.[playerIndex]?.pieces?.[pieceIndex];
+            const currentSteps = currentState?.steps ?? fromSteps;
+            // Only update if we're not already at the target
+            if (currentSteps !== toSteps) {
+                setPlayers(prev => {
+                    const copy = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
+                    copy[playerIndex].pieces[pieceIndex].steps = toSteps;
+                    copy[playerIndex].pieces[pieceIndex].isHome = false;
+                    copy[playerIndex].pieces[pieceIndex].isInPlay = true;
+                    // Update ref immediately to keep in sync
+                    playersRef.current = copy;
+                    return copy;
+                });
+            }
             // Keep move in recent moves for 2 seconds to prevent overwrites
             setTimeout(() => {
                 recentMovesRef.current.delete(pieceKey);
@@ -1715,14 +1880,20 @@ const LudoGame = () => {
                     steps: 1,
                 };
                 setPlayers(updated);
+                // Update ref immediately to ensure protection logic sees the new state
+                playersRef.current = updated;
                 if (onlineMode && socketRef.current && gameId) {
                     try { socketRef.current.emit('ludo:move', { gameId, by: myProfile?._id, playerIndex: currentPlayer, pieceIndex: pieceId, toSteps: 1, fromSteps: 0, rolled: 6 }); } catch (_e) { }
                 }
                 
-                // Keep move protected for 2 seconds
+                // Keep move protected for 5 seconds (longer for moves out of home to prevent reverts)
                 setTimeout(() => {
-                    recentMovesRef.current.delete(pieceKey);
-                }, 2000);
+                    const tracked = recentMovesRef.current.get(pieceKey);
+                    // Only delete if the move hasn't been updated (e.g., by a capture or further move)
+                    if (tracked && tracked.toSteps === 1) {
+                        recentMovesRef.current.delete(pieceKey);
+                    }
+                }, 5000);
 
                 // Capture at start position
                 const newPosition = getPositionOnPath(currentPlayer, 1);
@@ -1740,6 +1911,38 @@ const LudoGame = () => {
                 setDiceValueImmediate(0);
                 lastLocalDiceRollTimeRef.current = 0;
                 setCanRollDice(true); // keep turn on 6
+                
+                // Broadcast state after move and captures are processed (moves out of home)
+                // Always broadcast to ensure all players have the latest state including any captures
+                if (onlineMode && socketRef.current && gameId) {
+                    // Small delay to ensure all capture state updates have been applied
+                    setTimeout(() => {
+                        try {
+                            const finalState = playersRef.current;
+                            if (!finalState) return;
+                            const minimalPlayers = finalState.map(p => ({
+                                id: p.id,
+                                name: p.name,
+                                color: p.color,
+                                avatar: p.avatar,
+                                cover: p.cover,
+                                profileId: p.profileId,
+                                isActive: p.isActive !== undefined ? p.isActive : true,
+                                pieces: (Array.isArray(p.pieces) ? p.pieces.map(pc => ({ id: pc.id, steps: pc.steps, isHome: pc.isHome, isInPlay: pc.isInPlay })) : [])
+                            }));
+                            socketRef.current.emit('ludo:players', {
+                                gameId,
+                                players: minimalPlayers,
+                                selectedPlayerCount: selectedPlayerCountRef.current,
+                                currentPlayer: currentPlayerRef.current,
+                                diceValue: 0,
+                                gameStarted: gameStartedRef.current || false,
+                                gameEnded: gameEndedRef.current || false,
+                                winners: winnersRef.current || []
+                            });
+                        } catch (_e) { }
+                    }, 100);
+                }
             } else if (piece.isInPlay) {
                 const oldSteps = piece.steps;
                 const oldPosition = getPositionOnPath(currentPlayer, oldSteps);
@@ -1768,13 +1971,31 @@ const LudoGame = () => {
                     // Capture rolledNow value before animation to avoid closure issues
                     const capturedRolledValue = rolledNow;
                     
-                    animateTokenMovement(movingPlayerIndex, pieceId, newSteps, undefined, () => {
+                    // CRITICAL: Update state and ref immediately so UI shows the move and protection logic sees it
+                    // This prevents broadcasts from overwriting the move before animation completes
+                    setPlayers(prev => {
+                        const updated = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
+                        updated[movingPlayerIndex].pieces[pieceId].steps = newSteps;
+                        updated[movingPlayerIndex].pieces[pieceId].isHome = false;
+                        updated[movingPlayerIndex].pieces[pieceId].isInPlay = newSteps > 0 && newSteps < maxSteps;
+                        // Update ref immediately to ensure protection logic sees the new state
+                        playersRef.current = updated;
+                        return updated;
+                    });
+                    
+                    // Animate the visual movement (state is already at target, animation provides visual feedback)
+                    // Pass oldSteps so animation knows where to start from visually
+                    animateTokenMovement(movingPlayerIndex, pieceId, newSteps, oldSteps, () => {
                         // After animation, run capture/win checks
+                        let updatedState = null;
                         setPlayers(prev => {
                             const updatedPlayers = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
                             updatedPlayers[movingPlayerIndex].pieces[pieceId].steps = newSteps;
                             updatedPlayers[movingPlayerIndex].pieces[pieceId].isHome = false;
                             updatedPlayers[movingPlayerIndex].pieces[pieceId].isInPlay = newSteps > 0 && newSteps < maxSteps;
+                            // Update ref immediately to ensure broadcasts use current state
+                            playersRef.current = updatedPlayers;
+                            updatedState = updatedPlayers; // Capture for use in broadcast
                             return updatedPlayers;
                         });
                         
@@ -1814,7 +2035,7 @@ const LudoGame = () => {
                                 }
                             }
                         }
-
+                        
                         if (newSteps === maxSteps) {
                             setPlayers(prev => {
                                 const updatedPlayers = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
@@ -1830,6 +2051,8 @@ const LudoGame = () => {
                                         setGameEnded(true);
                                     }
                                 }
+                                playersRef.current = updatedPlayers; // Update ref
+                                updatedState = updatedPlayers; // Update captured state
                                 return updatedPlayers;
                             });
                         }
@@ -1844,6 +2067,8 @@ const LudoGame = () => {
                                 corrected[movingPlayerIndex].pieces[pieceId].steps = newSteps;
                                 corrected[movingPlayerIndex].pieces[pieceId].isHome = false;
                                 corrected[movingPlayerIndex].pieces[pieceId].isInPlay = newSteps > 0 && newSteps < maxSteps;
+                                playersRef.current = corrected; // Update ref
+                                updatedState = corrected; // Update captured state
                                 return corrected;
                             });
                         }
@@ -1862,13 +2087,16 @@ const LudoGame = () => {
                         setDiceValueImmediate(0);
                         lastLocalDiceRollTimeRef.current = 0;
                         
-                        if (keepTurn) {
-                            // Player keeps turn (rolled 6 or captured) - don't advance
-                            setCanRollDice(true);
-                            // Broadcast state after move completes
-                            if (onlineMode && socketRef.current && gameId) {
-                                try {
-                                    const minimalPlayers = playersRef.current.map(p => ({
+                        // Helper function to broadcast game state
+                        // Use ref for final state as it includes all captures (captureToken updates ref immediately)
+                        const broadcastGameState = (currentPlayerForBroadcast) => {
+                            // Small delay to ensure all capture state updates have been applied to ref
+                            setTimeout(() => {
+                                // Get final state from ref (includes all captures) - captures update ref synchronously
+                                const finalStateForBroadcast = playersRef.current || updatedState;
+                                if (onlineMode && socketRef.current && gameId && finalStateForBroadcast) {
+                                    try {
+                                        const minimalPlayers = finalStateForBroadcast.map(p => ({
                                         id: p.id,
                                         name: p.name,
                                         color: p.color,
@@ -1882,14 +2110,22 @@ const LudoGame = () => {
                                         gameId,
                                         players: minimalPlayers,
                                         selectedPlayerCount: selectedPlayerCountRef.current,
-                                        currentPlayer: currentPlayerRef.current,
+                                        currentPlayer: currentPlayerForBroadcast,
                                         diceValue: 0,
                                         gameStarted: gameStartedRef.current || false,
                                         gameEnded: gameEndedRef.current || false,
                                         winners: winnersRef.current || []
                                     });
                                 } catch (_e) { }
-                            }
+                                }
+                            }, 100); // Small delay to ensure all state updates from captures are applied
+                        };
+                        
+                        if (keepTurn) {
+                            // Player keeps turn (rolled 6 or captured) - don't advance
+                            setCanRollDice(true);
+                            // Broadcast state after move completes - use captured state to ensure accuracy
+                            broadcastGameState(currentPlayerRef.current);
                         } else {
                             // CRITICAL: Advance to next player - this MUST happen for non-6, non-capture moves
                             const nextPlayer = getNextActivePlayer(movingPlayerIndex);
@@ -1900,31 +2136,8 @@ const LudoGame = () => {
                             lastTurnAdvanceTimeRef.current = Date.now(); // Track when we advanced the turn locally
                                 setCanRollDice(true);
                             
-                            // Broadcast state after turn advances
-                            if (onlineMode && socketRef.current && gameId) {
-                                try {
-                                    const minimalPlayers = playersRef.current.map(p => ({
-                                        id: p.id,
-                                        name: p.name,
-                                        color: p.color,
-                                        avatar: p.avatar,
-                                        cover: p.cover,
-                                        profileId: p.profileId,
-                                        isActive: p.isActive !== undefined ? p.isActive : true,
-                                        pieces: (Array.isArray(p.pieces) ? p.pieces.map(pc => ({ id: pc.id, steps: pc.steps, isHome: pc.isHome, isInPlay: pc.isInPlay })) : [])
-                                    }));
-                                    socketRef.current.emit('ludo:players', {
-                                        gameId,
-                                        players: minimalPlayers,
-                                        selectedPlayerCount: selectedPlayerCountRef.current,
-                                        currentPlayer: nextPlayer,
-                                        diceValue: 0,
-                                        gameStarted: gameStartedRef.current || false,
-                                        gameEnded: gameEndedRef.current || false,
-                                        winners: winnersRef.current || []
-                                    });
-                                } catch (_e) { }
-                            }
+                            // Broadcast state after turn advances - use captured state to ensure accuracy
+                            broadcastGameState(nextPlayer);
                         }
                     });
                 } else {
@@ -2103,15 +2316,45 @@ const LudoGame = () => {
 
         const onPlayers = (payload) => {
             try {
-                if (!payload || payload.gameId !== gameId) return;
+                if (!payload) return;
+                // Accept if gameId matches current or saved game state (for reconnection)
+                const currentGid = gameId || savedGameStateRef.current?.gameId;
+                if (payload.gameId !== currentGid) return;
+                // If we're reconnecting and this matches saved state, restore gameId
+                if (!gameId && savedGameStateRef.current?.gameId === payload.gameId) {
+                    setGameId(payload.gameId);
+                }
                 
                 // Check if this is a rejoin scenario (game already started but we're receiving state)
-                const isRejoining = gameStarted && payload.players && Array.isArray(payload.players) && payload.players.some(p => p.pieces && p.pieces.some(pc => pc.steps > 0));
+                // Check if game has started by looking at payload.gameStarted OR if pieces have moved
+                const hasGameProgress = payload.players && Array.isArray(payload.players) && payload.players.some(p => p.pieces && p.pieces.some(pc => pc.steps > 0));
+                const isRejoining = !gameStarted && (payload.gameStarted || hasGameProgress);
                 
-                // If game has started (from payload or local state), clear waiting state immediately
-                if (payload.gameStarted || gameStarted || isRejoining) {
+                // If game has started (from payload or local state), restore game state immediately
+                if (payload.gameStarted || hasGameProgress || isRejoining) {
+                    // Restore game started state if we're reconnecting
+                    if (!gameStarted && (payload.gameStarted || hasGameProgress)) {
+                        setGameStarted(true);
+                        gameStartedRef.current = true;
+                        // Clear recent moves when reconnecting to allow full state restoration
+                        recentMovesRef.current.clear();
+                        // Mark that we need to process initial reconnection state
+                        hasProcessedReconnectionStateRef.current = false;
+                    }
                     setWaitingForPlayers(false);
                     setCanRollDice(true);
+                    // Clear reconnecting state when we receive valid game state
+                    setIsReconnecting(false);
+                    setShowReconnectModal(false);
+                }
+                
+                // Also update gameStartedRef if payload explicitly sets it
+                if (payload.gameStarted !== undefined) {
+                    gameStartedRef.current = payload.gameStarted;
+                    // If game is starting/restarting, clear recent moves
+                    if (payload.gameStarted && !gameStarted) {
+                        recentMovesRef.current.clear();
+                    }
                 }
                 
                 // Don't ignore broadcasts - always process them to keep state in sync
@@ -2123,15 +2366,47 @@ const LudoGame = () => {
                 const shouldProtectDiceValue = isMyTurn && (hasActiveDice || recentlyRolledLocally);
                 
                 if (Array.isArray(payload.players)) {
-                    const next = payload.players.map(p => ({
-                        ...p,
-                        pieces: Array.isArray(p.pieces) ? p.pieces.map(pc => ({ 
-                            id: pc.id || pc.id,
-                            steps: typeof pc.steps === 'number' ? pc.steps : 0,
-                            isHome: typeof pc.isHome === 'boolean' ? pc.isHome : (pc.steps === 0),
-                            isInPlay: typeof pc.isInPlay === 'boolean' ? pc.isInPlay : (pc.steps > 0 && pc.steps < maxStepsRef.current)
-                        })) : []
-                    }));
+                    const next = payload.players.map((p, pIdx) => {
+                        // Ensure we have all 4 pieces for each player
+                        const playerColor = p.color || colors[pIdx] || colors[0];
+                        const piecesArray = Array.isArray(p.pieces) ? p.pieces : [];
+                        // Fill up to 4 pieces, ensuring each has proper structure
+                        const pieces = [];
+                        for (let i = 0; i < 4; i++) {
+                            const existingPiece = piecesArray.find(pc => pc.id === i) || piecesArray[i];
+                            if (existingPiece) {
+                                const pieceSteps = typeof existingPiece.steps === 'number' ? existingPiece.steps : 0;
+                                // Correctly determine isHome and isInPlay based on steps
+                                // isHome: true only if steps === 0
+                                // isInPlay: true if steps > 0 AND steps < maxSteps (not finished)
+                                const pieceIsHome = pieceSteps === 0;
+                                const pieceIsInPlay = pieceSteps > 0 && pieceSteps < maxStepsRef.current;
+                                pieces.push({
+                                    id: typeof existingPiece.id === 'number' ? existingPiece.id : i,
+                                    color: playerColor,
+                                    position: { x: 0, y: 0 },
+                                    steps: pieceSteps,
+                                    isHome: pieceIsHome,
+                                    isInPlay: pieceIsInPlay
+                                });
+                            } else {
+                                // Piece not in snapshot, initialize as home
+                                pieces.push({
+                                    id: i,
+                                    color: playerColor,
+                                    position: { x: 0, y: 0 },
+                                    steps: 0,
+                                    isHome: true,
+                                    isInPlay: false
+                                });
+                            }
+                        }
+                        return {
+                            ...p,
+                            color: playerColor,
+                            pieces
+                        };
+                    });
                     
                     // Invitee-side guard: ensure seat 0 is inviter, and my slot is me
                     try {
@@ -2193,12 +2468,21 @@ const LudoGame = () => {
                         }
                     } catch (_e) {}
                     
+                    // Check if we're reconnecting (restoring game state after reload)
+                    // During reconnection, we should accept the server state without protection
+                    const isReconnectingState = isReconnecting || (!gameStarted && (payload.gameStarted || hasGameProgress));
+                    const hasLocalGameState = playersRef.current && playersRef.current.length > 0 && 
+                        playersRef.current.some(p => p && p.pieces && p.pieces.some(pc => pc.steps > 0));
+                    
+                    // Only apply protection if we have an active local game state (not during initial reconnection)
+                    const shouldApplyProtection = !isReconnectingState && hasLocalGameState;
+                    
                     // Protect recent local moves from being overwritten by broadcasts
                     // Check if any pieces were recently moved locally and preserve their positions
                     // CRITICAL: Never allow tokens to move backward
                     const now = Date.now();
                     const isMoveInProgress = isMovingRef.current || moveTimersRef.current.length > 0 || isAutoMovingRef.current;
-                    const protectedNext = next.map((player, playerIndex) => {
+                    const protectedNext = shouldApplyProtection ? next.map((player, playerIndex) => {
                         if (!player || !Array.isArray(player.pieces)) return player;
                         const protectedPieces = player.pieces.map((piece, pieceIndex) => {
                             const pieceKey = `${playerIndex}-${pieceIndex}`;
@@ -2221,8 +2505,9 @@ const LudoGame = () => {
                             }
                             
                             // CRITICAL: Never allow backward movement - always protect if current position is ahead
-                            if (currentSteps > broadcastSteps) {
-                                // Current position is ahead, never go backward
+                            // Also protect if piece has moved out of home (current not home, broadcast is home)
+                            if (currentSteps > broadcastSteps || (!currentIsHome && broadcastIsHome && currentSteps > 0)) {
+                                // Current position is ahead, or piece has moved out of home, never go backward
                                 return {
                                     ...piece,
                                     steps: currentSteps,
@@ -2240,11 +2525,14 @@ const LudoGame = () => {
                                 // 3. A move is in progress and this piece is part of it
                                 // 4. Current position is at or ahead of the target (move completed or in progress)
                                 // 5. This is a capture (toSteps = 0, isHome = true)
+                                // 6. Piece moved out of home (toSteps === 1) and current state shows it's out of home
+                                const isMoveOutOfHome = recentMove.toSteps === 1 && !currentIsHome && currentSteps >= 1;
                                 const shouldProtect = recentMove.isCapture || 
                                     currentSteps === recentMove.toSteps || 
                                     (broadcastSteps < recentMove.toSteps && currentSteps >= recentMove.toSteps) ||
                                     (isMoveInProgress && currentSteps >= recentMove.toSteps - 1) ||
-                                    (currentSteps >= recentMove.toSteps); // Always protect if we're at or past the target
+                                    (currentSteps >= recentMove.toSteps) || // Always protect if we're at or past the target
+                                    isMoveOutOfHome; // Always protect moves out of home
                                 
                                 if (shouldProtect) {
                                     // Use the higher of current steps or target steps to prevent backward movement
@@ -2253,14 +2541,15 @@ const LudoGame = () => {
                                     return {
                                         ...piece,
                                         steps: protectedSteps,
-                                        isHome: protectedSteps === 0 || (recentMove.isCapture ? true : piece.isHome),
+                                        isHome: protectedSteps === 0 || (recentMove.isCapture ? true : false),
                                         isInPlay: protectedSteps > 0 && protectedSteps < maxStepsRef.current && !recentMove.isCapture
                                     };
                                 }
                             }
                             
                             // If no recent move but current is ahead, still protect
-                            if (currentSteps > broadcastSteps) {
+                            // Also protect if piece has moved out of home (current not home, broadcast is home)
+                            if (currentSteps > broadcastSteps || (!currentIsHome && broadcastIsHome && currentSteps > 0)) {
                                 return {
                                     ...piece,
                                     steps: currentSteps,
@@ -2280,10 +2569,24 @@ const LudoGame = () => {
                                 };
                             }
                             
+                            // CRITICAL: Never allow a piece that has moved out of home to revert back to home
+                            // This prevents tokens from returning home after being moved out with a 6
+                            // Only allow reverting to home if the piece was captured (which is handled above)
+                            if (!currentIsHome && currentSteps > 0 && broadcastIsHome && broadcastSteps === 0) {
+                                // Piece is out of home locally, but broadcast wants to put it back home
+                                // This is likely a stale broadcast - keep the piece out of home
+                                return {
+                                    ...piece,
+                                    steps: currentSteps,
+                                    isHome: false,
+                                    isInPlay: currentSteps > 0 && currentSteps < maxStepsRef.current
+                                };
+                            }
+                            
                             return piece;
                         });
                         return { ...player, pieces: protectedPieces };
-                    });
+                    }) : next; // During reconnection, accept server state directly
                     
                     setPlayers(protectedNext);
                     
@@ -2329,38 +2632,59 @@ const LudoGame = () => {
                 }
                 
                 if (typeof payload.currentPlayer === 'number') {
-                    // CRITICAL: Protect against overwriting turn advancement after a local move
-                    // If a move just completed locally, we may have already advanced the turn
-                    // Don't let stale broadcast values revert the turn back
-                    const moveJustCompleted = isMovingRef.current === false && (moveTimersRef.current.length === 0);
-                    const localCurrentPlayer = currentPlayerRef.current;
-                    const payloadCurrentPlayer = payload.currentPlayer;
-                    const timeSinceTurnAdvance = Date.now() - lastTurnAdvanceTimeRef.current;
+                    // CRITICAL: During initial reconnection/rejoining, accept server's currentPlayer value
+                    // to restore the correct turn state, but only on the FIRST state update
+                    const isInitialReconnection = (isReconnecting || isRejoining || (!gameStarted && (payload.gameStarted || hasGameProgress))) && 
+                                                   !hasProcessedReconnectionStateRef.current;
                     
-                    // If we recently advanced the turn locally (within last 2 seconds) and the payload
-                    // has a different (older) value, ignore it to prevent reverting the turn
-                    const recentlyAdvancedTurn = timeSinceTurnAdvance < 2000 && lastTurnAdvanceTimeRef.current > 0;
-                    const shouldIgnoreCurrentPlayerBroadcast = (moveJustCompleted || recentlyAdvancedTurn) && 
-                        localCurrentPlayer !== payloadCurrentPlayer &&
-                        localCurrentPlayer !== undefined;
-                    
-                    if (!shouldIgnoreCurrentPlayerBroadcast) {
-                        // Only update if the payload value is different from local
-                        if (payloadCurrentPlayer !== localCurrentPlayer) {
-                            setCurrentPlayer(payloadCurrentPlayer);
-                        }
+                    if (isInitialReconnection) {
+                        // Always restore currentPlayer during initial reconnection (first state update only)
+                        setCurrentPlayer(payload.currentPlayer);
+                        currentPlayerRef.current = payload.currentPlayer;
+                        // Mark that we've processed the initial reconnection state
+                        hasProcessedReconnectionStateRef.current = true;
+                        // Mark that this update came from server to prevent broadcast loop
+                        currentPlayerUpdatedFromServerRef.current = true;
                     } else {
-                        // Log for debugging - we're ignoring a stale broadcast
-                        if (__DEV__) {
+                        // Protect against overwriting turn advancement after a local move
+                        // If a move just completed locally, we may have already advanced the turn
+                        // Don't let stale broadcast values revert the turn back
+                        const moveJustCompleted = isMovingRef.current === false && (moveTimersRef.current.length === 0);
+                        const localCurrentPlayer = currentPlayerRef.current;
+                        const payloadCurrentPlayer = payload.currentPlayer;
+                        const timeSinceTurnAdvance = Date.now() - lastTurnAdvanceTimeRef.current;
+                        
+                        // If we recently advanced the turn locally (within last 2 seconds) and the payload
+                        // has a different (older) value, ignore it to prevent reverting the turn
+                        const recentlyAdvancedTurn = timeSinceTurnAdvance < 2000 && lastTurnAdvanceTimeRef.current > 0;
+                        const shouldIgnoreCurrentPlayerBroadcast = (moveJustCompleted || recentlyAdvancedTurn) && 
+                            localCurrentPlayer !== payloadCurrentPlayer &&
+                            localCurrentPlayer !== undefined;
+                        
+                        if (!shouldIgnoreCurrentPlayerBroadcast) {
+                            // Only update if the payload value is different from local
+                            if (payloadCurrentPlayer !== localCurrentPlayer) {
+                                setCurrentPlayer(payloadCurrentPlayer);
+                                // Mark that this update came from server to prevent broadcast loop
+                                currentPlayerUpdatedFromServerRef.current = true;
+                            }
+                        } else {
+                            // Log for debugging - we're ignoring a stale broadcast
+                            if (__DEV__) {
+                            }
                         }
                     }
                 }
                 if (payload.gameStarted !== undefined) {
                     setGameStarted(payload.gameStarted);
+                    gameStartedRef.current = payload.gameStarted;
                     // If game started, clear waiting state
                     if (payload.gameStarted) {
                         setWaitingForPlayers(false);
                         setCanRollDice(true);
+                        // Clear reconnecting state when game is confirmed started
+                        setIsReconnecting(false);
+                        setShowReconnectModal(false);
                     }
                 }
                 if (payload.gameEnded !== undefined) {
@@ -2384,12 +2708,27 @@ const LudoGame = () => {
             const pieceKey = `${mover}-${pieceIndex}`;
             recentMovesRef.current.set(pieceKey, { toSteps, timestamp: Date.now() });
             
+            // CRITICAL: Update state immediately so UI shows the move and protection logic sees it
+            // This prevents broadcasts from overwriting the move before animation completes
+            setPlayers(prev => {
+                const updated = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
+                updated[mover].pieces[pieceIndex].steps = toSteps;
+                updated[mover].pieces[pieceIndex].isHome = false;
+                updated[mover].pieces[pieceIndex].isInPlay = toSteps > 0 && toSteps < maxStepsRef.current;
+                // Update ref immediately to ensure protection logic sees the new state
+                playersRef.current = updated;
+                return updated;
+            });
+            
+            // Animate the visual movement (state is already at target, animation provides visual feedback)
             animateTokenMovement(mover, pieceIndex, toSteps, oldSteps, () => {
                 setPlayers(prev => {
                     const updatedPlayers = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
                     updatedPlayers[mover].pieces[pieceIndex].steps = toSteps;
                     updatedPlayers[mover].pieces[pieceIndex].isHome = false;
                     updatedPlayers[mover].pieces[pieceIndex].isInPlay = toSteps > 0 && toSteps < maxStepsRef.current;
+                    // Update ref immediately to ensure state is synchronized
+                    playersRef.current = updatedPlayers;
                     return updatedPlayers;
                 });
                 
@@ -2472,9 +2811,17 @@ const LudoGame = () => {
                 if (!payload || payload.gameId !== gameId) return;
                 const pid = String(payload.profileId || '');
                 if (!pid) return;
+                
+                // Check if current user is the host (player at index 0)
+                const isHost = myPlayerIndex === 0 || (playersRef.current && playersRef.current[0]?.profileId && String(playersRef.current[0].profileId) === String(myProfile?._id));
+                
                 // Update player status
                 setPlayers(prev => prev.map(p => {
                     if (p.profileId && String(p.profileId) === pid) {
+                        // If host and friend disconnected, track it
+                        if (isHost && String(p.profileId) !== String(myProfile?._id)) {
+                            setDisconnectedPlayers(prev => new Set([...prev, pid]));
+                        }
                         return { ...p, isActive: false, isOffline: true, offlineSince: payload.timestamp };
                     }
                     return p;
@@ -2487,9 +2834,16 @@ const LudoGame = () => {
                 if (!payload || payload.gameId !== gameId) return;
                 const pid = String(payload.profileId || '');
                 if (!pid) return;
+                
                 // Update player status
                 setPlayers(prev => prev.map(p => {
                     if (p.profileId && String(p.profileId) === pid) {
+                        // Remove from disconnected players set
+                        setDisconnectedPlayers(prev => {
+                            const next = new Set(prev);
+                            next.delete(pid);
+                            return next;
+                        });
                         return { ...p, isActive: true, isOffline: false, offlineSince: undefined };
                     }
                     return p;
@@ -2516,6 +2870,13 @@ const LudoGame = () => {
         };
     }, [onlineMode, gameId, myProfile?._id]);
 
+    // Save game state whenever relevant values change
+    useEffect(() => {
+        if (onlineMode && gameId && myProfile?._id) {
+            saveGameState();
+        }
+    }, [onlineMode, gameId, myPlayerIndex, selectedPlayerCount, myProfile?._id, saveGameState]);
+
     // Recompute waiting state whenever invite statuses or players change
     useEffect(() => {
         recomputeWaitingState();
@@ -2534,11 +2895,24 @@ const LudoGame = () => {
                 setCanRollDice(false);
             }
         } else if (!waitingForPlayers && gameStarted) {
-            setCanRollDice(true);
+            // CRITICAL: Only allow dice roll if:
+            // 1. It's the current player's turn (in online mode)
+            // 2. There's no dice value already set
+            // 3. Dice is not currently rolling
+            const isMyTurn = !onlineMode || (myPlayerIndexRef.current === currentPlayerRef.current);
+            const hasNoDiceValue = diceValueRef.current === 0 && diceValue === 0;
+            const isNotRolling = !diceRolling && !isRollingRef.current;
+            
+            if (isMyTurn && hasNoDiceValue && isNotRolling) {
+                setCanRollDice(true);
+            } else {
+                // Don't override canRollDice if conditions aren't met
+                // (it might be false for valid reasons like dice already rolled)
+            }
         } else if (waitingForPlayers) {
             setCanRollDice(false);
         }
-    }, [waitingForPlayers, gameStarted, players, selectedPlayerCount]);
+    }, [waitingForPlayers, gameStarted, players, selectedPlayerCount, onlineMode, currentPlayer, diceValue, diceRolling]);
 
     // Invite listeners attached regardless of onlineMode, so users receive invites anytime
     useEffect(() => {
@@ -2629,6 +3003,114 @@ const LudoGame = () => {
 
     const startGame = () => {
         setShowPlayerSelection(true);
+    };
+
+    // Start a new game (cancel reconnection and clear saved state)
+    const startNewGame = () => {
+        // Clear reconnecting state
+        setIsReconnecting(false);
+        setShowReconnectModal(false);
+        // Clear saved game state
+        clearGameState();
+        // Reset game state
+        setGameId(null);
+        setOnlineMode(false);
+        setGameStarted(false);
+        gameStartedRef.current = false;
+        setCurrentPlayer(0);
+        setDiceValueImmediate(0);
+        setWinner(null);
+        setWinners([]);
+        setGameEnded(false);
+        setWaitingForPlayers(false);
+        // Open player selection
+        setShowPlayerSelection(true);
+    };
+
+    // Exit game - completely clear all game state and localStorage
+    const exitGame = () => {
+        // Confirm exit
+        const confirmed = window.confirm('Are you sure you want to exit the game? All progress will be lost.');
+        if (!confirmed) return;
+
+        // Notify other players if in online mode before cleaning up
+        if (onlineMode && gameId && socketRef.current && socketRef.current.connected) {
+            try {
+                // Emit leave event to notify server and other players
+                socketRef.current.emit('ludo:leave', { 
+                    gameId, 
+                    profileId: myProfile?._id,
+                    playerIndex: myPlayerIndex
+                });
+                // Give a small delay for the event to be sent before disconnecting
+                setTimeout(() => {
+                    cleanupSocket();
+                }, 100);
+            } catch (_e) {
+                // If emit fails, still cleanup
+                cleanupSocket();
+            }
+        } else {
+            // Not in online mode or socket not connected, just cleanup
+            cleanupSocket();
+        }
+
+        // Clear all localStorage game state
+        try {
+            localStorage.removeItem('ludo_game_state');
+            savedGameStateRef.current = null;
+        } catch (_e) {
+            // Ignore errors
+        }
+
+        // Reset all game state
+        setGameId(null);
+        setOnlineMode(false);
+        setGameStarted(false);
+        gameStartedRef.current = false;
+        setGameEnded(false);
+        setCurrentPlayer(0);
+        setDiceValueImmediate(0);
+        setDiceRolling(false);
+        setCanRollDice(true);
+        setWinner(null);
+        setWinners([]);
+        setShowWinnerModal(false);
+        setShowPlayerSelection(false);
+        setWaitingForPlayers(false);
+        setIsReconnecting(false);
+        setShowReconnectModal(false);
+        setIncomingInviteRequest(null);
+        setPendingInvites([]);
+        setSelectedFriends([]);
+        
+        // Clear disconnected players tracking
+        setDisconnectedPlayers(new Set());
+        
+        // Reset invite tracking
+        setInvitedStatusByFriendId({});
+        setInvitedSlotByFriendId({});
+        invitedStatusByFriendIdRef.current = {};
+        invitedSlotByFriendIdRef.current = {};
+        inviteTimestampsRef.current = {};
+        
+        // Reset moving flags
+        isMovingRef.current = false;
+        isAutoMovingRef.current = false;
+        autoStartTriggeredRef.current = false;
+        
+        // Clear all move timers
+        moveTimersRef.current.forEach(t => clearTimeout(t));
+        moveTimersRef.current = [];
+        
+        // Clear recent moves tracking
+        recentMovesRef.current.clear();
+        
+        // Reset player index
+        setMyPlayerIndex(0);
+        
+        // Reinitialize game to default state
+        initializeGame(selectedPlayerCount);
     };
 
     const confirmPlayerCount = () => {
@@ -2783,6 +3265,10 @@ const LudoGame = () => {
         setShowWinnerModal(false);
         setGameEnded(true);
         setWinner(null);
+        // Clear disconnected players tracking
+        setDisconnectedPlayers(new Set());
+        // Clear saved game state when game fully ends
+        clearGameState();
     };
 
     // Debug: trigger celebration modal
@@ -2824,6 +3310,9 @@ const LudoGame = () => {
         setDiceRolling(false);
         setShowPlayerSelection(false);
         setWaitingForPlayers(false);
+        
+        // Clear disconnected players tracking
+        setDisconnectedPlayers(new Set());
         
         // Reinitialize game with current player count
         initializeGame(selectedPlayerCount);
@@ -3012,7 +3501,8 @@ const LudoGame = () => {
         players.forEach((player, playerIndex) => {
             if (!player || !Array.isArray(player.pieces)) return;
             player.pieces.forEach((piece, pieceIndex) => {
-                if (piece && piece.isInPlay && typeof piece.steps === 'number') {
+                // Include pieces that are in play OR finished (at end of path)
+                if (piece && typeof piece.steps === 'number' && piece.steps > 0 && !piece.isHome) {
                     const pos = getPositionOnPath(playerIndex, piece.steps);
                     const key = `${pos.x},${pos.y}`;
                     if (!map.has(key)) map.set(key, []);
@@ -3200,8 +3690,11 @@ const LudoGame = () => {
             // Token left = cell center - half token width
             x = cellCenterX - tokenSize / 2;
             y = cellCenterY - tokenSize / 2;
-        } else if (piece.isInPlay) {
-            const pos = getPositionOnPath(playerIndex, piece.steps);
+        } else if (piece.isInPlay || (piece.steps > 0 && piece.steps === maxSteps)) {
+            // Position piece on board - either in play or finished (at end of path)
+            // For finished pieces, use maxSteps to get the last position on the path
+            const stepsToUse = piece.steps === maxSteps ? maxSteps : piece.steps;
+            const pos = getPositionOnPath(playerIndex, stepsToUse);
             // Calculate cell center position precisely
             const cellLeft = pos.x * CELL_SIZE;
             const cellTop = pos.y * CELL_SIZE;
@@ -3506,6 +3999,7 @@ const LudoGame = () => {
                 @keyframes tokenPulseScale { 0% { transform: scale(1); } 50% { transform: scale(1.12); } 100% { transform: scale(1); } }
                 @keyframes tokenGlow { 0% { box-shadow: 0 0 10px rgba(255,215,0,0.4), 0 0 20px rgba(255,215,0,0.2); } 50% { box-shadow: 0 0 16px rgba(255,215,0,0.9), 0 0 30px rgba(255,215,0,0.6); } 100% { box-shadow: 0 0 10px rgba(255,215,0,0.4), 0 0 20px rgba(255,215,0,0.2); } }
                 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
             `}</style>
             <div style={{ padding: '10px 20px', background: 'rgba(26, 35, 50, 0.9)', borderBottom: '1px solid rgba(255, 215, 0, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'space-around' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -3513,7 +4007,30 @@ const LudoGame = () => {
                 </div>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                     {!gameStarted ? (
-                        <button onClick={startGame} style={{ background: '#00D4FF', color: 'white', padding: '8px 36px', border: 'none', borderRadius: 20, cursor: 'pointer', fontWeight: 'bold' }}>Start</button>
+                        <>
+                            <button onClick={startGame} style={{ background: '#00D4FF', color: 'white', padding: '8px 36px', border: 'none', borderRadius: 20, cursor: 'pointer', fontWeight: 'bold' }}>Start</button>
+                            {(gameId || savedGameStateRef.current) && (
+                                <button 
+                                    onClick={exitGame} 
+                                    style={{ 
+                                        background: '#888888', 
+                                        color: 'white', 
+                                        padding: '10px 20px', 
+                                        border: 'none', 
+                                        borderRadius: 20, 
+                                        cursor: 'pointer', 
+                                        fontWeight: 'bold',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 6
+                                    }}
+                                    title="Exit game and clear all saved data"
+                                >
+                                    <span>🚪</span>
+                                    <span>Exit Game</span>
+                                </button>
+                            )}
+                        </>
                     ) : (
                         <>
                             <button 
@@ -3534,6 +4051,25 @@ const LudoGame = () => {
                             >
                                 <span>🔄</span>
                                 <span>Restart</span>
+                            </button>
+                            <button 
+                                onClick={exitGame} 
+                                style={{ 
+                                    background: '#888888', 
+                                    color: 'white', 
+                                    padding: '10px 20px', 
+                                    border: 'none', 
+                                    borderRadius: 20, 
+                                    cursor: 'pointer', 
+                                    fontWeight: 'bold',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 6
+                                }}
+                                title="Exit game and clear all saved data"
+                            >
+                                <span>🚪</span>
+                                <span>Exit Game</span>
                             </button>
                         </>
                     )}
@@ -3567,7 +4103,7 @@ const LudoGame = () => {
                 </div>
             )}
 
-            {(gameStarted || (onlineMode && waitingForPlayers)) && (
+            {(gameStarted || (onlineMode && waitingForPlayers) || isReconnecting) && (
                 <div style={{ padding: responsivePadding }}>
 
 
@@ -3686,6 +4222,77 @@ const LudoGame = () => {
                                     </div>
                                 </div>
                             )}
+                            {/* Reconnecting overlay */}
+                            {isReconnecting && (
+                                <div style={{ position: 'absolute', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <div style={{ background: 'rgba(26, 35, 50, 0.95)', border: '2px solid rgba(255, 215, 0, 0.5)', color: 'white', padding: 20, borderRadius: 16, textAlign: 'center', minWidth: 320 }}>
+                                        <div style={{ fontWeight: 800, marginBottom: 6 }}>Reconnecting to game...</div>
+                                        <div style={{ fontSize: 12, color: '#B0B0B0', marginBottom: 16 }}>Please wait while we restore your game session.</div>
+                                        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+                                            <div style={{ width: 40, height: 40, border: '4px solid rgba(255, 215, 0, 0.3)', borderTop: '4px solid #FFD700', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                                        </div>
+                                        <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                                            <button 
+                                                onClick={startNewGame} 
+                                                style={{ 
+                                                    background: '#29B1A9', 
+                                                    color: 'white', 
+                                                    padding: '10px 20px', 
+                                                    border: 'none', 
+                                                    borderRadius: 12, 
+                                                    cursor: 'pointer', 
+                                                    fontWeight: 'bold',
+                                                    fontSize: 14
+                                                }}
+                                            >
+                                                Start New Game
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            {/* Friend disconnected overlay (for host only) */}
+                            {(() => {
+                                const isHost = myPlayerIndex === 0 || (players && players[0]?.profileId && String(players[0].profileId) === String(myProfile?._id));
+                                // Don't show if user is reconnecting themselves
+                                const hasDisconnectedFriends = disconnectedPlayers.size > 0 && gameStarted && onlineMode && isHost && !isReconnecting;
+                                
+                                if (!hasDisconnectedFriends) return null;
+                                
+                                // Get names of disconnected players
+                                const disconnectedNames = Array.from(disconnectedPlayers)
+                                    .map(pid => {
+                                        const player = players.find(p => p.profileId && String(p.profileId) === pid);
+                                        return player?.name || 'Friend';
+                                    })
+                                    .filter(Boolean);
+                                
+                                return (
+                                    <div style={{ position: 'absolute', inset: 0, zIndex: 59, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <div style={{ background: 'rgba(26, 35, 50, 0.95)', border: '2px solid rgba(255, 100, 100, 0.5)', color: 'white', padding: 20, borderRadius: 16, textAlign: 'center', minWidth: 320 }}>
+                                            <div style={{ fontWeight: 800, marginBottom: 6, color: '#FF6B6B' }}>Friend Disconnected</div>
+                                            <div style={{ fontSize: 12, color: '#B0B0B0', marginBottom: 16 }}>
+                                                {disconnectedNames.length === 1 
+                                                    ? `${disconnectedNames[0]} has disconnected from the game.`
+                                                    : `${disconnectedNames.length} friends have disconnected from the game.`
+                                                }
+                                            </div>
+                                            {disconnectedNames.length > 0 && (
+                                                <div style={{ marginBottom: 16, padding: '10px', background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
+                                                    <div style={{ fontSize: 11, color: '#B0B0B0', marginBottom: 6 }}>Disconnected players:</div>
+                                                    <div style={{ fontSize: 13, fontWeight: 600 }}>
+                                                        {disconnectedNames.join(', ')}
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+                                                <div style={{ width: 40, height: 40, border: '4px solid rgba(255, 100, 100, 0.3)', borderTop: '4px solid #FF6B6B', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                                            </div>
+                                            <div style={{ fontSize: 11, color: '#B0B0B0' }}>Waiting for reconnection...</div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                             {/* Center dice overlay - lower z-index and no pointer events when dice is rolled */}
                             {/* Only allow clicks when dice value is 0 and can roll, otherwise let clicks pass through to tokens */}
                             <div style={{ 
@@ -3696,9 +4303,9 @@ const LudoGame = () => {
                                 alignItems: 'center', 
                                 justifyContent: 'center', 
                                 textAlign: 'center', 
-                                pointerEvents: (canRollDice && diceValueRef.current === 0 && diceValue === 0) ? 'auto' : 'none' 
+                                pointerEvents: (canRollDice && diceValueRef.current === 0 && diceValue === 0 && (!onlineMode || currentPlayer === myPlayerIndex)) ? 'auto' : 'none' 
                             }}>
-                                <button onClick={rollDice} disabled={!canRollDice || diceRolling} style={{ background: 'transparent', border: 'none', padding: 0, cursor: (canRollDice && !diceRolling) ? 'pointer' : 'default' }}>
+                                <button onClick={rollDice} disabled={!canRollDice || diceRolling || (onlineMode && currentPlayer !== myPlayerIndex)} style={{ background: 'transparent', border: 'none', padding: 0, cursor: (canRollDice && !diceRolling && (!onlineMode || currentPlayer === myPlayerIndex)) ? 'pointer' : 'default' }}>
                                     {(() => {
                                         // Mobile device detection
                                         const isMobile = winSize.width <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
