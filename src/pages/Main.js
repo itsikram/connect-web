@@ -51,6 +51,7 @@ import PortfolioResume from "./portfolio/PortfolioResume.js";
 import FriendRequests from "../components/friend/FriendRequests";
 import FriendSuggest from "../components/friend/FriendSuggest"
 import FriendHome from "../components/friend/FriendHome";
+import PlacesNearYou from "../components/friend/PlacesNearYou";
 import { useDispatch, useSelector } from "react-redux";
 import api from "../api/api";
 import { getPorfileReq, getProfileFailed, getProfileSuccess } from '../services/actions/profileActions'
@@ -870,6 +871,7 @@ const Main = () => {
                                 <Route index element={<FriendHome />}></Route>
                                 <Route path="requests" element={<FriendRequests />}></Route>
                                 <Route path="suggestions" element={<FriendSuggest />}></Route>
+                                <Route path="places" element={<PlacesNearYou />}></Route>
 
                             </Route>
                             <Route path="/watch" element={<ProtectedRoute><Video /></ProtectedRoute>}> </Route>

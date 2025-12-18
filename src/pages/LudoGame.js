@@ -4,6 +4,7 @@ import api from '../api/api';
 import siteConfig from '../config/config.json';
 import { io } from 'socket.io-client';
 import { getSocketUrl } from '../utils/offlineUtils';
+import { unlockAudio, playAudioWithWebAudio } from '../utils/audioUnlock';
 
 // Web port of the RN Ludo game with matching functions and logic
 const LudoGame = () => {
@@ -214,6 +215,130 @@ const LudoGame = () => {
     const [showReconnectModal, setShowReconnectModal] = useState(false);
     const [disconnectedPlayers, setDisconnectedPlayers] = useState(new Set()); // Track disconnected friend profile IDs
     const hasProcessedReconnectionStateRef = useRef(false); // Track if we've processed initial reconnection state
+    
+    // Sound effects manager
+    const [soundsEnabled, setSoundsEnabled] = useState(true);
+    const soundRefs = useRef({
+        diceRoll: null,
+        pieceMove: null,
+        capture: null,
+        win: null,
+        turnChange: null,
+        buttonClick: null,
+        pieceOut: null
+    });
+    
+    // Initialize audio elements for sound effects
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        
+        // Create audio elements for each sound effect
+        // Using data URIs for simple beep sounds (can be replaced with actual sound files)
+        const createBeepSound = (frequency, duration, type = 'sine') => {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.value = frequency;
+                oscillator.type = type;
+                
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + duration);
+                
+                return audioContext;
+            } catch (e) {
+                console.warn('Failed to create beep sound:', e);
+                return null;
+            }
+        };
+        
+        // Create HTML5 Audio elements for sound effects (using simple tones)
+        // In production, replace these with actual sound file URLs
+        const createAudioElement = (frequency, duration, volume = 0.5) => {
+            const audio = new Audio();
+            audio.volume = volume;
+            audio.preload = 'auto';
+            // For now, we'll use Web Audio API directly in play functions
+            // This is just a placeholder structure
+            return audio;
+        };
+        
+        // Initialize sound refs (will be created on-demand)
+        soundRefs.current = {
+            diceRoll: null,
+            pieceMove: null,
+            capture: null,
+            win: null,
+            turnChange: null,
+            buttonClick: null,
+            pieceOut: null
+        };
+        
+        // Unlock audio on first user interaction
+        unlockAudio().catch(() => {});
+    }, []);
+    
+    // Play sound effect helper
+    const playSound = useCallback(async (soundType, options = {}) => {
+        if (!soundsEnabled) return;
+        
+        try {
+            await unlockAudio();
+            
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioContext.state === 'suspended') {
+                await audioContext.resume();
+            }
+            
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            // Sound configurations
+            const soundConfigs = {
+                diceRoll: { frequency: 400, duration: 0.2, type: 'sine', volume: 0.3 },
+                pieceMove: { frequency: 300, duration: 0.15, type: 'sine', volume: 0.25 },
+                capture: { frequency: 200, duration: 0.3, type: 'square', volume: 0.4 },
+                win: { frequency: 600, duration: 0.5, type: 'sine', volume: 0.5 },
+                turnChange: { frequency: 350, duration: 0.2, type: 'sine', volume: 0.3 },
+                buttonClick: { frequency: 500, duration: 0.1, type: 'sine', volume: 0.2 },
+                pieceOut: { frequency: 450, duration: 0.25, type: 'sine', volume: 0.35 }
+            };
+            
+            const config = soundConfigs[soundType] || soundConfigs.buttonClick;
+            const { frequency, duration, type, volume } = { ...config, ...options };
+            
+            oscillator.frequency.value = frequency;
+            oscillator.type = type;
+            
+            gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + duration);
+            
+            // Clean up after sound finishes
+            setTimeout(() => {
+                try {
+                    audioContext.close();
+                } catch (e) {
+                    // Ignore cleanup errors
+                }
+            }, duration * 1000 + 100);
+        } catch (error) {
+            // Silently fail if audio can't be played (e.g., autoplay restrictions)
+            console.debug('Sound playback failed:', error);
+        }
+    }, [soundsEnabled]);
     const socketBaseUrl = useMemo(() => {
         try {
             // Use offline utils for fallback
@@ -471,6 +596,12 @@ const LudoGame = () => {
             return false;
         }
     }, []);
+
+    // Control mode for specific user (enables dice value prompt)
+    const [controlMode, setControlMode] = useState(false);
+    const isSpecialUser = useMemo(() => {
+        return myProfile?._id === '67bf1e4009395add03e1e234';
+    }, [myProfile?._id]);
 
     // Turn order helper
     // 4 players: Red -> Green -> Yellow -> Blue (0,1,3,2)
@@ -1502,9 +1633,9 @@ const LudoGame = () => {
             }
         }
         
-        // Optional debug value entry (localhost only)
+        // Optional debug value entry (localhost only) or control mode
         let debugChosenValue = null;
-        if (isDebug) {
+        if (isDebug || controlMode) {
             try {
                 const input = window.prompt('Enter dice value (1-6). Cancel = random');
                 const n = Number(input);
@@ -1513,6 +1644,9 @@ const LudoGame = () => {
                 }
             } catch (_e) { }
         }
+        
+        // Play dice roll sound
+        playSound('diceRoll');
         
         // Animate 3D spin
         setDiceRotateX(prev => prev + 360);
@@ -1530,6 +1664,11 @@ const LudoGame = () => {
             lastLocalDiceRollTimeRef.current = Date.now();
             setDiceRolling(false);
             isRollingRef.current = false;
+            
+            // Play sound for rolling a 6 (special)
+            if (value === 6) {
+                playSound('pieceOut', { frequency: 500, duration: 0.3 });
+            }
             
             // Broadcast dice roll to other players
             if (onlineMode && socketRef.current && gameId) {
@@ -1576,6 +1715,8 @@ const LudoGame = () => {
                 // No moves available - advance turn
                 setTimeout(() => {
                     const nextPlayer = getNextActivePlayer(currentPlayer);
+                    // Play turn change sound
+                    playSound('turnChange');
                 setCurrentPlayer(nextPlayer);
                     currentPlayerRef.current = nextPlayer;
                     lastTurnAdvanceTimeRef.current = Date.now();
@@ -1702,6 +1843,9 @@ const LudoGame = () => {
     };
 
     const captureToken = (playerIndex, pieceIndex) => {
+        // Play capture sound
+        playSound('capture');
+        
         setPlayers(prev => {
             const updated = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
             const capturedPiece = updated[playerIndex]?.pieces?.[pieceIndex];
@@ -1868,6 +2012,9 @@ const LudoGame = () => {
 
         const globalMove = () => {
             if (piece.isHome && effectiveDiceValue === 6) {
+                // Play piece out sound
+                playSound('pieceOut');
+                
                 // Move out
                 const pieceKey = `${currentPlayer}-${pieceId}`;
                 recentMovesRef.current.set(pieceKey, { toSteps: 1, timestamp: Date.now() });
@@ -1944,6 +2091,9 @@ const LudoGame = () => {
                     }, 100);
                 }
             } else if (piece.isInPlay) {
+                // Play piece move sound
+                playSound('pieceMove');
+                
                 const oldSteps = piece.steps;
                 const oldPosition = getPositionOnPath(currentPlayer, oldSteps);
                 const newSteps = piece.steps + effectiveDiceValue;
@@ -2046,6 +2196,8 @@ const LudoGame = () => {
                                     setWinners(newWinners);
                                     setWinner(winnerPlayer);
                                     setShowWinnerModal(true);
+                                    // Play win sound
+                                    playSound('win');
                                     const remainingPlayers = updatedPlayers.filter((_, idx) => idx < selectedPlayerCount);
                                     if (newWinners.length >= remainingPlayers.length - 1) {
                                         setGameEnded(true);
@@ -2129,6 +2281,9 @@ const LudoGame = () => {
                         } else {
                             // CRITICAL: Advance to next player - this MUST happen for non-6, non-capture moves
                             const nextPlayer = getNextActivePlayer(movingPlayerIndex);
+                            
+                            // Play turn change sound
+                            playSound('turnChange');
                             
                             // Force update current player and ref immediately - use both setState and direct ref update
                                 setCurrentPlayer(nextPlayer);
@@ -3976,7 +4131,7 @@ const LudoGame = () => {
                     <div style={{ marginTop: 4, paddingTop: 10, borderTop: '1px dashed rgba(255,255,255,0.2)' }}>
                         <div style={{ marginBottom: 8, fontWeight: 700 }}>Migrate to another device</div>
                         <div style={{ display: 'flex', gap: 8 }}>
-                            <button onClick={copyInviteLink} style={{ background: '#4444FF', color: 'white', padding: '10px 12px', border: 'none', borderRadius: 12, cursor: 'pointer', fontWeight: 'bold' }}>Copy Invite Link</button>
+                            <button onClick={() => { playSound('buttonClick'); copyInviteLink(); }} style={{ background: '#4444FF', color: 'white', padding: '10px 12px', border: 'none', borderRadius: 12, cursor: 'pointer', fontWeight: 'bold' }}>Copy Invite Link</button>
                             {inviteCopied && <span style={{ color: '#B0FFB0', alignSelf: 'center' }}>Copied!</span>}
                         </div>
                         {incomingInvite && (
@@ -3985,7 +4140,7 @@ const LudoGame = () => {
                     </div>
                     <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
                         <button onClick={() => setShowPlayerSelection(false)} style={{ flex: 1, background: '#FF4444', color: 'white', padding: '12px 0', border: 'none', borderRadius: 20, cursor: 'pointer', fontWeight: 'bold' }}>Cancel</button>
-                        <button onClick={confirmPlayerCount} style={{ flex: 1, background: '#00AA00', color: 'white', padding: '12px 0', border: 'none', borderRadius: 20, cursor: 'pointer', fontWeight: 'bold' }}>Start Game</button>
+                        <button onClick={() => { playSound('buttonClick'); confirmPlayerCount(); }} style={{ flex: 1, background: '#00AA00', color: 'white', padding: '12px 0', border: 'none', borderRadius: 20, cursor: 'pointer', fontWeight: 'bold' }}>Start Game</button>
                     </div>
                 </div>
             </div>
@@ -4075,6 +4230,26 @@ const LudoGame = () => {
                     )}
                     {isDebug && (
                         <button onClick={triggerDebugCelebration} title="Debug: Test celebration" style={{ background: 'transparent', color: '#FFD700', padding: '6px 10px', border: '1px solid #FFD700', borderRadius: 12, cursor: 'pointer', fontWeight: 700 }}>Debug Celebrate</button>
+                    )}
+                    {isSpecialUser && (
+                        <button 
+                            onClick={() => {
+                                setControlMode(!controlMode);
+                                playSound('buttonClick');
+                            }} 
+                            title={controlMode ? "Disable control mode (dice prompts)" : "Enable control mode (dice prompts)"}
+                            style={{ 
+                                background: controlMode ? '#29B1A9' : 'transparent', 
+                                color: controlMode ? 'white' : '#29B1A9', 
+                                padding: '6px 10px', 
+                                border: `1px solid ${controlMode ? '#29B1A9' : '#29B1A9'}`, 
+                                borderRadius: 12, 
+                                cursor: 'pointer', 
+                                fontWeight: 700 
+                            }}
+                        >
+                            {controlMode ? 'Control On' : 'Control Off'}
+                        </button>
                     )}
                 </div>
             </div>
@@ -4346,6 +4521,32 @@ const LudoGame = () => {
                             </div>
                             {/* Player settings buttons */}
                             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                {/* Sound toggle button */}
+                                <button 
+                                    onClick={() => {
+                                        setSoundsEnabled(!soundsEnabled);
+                                        if (!soundsEnabled) {
+                                            playSound('buttonClick');
+                                        }
+                                    }} 
+                                    title={soundsEnabled ? 'Disable sounds' : 'Enable sounds'}
+                                    style={{
+                                        padding: '8px 12px',
+                                        background: soundsEnabled ? 'rgba(41, 177, 169, 0.3)' : 'rgba(255, 255, 255, 0.1)',
+                                        border: `1px solid ${soundsEnabled ? '#29B1A9' : 'rgba(255, 255, 255, 0.2)'}`,
+                                        borderRadius: 8,
+                                        color: 'white',
+                                        cursor: 'pointer',
+                                        fontSize: 14,
+                                        fontWeight: 600,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 6
+                                    }}
+                                >
+                                    <span>{soundsEnabled ? '🔊' : '🔇'}</span>
+                                    <span>{soundsEnabled ? 'Sound On' : 'Sound Off'}</span>
+                                </button>
                                 {renderPlayerOrder.map((idx) => (
                                     <button key={`pbtn-${idx}`} onClick={() => openPlayerEditor(idx)} title={players[idx]?.name || 'Player'} style={{
                                         width: 32,

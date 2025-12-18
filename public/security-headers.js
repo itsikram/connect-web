@@ -16,27 +16,27 @@ const isDevelopment = hostname === 'localhost' ||
 
 const csp = isDevelopment ? `
   default-src 'self';
-  script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.google.com https://www.gstatic.com https://apis.google.com https://accounts.google.com https://cdn.jsdelivr.net;
+  script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.google.com https://www.gstatic.com https://apis.google.com https://maps.googleapis.com https://accounts.google.com https://cdn.jsdelivr.net;
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com;
   style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com;
   font-src 'self' https://fonts.gstatic.com;
   img-src 'self' data: https: http: blob:;
   media-src 'self' data: https: http: blob:;
   connect-src 'self' http://localhost:* http://127.0.0.1:* http: https: wss: ws:;
-  frame-src 'self' https://www.google.com https://accounts.google.com https://www.youtube.com https://www.youtube-nocookie.com;
+  frame-src 'self' https://www.google.com https://maps.google.com https://accounts.google.com https://www.youtube.com https://www.youtube-nocookie.com;
   object-src 'none';
   base-uri 'self';
   form-action 'self';
 ` : `
   default-src 'self';
-  script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.google.com https://www.gstatic.com https://apis.google.com https://accounts.google.com https://cdn.jsdelivr.net;
+  script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.google.com https://www.gstatic.com https://apis.google.com https://maps.googleapis.com https://accounts.google.com https://cdn.jsdelivr.net;
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com;
   style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com;
   font-src 'self' https://fonts.gstatic.com;
   img-src 'self' data: https: blob:;
   media-src 'self' data: https: blob:;
   connect-src 'self' https: wss: ws:;
-  frame-src 'self' https://www.google.com https://accounts.google.com https://www.youtube.com https://www.youtube-nocookie.com;
+  frame-src 'self' https://www.google.com https://maps.google.com https://accounts.google.com https://www.youtube.com https://www.youtube-nocookie.com;
   object-src 'none';
   base-uri 'self';
   form-action 'self';

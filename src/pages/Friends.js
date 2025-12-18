@@ -38,6 +38,12 @@ const Friends = () => {
                            </span>
                            <span className="text">All Freinds</span>
                         </NavLink>
+                        <NavLink to="/friends/places" className="friends-sidebar-menu-item">
+                           <span className="icon">
+                                <i className="fas fa-map-marker-alt"></i>
+                           </span>
+                           <span className="text">Places Near You</span>
+                        </NavLink>
                     </div>
                 </div>
                 <div className="friends-content">
