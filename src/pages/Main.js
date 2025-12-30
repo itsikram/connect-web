@@ -71,6 +71,7 @@ import NotificationSetting from "../components/setting/NotificationSetting.js";
 import MessageSetting from "../components/setting/MessageSetting.js";
 import PreferenceSetting from "../components/setting/PreferenceSetting.js";
 import SoundSetting from "../components/setting/SoundSetting.js";
+import CacheSetting from "../components/setting/CacheSetting.js";
 
 import VideoCallPage from "./VideoCallPage.js";
 
@@ -908,6 +909,7 @@ const Main = () => {
                                 <Route path="message" element={<MessageSetting />} />
                                 <Route path="preference" element={<PreferenceSetting />} />
                                 <Route path="sound" element={<SoundSetting />} />
+                                <Route path="cache" element={<CacheSetting />} />
                             </Route>
 
                             <Route path="/test-notifications" element={<ProtectedRoute><NotificationTest /></ProtectedRoute>} />

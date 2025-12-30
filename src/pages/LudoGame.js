@@ -6,6 +6,53 @@ import { io } from 'socket.io-client';
 import { getSocketUrl } from '../utils/offlineUtils';
 import { unlockAudio, playAudioWithWebAudio } from '../utils/audioUnlock';
 
+// API functions for saving/loading game state
+const saveGameStateToDB = async (gameState, retries = 2) => {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+        const response = await api.post('/ludo/save', gameState);
+        return response.data;
+    } catch (error) {
+            const isVersionError = error.response?.status === 500 && 
+                (error.response?.data?.message?.includes('VersionError') || 
+                 error.response?.data?.message?.includes('No matching document'));
+            
+            // Version conflicts are expected in concurrent scenarios - don't log as error
+            if (isVersionError) {
+                // If this is the last attempt, silently fail (version conflict is acceptable)
+                if (attempt === retries) {
+        return null;
+    }
+                // Wait before retrying (exponential backoff)
+                await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, attempt)));
+                continue;
+            }
+            
+            // For other errors, log and return null
+            if (attempt === retries) {
+                console.debug('Error saving game state to database:', error);
+            }
+            return null;
+        }
+    }
+    return null;
+};
+
+const loadGameStateFromDB = async (gameId) => {
+    try {
+        const response = await api.get('/ludo/state', { params: { gameId } });
+        return response.data?.game || null;
+    } catch (error) {
+        // 404 is expected if game doesn't exist yet - don't log as error
+        if (error.response?.status === 404) {
+            return null;
+        }
+        // Only log unexpected errors
+        console.debug('Error loading game state from database:', error);
+        return null;
+    }
+};
+
 // Web port of the RN Ludo game with matching functions and logic
 const LudoGame = () => {
     // Layout
@@ -186,6 +233,7 @@ const LudoGame = () => {
     const inviteTimestampsRef = useRef({}); // Track when each friend was invited to prevent immediate accept events
     const searchTimeoutRef = useRef(null);
     const inviteHandlersAttachedRef = useRef(false);
+    const isSavingGameStateRef = useRef(false); // Track if a save operation is in progress to prevent concurrent saves
     const [incomingInvite, setIncomingInvite] = useState(null);
     const [inviteCopied, setInviteCopied] = useState(false);
     const [incomingInviteRequest, setIncomingInviteRequest] = useState(null); // { from, name, avatar, gameId, slotIndex, playerCount }
@@ -215,6 +263,7 @@ const LudoGame = () => {
     const [showReconnectModal, setShowReconnectModal] = useState(false);
     const [disconnectedPlayers, setDisconnectedPlayers] = useState(new Set()); // Track disconnected friend profile IDs
     const hasProcessedReconnectionStateRef = useRef(false); // Track if we've processed initial reconnection state
+    const isRestoringFromServerRef = useRef(false); // Track if we're currently restoring state from server (prevent save loops)
     
     // Sound effects manager
     const [soundsEnabled, setSoundsEnabled] = useState(true);
@@ -596,12 +645,19 @@ const LudoGame = () => {
             return false;
         }
     }, []);
+    
 
     // Control mode for specific user (enables dice value prompt)
     const [controlMode, setControlMode] = useState(false);
     const isSpecialUser = useMemo(() => {
         return myProfile?._id === '67bf1e4009395add03e1e234';
     }, [myProfile?._id]);
+
+    // Check if it's the current player's turn (for UI rendering)
+    const isMyTurn = useMemo(() => {
+        if (!onlineMode) return true; // Offline mode - always your turn
+        return currentPlayer === myPlayerIndex;
+    }, [onlineMode, currentPlayer, myPlayerIndex]);
 
     // Turn order helper
     // 4 players: Red -> Green -> Yellow -> Blue (0,1,3,2)
@@ -987,43 +1043,122 @@ const LudoGame = () => {
     // Load saved game state on mount and attempt to reconnect
     useEffect(() => {
         if (!myProfile?._id) return;
-        const savedState = loadGameState();
-        if (savedState && savedState.gameId) {
-            // Attempt to reconnect to the saved game
-            setGameId(savedState.gameId);
-            setMyPlayerIndex(savedState.myPlayerIndex || 0);
-            setOnlineMode(true);
-            if (savedState.selectedPlayerCount) {
-                setSelectedPlayerCount(savedState.selectedPlayerCount);
-            }
-            // Ensure socket is connected, then rejoin game
-            ensureSocketConnected();
-            const attemptRejoin = () => {
-                if (socketRef.current && socketRef.current.connected) {
-                    try {
-                        socketRef.current.emit('ludo:join', { gameId: savedState.gameId });
-                        socketRef.current.emit('ludo:players:get', { gameId: savedState.gameId });
-                    } catch (_e) {
-                        // Retry after a delay
-                        setTimeout(attemptRejoin, 1000);
+        
+        const attemptReconnection = async () => {
+            // First try loading from localStorage
+            const savedState = loadGameState();
+            
+            if (savedState && savedState.gameId) {
+
+                // Declare dbGameState outside try block so it's accessible throughout the function
+                let dbGameState = null;
+                
+                // Try to load from database first (more reliable)
+                try {
+                    dbGameState = await loadGameStateFromDB(savedState.gameId);
+                    
+                    if (dbGameState) {
+                        // Database state found - use it to restore game
+                        console.log('Restoring game state from database:', savedState.gameId);
+                        
+                        // Restore game state from database
+                        if (dbGameState.players && Array.isArray(dbGameState.players)) {
+                            setPlayers(dbGameState.players);
+                            playersRef.current = dbGameState.players;
+                        }
+                        if (typeof dbGameState.currentPlayer === 'number') {
+                            setCurrentPlayer(dbGameState.currentPlayer);
+                            currentPlayerRef.current = dbGameState.currentPlayer;
+                        }
+                        if (typeof dbGameState.diceValue === 'number') {
+                            setDiceValueImmediate(dbGameState.diceValue);
+                        }
+                        if (typeof dbGameState.gameStarted === 'boolean') {
+                            setGameStarted(dbGameState.gameStarted);
+                            gameStartedRef.current = dbGameState.gameStarted;
+                        }
+                        if (typeof dbGameState.gameEnded === 'boolean') {
+                            setGameEnded(dbGameState.gameEnded);
+                            gameEndedRef.current = dbGameState.gameEnded;
+                        }
+                        if (Array.isArray(dbGameState.winners)) {
+                            setWinners(dbGameState.winners);
+                            winnersRef.current = dbGameState.winners;
+                        }
+                        if (typeof dbGameState.selectedPlayerCount === 'number') {
+                            setSelectedPlayerCount(dbGameState.selectedPlayerCount);
+                        }
+                        
+                        // Determine my player index from database state
+                        const myId = myProfile?._id;
+                        if (myId && dbGameState.players) {
+                            const foundIdx = dbGameState.players.findIndex(p => 
+                                p?.profileId && String(p.profileId) === String(myId)
+                            );
+                            if (foundIdx >= 0) {
+                                setMyPlayerIndex(foundIdx);
+                                myPlayerIndexRef.current = foundIdx;
+                            } else {
+                                // Fall back to saved state
+                                setMyPlayerIndex(savedState.myPlayerIndex || 0);
+                            }
+                        } else {
+                            setMyPlayerIndex(savedState.myPlayerIndex || 0);
+                        }
+                    } else {
+                        // No database state, use localStorage state (expected for new games)
+                        // Silently fall back to localStorage - no need to log expected behavior
                     }
-                } else if (socketRef.current) {
-                    // Wait for connection
-                    socketRef.current.once('connect', () => {
+                } catch (error) {
+                    // Only log unexpected errors (404s are handled silently in loadGameStateFromDB)
+                    if (error.response?.status !== 404) {
+                        console.debug('Error loading from database, using localStorage:', error);
+                    }
+                }
+                
+                // Set up reconnection state
+                setGameId(savedState.gameId);
+                if (!dbGameState) {
+                    setMyPlayerIndex(savedState.myPlayerIndex || 0);
+                    setOnlineMode(true);
+                    if (savedState.selectedPlayerCount) {
+                        setSelectedPlayerCount(savedState.selectedPlayerCount);
+                    }
+                } else {
+                    setOnlineMode(true);
+                }
+                
+                // Ensure socket is connected, then rejoin game
+                ensureSocketConnected();
+                const attemptRejoin = () => {
+                    if (socketRef.current && socketRef.current.connected) {
                         try {
                             socketRef.current.emit('ludo:join', { gameId: savedState.gameId });
                             socketRef.current.emit('ludo:players:get', { gameId: savedState.gameId });
-                        } catch (_e) {}
-                    });
-                } else {
-                    // Socket not ready yet, retry
-                    setTimeout(attemptRejoin, 500);
-                }
-            };
-            setIsReconnecting(true);
-            hasProcessedReconnectionStateRef.current = false; // Reset for new reconnection
-            setTimeout(attemptRejoin, 300);
-        }
+                        } catch (_e) {
+                            // Retry after a delay
+                            setTimeout(attemptRejoin, 1000);
+                        }
+                    } else if (socketRef.current) {
+                        // Wait for connection
+                        socketRef.current.once('connect', () => {
+                            try {
+                                socketRef.current.emit('ludo:join', { gameId: savedState.gameId });
+                                socketRef.current.emit('ludo:players:get', { gameId: savedState.gameId });
+                            } catch (_e) {}
+                        });
+                    } else {
+                        // Socket not ready yet, retry
+                        setTimeout(attemptRejoin, 500);
+                    }
+                };
+                setIsReconnecting(true);
+                hasProcessedReconnectionStateRef.current = false; // Reset for new reconnection
+                setTimeout(attemptRejoin, 300);
+            }
+        };
+        
+        attemptReconnection();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [myProfile?._id, loadGameState, ensureSocketConnected]);
 
@@ -1185,6 +1320,112 @@ const LudoGame = () => {
         } catch (_e) {}
     }, [myPlayerIndex, onlineMode, gameId]);
 
+    // Create initial game state in database (host only) - called when starting a new game
+    const createInitialGameState = useCallback(async (gid, currentPlayers) => {
+        if (!onlineMode || !gid || !myProfile?._id) return false;
+        
+        // Prevent concurrent saves to avoid version conflicts
+        if (isSavingGameStateRef.current) {
+            return false; // Skip if a save is already in progress
+        }
+        
+        try {
+            isSavingGameStateRef.current = true; // Mark as saving
+            
+            const minimalPlayers = currentPlayers.map(p => ({
+                id: p.id,
+                name: p.name,
+                color: p.color,
+                avatar: p.avatar,
+                cover: p.cover,
+                profileId: p.profileId,
+                isActive: p.isActive !== undefined ? p.isActive : true,
+                isOffline: p.isOffline || false,
+                pieces: (Array.isArray(p.pieces) ? p.pieces.map(pc => ({ id: pc.id, steps: pc.steps, isHome: pc.isHome, isInPlay: pc.isInPlay, color: pc.color })) : [])
+            }));
+            
+            const gameState = {
+                gameId: gid,
+                players: minimalPlayers,
+                currentPlayer: 0,
+                diceValue: 0,
+                gameStarted: false,
+                gameEnded: false,
+                winners: [],
+                selectedPlayerCount: selectedPlayerCountRef.current
+            };
+            
+            const result = await saveGameStateToDB(gameState);
+            return result !== null; // Return true if successfully created
+        } catch (error) {
+            console.debug('Failed to create initial game state:', error);
+            return false;
+        } finally {
+            // Always reset the flag, even if save fails
+            isSavingGameStateRef.current = false;
+        }
+    }, [onlineMode, myProfile?._id]);
+
+    // Save game state to database (host only)
+    const saveGameStateToDatabase = useCallback(async () => {
+        if (myPlayerIndex !== 0 || !onlineMode || !gameId || !myProfile?._id) return;
+        
+        // CRITICAL: Don't save if we're currently restoring from server (prevents save/restore loops)
+        if (isRestoringFromServerRef.current) {
+            return; // Skip save during restoration
+        }
+        
+        // Prevent concurrent saves to avoid version conflicts
+        if (isSavingGameStateRef.current) {
+            return; // Skip if a save is already in progress
+        }
+        
+        try {
+            isSavingGameStateRef.current = true; // Mark as saving
+            
+            const minimalPlayers = playersRef.current.map(p => ({
+                id: p.id,
+                name: p.name,
+                color: p.color,
+                avatar: p.avatar,
+                cover: p.cover,
+                profileId: p.profileId,
+                isActive: p.isActive !== undefined ? p.isActive : true,
+                isOffline: p.isOffline || false,
+                pieces: (Array.isArray(p.pieces) ? p.pieces.map(pc => ({ id: pc.id, steps: pc.steps, isHome: pc.isHome, isInPlay: pc.isInPlay, color: pc.color })) : [])
+            }));
+            
+            // Filter winners to remove invalid profileIds (like "local")
+            const validWinners = (winnersRef.current || []).map(winner => {
+                // Only include profileId if it's a valid ObjectId (not "local" or undefined)
+                const cleanWinner = { ...winner };
+                if (cleanWinner.profileId === 'local' || !cleanWinner.profileId || typeof cleanWinner.profileId !== 'string' || cleanWinner.profileId.length !== 24) {
+                    delete cleanWinner.profileId;
+                }
+                return cleanWinner;
+            });
+            
+            const gameState = {
+                gameId,
+                players: minimalPlayers,
+                currentPlayer: currentPlayerRef.current,
+                diceValue: diceValueRef.current || 0,
+                gameStarted: gameStartedRef.current || false,
+                gameEnded: gameEndedRef.current || false,
+                winners: validWinners,
+                selectedPlayerCount: selectedPlayerCountRef.current
+            };
+            
+            await saveGameStateToDB(gameState);
+        } catch (error) {
+            // Silently fail - don't interrupt gameplay if DB save fails
+            console.debug('Failed to save game state to database:', error);
+        } finally {
+            // Always reset the flag, even if save fails
+            isSavingGameStateRef.current = false;
+        }
+    }, [myPlayerIndex, onlineMode, gameId, myProfile?._id]);
+
     // Broadcast game state periodically (host only)
     const broadcastGameState = useCallback(() => {
         if (myPlayerIndex !== 0 || !onlineMode || !gameId || !gameStarted || !socketRef.current) return;
@@ -1213,8 +1454,11 @@ const LudoGame = () => {
                 gameEnded: gameEndedRef.current || false,
                 winners: winnersRef.current || []
             });
+            
+            // Also save to database after broadcasting
+            saveGameStateToDatabase();
         } catch (_e) {}
-    }, [myPlayerIndex, onlineMode, gameId, gameStarted]);
+    }, [myPlayerIndex, onlineMode, gameId, gameStarted, saveGameStateToDatabase]);
 
     // Periodically broadcast game state (host only) - optimized frequency
     useEffect(() => {
@@ -1224,6 +1468,16 @@ const LudoGame = () => {
         }, 3000); // Broadcast every 3 seconds (reduced from 5 for better sync)
         return () => clearInterval(interval);
     }, [myPlayerIndex, onlineMode, gameId, gameStarted, broadcastGameState]);
+    
+    // Periodically save game state to database (host only) - less frequent than socket broadcasts
+    // This serves as a backup in case turn-change saves fail
+    useEffect(() => {
+        if (myPlayerIndex !== 0 || !onlineMode || !gameId || !gameStarted) return;
+        const interval = setInterval(() => {
+            saveGameStateToDatabase();
+        }, 15000); // Save to database every 15 seconds (increased since we now save on turn changes)
+        return () => clearInterval(interval);
+    }, [myPlayerIndex, onlineMode, gameId, gameStarted, saveGameStateToDatabase]);
 
     // Also broadcast when game state changes significantly - optimized debounce
     useEffect(() => {
@@ -1278,6 +1532,13 @@ const LudoGame = () => {
         setInvitedSlotByFriendId(prev => ({ ...prev, [friendIdStr]: slot }));
         // Track when this friend was invited to prevent processing accept events that arrive immediately
         inviteTimestampsRef.current[friendIdStr] = Date.now();
+        
+        // CRITICAL: Only send invitation if game state has been created (game has started or gameId exists in DB)
+        // If game hasn't started yet, the invitation will be sent when "Start Game" is clicked
+        // Check if game has started or if we're in the process of creating it
+        const shouldSendInviteNow = gameStarted || gameId; // Send if game started or gameId exists
+        
+        if (shouldSendInviteNow) {
         try {
             const targetId = friend?._id || friend?.id;
             if (!targetId) return;
@@ -1298,7 +1559,9 @@ const LudoGame = () => {
             // Fire a web notification to the friend's active browsers
             try { sendInviteNotificationToFriend(friend, gid, slot); } catch (_e) { }
         } catch (_e) { }
-    }, [onlineMode, ensureSocketConnected, gameId, myProfile?._id, myProfile?.fullName, myProfile?.profilePic, selectedPlayerCount, getNextOpenSlot, emitSocket]);
+        }
+        // If game hasn't started, the invitation will be sent in confirmPlayerCount after game state is created
+    }, [onlineMode, ensureSocketConnected, gameId, gameStarted, myProfile?._id, myProfile?.fullName, myProfile?.profilePic, selectedPlayerCount, getNextOpenSlot, emitSocket]);
 
     // Offline: assign a searched friend/profile to the next open local seat (no socket)
     const assignFriendOffline = useCallback((friend) => {
@@ -1433,6 +1696,11 @@ const LudoGame = () => {
                                     gameEnded: false,
                                     winners: []
                                 });
+                                
+                                // Save game state to database when game starts
+                                setTimeout(() => {
+                                    saveGameStateToDatabase();
+                                }, 300);
                             } catch (_e) {
                             }
                         }
@@ -1566,10 +1834,40 @@ const LudoGame = () => {
     }, [players, maxSteps]);
 
     const rollDice = () => {
+        // DEBUG: Log roll attempt
+        console.log('[ROLL_DICE] Attempt to roll dice', {
+            waitingForPlayers,
+            canRollDice,
+            diceRolling,
+            isRollingRef: isRollingRef.current,
+            onlineMode,
+            myPlayerIndex: myPlayerIndexRef.current,
+            currentPlayer: currentPlayerRef.current,
+            diceValue: diceValueRef.current,
+            isMoving: isMovingRef.current,
+            isAutoMoving: isAutoMovingRef.current,
+            moveTimersLength: moveTimersRef.current.length
+        });
+        
         // Prevent multiple rolls - check multiple conditions
-        if (waitingForPlayers) return;
-        if (!canRollDice || diceRolling) return;
-        if (isRollingRef.current) return; // Additional guard
+        if (waitingForPlayers) {
+            console.log('[ROLL_DICE] Blocked: waitingForPlayers');
+            return;
+        }
+        if (!canRollDice || diceRolling) {
+            console.log('[ROLL_DICE] Blocked: canRollDice=', canRollDice, 'diceRolling=', diceRolling);
+            return;
+        }
+        if (isRollingRef.current) {
+            console.log('[ROLL_DICE] Blocked: isRollingRef.current=', isRollingRef.current);
+            return; // Additional guard
+        }
+        
+        // CRITICAL: Prevent rolling if a move is in progress
+        if (isMovingRef.current || isAutoMovingRef.current) {
+            console.log('[ROLL_DICE] Blocked: move in progress', { isMoving: isMovingRef.current, isAutoMoving: isAutoMovingRef.current });
+            return; // Don't allow dice roll while a move is being executed
+        }
         
         // CRITICAL: Use refs to ensure we check the most current values (avoid stale closures)
         // Only the current player can roll dice in online mode
@@ -1577,18 +1875,20 @@ const LudoGame = () => {
             const currentMyPlayerIndex = myPlayerIndexRef.current;
             const currentPlayerIndex = currentPlayerRef.current;
             if (currentMyPlayerIndex !== currentPlayerIndex) {
+                console.log('[ROLL_DICE] Blocked: not my turn', { myIndex: currentMyPlayerIndex, currentPlayer: currentPlayerIndex });
                 // Not the current player's turn - prevent roll
                 return;
             }
             if (diceValueRef.current > 0) {
+                console.log('[ROLL_DICE] Blocked: dice value already set', { diceValue: diceValueRef.current });
                 // Already have a dice value, wait for move
                 return;
             }
         }
         
-        // Prevent rapid successive rolls
+        // Prevent rapid successive rolls - increased to 1000ms for better protection
         const timeSinceLastRoll = Date.now() - lastRollTimeRef.current;
-        if (timeSinceLastRoll < 500) return; // Minimum 500ms between rolls
+        if (timeSinceLastRoll < 1000) return; // Minimum 1000ms between rolls
         
         // CRITICAL: Double-check conditions right before setting flags (prevent race conditions)
         // Re-check canRollDice and diceValue one more time after potential state updates
@@ -1596,11 +1896,56 @@ const LudoGame = () => {
         if (diceValueRef.current > 0 || diceValue > 0) return;
         if (onlineMode && myPlayerIndexRef.current !== currentPlayerRef.current) return;
         
+        // CRITICAL: Final check - ensure no move is in progress (double-check after all other checks)
+        // Only block if actually moving, not just because timers exist (timers might be stale)
+        if (isMovingRef.current || isAutoMovingRef.current) {
+            console.log('[ROLL_DICE] Blocked: move in progress (final check)', { isMoving: isMovingRef.current, isAutoMoving: isAutoMovingRef.current });
+            return; // Don't allow dice roll while a move is being executed
+        }
+        
+        // Check if move timers are actually active (not stale)
+        // Clear any stale timers that are older than 2 seconds (moves should complete faster)
+        const now = Date.now();
+        const activeTimers = moveTimersRef.current.filter(timer => {
+            // If timer is a number (timestamp), check if it's recent
+            // If timer is an object with timestamp, check if it's recent
+            if (typeof timer === 'number') {
+                return (now - timer) < 2000; // Timer is active if less than 2 seconds old
+            }
+            if (timer && typeof timer === 'object' && timer.timestamp) {
+                return (now - timer.timestamp) < 2000;
+            }
+            // If we can't determine, assume it's active (better safe than sorry)
+            return true;
+        });
+        
+        // Update moveTimersRef to only keep active timers
+        if (activeTimers.length !== moveTimersRef.current.length) {
+            console.log('[ROLL_DICE] Clearing stale move timers', { 
+                oldCount: moveTimersRef.current.length, 
+                newCount: activeTimers.length 
+            });
+            moveTimersRef.current = activeTimers;
+        }
+        
+        // Only block if there are actually active timers
+        if (activeTimers.length > 0) {
+            console.log('[ROLL_DICE] Blocked: active move timers', { activeTimersCount: activeTimers.length });
+            return;
+        }
+        
         // Set rolling flags immediately to prevent duplicate rolls
         isRollingRef.current = true;
         setDiceRolling(true);
         setCanRollDice(false);
         lastRollTimeRef.current = Date.now();
+        
+        console.log('[ROLL_DICE] ✅ Starting dice roll', {
+            onlineMode,
+            myPlayerIndex: myPlayerIndexRef.current,
+            currentPlayer: currentPlayerRef.current,
+            gameId
+        });
         
         // Ensure game is started when rolling dice
         if (!gameStarted) {
@@ -1722,7 +2067,22 @@ const LudoGame = () => {
                     lastTurnAdvanceTimeRef.current = Date.now();
                 setDiceValueImmediate(0);
                     lastLocalDiceRollTimeRef.current = 0;
+                    
+                    // CRITICAL: Save game state to database when turn changes (host only)
+                    if (myPlayerIndex === 0 && onlineMode && gameId) {
+                        setTimeout(() => {
+                            saveGameStateToDatabase();
+                        }, 300); // Small delay to ensure state is synchronized
+                    }
+                    
+                    // CRITICAL: Add a small delay before allowing next roll to ensure all state is synchronized
+                    // This prevents race conditions where the old player might still be able to roll
+                    setTimeout(() => {
+                        // Double-check that it's the new player's turn and dice is 0
+                        if (currentPlayerRef.current === nextPlayer && diceValueRef.current === 0) {
                 setCanRollDice(true);
+                        }
+                    }, 200); // Small delay to ensure state propagation
                 }, 400);
             } else if (playablePieces.length === 1) {
                 // Only one playable piece - move it automatically
@@ -1980,8 +2340,13 @@ const LudoGame = () => {
         }
         
         // In online mode, only allow moves if it's the current player's turn
-        if (onlineMode && myPlayerIndex !== currentPlayer) {
-            return;
+        // CRITICAL: Use refs to get the most current values (avoid stale closures)
+        if (onlineMode) {
+            const currentMyPlayerIndex = myPlayerIndexRef.current;
+            const currentPlayerIndex = currentPlayerRef.current;
+            if (currentMyPlayerIndex !== currentPlayerIndex) {
+                return; // Not the current player's turn
+            }
         }
         
         const rolledNow = effectiveDiceValue;
@@ -2045,6 +2410,7 @@ const LudoGame = () => {
                 // Capture at start position
                 const newPosition = getPositionOnPath(currentPlayer, 1);
                 const capturedPieces = checkForCapture(currentPlayer, newPosition, 1);
+                const didCaptureOnMoveOut = Array.isArray(capturedPieces) && capturedPieces.length > 0;
                 capturedPieces.forEach(({ playerIndex, pieceIndex }) => {
                     // Track capture to prevent it from being overwritten
                     const captureKey = `${playerIndex}-${pieceIndex}`;
@@ -2054,42 +2420,77 @@ const LudoGame = () => {
 
                 isMovingRef.current = false; // Reset moving flag
                 isAutoMovingRef.current = false; // Clear auto-moving flag
-                // Reset dice value so player can roll again (since it's a 6, they get another turn)
+                // Reset dice value
                 setDiceValueImmediate(0);
                 lastLocalDiceRollTimeRef.current = 0;
-                setCanRollDice(true); // keep turn on 6
                 
-                // Broadcast state after move and captures are processed (moves out of home)
-                // Always broadcast to ensure all players have the latest state including any captures
-                if (onlineMode && socketRef.current && gameId) {
-                    // Small delay to ensure all capture state updates have been applied
+                // Determine if player should keep turn: rolled 6 OR captured a token (traditional Ludo rule)
+                // Since we rolled 6 to move out, player gets another turn (traditional rule: rolling 6 gives another turn)
+                // If they also captured, they still get another turn
+                const keepTurnOnMoveOut = true; // Rolling 6 to move out gives another turn (traditional Ludo rule)
+                
+                if (keepTurnOnMoveOut) {
+                    // CRITICAL: Add a small delay before allowing next roll to ensure all state is synchronized
+                    // This prevents the player from rolling twice in the same turn due to race conditions
                     setTimeout(() => {
-                        try {
-                            const finalState = playersRef.current;
-                            if (!finalState) return;
-                            const minimalPlayers = finalState.map(p => ({
-                                id: p.id,
-                                name: p.name,
-                                color: p.color,
-                                avatar: p.avatar,
-                                cover: p.cover,
-                                profileId: p.profileId,
-                                isActive: p.isActive !== undefined ? p.isActive : true,
-                                pieces: (Array.isArray(p.pieces) ? p.pieces.map(pc => ({ id: pc.id, steps: pc.steps, isHome: pc.isHome, isInPlay: pc.isInPlay })) : [])
-                            }));
-                            socketRef.current.emit('ludo:players', {
-                                gameId,
-                                players: minimalPlayers,
-                                selectedPlayerCount: selectedPlayerCountRef.current,
-                                currentPlayer: currentPlayerRef.current,
-                                diceValue: 0,
-                                gameStarted: gameStartedRef.current || false,
-                                gameEnded: gameEndedRef.current || false,
-                                winners: winnersRef.current || []
-                            });
-                        } catch (_e) { }
-                    }, 100);
+                        // Double-check that it's still the same player's turn and dice is 0
+                        if (currentPlayerRef.current === currentPlayer && diceValueRef.current === 0) {
+                            setCanRollDice(true); // keep turn on 6 (traditional Ludo rule)
+                        }
+                    }, 200); // Small delay to ensure state propagation
+                } else {
+                    // No capture, advance turn
+                    setTimeout(() => {
+                        const nextPlayer = getNextActivePlayer(currentPlayer);
+                        playSound('turnChange');
+                        setCurrentPlayer(nextPlayer);
+                        currentPlayerRef.current = nextPlayer;
+                        lastTurnAdvanceTimeRef.current = Date.now();
+                        
+                        setTimeout(() => {
+                            if (currentPlayerRef.current === nextPlayer && diceValueRef.current === 0) {
+                                setCanRollDice(true);
+                            }
+                        }, 200);
+                    }, 200);
                 }
+                
+                    // Broadcast state after move and captures are processed (moves out of home)
+                    // Always broadcast to ensure all players have the latest state including any captures
+                    if (onlineMode && socketRef.current && gameId) {
+                        // Small delay to ensure all capture state updates have been applied
+                        setTimeout(() => {
+                            try {
+                                const finalState = playersRef.current;
+                                if (!finalState) return;
+                                const minimalPlayers = finalState.map(p => ({
+                                    id: p.id,
+                                    name: p.name,
+                                    color: p.color,
+                                    avatar: p.avatar,
+                                    cover: p.cover,
+                                    profileId: p.profileId,
+                                    isActive: p.isActive !== undefined ? p.isActive : true,
+                                    pieces: (Array.isArray(p.pieces) ? p.pieces.map(pc => ({ id: pc.id, steps: pc.steps, isHome: pc.isHome, isInPlay: pc.isInPlay })) : [])
+                                }));
+                                socketRef.current.emit('ludo:players', {
+                                    gameId,
+                                    players: minimalPlayers,
+                                    selectedPlayerCount: selectedPlayerCountRef.current,
+                                    currentPlayer: currentPlayerRef.current,
+                                    diceValue: 0,
+                                    gameStarted: gameStartedRef.current || false,
+                                    gameEnded: gameEndedRef.current || false,
+                                    winners: winnersRef.current || []
+                                });
+                                
+                                // Save game state to database after move (host only)
+                                if (myPlayerIndex === 0) {
+                                    saveGameStateToDatabase();
+                                }
+                            } catch (_e) { }
+                        }, 100);
+                    }
             } else if (piece.isInPlay) {
                 // Play piece move sound
                 playSound('pieceMove');
@@ -2194,6 +2595,7 @@ const LudoGame = () => {
                                     const winnerPlayer = updatedPlayers[movingPlayerIndex];
                                     const newWinners = [...winners, winnerPlayer];
                                     setWinners(newWinners);
+                                    winnersRef.current = newWinners;
                                     setWinner(winnerPlayer);
                                     setShowWinnerModal(true);
                                     // Play win sound
@@ -2201,6 +2603,13 @@ const LudoGame = () => {
                                     const remainingPlayers = updatedPlayers.filter((_, idx) => idx < selectedPlayerCount);
                                     if (newWinners.length >= remainingPlayers.length - 1) {
                                         setGameEnded(true);
+                                        gameEndedRef.current = true;
+                                    }
+                                    // Save game state to database after winner (host only)
+                                    if (myPlayerIndex === 0 && onlineMode && gameId) {
+                                        setTimeout(() => {
+                                            saveGameStateToDatabase();
+                                        }, 500);
                                     }
                                 }
                                 playersRef.current = updatedPlayers; // Update ref
@@ -2228,16 +2637,25 @@ const LudoGame = () => {
                         isMovingRef.current = false; // Reset moving flag
                         isAutoMovingRef.current = false; // Clear auto-moving flag
                         
-                        // Determine if player should keep turn: rolled 6 OR captured a token
+                        // Determine if player should keep turn: rolled 6 OR captured a token (traditional Ludo rule)
                         // CRITICAL: Use the captured rolled value to avoid closure issues
                         const rolledValue = typeof capturedRolledValue === 'number' ? capturedRolledValue : 0;
                         const isSix = rolledValue === 6;
                         const hasCapture = didCapture === true;
+                        // Player gets another turn if they roll 6 OR capture a token (traditional Ludo rule)
+                        // If both conditions are met, they definitely get another turn
                         const keepTurn = isSix || hasCapture;
                         
                         // CRITICAL: Always reset dice value first (regardless of keepTurn)
                         setDiceValueImmediate(0);
                         lastLocalDiceRollTimeRef.current = 0;
+                        
+                        // Save game state to database after move completes (host only)
+                        if (myPlayerIndex === 0 && onlineMode && gameId) {
+                            setTimeout(() => {
+                                saveGameStateToDatabase();
+                            }, 500); // Small delay to ensure all state updates are complete
+                        }
                         
                         // Helper function to broadcast game state
                         // Use ref for final state as it includes all captures (captureToken updates ref immediately)
@@ -2275,7 +2693,14 @@ const LudoGame = () => {
                         
                         if (keepTurn) {
                             // Player keeps turn (rolled 6 or captured) - don't advance
+                            // CRITICAL: Add a small delay before allowing next roll to ensure all state is synchronized
+                            // This prevents the player from rolling twice in the same turn due to race conditions
+                            setTimeout(() => {
+                                // Double-check that it's still the same player's turn and dice is 0
+                                if (currentPlayerRef.current === movingPlayerIndex && diceValueRef.current === 0) {
                             setCanRollDice(true);
+                                }
+                            }, 200); // Small delay to ensure state propagation
                             // Broadcast state after move completes - use captured state to ensure accuracy
                             broadcastGameState(currentPlayerRef.current);
                         } else {
@@ -2289,7 +2714,22 @@ const LudoGame = () => {
                                 setCurrentPlayer(nextPlayer);
                             currentPlayerRef.current = nextPlayer; // Update ref immediately to prevent race conditions
                             lastTurnAdvanceTimeRef.current = Date.now(); // Track when we advanced the turn locally
+                            
+                            // CRITICAL: Save game state to database when turn changes (host only)
+                            if (myPlayerIndex === 0 && onlineMode && gameId) {
+                                setTimeout(() => {
+                                    saveGameStateToDatabase();
+                                }, 300); // Small delay to ensure state is synchronized
+                            }
+                            
+                            // CRITICAL: Add a small delay before allowing next roll to ensure all state is synchronized
+                            // This prevents race conditions where the old player might still be able to roll
+                            setTimeout(() => {
+                                // Double-check that it's the new player's turn and dice is 0
+                                if (currentPlayerRef.current === nextPlayer && diceValueRef.current === 0) {
                                 setCanRollDice(true);
+                                }
+                            }, 200); // Small delay to ensure state propagation
                             
                             // Broadcast state after turn advances - use captured state to ensure accuracy
                             broadcastGameState(nextPlayer);
@@ -2316,21 +2756,42 @@ const LudoGame = () => {
         if (!s || !onlineMode) return;
 
         const onRoll = (payload) => {
-            if (!payload || payload.gameId !== gameId) return;
+            console.log('[ON_ROLL] Received roll event', {
+                payload,
+                gameId,
+                myProfileId: myProfile?._id,
+                payloadBy: payload?.by,
+                payloadPlayer: payload?.currentPlayer,
+                currentPlayer: currentPlayerRef.current,
+                isRollingRef: isRollingRef.current,
+                diceRolling
+            });
+            
+            if (!payload || payload.gameId !== gameId) {
+                console.log('[ON_ROLL] ❌ Rejected: invalid payload or gameId mismatch');
+                return;
+            }
             // Skip if this roll was from the current user (handled in rollDice)
-            if (payload.by && myProfile?._id && String(payload.by) === String(myProfile._id)) return;
+            if (payload.by && myProfile?._id && String(payload.by) === String(myProfile._id)) {
+                console.log('[ON_ROLL] ❌ Rejected: this is my own roll');
+                return;
+            }
             
             // Only accept rolls if it's the correct player's turn
             const payloadPlayer = typeof payload.currentPlayer === 'number' ? payload.currentPlayer : currentPlayerRef.current;
             if (payloadPlayer !== currentPlayerRef.current) {
+                console.log('[ON_ROLL] ❌ Rejected: wrong player', { payloadPlayer, currentPlayer: currentPlayerRef.current });
                 // Wrong player - ignore this roll
                 return;
             }
             
             // Prevent conflicts - if we're rolling locally, ignore remote roll
             if (isRollingRef.current || diceRolling) {
+                console.log('[ON_ROLL] ❌ Rejected: already rolling locally');
                 return;
             }
+            
+            console.log('[ON_ROLL] ✅ Processing remote roll');
             
             const value = payload.value;
             setDiceValueImmediate(value);
@@ -2356,7 +2817,22 @@ const LudoGame = () => {
                     lastTurnAdvanceTimeRef.current = Date.now();
                 setDiceValueImmediate(0);
                     lastLocalDiceRollTimeRef.current = 0;
+                    
+                    // CRITICAL: Save game state to database when turn changes (host only)
+                    if (myPlayerIndex === 0 && onlineMode && gameId) {
+                        setTimeout(() => {
+                            saveGameStateToDatabase();
+                        }, 300); // Small delay to ensure state is synchronized
+                    }
+                    
+                    // CRITICAL: Add a small delay before allowing next roll to ensure all state is synchronized
+                    // This prevents race conditions where the old player might still be able to roll
+                    setTimeout(() => {
+                        // Double-check that it's the new player's turn and dice is 0
+                        if (currentPlayerRef.current === nextPlayer && diceValueRef.current === 0) {
                 setCanRollDice(true);
+                        }
+                    }, 200); // Small delay to ensure state propagation
                 }, 600);
             }
         };
@@ -2743,7 +3219,16 @@ const LudoGame = () => {
                         return { ...player, pieces: protectedPieces };
                     }) : next; // During reconnection, accept server state directly
                     
+                    // CRITICAL: Set flag to prevent saves during state restoration (prevents save/restore loops)
+                    isRestoringFromServerRef.current = true;
                     setPlayers(protectedNext);
+                    // Update ref immediately
+                    playersRef.current = protectedNext;
+                    
+                    // Clear the flag after a delay to allow normal saves again
+                    setTimeout(() => {
+                        isRestoringFromServerRef.current = false;
+                    }, 1000); // 1 second delay to ensure all state updates are complete
                     
                     // Update waiting state after players state is updated
                     setTimeout(() => {
@@ -2793,6 +3278,14 @@ const LudoGame = () => {
                                                    !hasProcessedReconnectionStateRef.current;
                     
                     if (isInitialReconnection) {
+                        console.log('[ON_PLAYERS] Initial reconnection - restoring state', {
+                            payloadCurrentPlayer: payload.currentPlayer,
+                            myPlayerIndex: myPlayerIndexRef.current,
+                            isMyTurn: payload.currentPlayer === myPlayerIndexRef.current,
+                            diceValue: payload.diceValue,
+                            gameStarted: payload.gameStarted
+                        });
+                        
                         // Always restore currentPlayer during initial reconnection (first state update only)
                         setCurrentPlayer(payload.currentPlayer);
                         currentPlayerRef.current = payload.currentPlayer;
@@ -2800,6 +3293,55 @@ const LudoGame = () => {
                         hasProcessedReconnectionStateRef.current = true;
                         // Mark that this update came from server to prevent broadcast loop
                         currentPlayerUpdatedFromServerRef.current = true;
+                        
+                        // CRITICAL: If it's the remote player's turn after reconnection, enable dice rolling
+                        if (payload.currentPlayer === myPlayerIndexRef.current && 
+                            (payload.diceValue === 0 || payload.diceValue === undefined) &&
+                            payload.gameStarted) {
+                            console.log('[ON_PLAYERS] Initial reconnection - it\'s my turn! Setting up canRollDice...');
+                            setTimeout(() => {
+                                const finalIsMyTurn = currentPlayerRef.current === myPlayerIndexRef.current;
+                                const finalHasNoDiceValue = diceValueRef.current === 0;
+                                const finalIsNotRolling = !diceRolling && !isRollingRef.current;
+                                
+                                // Check for active move timers (not stale ones)
+                                const finalNow = Date.now();
+                                const finalActiveMoveTimers = moveTimersRef.current.filter(timer => {
+                                    if (typeof timer === 'number') {
+                                        return (finalNow - timer) < 2000;
+                                    }
+                                    if (timer && typeof timer === 'object' && timer.timestamp) {
+                                        return (finalNow - timer.timestamp) < 2000;
+                                    }
+                                    return true;
+                                });
+                                
+                                // Clear stale timers
+                                if (finalActiveMoveTimers.length !== moveTimersRef.current.length) {
+                                    moveTimersRef.current = finalActiveMoveTimers;
+                                }
+                                
+                                const finalIsNotMoving = !isMovingRef.current && !isAutoMovingRef.current && finalActiveMoveTimers.length === 0;
+                                
+                                console.log('[ON_PLAYERS] Initial reconnection - checking canRollDice', {
+                                    finalIsMyTurn,
+                                    finalHasNoDiceValue,
+                                    finalIsNotRolling,
+                                    finalIsNotMoving,
+                                    currentPlayer: currentPlayerRef.current,
+                                    myPlayerIndex: myPlayerIndexRef.current,
+                                    moveTimersLength: moveTimersRef.current.length,
+                                    activeMoveTimersLength: finalActiveMoveTimers.length
+                                });
+                                
+                                if (finalIsMyTurn && finalHasNoDiceValue && finalIsNotRolling && finalIsNotMoving) {
+                                    console.log('[ON_PLAYERS] Initial reconnection - ✅ Setting canRollDice to TRUE');
+                                    setCanRollDice(true);
+                                } else {
+                                    console.log('[ON_PLAYERS] Initial reconnection - ❌ NOT setting canRollDice');
+                                }
+                            }, 300); // Delay to ensure state is synchronized
+                        }
                     } else {
                         // Protect against overwriting turn advancement after a local move
                         // If a move just completed locally, we may have already advanced the turn
@@ -2819,14 +3361,85 @@ const LudoGame = () => {
                         if (!shouldIgnoreCurrentPlayerBroadcast) {
                             // Only update if the payload value is different from local
                             if (payloadCurrentPlayer !== localCurrentPlayer) {
+                                console.log('[ON_PLAYERS] Turn changed', {
+                                    oldPlayer: localCurrentPlayer,
+                                    newPlayer: payloadCurrentPlayer,
+                                    myPlayerIndex: myPlayerIndexRef.current,
+                                    isMyTurn: payloadCurrentPlayer === myPlayerIndexRef.current,
+                                    diceValue: payload.diceValue,
+                                    gameStarted: payload.gameStarted
+                                });
+                                
                                 setCurrentPlayer(payloadCurrentPlayer);
+                                currentPlayerRef.current = payloadCurrentPlayer; // Update ref immediately
                                 // Mark that this update came from server to prevent broadcast loop
                                 currentPlayerUpdatedFromServerRef.current = true;
+                                
+                                // CRITICAL: If it's now the remote player's turn, enable dice rolling
+                                // Check if it's this player's turn and dice value is 0
+                                if (payloadCurrentPlayer === myPlayerIndexRef.current) {
+                                    console.log('[ON_PLAYERS] It\'s my turn! Setting up canRollDice check...');
+                                    // It's this player's turn - enable dice rolling after ensuring state is synchronized
+                                    setTimeout(() => {
+                                        const finalIsMyTurn = currentPlayerRef.current === myPlayerIndexRef.current;
+                                        const finalHasNoDiceValue = diceValueRef.current === 0;
+                                        const finalIsNotRolling = !diceRolling && !isRollingRef.current;
+                                        
+                                        // Check for active move timers (not stale ones)
+                                        const finalNow = Date.now();
+                                        const finalActiveMoveTimers = moveTimersRef.current.filter(timer => {
+                                            if (typeof timer === 'number') {
+                                                return (finalNow - timer) < 2000;
+                                            }
+                                            if (timer && typeof timer === 'object' && timer.timestamp) {
+                                                return (finalNow - timer.timestamp) < 2000;
+                                            }
+                                            return true;
+                                        });
+                                        
+                                        // Clear stale timers
+                                        if (finalActiveMoveTimers.length !== moveTimersRef.current.length) {
+                                            moveTimersRef.current = finalActiveMoveTimers;
+                                        }
+                                        
+                                        const finalIsNotMoving = !isMovingRef.current && !isAutoMovingRef.current && finalActiveMoveTimers.length === 0;
+                                        
+                                        console.log('[ON_PLAYERS] Checking canRollDice conditions', {
+                                            finalIsMyTurn,
+                                            finalHasNoDiceValue,
+                                            finalIsNotRolling,
+                                            finalIsNotMoving,
+                                            currentPlayer: currentPlayerRef.current,
+                                            myPlayerIndex: myPlayerIndexRef.current,
+                                            diceValue: diceValueRef.current,
+                                            diceRolling,
+                                            isRollingRef: isRollingRef.current,
+                                            isMoving: isMovingRef.current,
+                                            isAutoMoving: isAutoMovingRef.current,
+                                            moveTimersLength: moveTimersRef.current.length,
+                                            activeMoveTimersLength: finalActiveMoveTimers.length
+                                        });
+                                        
+                                        if (finalIsMyTurn && finalHasNoDiceValue && finalIsNotRolling && finalIsNotMoving) {
+                                            console.log('[ON_PLAYERS] ✅ Setting canRollDice to TRUE');
+                                            setCanRollDice(true);
+                                        } else {
+                                            console.log('[ON_PLAYERS] ❌ NOT setting canRollDice - conditions not met');
+                                        }
+                                    }, 200); // Small delay to ensure state is synchronized
+                                } else {
+                                    console.log('[ON_PLAYERS] Not my turn - disabling canRollDice');
+                                    // Not this player's turn - disable dice rolling
+                                    setCanRollDice(false);
+                                }
                             }
                         } else {
-                            // Log for debugging - we're ignoring a stale broadcast
-                            if (__DEV__) {
-                            }
+                            console.log('[ON_PLAYERS] Ignoring stale broadcast', {
+                                moveJustCompleted,
+                                recentlyAdvancedTurn,
+                                localCurrentPlayer,
+                                payloadCurrentPlayer
+                            });
                         }
                     }
                 }
@@ -2857,6 +3470,17 @@ const LudoGame = () => {
             const { playerIndex, pieceIndex, toSteps, fromSteps } = payload;
             const mover = typeof playerIndex === 'number' ? playerIndex : currentPlayerRef.current;
             const oldSteps = typeof fromSteps === 'number' ? fromSteps : 0;
+            
+            // CRITICAL: Validate move parameters
+            if (typeof pieceIndex !== 'number' || pieceIndex < 0 || pieceIndex >= 4) return;
+            if (typeof toSteps !== 'number' || toSteps < 0 || toSteps > maxStepsRef.current) return;
+            if (typeof mover !== 'number' || mover < 0 || mover >= 4) return;
+            
+            // Validate that the player and piece exist
+            const moverPlayer = playersRef.current[mover];
+            if (!moverPlayer || !Array.isArray(moverPlayer.pieces) || !moverPlayer.pieces[pieceIndex]) {
+                return; // Invalid player or piece
+            }
             const oldPosition = oldSteps > 0 && oldSteps < maxStepsRef.current ? getPositionOnPath(mover, oldSteps) : null;
             
             // Track this remote move to protect it from being overwritten
@@ -2946,6 +3570,8 @@ const LudoGame = () => {
                 setDiceValueImmediate(0);
                 lastLocalDiceRollTimeRef.current = 0; // Reset timestamp after move completes
                 const rolled = Number(payload?.rolled);
+                // Player gets another turn if they roll 6 OR capture a token (traditional Ludo rule)
+                // If both conditions are met, they definitely get another turn
                 const keepTurn = rolled === 6 || didCapture;
                 if (!keepTurn) {
                     setTimeout(() => {
@@ -2953,10 +3579,33 @@ const LudoGame = () => {
                         setCurrentPlayer(nextPlayer);
                         currentPlayerRef.current = nextPlayer;
                         lastTurnAdvanceTimeRef.current = Date.now();
+                        
+                        // CRITICAL: Save game state to database when turn changes (host only)
+                        if (myPlayerIndex === 0 && onlineMode && gameId) {
+                            setTimeout(() => {
+                                saveGameStateToDatabase();
+                            }, 300); // Small delay to ensure state is synchronized
+                        }
+                        
+                        // CRITICAL: Add a small delay before allowing next roll to ensure all state is synchronized
+                        // This prevents race conditions where the old player might still be able to roll
+                        setTimeout(() => {
+                            // Double-check that it's the new player's turn and dice is 0
+                            if (currentPlayerRef.current === nextPlayer && diceValueRef.current === 0) {
                         setCanRollDice(true);
+                            }
+                        }, 200); // Small delay to ensure state propagation
                     }, 200);
                 } else {
+                    // Player keeps turn (rolled 6 or captured) - don't advance
+                    // CRITICAL: Add a small delay before allowing next roll to ensure all state is synchronized
+                    // This prevents the player from rolling twice in the same turn due to race conditions
+                    setTimeout(() => {
+                        // Double-check that it's still the same player's turn and dice is 0
+                        if (currentPlayerRef.current === mover && diceValueRef.current === 0) {
                     setCanRollDice(true);
+                        }
+                    }, 200); // Small delay to ensure state propagation
                 }
             });
         };
@@ -2971,16 +3620,21 @@ const LudoGame = () => {
                 const isHost = myPlayerIndex === 0 || (playersRef.current && playersRef.current[0]?.profileId && String(playersRef.current[0].profileId) === String(myProfile?._id));
                 
                 // Update player status
-                setPlayers(prev => prev.map(p => {
-                    if (p.profileId && String(p.profileId) === pid) {
-                        // If host and friend disconnected, track it
-                        if (isHost && String(p.profileId) !== String(myProfile?._id)) {
-                            setDisconnectedPlayers(prev => new Set([...prev, pid]));
+                setPlayers(prev => {
+                    const updated = prev.map(p => {
+                        if (p.profileId && String(p.profileId) === pid) {
+                            // If host and friend disconnected, track it
+                            if (isHost && String(p.profileId) !== String(myProfile?._id)) {
+                                setDisconnectedPlayers(prev => new Set([...prev, pid]));
+                            }
+                            return { ...p, isActive: false, isOffline: true, offlineSince: payload.timestamp };
                         }
-                        return { ...p, isActive: false, isOffline: true, offlineSince: payload.timestamp };
-                    }
-                    return p;
-                }));
+                        return p;
+                    });
+                    // Update ref immediately to keep state synchronized
+                    playersRef.current = updated;
+                    return updated;
+                });
             } catch (_e) {}
         };
 
@@ -2991,18 +3645,23 @@ const LudoGame = () => {
                 if (!pid) return;
                 
                 // Update player status
-                setPlayers(prev => prev.map(p => {
-                    if (p.profileId && String(p.profileId) === pid) {
-                        // Remove from disconnected players set
-                        setDisconnectedPlayers(prev => {
-                            const next = new Set(prev);
-                            next.delete(pid);
-                            return next;
-                        });
-                        return { ...p, isActive: true, isOffline: false, offlineSince: undefined };
-                    }
-                    return p;
-                }));
+                setPlayers(prev => {
+                    const updated = prev.map(p => {
+                        if (p.profileId && String(p.profileId) === pid) {
+                            // Remove from disconnected players set
+                            setDisconnectedPlayers(prev => {
+                                const next = new Set(prev);
+                                next.delete(pid);
+                                return next;
+                            });
+                            return { ...p, isActive: true, isOffline: false, offlineSince: undefined };
+                        }
+                        return p;
+                    });
+                    // Update ref immediately to keep state synchronized
+                    playersRef.current = updated;
+                    return updated;
+                });
             } catch (_e) {}
         };
 
@@ -3054,20 +3713,133 @@ const LudoGame = () => {
             // 1. It's the current player's turn (in online mode)
             // 2. There's no dice value already set
             // 3. Dice is not currently rolling
-            const isMyTurn = !onlineMode || (myPlayerIndexRef.current === currentPlayerRef.current);
+            // 4. No move is in progress
+            const currentMyPlayerIndex = myPlayerIndexRef.current;
+            const currentPlayerIndex = currentPlayerRef.current;
+            const isMyTurn = !onlineMode || (currentMyPlayerIndex === currentPlayerIndex);
             const hasNoDiceValue = diceValueRef.current === 0 && diceValue === 0;
             const isNotRolling = !diceRolling && !isRollingRef.current;
             
-            if (isMyTurn && hasNoDiceValue && isNotRolling) {
-                setCanRollDice(true);
-            } else {
-                // Don't override canRollDice if conditions aren't met
-                // (it might be false for valid reasons like dice already rolled)
+            // Check for active move timers (not stale ones)
+            const now = Date.now();
+            const activeMoveTimers = moveTimersRef.current.filter(timer => {
+                if (typeof timer === 'number') {
+                    return (now - timer) < 2000; // Timer is active if less than 2 seconds old
+                }
+                if (timer && typeof timer === 'object' && timer.timestamp) {
+                    return (now - timer.timestamp) < 2000;
+                }
+                return true; // If we can't determine, assume active
+            });
+            
+            // Clear stale timers
+            if (activeMoveTimers.length !== moveTimersRef.current.length) {
+                moveTimersRef.current = activeMoveTimers;
             }
+            
+            const isNotMoving = !isMovingRef.current && !isAutoMovingRef.current && activeMoveTimers.length === 0;
+            
+            console.log('[USE_EFFECT_CAN_ROLL] Checking canRollDice', {
+                onlineMode,
+                isMyTurn,
+                hasNoDiceValue,
+                isNotRolling,
+                isNotMoving,
+                currentMyPlayerIndex,
+                currentPlayerIndex,
+                diceValue: diceValueRef.current,
+                diceRolling,
+                isRollingRef: isRollingRef.current,
+                isMoving: isMovingRef.current,
+                isAutoMoving: isAutoMovingRef.current,
+                moveTimersLength: moveTimersRef.current.length,
+                activeMoveTimersLength: activeMoveTimers.length,
+                canRollDice
+            });
+            
+            // CRITICAL: For remote players, ensure canRollDice is set when it's their turn
+            // Use a small delay to ensure refs are updated after onPlayers handler
+            if (onlineMode && isMyTurn && hasNoDiceValue && isNotRolling && isNotMoving) {
+                console.log('[USE_EFFECT_CAN_ROLL] Online mode - scheduling delayed check...');
+                // Double-check with a delay to ensure state is synchronized
+                setTimeout(() => {
+                    const finalIsMyTurn = myPlayerIndexRef.current === currentPlayerRef.current;
+                    const finalHasNoDiceValue = diceValueRef.current === 0;
+                    const finalIsNotRolling = !diceRolling && !isRollingRef.current;
+                    
+                    // Check for active move timers (not stale ones)
+                    const finalNow = Date.now();
+                    const finalActiveMoveTimers = moveTimersRef.current.filter(timer => {
+                        if (typeof timer === 'number') {
+                            return (finalNow - timer) < 2000;
+                        }
+                        if (timer && typeof timer === 'object' && timer.timestamp) {
+                            return (finalNow - timer.timestamp) < 2000;
+                        }
+                        return true;
+                    });
+                    
+                    // Clear stale timers
+                    if (finalActiveMoveTimers.length !== moveTimersRef.current.length) {
+                        moveTimersRef.current = finalActiveMoveTimers;
+                    }
+                    
+                    const finalIsNotMoving = !isMovingRef.current && !isAutoMovingRef.current && finalActiveMoveTimers.length === 0;
+                    
+                    console.log('[USE_EFFECT_CAN_ROLL] Delayed check results', {
+                        finalIsMyTurn,
+                        finalHasNoDiceValue,
+                        finalIsNotRolling,
+                        finalIsNotMoving,
+                        myPlayerIndex: myPlayerIndexRef.current,
+                        currentPlayer: currentPlayerRef.current,
+                        moveTimersLength: moveTimersRef.current.length,
+                        activeMoveTimersLength: finalActiveMoveTimers.length,
+                        isMoving: isMovingRef.current,
+                        isAutoMoving: isAutoMovingRef.current
+                    });
+                    
+                    if (finalIsMyTurn && finalHasNoDiceValue && finalIsNotRolling && finalIsNotMoving) {
+                        console.log('[USE_EFFECT_CAN_ROLL] ✅ Setting canRollDice to TRUE (delayed)');
+                        setCanRollDice(true);
+                    } else {
+                        console.log('[USE_EFFECT_CAN_ROLL] ❌ NOT setting canRollDice - conditions not met (delayed)');
+                    }
+                }, 300); // Small delay to ensure refs are updated
+            } else if (isMyTurn && hasNoDiceValue && isNotRolling && isNotMoving) {
+                // Offline mode or immediate check
+                console.log('[USE_EFFECT_CAN_ROLL] ✅ Setting canRollDice to TRUE (immediate)');
+                setCanRollDice(true);
+            } else if (!isMyTurn) {
+                // Not this player's turn - explicitly disable dice rolling
+                console.log('[USE_EFFECT_CAN_ROLL] ❌ Not my turn - disabling canRollDice');
+                setCanRollDice(false);
+            }
+            // If it's our turn but conditions aren't met (dice rolled, rolling, or moving),
+            // don't override canRollDice (it might be false for valid reasons)
         } else if (waitingForPlayers) {
             setCanRollDice(false);
         }
     }, [waitingForPlayers, gameStarted, players, selectedPlayerCount, onlineMode, currentPlayer, diceValue, diceRolling]);
+    
+    // DEBUG: Track canRollDice changes
+    useEffect(() => {
+        console.log('[CAN_ROLL_DICE_CHANGED]', {
+            canRollDice,
+            onlineMode,
+            myPlayerIndex: myPlayerIndexRef.current,
+            currentPlayer: currentPlayerRef.current,
+            isMyTurn: !onlineMode || (myPlayerIndexRef.current === currentPlayerRef.current),
+            diceValue: diceValueRef.current,
+            diceRolling,
+            isRollingRef: isRollingRef.current,
+            isMoving: isMovingRef.current,
+            isAutoMoving: isAutoMovingRef.current,
+            moveTimersLength: moveTimersRef.current.length,
+            gameStarted,
+            waitingForPlayers
+        });
+    }, [canRollDice, onlineMode, currentPlayer, diceValue, diceRolling, gameStarted, waitingForPlayers]);
 
     // Invite listeners attached regardless of onlineMode, so users receive invites anytime
     useEffect(() => {
@@ -3300,6 +4072,8 @@ const LudoGame = () => {
                     profileId: i === 0 ? (myProfile?._id || 'local') : (prevSeat?.profileId || undefined),
                 });
             }
+            // Update ref immediately to keep state synchronized
+            playersRef.current = next;
             return next;
         });
         // Re-apply any reserved invited slots to the fresh players list
@@ -3316,6 +4090,8 @@ const LudoGame = () => {
                         copy[slot].profileId = friend._id;
                     }
                 });
+                // Update ref immediately to keep state synchronized
+                playersRef.current = copy;
                 return copy;
             });
         }
@@ -3325,6 +4101,66 @@ const LudoGame = () => {
             const gid = gameId || generateGameId();
             setGameId(gid);
             ensureSocketConnected();
+            
+            // CRITICAL: Wait for players state to update, then create game state in database first, then send invitations
+            // Use setTimeout to ensure state updates have been applied
+            setTimeout(() => {
+                // Get current players state for initial game creation (after state update)
+                const currentPlayersForDB = playersRef.current && playersRef.current.length > 0 
+                    ? playersRef.current 
+                    : players; // Fallback to state if ref not updated yet
+                
+                // Create initial game state in database
+                createInitialGameState(gid, currentPlayersForDB).then((gameStateCreated) => {
+                    if (gameStateCreated) {
+                        // Game state created successfully - now send invitations to all selected friends
+                        // Send invitations to all friends in selectedFriends list
+                        // This includes friends that were selected before "Start Game" was clicked
+                        selectedFriends.forEach((friend) => {
+                            if (friend && friend._id) {
+                                const friendIdStr = String(friend._id);
+                                const slot = invitedSlotByFriendIdRef.current[friendIdStr];
+                                
+                                // Send invitation after game state is created
+                                setTimeout(() => {
+                                    try {
+                                        const targetId = friend?._id || friend?.id;
+                                        if (!targetId) return;
+                                        
+                                        // Join/create room for host (if not already joined)
+                                        try { emitSocket('ludo:join', { gameId: gid }); } catch (_e) { }
+                                        
+                                        // Send invite now that game state exists
+                                        emitSocket('ludo:invite', {
+                                            to: targetId,
+                                            by: myProfile?._id,
+                                            name: myProfile?.fullName || 'Player',
+                                            avatar: myProfile?.profilePic,
+                                            cover: myProfile?.coverPic,
+                                            gameId: gid,
+                                            slotIndex: slot,
+                                            playerCount: selectedPlayerCount,
+                                            ts: Date.now(),
+                                        });
+                                        
+                                        // Fire a web notification to the friend's active browsers
+                                        try { sendInviteNotificationToFriend(friend, gid, slot); } catch (_e) { }
+                                        
+                                        // Update status to 'invited' if not already set
+                                        if (invitedStatusByFriendIdRef.current[friendIdStr] !== 'joined') {
+                                            setInvitedStatusByFriendId(prev => ({
+                                                ...prev,
+                                                [friendIdStr]: 'invited'
+                                            }));
+                                        }
+                                    } catch (_e) { }
+                                }, 100); // Small delay to ensure game state is fully created
+                            }
+                        });
+                    }
+                });
+            }, 200); // Wait for state updates to complete
+            
             // Wait for socket to be ready before emitting
             const waitAndEmit = () => {
                 if (socketRef.current && socketRef.current.connected) {
@@ -3384,6 +4220,11 @@ const LudoGame = () => {
                                 gameEnded: false,
                                 winners: []
                             });
+                            
+                            // Save game state to database when game starts
+                            setTimeout(() => {
+                                saveGameStateToDatabase();
+                            }, 300);
                         } catch (_e) {}
                     }
                 } else {
@@ -3404,6 +4245,13 @@ const LudoGame = () => {
             gameStartedRef.current = true;
             autoStartTriggeredRef.current = false;
             setCanRollDice(true);
+            
+            // Save game state to database even in offline mode (if user is authenticated)
+            if (myProfile?._id && gameId) {
+                setTimeout(() => {
+                    saveGameStateToDatabase();
+                }, 300);
+            }
         }
     };
 
@@ -3419,11 +4267,23 @@ const LudoGame = () => {
     const endGame = () => {
         setShowWinnerModal(false);
         setGameEnded(true);
+        gameEndedRef.current = true;
         setWinner(null);
         // Clear disconnected players tracking
         setDisconnectedPlayers(new Set());
-        // Clear saved game state when game fully ends
-        clearGameState();
+        
+        // Save final game state to database before clearing (host only)
+        if (myPlayerIndex === 0 && onlineMode && gameId) {
+            setTimeout(() => {
+                saveGameStateToDatabase().then(() => {
+                    // Clear saved game state after saving final state
+                    clearGameState();
+                });
+            }, 300);
+        } else {
+            // Clear saved game state when game fully ends
+            clearGameState();
+        }
     };
 
     // Debug: trigger celebration modal

@@ -32,7 +32,8 @@ let CreatePost = ({ setPosts = null }) => {
         attachments: null,
         urls: null,
         location: '',
-        feelings: ''
+        feelings: '',
+        audience: 3 // Default: Only Me
     }
 
     let [postData, setPostData] = useState(postDataInit)
@@ -100,6 +101,11 @@ let CreatePost = ({ setPosts = null }) => {
 
         if (attachmentType == false && name == 'caption') {
             setAttachmentType('caption')
+        }
+
+        // Convert audience to number if it's the audience field
+        if (name === 'audience') {
+            value = parseInt(value, 10)
         }
 
         setPostData(state => {
@@ -211,6 +217,7 @@ let CreatePost = ({ setPosts = null }) => {
                     postFormData.append('photos', postData.urls)
                     postFormData.append('feelings', postData.feelings)
                     postFormData.append('location', postData.location)
+                    postFormData.append('audience', postData.audience || 3)
 
                     let res = await api.post('/post/create/', postFormData, {
                         headers: {
@@ -236,6 +243,7 @@ let CreatePost = ({ setPosts = null }) => {
                     videoPostFormData.append('photos', postData.urls)
                     videoPostFormData.append('feelings', postData.feelings)
                     videoPostFormData.append('location', postData.location)
+                    videoPostFormData.append('audience', postData.audience || 3)
 
                     let videoRes = await api.post('/post/create/', videoPostFormData, {
                         headers: {
@@ -260,6 +268,7 @@ let CreatePost = ({ setPosts = null }) => {
                     defaultFormData.append('photos', postData.urls)
                     defaultFormData.append('feelings', postData.feelings)
                     defaultFormData.append('location', postData.location)
+                    defaultFormData.append('audience', postData.audience || 3)
 
                     let defaultRes = await api.post('/post/create/', defaultFormData, {
                         headers: {
@@ -361,6 +370,13 @@ let CreatePost = ({ setPosts = null }) => {
                                 </div>
                                 <div className="cpm-location-container">
                                     <input type="text" name="location" onChange={handleCaptionField} className="form-control" placeholder="Location...." />
+                                </div>
+                                <div className="cpm-audience-container ml-2">
+                                    <select name="audience" onChange={handleCaptionField.bind(this)} className="form-control" value={postData.audience || 3}>
+                                        <option value={1}>Public</option>
+                                        <option value={2}>Friends</option>
+                                        <option value={3}>Only Me</option>
+                                    </select>
                                 </div>
                             </div>
                             <form className="cpm-form" onSubmit={preventDefault}>

@@ -127,7 +127,7 @@ const MessageOptions = () => {
                 {loading ? (
                     <div className="media-loading-state">
                         <div className="loading-spinner">
-                            <div className="spinner"></div>
+                            {/* <div className="spinner"></div> */}
                         </div>
                         <p className="loading-text">Loading media...</p>
                     </div>
