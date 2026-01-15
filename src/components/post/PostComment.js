@@ -27,10 +27,17 @@ const PostComment = ({ post, authProfilePicture, authProfile, myProfile, setAllC
     let [isSingle, setIsSingle] = useState(location.pathname.includes(`/${(post?._id || '').toString()}`));
     let [isLoadingInitial, setIsLoadingInitial] = useState(false);
     let [isLoadingMoreComments, setIsLoadingMoreComments] = useState(false);
+    // Track original comments count to maintain previous 3 comments
+    const originalCommentsCount = useRef(post?.comments?.length || 0);
 
     useEffect(() => {
         setIsSingle(location.pathname.includes(`/${(post?._id || '').toString()}`))
     }, [[], location])
+
+    // Update original comments count when post changes
+    useEffect(() => {
+        originalCommentsCount.current = post?.comments?.length || 0;
+    }, [post?._id, post?.comments?.length]);
 
     // Simulate initial loading state for comments (you can replace with actual API call)
     useEffect(() => {
@@ -196,17 +203,35 @@ const PostComment = ({ post, authProfilePicture, authProfile, myProfile, setAllC
                 )}
 
                 {/* Display actual comments when not loading */}
-                {!isLoadingInitial && (
-                    (allComments).slice(isSingle ? -allComments.length -1 : -3).map((comment, index) => {
-                        return comment && <SingleComment 
-                            isEditMode={isEditMode} 
-                            comment={comment} 
-                            postData={post} 
-                            key={index} 
-                            myProfile={myProfile}
-                        />
-                    })
-                )}
+                {!isLoadingInitial && (() => {
+                    if (isSingle) {
+                        // Show all comments on single post page
+                        return allComments.map((comment, index) => {
+                            return comment && <SingleComment 
+                                isEditMode={isEditMode} 
+                                comment={comment} 
+                                postData={post} 
+                                key={index} 
+                                myProfile={myProfile}
+                            />
+                        });
+                    } else {
+                        // Show previous 3 comments + all new comments
+                        const previous3Comments = allComments.slice(0, originalCommentsCount.current).slice(-3);
+                        const newComments = allComments.slice(originalCommentsCount.current);
+                        const commentsToShow = [...previous3Comments, ...newComments];
+                        
+                        return commentsToShow.map((comment, index) => {
+                            return comment && <SingleComment 
+                                isEditMode={isEditMode} 
+                                comment={comment} 
+                                postData={post} 
+                                key={index} 
+                                myProfile={myProfile}
+                            />
+                        });
+                    }
+                })()}
 
                 {/* Loading more comments indicator */}
                 {isLoadingMoreComments && (
@@ -216,7 +241,7 @@ const PostComment = ({ post, authProfilePicture, authProfile, myProfile, setAllC
                 )}
 
                 {/* View more comments link */}
-                {!isLoadingInitial && (post?.comments.length > 3 && !isSingle) && (
+                {!isLoadingInitial && (originalCommentsCount.current > 3 && !isSingle) && (
                     <div className="more-comment-button"> 
                         <Link to={`/post/${post._id}`}>View more comments</Link>
                     </div>
@@ -242,28 +267,30 @@ const PostComment = ({ post, authProfilePicture, authProfile, myProfile, setAllC
                     />
                     
                     {/* Show typing indicator when submitting */}
+
+                    
+                    {!isSubmittingComment && (
+                        <div 
+                            onClick={isUploadingAttachment ? null : clickCommentAttachBtn} 
+                            className={`comment-attachment ${isUploadingAttachment ? 'loading-button' : ''}`}
+                            style={{ cursor: isUploadingAttachment ? 'not-allowed' : 'pointer' }}
+                            title={isUploadingAttachment ? "Uploading..." : "Add photo"}
+                        >
+                            <input onChange={handleAttachChange} className="attachment" type="file" disabled={isUploadingAttachment} />
+                            <span className="icon">
+                                {isUploadingAttachment ? (
+                                    <LoadingSpinner size="small" variant="primary" />
+                                ) : (
+                                    <i className="far fa-camera"></i>
+                                )}
+                            </span>
+                        </div>
+                    )}
                     {isSubmittingComment && (
-                        <div className="comment-loading-overlay">
+                        <div className="comment-loading-overlay" style={{right: 10}}>
                             <TypingIndicator text="Posting..." />
                         </div>
                     )}
-                    
-                    <div 
-                        onClick={isUploadingAttachment ? null : clickCommentAttachBtn} 
-                        className={`comment-attachment ${isUploadingAttachment ? 'loading-button' : ''}`}
-                        style={{ cursor: isUploadingAttachment ? 'not-allowed' : 'pointer' }}
-                        title={isUploadingAttachment ? "Uploading..." : "Add photo"}
-                    >
-                        <input onChange={handleAttachChange} className="attachment" type="file" disabled={isUploadingAttachment} />
-                        <span className="icon">
-                            {isUploadingAttachment ? (
-                                <LoadingSpinner size="small" variant="primary" />
-                            ) : (
-                                <i className="far fa-camera"></i>
-                            )}
-                        </span>
-                    </div>
-
                 </div>
             </div>
             <div className="comment-attachment-preview">

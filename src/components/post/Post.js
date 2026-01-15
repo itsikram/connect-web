@@ -51,7 +51,11 @@ const Post = React.memo(({ data, postContainer, index }) => {
     let [shareCap, setShareCap] = useState('');
     let [placedReacts, setPlacedReacts] = useState([]);
     let [isShareModal, setIsShareModal] = useState(false);
+    let [isSharing, setIsSharing] = useState(false);
     let [isPostOption, setIsPostOption] = useState(false);
+    let [isEditAudienceModal, setIsEditAudienceModal] = useState(false);
+    let [selectedAudience, setSelectedAudience] = useState(post.audience || 1);
+    let [isUpdatingAudience, setIsUpdatingAudience] = useState(false);
     const [isLoaded, setIsloaded] = useState(false);
     let isMobile = useIsMobile();
     let navigate = useNavigate()
@@ -241,17 +245,17 @@ const Post = React.memo(({ data, postContainer, index }) => {
         if ($(target).hasClass('reacted')) {
             removeReact('post');
             $(target).removeClass('reacted')
+            setTimeout(() => {
+                $(target).parents('.post-react-container').css('display', '');
 
+            }, 500)
 
         } else {
             placeReact('like', 'post', target)
             $(target).addClass('reacted')
             $(e.currentTarget).siblings().removeClass('reacted')
+            // Keep container hidden when react is placed
         }
-        setTimeout(() => {
-            $(target).parents('.post-react-container').css('display', '');
-
-        }, 500)
 
 
     }, [removeReact, placeReact])
@@ -262,16 +266,17 @@ const Post = React.memo(({ data, postContainer, index }) => {
         if ($(e.currentTarget).hasClass('reacted')) {
             removeReact('post');
             $(e.currentTarget).removeClass('reacted')
+            setTimeout(() => {
+                $(target).parents('.post-react-container').css('display', '');
+
+            }, 500)
 
         } else {
             placeReact('love', 'post')
             $(e.currentTarget).siblings().removeClass('reacted')
             $(e.currentTarget).addClass('reacted')
+            // Keep container hidden when react is placed
         }
-        setTimeout(() => {
-            $(target).parents('.post-react-container').css('display', '');
-
-        }, 500)
 
     }, [removeReact, placeReact])
 
@@ -282,16 +287,17 @@ const Post = React.memo(({ data, postContainer, index }) => {
         if ($(e.currentTarget).hasClass('reacted')) {
             removeReact();
             $(e.currentTarget).removeClass('reacted')
+            setTimeout(() => {
+                $(target).parents('.post-react-container').css('display', '');
+
+            }, 500)
         } else {
             placeReact('haha', 'post', target)
             $(e.currentTarget).siblings().removeClass('reacted')
 
             $(e.currentTarget).addClass('reacted')
+            // Keep container hidden when react is placed
         }
-        setTimeout(() => {
-            $(target).parents('.post-react-container').css('display', '');
-
-        }, 500)
     }, [removeReact, placeReact])
 
     let likeMouseOver = useCallback(e => {
@@ -318,12 +324,21 @@ const Post = React.memo(({ data, postContainer, index }) => {
 
     let onClickShareNow = useCallback(async (e) => {
         e.preventDefault();
-        let res = await api.post('post/share', { postId: post._id, caption: shareCap })
+        setIsSharing(true);
+        try {
+            let res = await api.post('post/share', { postId: post._id, caption: shareCap })
 
-        if (res.status == 200) {
-            setTotalShares(state => state + 1)
-            dispatch(addPost(res.data.post))
-            setIsShareModal(false)
+            if (res.status == 200) {
+                setTotalShares(state => state + 1)
+                dispatch(addPost(res.data.post))
+                setIsShareModal(false)
+                setShareCap('') // Clear the caption after successful share
+            }
+        } catch (error) {
+            console.error('Error sharing post:', error)
+            alert('Failed to share post. Please try again.')
+        } finally {
+            setIsSharing(false)
         }
     }, [dispatch, post._id, shareCap])
 
@@ -359,6 +374,36 @@ const Post = React.memo(({ data, postContainer, index }) => {
     let postOptionClick = useCallback(e => {
         setIsPostOption(prev => !prev)
     }, [])
+
+    let editAudienceClick = useCallback(e => {
+        setIsEditAudienceModal(true)
+        setIsPostOption(false)
+        setSelectedAudience(post.audience || 1)
+    }, [post.audience])
+
+    let onCloseEditAudience = useCallback(() => {
+        setIsEditAudienceModal(false)
+    }, [])
+
+    let onSaveAudience = useCallback(async () => {
+        setIsUpdatingAudience(true)
+        try {
+            let res = await api.post('/post/update', { 
+                postId: post._id, 
+                audience: selectedAudience 
+            })
+            if (res.status === 200) {
+                setIsEditAudienceModal(false)
+                // Optionally refresh the post or show success message
+                alert('Audience updated successfully')
+            }
+        } catch (error) {
+            console.error('Error updating audience:', error)
+            alert('Failed to update audience')
+        } finally {
+            setIsUpdatingAudience(false)
+        }
+    }, [post._id, selectedAudience])
 
 
     // useEffect(() => {
@@ -446,7 +491,7 @@ const Post = React.memo(({ data, postContainer, index }) => {
                                         {isPostOption && (
                                             <div className="post-option-menu" ref={postOptionMenu} >
                                                 <ul>
-                                                    {isAuth && (<><li onClick={gotoEdit}>Edit Post</li><li>Edit Audience</li></>)}
+                                                    {isAuth && (<><li onClick={gotoEdit}>Edit Post</li><li onClick={editAudienceClick}>Edit Audience</li></>)}
                                                     <li>Report This Post</li>
                                                 </ul>
                                             </div>
@@ -655,9 +700,30 @@ const Post = React.memo(({ data, postContainer, index }) => {
                                                             </div>
                                                         </div>
                                                         <div className="share-post-body my-3">
-                                                            <textarea className="form-control" rows="3" placeholder="What's On Your Mind?" onChange={(e) => setShareCap(e.target.value)} value={shareCap}></textarea>
+                                                            <textarea 
+                                                                className="form-control" 
+                                                                rows="3" 
+                                                                placeholder={isSharing ? "Sharing..." : "What's On Your Mind?"} 
+                                                                onChange={(e) => setShareCap(e.target.value)} 
+                                                                value={shareCap}
+                                                                disabled={isSharing}
+                                                                style={{ opacity: isSharing ? 0.7 : 1 }}
+                                                            ></textarea>
                                                             <div className="share-post-button text-end mt-2">
-                                                                <button className="btn btn-primary" onClick={onClickShareNow}>Share Now</button>
+                                                                <button 
+                                                                    className="btn btn-primary" 
+                                                                    onClick={onClickShareNow}
+                                                                    disabled={isSharing}
+                                                                >
+                                                                    {isSharing ? (
+                                                                        <>
+                                                                            <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                                                                            Sharing...
+                                                                        </>
+                                                                    ) : (
+                                                                        'Share Now'
+                                                                    )}
+                                                                </button>
                                                             </div>
                                                         </div>
 
@@ -734,7 +800,7 @@ const Post = React.memo(({ data, postContainer, index }) => {
                                     {isPostOption && (
                                         <div className="post-option-menu" ref={postOptionMenu} >
                                             <ul>
-                                                {isAuth && (<><li onClick={gotoEdit}>Edit Post</li><li>Edit Audience</li></>)}
+                                                {isAuth && (<><li onClick={gotoEdit}>Edit Post</li><li onClick={editAudienceClick}>Edit Audience</li></>)}
                                                 <li>Report This Post</li>
                                             </ul>
                                         </div>
@@ -886,9 +952,30 @@ const Post = React.memo(({ data, postContainer, index }) => {
                                                 </div>
                                             </div>
                                             <div className="share-post-body my-3">
-                                                <textarea className="form-control" onChange={(e) => setShareCap(e.target.value)} value={shareCap} ></textarea>
+                                                <textarea 
+                                                    className="form-control" 
+                                                    placeholder={isSharing ? "Sharing..." : "What's On Your Mind?"}
+                                                    onChange={(e) => setShareCap(e.target.value)} 
+                                                    value={shareCap}
+                                                    disabled={isSharing}
+                                                    style={{ opacity: isSharing ? 0.7 : 1 }}
+                                                    rows="3"
+                                                ></textarea>
                                                 <div className="share-post-button text-end mt-2">
-                                                    <button className="btn btn-primary" onClick={onClickShareNow}>Share Now</button>
+                                                    <button 
+                                                        className="btn btn-primary" 
+                                                        onClick={onClickShareNow}
+                                                        disabled={isSharing}
+                                                    >
+                                                        {isSharing ? (
+                                                            <>
+                                                                <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                                                                Sharing...
+                                                            </>
+                                                        ) : (
+                                                            'Share Now'
+                                                        )}
+                                                    </button>
                                                 </div>
                                             </div>
 
@@ -911,12 +998,119 @@ const Post = React.memo(({ data, postContainer, index }) => {
                 )
                 break;
         }
-    }, [type, post, index, postAuthorPP, isPostOption, isLoaded, postPhoto, placedReacts, totalReacts, totalComments, totalShares, reactType, isShareModal, shareCap, myProfile, isAuth, hideThisPost, postOptionClick, gotoEdit, displayedPost, likeBtnOnClick, likeMouseOver, commentOnClick, shareOnClick, onCloseShareReq, onClickShareNow, isMobile, allComments, authProfileId, authProfilePicture, likeOnClick, loveOnClick, hahaOnClick, postHeaderClick])
+    }, [type, post, index, postAuthorPP, isPostOption, isLoaded, postPhoto, placedReacts, totalReacts, totalComments, totalShares, reactType, isShareModal, shareCap, myProfile, isAuth, hideThisPost, postOptionClick, gotoEdit, displayedPost, likeBtnOnClick, likeMouseOver, commentOnClick, shareOnClick, onCloseShareReq, onClickShareNow, isMobile, allComments, authProfileId, authProfilePicture, likeOnClick, loveOnClick, hahaOnClick, postHeaderClick, editAudienceClick])
 
 
     return (
         <>
             {PostContent}
+            {/* Edit Audience Modal */}
+            <ModalContainer
+                title="Edit Audience"
+                style={{ width: isMobile ? '95%' : "500px", top: "50%" }}
+                isOpen={isEditAudienceModal}
+                onRequestClose={onCloseEditAudience}
+                id="edit-audience-modal"
+            >
+                <div className="modal-header">
+                    <h3 className="modal-title">Edit Audience</h3>
+                    <div onClick={onCloseEditAudience} className="modal-close-btn text-danger">
+                        <i className="far fa-times"></i>
+                    </div>
+                </div>
+                <div className="modal-body">
+                    <div className="edit-audience-container">
+                        <p className="mb-3">Who can see this post?</p>
+                        <div className="audience-options">
+                            <div 
+                                className={`audience-option ${selectedAudience === 1 ? 'selected' : ''}`}
+                                onClick={() => setSelectedAudience(1)}
+                                style={{ 
+                                    padding: '12px', 
+                                    margin: '8px 0', 
+                                    border: selectedAudience === 1 ? '2px solid #007bff' : '1px solid #ddd', 
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    backgroundColor: selectedAudience === 1 ? '#e7f3ff' : '#fff'
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <i className="far fa-globe" style={{ fontSize: '20px', color: '#007bff' }}></i>
+                                    <div>
+                                        <strong>Public</strong>
+                                        <p className="mb-0 text-muted" style={{ fontSize: '14px' }}>Anyone can see this post</p>
+                                    </div>
+                                    {selectedAudience === 1 && (
+                                        <i className="far fa-check-circle" style={{ marginLeft: 'auto', color: '#007bff', fontSize: '20px' }}></i>
+                                    )}
+                                </div>
+                            </div>
+                            <div 
+                                className={`audience-option ${selectedAudience === 2 ? 'selected' : ''}`}
+                                onClick={() => setSelectedAudience(2)}
+                                style={{ 
+                                    padding: '12px', 
+                                    margin: '8px 0', 
+                                    border: selectedAudience === 2 ? '2px solid #007bff' : '1px solid #ddd', 
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    backgroundColor: selectedAudience === 2 ? '#e7f3ff' : '#fff'
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <i className="far fa-user-friends" style={{ fontSize: '20px', color: '#007bff' }}></i>
+                                    <div>
+                                        <strong>Friends</strong>
+                                        <p className="mb-0 text-muted" style={{ fontSize: '14px' }}>Only your friends can see this post</p>
+                                    </div>
+                                    {selectedAudience === 2 && (
+                                        <i className="far fa-check-circle" style={{ marginLeft: 'auto', color: '#007bff', fontSize: '20px' }}></i>
+                                    )}
+                                </div>
+                            </div>
+                            <div 
+                                className={`audience-option ${selectedAudience === 3 ? 'selected' : ''}`}
+                                onClick={() => setSelectedAudience(3)}
+                                style={{ 
+                                    padding: '12px', 
+                                    margin: '8px 0', 
+                                    border: selectedAudience === 3 ? '2px solid #007bff' : '1px solid #ddd', 
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    backgroundColor: selectedAudience === 3 ? '#e7f3ff' : '#fff'
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <i className="far fa-lock" style={{ fontSize: '20px', color: '#007bff' }}></i>
+                                    <div>
+                                        <strong>Only Me</strong>
+                                        <p className="mb-0 text-muted" style={{ fontSize: '14px' }}>Only you can see this post</p>
+                                    </div>
+                                    {selectedAudience === 3 && (
+                                        <i className="far fa-check-circle" style={{ marginLeft: 'auto', color: '#007bff', fontSize: '20px' }}></i>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="edit-audience-button text-end mt-3">
+                            <button 
+                                className="btn btn-secondary me-2" 
+                                onClick={onCloseEditAudience}
+                                disabled={isUpdatingAudience}
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                className="btn btn-primary" 
+                                onClick={onSaveAudience}
+                                disabled={isUpdatingAudience}
+                            >
+                                {isUpdatingAudience ? 'Saving...' : 'Save'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </ModalContainer>
         </>
 
     )

@@ -1346,8 +1346,12 @@
   left: -60px;
 }
 
-.chat-message-container:hover .chat-message-options {
+.chat-message-container:hover .chat-message-options:not(.options-hidden) {
   display: flex;
+}
+
+.chat-message-options.options-hidden {
+  display: none !important;
 }
 
 .chat-message-option {

@@ -79,7 +79,7 @@ import Youtebe from "./Youtebe.js";
 
 import SingleVideo from "../components/downloads/SingleVideo.js";
 import SavedVideos from "./SavedVideos.js";
-import LudoGame from "./LudoGame";
+import LudoGame from "./ludo";
 import ChessGame from "./ChessGame";
 import VideoPlayer from "./VideoPlayer.js";
 
@@ -463,7 +463,20 @@ const Main = () => {
                 }
             }
             
+            // Play notification sound and show toast
             notify(updatedMessage.message, senderName, senderPP, '/message/' + updatedMessage.senderId)
+
+            // Check if user is on message page (use window.location to get current pathname)
+            const isOnMessagePage = window.location.pathname.startsWith('/message');
+            
+            // If not on message page, open sticky chat box
+            if (!isOnMessagePage && updatedMessage.senderId) {
+                // Dispatch event to open sticky chat box
+                const openChatEvent = new CustomEvent('openStickyChat', {
+                    detail: { profileId: updatedMessage.senderId }
+                });
+                window.dispatchEvent(openChatEvent);
+            }
 
             // Show browser notification for new messages
             if (webNotificationService.isPermissionGranted) {

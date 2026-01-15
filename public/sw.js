@@ -92,6 +92,13 @@ self.addEventListener('fetch', (event) => {
   const request = event.request;
   const url = new URL(request.url);
 
+  // Skip caching for localhost
+  const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]' ||
+                      self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1' || self.location.hostname === '[::1]';
+  if (isLocalhost) {
+    return; // Let browser handle requests directly, no caching
+  }
+
   // Skip non-GET requests
   if (request.method !== 'GET') {
     return;

@@ -33,6 +33,12 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   
+  // Skip caching for localhost
+  const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]';
+  if (isLocalhost) {
+    return; // Let browser handle requests directly, no caching
+  }
+  
   // Pass through Socket.IO requests without intercepting
   if (url.pathname.startsWith('/socket.io/')) {
     return;

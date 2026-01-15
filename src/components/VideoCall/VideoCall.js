@@ -28,6 +28,7 @@ const VideoCall = ({ myId }) => {
     const [incomingCall, setIncomingCall] = useState(null);
     const [isMinimized, setIsMinimized] = useState(false);
     const [callDuration, setCallDuration] = useState(0);
+    const [outgoingCallStatus, setOutgoingCallStatus] = useState('');
     const callStartTime = useRef(null);
 
     const myVideo = useRef();
@@ -145,6 +146,7 @@ const VideoCall = ({ myId }) => {
         setIsBackCamera(false);
         setIsMinimized(false);
         setCallDuration(0);
+        setOutgoingCallStatus('');
         if (minimizedDurationInterval.current) {
             clearInterval(minimizedDurationInterval.current);
             minimizedDurationInterval.current = null;
@@ -463,6 +465,38 @@ const VideoCall = ({ myId }) => {
     }, [mySettings, receivingCall, incomingCall]);
 
     useEffect(() => {
+        // Listen for video calls initiated by this user (outgoing calls from sticky chat box)
+        const handleOutgoingVideoCall = async (event) => {
+            const { to, channelName, callerName, callerProfilePic } = event.detail;
+            console.log('VideoCall - Starting outgoing video call to', to, 'channel:', channelName);
+            console.log('VideoCall - Friend info:', { callerName, callerProfilePic });
+            setIsVideoCall(true);
+            setReceivingCall(false);
+            setCaller(to);
+            setCallerName(callerName || 'Friend');
+            setCallerProfilePic(callerProfilePic || config?.defaultProfile);
+            setCurrentChannel(channelName);
+            setIncomingCall({ from: myId, to, channelName, name: callerName || 'Friend', profilePic: callerProfilePic });
+            setOutgoingCallStatus('Calling...');
+            console.log('VideoCall - Outgoing call modal should now be visible');
+
+            // Start local video immediately when initiating call
+            try {
+                console.log('VideoCall - Starting local video for outgoing call');
+                localTracks.current = await AgoraRTC.createMicrophoneAndCameraTracks();
+
+                // Show local video immediately
+                if (myVideo.current && localTracks.current[1]) {
+                    localTracks.current[1].play(myVideo.current);
+                    console.log('VideoCall - Local video started for outgoing call');
+                }
+            } catch (error) {
+                console.error('VideoCall - Failed to start local video for outgoing call:', error);
+            }
+        };
+
+        window.addEventListener('startVideoCall', handleOutgoingVideoCall);
+
         socket.on('incoming-video-call', async ({ from, channelName, isAudio, callerName, callerProfilePic }) => {
             socket.emit('update-call-status', { to: from, status: "Ringing..." });
 
@@ -501,20 +535,38 @@ const VideoCall = ({ myId }) => {
             if (!isAudio) {
                 console.log('Agora video call accepted, joining channel:', channelName);
                 stopRingtone();
+                setOutgoingCallStatus('');
                 startCall(channelName);
             }
         });
+
+        // Outgoing call status updates from callee
+        const handleUpdatedCallStatus = ({ from, status }) => {
+            // Only update if this status is for the current friend and we're the caller waiting
+            if (!callAccepted && !receivingCall && caller && from === caller) {
+                setOutgoingCallStatus(status || '');
+            }
+        };
+        socket.on('updated-call-status', handleUpdatedCallStatus);
 
         socket.on('video-call-ended', async () => {
             console.log('VideoCall: Received video-call-ended event from remote user');
             // IMPORTANT: Do local cleanup ONLY. Do NOT re-emit end to avoid loops.
             stopRingtone();
+            setOutgoingCallStatus('');
             endCall();
         });
         socket.on('video-call-cancelled', async () => {
             console.log('VideoCall: Received video-call-cancelled event from remote user');
             // IMPORTANT: Do local cleanup ONLY. Do NOT re-emit end to avoid loops.
             stopRingtone();
+            setOutgoingCallStatus('');
+            endCall(true);
+        });
+        socket.on('video-call-rejected', async () => {
+            console.log('VideoCall: Received video-call-rejected event from remote user');
+            stopRingtone();
+            setOutgoingCallStatus('');
             endCall(true);
         });
 
@@ -532,9 +584,11 @@ const VideoCall = ({ myId }) => {
             socket.off('call-accepted');
             socket.off('video-call-ended');
             socket.off('apply-video-filter');
+            socket.off('updated-call-status', handleUpdatedCallStatus);
+            window.removeEventListener('startVideoCall', handleOutgoingVideoCall);
             stopRingtone(); // Stop ringtone on cleanup
         };
-    }, [startCall, cleanupVideoCall, endCall]);
+    }, [startCall, cleanupVideoCall, endCall, myId, callAccepted, receivingCall, caller]);
 
     // Cleanup on component unmount
     useEffect(() => {
@@ -790,7 +844,10 @@ const VideoCall = ({ myId }) => {
                         {callAccepted ? ` • ${formatDuration(callDuration)}` : ''}
                     </h2>
                     {!isFullscreen && (
-                        <p className='fs-4 text-center'>{receivingCall && !callAccepted && `${callerName} Calling you`}</p>
+                        <p className='fs-4 text-center'>
+                            {receivingCall && !callAccepted && `${callerName} Calling you`}
+                            {!receivingCall && !callAccepted && `Calling ${callerName}${outgoingCallStatus ? ` • ${outgoingCallStatus}` : '...'}`}
+                        </p>
                     )}
 
                     {/* Caller Profile Section - shown when receiving call but not accepted yet */}

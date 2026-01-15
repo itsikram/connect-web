@@ -34,6 +34,7 @@ const SingleMessage = ({ index, msg, friendProfile, messages, setReplyData, setI
     const [audioDuration, setAudioDuration] = useState(0)
     const [audioCurrent, setAudioCurrent] = useState(0)
     const [hasParentComment, setHasParentComment] = useState(false)
+    const [showOptions, setShowOptions] = useState(true)
     const audioRef = useRef(null)
 
     useEffect(() => {
@@ -84,13 +85,23 @@ const SingleMessage = ({ index, msg, friendProfile, messages, setReplyData, setI
     }, [])
 
 
+    const hideOptions = () => {
+        setShowOptions(false);
+        // Reset after a short delay to allow hover to work again
+        setTimeout(() => {
+            setShowOptions(true);
+        }, 100);
+    }
+
     const handleDeleteMessage = async (e) => {
         const messageId = $(e.currentTarget).data('id');
+        hideOptions();
         socket.emit('deleteMessage', messageId);
     }
 
     const handleLikeMessage = async (e) => {
         const messageId = $(e.currentTarget).data('id');
+        hideOptions();
 
         if (!isReactedByMe) {
             const postReactRes = await api.post('/message/addReact', { messageId, myId })
@@ -108,6 +119,7 @@ const SingleMessage = ({ index, msg, friendProfile, messages, setReplyData, setI
 
     const handleReplyMessage = async (e) => {
         const messageId = $(e.currentTarget).data('id');
+        hideOptions();
         setIsReplying(true)
         setIsPreview(true)
         setReplyData({
@@ -116,6 +128,7 @@ const SingleMessage = ({ index, msg, friendProfile, messages, setReplyData, setI
         })
     }
     const handleSpeakMessage = async (e) => {
+        hideOptions();
         socket.emit('speak_message', {msgId:$(e.currentTarget).data('id'), friendId});
     }
 
@@ -291,7 +304,7 @@ const SingleMessage = ({ index, msg, friendProfile, messages, setReplyData, setI
                         <UserPP profilePic={`${friendProfile.profilePic}`} profile={friendProfile._id} active={friendProfile.isActive} ></UserPP>
                     </div>
                     <div className={`chat-message ${isValidUrl(messages.attachment) && 'has-attachment'}`}>
-                        {!isCallMessage && <div className='chat-message-options'>
+                        {!isCallMessage && <div className={`chat-message-options ${!showOptions ? 'options-hidden' : ''}`}>
                             <button type='button' data-id={msg._id} className={`chat-message-option like ${isReactedByMe == true ? 'reacted' : ''}`} onClick={handleLikeMessage.bind(this)}><i className="fa fa-thumbs-up"></i></button>
                             <button type='button' data-id={msg._id} className={`chat-message-option reply`} onClick={handleReplyMessage.bind(this)}><i className="fa fa-reply"></i></button>
                             <button type='button' data-id={msg._id} className='chat-message-option share' onClick={handleSpeakMessage.bind(this)}><i className="fa fa-volume-up"></i></button>
@@ -350,7 +363,7 @@ const SingleMessage = ({ index, msg, friendProfile, messages, setReplyData, setI
 
 
                     <div className={`chat-message ${isValidUrl(messages.attachment) && 'has-attachment'}`}>
-                        {!isCallMessage && <div className='chat-message-options'>
+                        {!isCallMessage && <div className={`chat-message-options ${!showOptions ? 'options-hidden' : ''}`}>
                             <button type='button' data-id={msg._id} className={`chat-message-option like ${isReactedByMe == true ? 'reacted' : ''}`} onClick={handleLikeMessage.bind(this)}><i className="fa fa-thumbs-up"></i></button>
                             <button type='button' data-id={msg._id} className={`chat-message-option reply`} onClick={handleReplyMessage.bind(this)}><i className="fa fa-reply"></i></button>
 

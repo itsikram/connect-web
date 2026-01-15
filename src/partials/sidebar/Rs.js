@@ -58,7 +58,12 @@ let RightSidebar = () => {
 
     let redirectToMessage = (e) => {
         let profileId = e.currentTarget.dataset.profile
-        navigate('/message/' + profileId)
+        
+        // Dispatch custom event to open sticky chat box
+        const event = new CustomEvent('openStickyChat', {
+            detail: { profileId }
+        });
+        window.dispatchEvent(event);
     }
 
     return (

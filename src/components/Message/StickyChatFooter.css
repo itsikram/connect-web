@@ -1,0 +1,385 @@
+/* Sticky Chat Footer Styles */
+.sticky-chat-footer-container {
+    background: rgba(36, 37, 38, 0.95);
+    backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(47, 48, 49, 0.8);
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Preview Section */
+.sticky-chat-preview {
+    position: relative;
+    width: 100%;
+    max-height: 120px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(47, 48, 49, 0.8);
+}
+
+.sticky-chat-preview-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.sticky-chat-preview-close {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 24px;
+    height: 24px;
+    background: rgba(255, 68, 68, 0.9);
+    border: none;
+    border-radius: 50%;
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    transition: all 0.2s ease;
+    z-index: 10;
+}
+
+.sticky-chat-preview-close:hover {
+    background: rgba(255, 68, 68, 1);
+    transform: scale(1.1);
+}
+
+/* Recording Bar */
+.sticky-chat-recording-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: rgba(255, 77, 77, 0.1);
+    border: 1px solid rgba(255, 77, 77, 0.3);
+    border-radius: 8px;
+}
+
+.sticky-chat-recording-dot {
+    width: 10px;
+    height: 10px;
+    background: #ff4d4d;
+    border-radius: 50%;
+    animation: recordingPulse 1.5s infinite;
+}
+
+@keyframes recordingPulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.6;
+        transform: scale(1.2);
+    }
+}
+
+.sticky-chat-recording-time {
+    color: #E4E6EA;
+    font-size: 13px;
+    font-weight: 500;
+    min-width: 45px;
+    text-align: center;
+}
+
+.sticky-chat-recording-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.sticky-chat-recording-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    transition: all 0.2s ease;
+}
+
+.sticky-chat-recording-btn.send {
+    background: #00C851;
+    color: white;
+}
+
+.sticky-chat-recording-btn.send:hover {
+    background: #00A043;
+    transform: scale(1.1);
+}
+
+.sticky-chat-recording-btn.cancel {
+    background: rgba(255, 77, 77, 0.3);
+    color: #ff4d4d;
+}
+
+.sticky-chat-recording-btn.cancel:hover {
+    background: rgba(255, 77, 77, 0.5);
+    transform: scale(1.1);
+}
+
+/* Input Wrapper */
+.sticky-chat-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+/* Attachment Buttons */
+.sticky-chat-attachment-buttons {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+}
+
+.sticky-chat-input-wrapper:has(.sticky-chat-input.focused) .sticky-chat-attachment-buttons {
+    display: none;
+}
+
+.sticky-chat-attachment-btn {
+    width: 36px;
+    height: 36px;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(47, 48, 49, 0.8);
+    border-radius: 50%;
+    color: #B0B3B8;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.sticky-chat-attachment-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.12);
+    color: #E4E6EA;
+    border-color: rgba(0, 212, 255, 0.5);
+    transform: scale(1.05);
+}
+
+.sticky-chat-attachment-btn:active:not(:disabled) {
+    transform: scale(0.95);
+}
+
+.sticky-chat-attachment-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.sticky-chat-attachment-btn.loading {
+    opacity: 0.7;
+    cursor: wait;
+}
+
+.sticky-chat-attachment-btn.recording {
+    background: rgba(255, 77, 77, 0.2);
+    border-color: rgba(255, 77, 77, 0.5);
+    color: #ff4d4d;
+    animation: recordingGlow 2s infinite;
+}
+
+@keyframes recordingGlow {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(255, 77, 77, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 4px rgba(255, 77, 77, 0);
+    }
+}
+
+/* Input Container */
+.sticky-chat-input-container {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    transition: all 0.2s ease;
+}
+
+.sticky-chat-input-wrapper:has(.sticky-chat-input.focused) .sticky-chat-input-container {
+    margin-left: 0;
+    margin-right: 8px;
+}
+
+.sticky-chat-input {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(47, 48, 49, 0.8);
+    border-radius: 20px;
+    padding: 8px 14px;
+    color: #E4E6EA;
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+.sticky-chat-input::placeholder {
+    color: #65676B;
+}
+
+.sticky-chat-input:focus,
+.sticky-chat-input.focused {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(0, 212, 255, 0.6);
+    box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.2);
+}
+
+.sticky-chat-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Action Buttons */
+.sticky-chat-action-buttons {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    position: relative;
+}
+
+.sticky-chat-action-btn {
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.sticky-chat-action-btn.send {
+    background: linear-gradient(135deg, #00D4FF, #0099CC);
+    color: white;
+    box-shadow: 0 2px 8px rgba(0, 212, 255, 0.3);
+}
+
+.sticky-chat-action-btn.send:hover:not(:disabled) {
+    background: linear-gradient(135deg, #33E0FF, #00D4FF);
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(0, 212, 255, 0.4);
+}
+
+.sticky-chat-action-btn.send:active:not(:disabled) {
+    transform: scale(0.95);
+}
+
+.sticky-chat-action-btn.send:disabled,
+.sticky-chat-action-btn.send.loading {
+    opacity: 0.7;
+    cursor: wait;
+}
+
+.sticky-chat-action-btn.emoji {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(47, 48, 49, 0.8);
+    color: #F4D52F;
+}
+
+.sticky-chat-action-btn.emoji:hover {
+    background: rgba(255, 255, 255, 0.12);
+    transform: scale(1.1);
+    border-color: rgba(244, 213, 47, 0.5);
+}
+
+.sticky-chat-action-btn.like {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(47, 48, 49, 0.8);
+    color: #E4E6EA;
+    font-size: 18px;
+}
+
+.sticky-chat-action-btn.like:hover {
+    background: rgba(255, 255, 255, 0.12);
+    transform: scale(1.1);
+}
+
+/* Emoji Picker */
+.sticky-chat-emoji-picker {
+    position: fixed;
+    z-index: 99999;
+    background: #242526;
+    backdrop-filter: blur(30px);
+    border: 1px solid rgba(47, 48, 49, 1);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1);
+    animation: slideUpFadeIn 0.2s ease-out;
+}
+
+@keyframes slideUpFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Responsive Design */
+@media (max-width: 480px) {
+    .sticky-chat-footer-container {
+        padding: 8px 10px;
+    }
+
+    .sticky-chat-attachment-btn,
+    .sticky-chat-action-btn {
+        width: 32px;
+        height: 32px;
+        font-size: 13px;
+    }
+
+    .sticky-chat-input {
+        padding: 6px 12px;
+        font-size: 13px;
+    }
+
+    .sticky-chat-emoji-picker {
+        right: -20px;
+        transform-origin: bottom right;
+    }
+}
+
+/* Focus States for Accessibility */
+.sticky-chat-attachment-btn:focus,
+.sticky-chat-action-btn:focus,
+.sticky-chat-input:focus {
+    outline: 2px solid #00D4FF;
+    outline-offset: 2px;
+}
+
+/* Loading Spinner Animation */
+.sticky-chat-attachment-btn.loading i,
+.sticky-chat-action-btn.loading i {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}

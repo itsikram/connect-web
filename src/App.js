@@ -13,6 +13,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { CallMinimizeProvider } from './contexts/CallMinimizeContext';
 import DownloadAppModal from './components/modal/DownloadAppModal';
 import ErrorBoundary from './components/ErrorBoundary';
+import StickyChatBoxContainer from './components/Message/StickyChatBoxContainer';
 import './utils/configValidation';
 window.process = process;
 
@@ -60,6 +61,7 @@ function App() {
             {/* <SimpleEmotionTest /> */}
             <Main />
             <DownloadAppModal isOpen={showDownloadModal} onClose={handleCloseDownloadModal} />
+            <StickyChatBoxContainer />
           </Fragment>
         </CallMinimizeProvider>
       </AuthProvider>
