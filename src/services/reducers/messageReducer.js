@@ -39,19 +39,39 @@ const messageReducer = (state = initialState, action) => {
 
         case NEW_MESSAGE: {
             const newMsg = action.payload
+            const myProfileId = action.myProfileId // Optional: current user's profile ID
             
             // Validate the message payload
-            if (!newMsg || !newMsg.senderId) {
+            if (!newMsg || (!newMsg.senderId && !newMsg.receiverId)) {
                 console.warn('NEW_MESSAGE: Invalid message payload', newMsg);
                 return state;
             }
 
-            const contactId = newMsg.senderId
+            // Determine contact ID: if I'm the sender, use receiverId; if I'm the receiver, use senderId
+            const contactId = (myProfileId && newMsg.senderId === myProfileId) 
+                ? newMsg.receiverId 
+                : newMsg.senderId;
+            
+            if (!contactId) {
+                console.warn('NEW_MESSAGE: Could not determine contactId', newMsg);
+                return state;
+            }
+
             const otherContacts = state.filter(state => state?.person?._id !== contactId)
             const updatedContact = state.filter(state => state?.person?._id === contactId)
 
             // Check if the contact exists before trying to access its messages
             if (updatedContact.length > 0 && updatedContact[0]) {
+                // Check if this message already exists to prevent duplicates
+                const messageExists = updatedContact[0].messages?.some(
+                    msg => msg._id?.toString() === newMsg._id?.toString()
+                );
+                
+                if (messageExists) {
+                    // Message already exists, just return current state
+                    return state;
+                }
+                
                 // Create a deep copy to avoid mutation
                 const updatedContactData = {
                     ...updatedContact[0],

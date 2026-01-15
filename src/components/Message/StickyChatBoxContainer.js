@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import StickyChatBox from './StickyChatBox';
 import api from '../../api/api';
 import './StickyChatBox.css';
@@ -6,24 +6,30 @@ import './StickyChatBox.css';
 const StickyChatBoxContainer = () => {
     const [openChats, setOpenChats] = useState([]);
     const [maxChats] = useState(5); // Maximum number of open chats
+    const openChatsRef = useRef(openChats);
 
-    // Listen for open chat events from anywhere in the app
+    // Keep ref in sync with state
     useEffect(() => {
-        const handleOpenChat = (event) => {
-            const { profileId } = event.detail;
-            openChat(profileId);
+        openChatsRef.current = openChats;
+    }, [openChats]);
+
+    // Expose function to check if chat is open (for external use)
+    useEffect(() => {
+        window.isStickyChatOpen = (profileId) => {
+            return openChatsRef.current.some(chat => chat.friendProfile?._id === profileId);
         };
-
-        window.addEventListener('openStickyChat', handleOpenChat);
-
         return () => {
-            window.removeEventListener('openStickyChat', handleOpenChat);
+            delete window.isStickyChatOpen;
         };
     }, []);
 
+    const closeChat = useCallback((profileId) => {
+        setOpenChats(prev => prev.filter(chat => chat.friendProfile?._id !== profileId));
+    }, []);
+
     const openChat = useCallback(async (profileId) => {
-        // Check if chat is already open
-        const existingChat = openChats.find(chat => chat.friendProfile?._id === profileId);
+        // Check if chat is already open using ref to get latest state
+        const existingChat = openChatsRef.current.find(chat => chat.friendProfile?._id === profileId);
         if (existingChat && existingChat.friendProfile?._id) {
             // If minimized, maximize it
             setOpenChats(prev => prev.map(chat => 
@@ -31,16 +37,17 @@ const StickyChatBoxContainer = () => {
                     ? { ...chat, isMinimized: false }
                     : chat
             ));
-            return;
+            return true; // Return true to indicate chat was already open
         }
 
         // If max chats reached, close the oldest minimized chat or the last one
-        if (openChats.length >= maxChats) {
-            const minimizedChat = openChats.find(chat => chat.isMinimized);
+        if (openChatsRef.current.length >= maxChats) {
+            const minimizedChat = openChatsRef.current.find(chat => chat.isMinimized);
             if (minimizedChat) {
-                closeChat(minimizedChat.friendProfile?._id);
+                setOpenChats(prev => prev.filter(chat => chat.friendProfile?._id !== minimizedChat.friendProfile?._id));
             } else {
-                closeChat(openChats[openChats.length - 1].friendProfile?._id);
+                const lastChat = openChatsRef.current[openChatsRef.current.length - 1];
+                setOpenChats(prev => prev.filter(chat => chat.friendProfile?._id !== lastChat.friendProfile?._id));
             }
         }
 
@@ -82,10 +89,7 @@ const StickyChatBoxContainer = () => {
             // Remove chat on error or show error state
             setOpenChats(prev => prev.filter(chat => chat.id !== newChat.id));
         }
-    }, [openChats, maxChats]);
-
-    const closeChat = useCallback((profileId) => {
-        setOpenChats(prev => prev.filter(chat => chat.friendProfile?._id !== profileId));
+        return false; // Return false to indicate new chat was opened
     }, []);
 
     const minimizeChat = useCallback((profileId) => {
@@ -95,6 +99,20 @@ const StickyChatBoxContainer = () => {
                 : chat
         ));
     }, []);
+
+    // Listen for open chat events from anywhere in the app
+    useEffect(() => {
+        const handleOpenChat = (event) => {
+            const { profileId } = event.detail;
+            openChat(profileId);
+        };
+
+        window.addEventListener('openStickyChat', handleOpenChat);
+
+        return () => {
+            window.removeEventListener('openStickyChat', handleOpenChat);
+        };
+    }, [openChat]);
 
     // Calculate positions for chat boxes
     const getChatPosition = (index, total) => {

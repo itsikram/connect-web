@@ -14,12 +14,13 @@ export const addMessages = (messages,reset=false) => {
     }
 }
 
-export const newMessage = (message => {
+export const newMessage = (message, myProfileId = null) => {
     return {
         type: NEW_MESSAGE,
         payload: message,
+        myProfileId: myProfileId,
     }
-})
+}
 
 export const seenMessage = (contactId => {
     return {

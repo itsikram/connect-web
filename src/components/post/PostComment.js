@@ -151,30 +151,28 @@ const PostComment = ({ post, authProfilePicture, authProfile, myProfile, setAllC
                     post: (post._id).toString()
                 })
 
-                let newComment = {
-                    body: commentData.body,
-                    author: myProfile,
-                    post: post._id,
-                    reacts: [],
-                    replies: []
-                }
-
-                setAllComments(state => {
-                    let cr = [
-                        ...state,
-                        ...[newComment],
-
-                    ]
-                    return cr;
-
-                })
-
                 if (res.status === 200) {
                     let data = res.data
-                    data.author = myProfile
+                    // Ensure author is set from myProfile
+                    if (!data.author) {
+                        data.author = myProfile
+                    }
+                    // Ensure required fields are present
+                    if (!data.reacts) data.reacts = []
+                    if (!data.replies) data.replies = []
 
+                    // Add the new comment with proper _id from server response
+                    setAllComments(state => {
+                        // Check if comment already exists (to avoid duplicates)
+                        const exists = state.some(c => c._id === data._id)
+                        if (exists) {
+                            return state.map(c => c._id === data._id ? data : c)
+                        }
+                        return [...state, data]
+                    })
 
-                    setCommentData([])
+                    setCommentData({ body: null, attachment: null })
+                    setUploadedImageUrl(null)
                     commentState(state => state + 1);
                 }
             } catch (error) {

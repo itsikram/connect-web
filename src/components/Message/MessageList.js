@@ -101,26 +101,52 @@ const MessageList = React.memo(({ onChatSelect }) => {
     useEffect(() => {
         if (myContacts.length == 0) return;
 
+        const handleIsActive = (isUserActive, lastLogin, activeProfileId) => {
+            if (!activeProfileId) return;
+            
+            if (isUserActive === true) {
+                setActiveFriends(prev => {
+                    if (!prev.includes(activeProfileId)) {
+                        return [...prev, activeProfileId]
+                    }
+                    return prev;
+                })
+            } else {
+                // Remove from active friends when they go offline
+                setActiveFriends(prev => prev.filter(id => id !== activeProfileId));
+            }
+        };
+
         myContacts && myContacts.forEach((contact) => {
             if (!contact || !contact.person || !contact.person._id) {
                 return;
             }
 
             socket.emit('is_active', { profileId: contact?.person?._id, myId: profileId })
-            socket.on('is_active', (isUserActive, lastLogin, activeProfileId) => {
-                if (isUserActive === true) {
-                    setActiveFriends(prev => {
-                        if (!prev.includes(activeProfileId)) {
-                            return [...prev, activeProfileId]
-                        }
-                        return prev;
-                    })
-                }
-            })
-        })
+        });
 
-        return () => socket.off('is_active');
-    }, [myContacts])
+        socket.on('is_active', handleIsActive);
+        
+        // Listen for client-side friend_online events (when receiving messages)
+        const handleFriendOnlineClient = (event) => {
+            const friendProfileId = event.detail?.profileId;
+            if (friendProfileId) {
+                setActiveFriends(prev => {
+                    if (!prev.includes(friendProfileId)) {
+                        return [...prev, friendProfileId];
+                    }
+                    return prev;
+                });
+            }
+        };
+        
+        window.addEventListener('friend_online_client', handleFriendOnlineClient);
+
+        return () => {
+            socket.off('is_active', handleIsActive);
+            window.removeEventListener('friend_online_client', handleFriendOnlineClient);
+        };
+    }, [myContacts, profileId])
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -160,7 +186,7 @@ const MessageList = React.memo(({ onChatSelect }) => {
 
     const filteredContacts = useMemo(() => {
         const query = (searchQuery || '').toLowerCase();
-        return (myContacts || [])
+        const filtered = (myContacts || [])
             .filter((contactItem) => contactItem && contactItem.person && contactItem.person._id)
             .filter((contactItem) => {
                 if (!query) return true;
@@ -169,7 +195,28 @@ const MessageList = React.memo(({ onChatSelect }) => {
                 const nameFromUser = ((person.user?.firstName || '') + ' ' + (person.user?.surname || '')).trim().toLowerCase();
                 const lastMessage = (contactItem.messages?.[0]?.message || '').toLowerCase();
                 return nameFromFull.includes(query) || nameFromUser.includes(query) || lastMessage.includes(query);
+            })
+            // Sort by last message timestamp (most recent first)
+            .sort((a, b) => {
+                const aLastMessage = a.messages?.[0];
+                const bLastMessage = b.messages?.[0];
+                
+                // If both have messages, sort by timestamp (most recent first)
+                if (aLastMessage?.timestamp && bLastMessage?.timestamp) {
+                    const aTimestamp = new Date(aLastMessage.timestamp).getTime();
+                    const bTimestamp = new Date(bLastMessage.timestamp).getTime();
+                    return bTimestamp - aTimestamp;
+                }
+                
+                // If only one has messages, prioritize it
+                if (aLastMessage?.timestamp) return -1;
+                if (bLastMessage?.timestamp) return 1;
+                
+                // If neither has messages, maintain original order
+                return 0;
             });
+        
+        return filtered;
     }, [myContacts, searchQuery])
 
     useEffect(() => {

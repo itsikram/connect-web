@@ -3570,6 +3570,23 @@ body {
             height: 80vh;
             overflow-y: scroll;
 
+            &::-webkit-scrollbar {
+                width: 4px !important;
+            }
+
+            &::-webkit-scrollbar-track {
+                background: transparent;
+            }
+
+            &::-webkit-scrollbar-thumb {
+                background: rgba($pc, 0.3);
+                border-radius: 10px;
+            }
+
+            &::-webkit-scrollbar-thumb:hover {
+                background: rgba($pc, 0.5);
+            }
+
             .sp-reacts-item {
                 display: flex;
                 align-items: center;
@@ -3616,6 +3633,23 @@ body {
             padding: 10px !important;
             height: 70vh;
             overflow-y: scroll;
+
+            &::-webkit-scrollbar {
+                width: 4px !important;
+            }
+
+            &::-webkit-scrollbar-track {
+                background: transparent;
+            }
+
+            &::-webkit-scrollbar-thumb {
+                background: rgba($pc, 0.3);
+                border-radius: 10px;
+            }
+
+            &::-webkit-scrollbar-thumb:hover {
+                background: rgba($pc, 0.5);
+            }
 
             .comment-container {
                 display: flex;
@@ -6889,7 +6923,7 @@ body {
     visibility: visible !important;
     display: block !important;
     max-height: 80vh;
-    overflow-y: scroll;
+    overflow: hidden;
 }
 
 // Ensure mega menu is visible in both default and sticky header states
@@ -7050,26 +7084,190 @@ body {
 
                     }
                 }
+
+                .cpm-audience-selector-wrapper {
+                    margin-left: auto;
+                    position: relative;
+
+                    .cpm-audience-button {
+                        display: flex;
+                        align-items: center;
+                        gap: 6px;
+                        padding: 6px 12px;
+                        background-color: $profilebg;
+                        border: 1px solid $pc;
+                        border-radius: 20px;
+                        color: $tc;
+                        font-size: 13px;
+                        font-weight: 500;
+                        cursor: pointer;
+                        transition: all 0.2s ease;
+
+                        i {
+                            font-size: 12px;
+                        }
+
+                        &:hover {
+                            background-color: darken($profilebg, 5%);
+                            border-color: darken($pc, 10%);
+                        }
+
+                        .fa-chevron-down {
+                            font-size: 10px;
+                            transition: transform 0.2s ease;
+                        }
+                    }
+
+                    &:has(.cpm-audience-menu) .cpm-audience-button .fa-chevron-down {
+                        transform: rotate(180deg);
+                    }
+
+                    .cpm-audience-menu {
+                        position: absolute;
+                        top: calc(100% + 8px);
+                        right: 0;
+                        background-color: $profilebg;
+                        border: 1px solid $bc;
+                        border-radius: 8px;
+                        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                        min-width: 280px;
+                        z-index: 1000;
+                        overflow: hidden;
+                        animation: slideDown 0.2s ease;
+
+                        @keyframes slideDown {
+                            from {
+                                opacity: 0;
+                                transform: translateY(-10px);
+                            }
+                            to {
+                                opacity: 1;
+                                transform: translateY(0);
+                            }
+                        }
+
+                        .cpm-audience-option {
+                            display: flex;
+                            align-items: center;
+                            gap: 12px;
+                            padding: 12px 16px;
+                            cursor: pointer;
+                            transition: background-color 0.2s ease;
+                            border-bottom: 1px solid rgba($bc, 0.5);
+
+                            &:last-child {
+                                border-bottom: none;
+                            }
+
+                            &:hover {
+                                background-color: darken($profilebg, 3%);
+                            }
+
+                            &.active {
+                                background-color: rgba($pc, 0.1);
+                            }
+
+                            i.fa-globe,
+                            i.fa-users,
+                            i.fa-lock {
+                                font-size: 18px;
+                                color: $pc;
+                                width: 24px;
+                                text-align: center;
+                            }
+
+                            .audience-option-content {
+                                flex: 1;
+                                display: flex;
+                                flex-direction: column;
+                                gap: 2px;
+
+                                .audience-option-title {
+                                    font-weight: 600;
+                                    font-size: 14px;
+                                    color: $tc;
+                                }
+
+                                .audience-option-desc {
+                                    font-size: 12px;
+                                    color: lighten($tc, 20%);
+                                }
+                            }
+
+                            .fa-check {
+                                color: $pc;
+                                font-size: 14px;
+                            }
+                        }
+                    }
+                }
+            }
+
+            .cpm-meta-options {
+                display: flex;
+                gap: 10px;
+                margin-top: 12px;
+                margin-bottom: 12px;
+                padding-bottom: 12px;
+                border-bottom: 1px solid rgba($bc, 0.3);
+
+                .cpm-feelings-container,
+                .cpm-location-container {
+                    flex: 1;
+                    margin: 0;
+
+                    .cpm-meta-select,
+                    .cpm-meta-input {
+                        width: 100%;
+                        padding: 8px 12px;
+                        background-color: $profilebg;
+                        border: 1px solid $bc;
+                        border-radius: 8px;
+                        color: $tc;
+                        font-size: 13px;
+                        transition: all 0.2s ease;
+
+                        &:focus {
+                            outline: none;
+                            border-color: $pc;
+                            box-shadow: 0 0 0 2px rgba($pc, 0.1);
+                        }
+
+                        &::placeholder {
+                            color: lighten($tc, 30%);
+                        }
+                    }
+                }
             }
 
             .cpm-form {
 
                 .cpm-form-text {
+                    margin-bottom: 16px;
 
                     .cpm-form-text-input {
                         width: 100%;
-                        padding: 10px;
+                        padding: 12px;
                         background: transparent;
-                        border: 0;
+                        border: 1px solid rgba($bc, 0.3);
+                        border-radius: 8px;
                         outline: 0;
                         color: $mtc;
-                        height: 50px;
+                        min-height: 120px;
+                        resize: vertical;
+                        font-size: 15px;
+                        font-family: inherit;
+                        transition: all 0.2s ease;
 
-                    }
+                        &:focus {
+                            border-color: $pc;
+                            box-shadow: 0 0 0 2px rgba($pc, 0.1);
+                        }
 
-                    .cpm-form-text-input::placeholder {
-                        text-transform: capitalize;
-                        color: $tc;
+                        &::placeholder {
+                            text-transform: capitalize;
+                            color: lighten($tc, 20%);
+                        }
                     }
                 }
 
@@ -7077,10 +7275,85 @@ body {
                     width: 100%;
                     text-align: center;
                     display: none;
+                    margin-bottom: 12px;
+                    position: relative;
 
-                    img {
-                        width: auto;
-                        max-height: 200px;
+                    &.show {
+                        display: block !important;
+                    }
+
+                    .upload-progress {
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        justify-content: center;
+                        padding: 40px;
+                        gap: 16px;
+                        color: $tc;
+
+                        .upload-spinner {
+                            width: 40px;
+                            height: 40px;
+                            border: 3px solid rgba($pc, 0.2);
+                            border-top-color: $pc;
+                            border-radius: 50%;
+                            animation: spin 1s linear infinite;
+
+                            @keyframes spin {
+                                to { transform: rotate(360deg); }
+                            }
+                        }
+
+                        span {
+                            font-size: 14px;
+                            color: $tc;
+                        }
+                    }
+
+                    .attachment-preview-wrapper {
+                        position: relative;
+                        display: inline-block;
+                        max-width: 100%;
+
+                        img {
+                            width: auto;
+                            max-width: 100%;
+                            max-height: 400px;
+                            border-radius: 8px;
+                            display: block;
+                        }
+
+                        video {
+                            max-width: 100%;
+                            border-radius: 8px;
+                        }
+
+                        .remove-attachment-btn {
+                            position: absolute;
+                            top: 8px;
+                            right: 8px;
+                            width: 32px;
+                            height: 32px;
+                            border-radius: 50%;
+                            background-color: rgba(0, 0, 0, 0.6);
+                            border: none;
+                            color: white;
+                            cursor: pointer;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            transition: all 0.2s ease;
+                            z-index: 10;
+
+                            &:hover {
+                                background-color: rgba(0, 0, 0, 0.8);
+                                transform: scale(1.1);
+                            }
+
+                            i {
+                                font-size: 14px;
+                            }
+                        }
                     }
                 }
 
@@ -7159,21 +7432,51 @@ body {
 
                 }
 
+                .cpm-submit-section {
+                    margin-top: 20px;
+                    padding-top: 16px;
+                    border-top: 1px solid rgba($bc, 0.3);
+                }
+
                 .cpm-submit-button {
                     display: block;
 
-                    .button {
+                    .cpm-submit-btn {
                         background-color: #29B1A9;
                         border: 0;
                         color: #DFE1E6;
-                        border-radius: 5px;
-                        padding: 3px 10px;
-                        font-weight: 500;
-                        font-size: 20px;
+                        border-radius: 8px;
+                        padding: 12px 24px;
+                        font-weight: 600;
+                        font-size: 16px;
                         width: 100%;
-                        margin-top: 10px;
+                        cursor: pointer;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        gap: 8px;
+                        transition: all 0.2s ease;
+                        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 
+                        &:hover:not(.disabled) {
+                            background-color: darken(#29B1A9, 5%);
+                            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+                            transform: translateY(-1px);
+                        }
 
+                        &.disabled {
+                            opacity: 0.6;
+                            cursor: not-allowed;
+                            transform: none;
+                        }
+
+                        i {
+                            font-size: 14px;
+                        }
+
+                        .fa-spinner {
+                            animation: spin 1s linear infinite;
+                        }
                     }
                 }
             }
@@ -7200,19 +7503,39 @@ body {
 .ReactModal__Content {
     .modal-header {
         border-bottom: 1px solid #999;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 5px 10px 5px;
 
         .modal-title {
             font-size: 30px;
             color: #DFE1E6;
             padding-bottom: 5px;
-            margin-left: 5px
+            margin: 0;
+            flex: 1;
         }
 
         .modal-close-btn {
             font-size: 20px;
             color: #DFE1E6;
             cursor: pointer;
-            margin-right: 5px
+            padding: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            transition: background-color 0.2s ease;
+
+            &:hover {
+                background-color: rgba(255, 255, 255, 0.1);
+            }
+
+            i {
+                font-size: 18px;
+            }
         }
 
     }
@@ -7254,6 +7577,7 @@ body {
     display: flex;
     flex-direction: column;
     height: 100%;
+    min-height: 0;
 
     .notification-leftside-header {
         display: flex;
@@ -7318,6 +7642,35 @@ body {
         overflow-y: auto;
         overflow-x: hidden;
         flex: 1;
+        min-height: 0;
+
+        // Custom scrollbar styling to match message contact list
+        &::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        &::-webkit-scrollbar-track {
+            background: transparent;
+            border-radius: 10px;
+        }
+
+        &::-webkit-scrollbar-thumb {
+            background: rgba(0, 212, 255, 0.3);
+            border-radius: 10px;
+            transition: all 0.3s ease;
+        }
+
+        &::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 212, 255, 0.6);
+        }
+
+        &::-webkit-scrollbar-thumb:active {
+            background: $pc;
+        }
+
+        // Firefox scrollbar
+        scrollbar-width: thin;
+        scrollbar-color: rgba(0, 212, 255, 0.3) transparent;
 
         .hr-notification-item {
             margin-bottom: 4px;

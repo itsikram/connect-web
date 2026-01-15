@@ -395,7 +395,6 @@ const Post = React.memo(({ data, postContainer, index }) => {
             if (res.status === 200) {
                 setIsEditAudienceModal(false)
                 // Optionally refresh the post or show success message
-                alert('Audience updated successfully')
             }
         } catch (error) {
             console.error('Error updating audience:', error)

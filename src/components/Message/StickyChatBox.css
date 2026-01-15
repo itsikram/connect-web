@@ -455,13 +455,16 @@
 }
 
 .sticky-chat-box .chat-message-profilePic {
-    width: 24px;
-    height: 24px;
+    width: 30px;
+    height: 30px;
     min-width: 24px;
     min-height: 24px;
     flex-shrink: 0;
     overflow: visible;
     position: relative;
+    display: flex;
+    align-items: center !important;
+    justify-content: center !important;
 }
 
 .sticky-chat-box .chat-message-profilePic .user-profile-img-container {

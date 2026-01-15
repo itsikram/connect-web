@@ -8,6 +8,8 @@ import ringtones from '../../config/ringtones.json';
 import api from '../../api/api';
 import { useCallMinimize } from '../../contexts/CallMinimizeContext';
 import config from '../../config/config.json';
+import audioPreloader from '../../utils/audioPreloader';
+import { unlockAudio, playAudioWithWebAudio } from '../../utils/audioUnlock';
 const VideoCall = ({ myId }) => {
     const mySettings = useSelector(state => state.setting);
     const [isVideoCall, setIsVideoCall] = useState(false);
@@ -47,6 +49,7 @@ const VideoCall = ({ myId }) => {
     const localContainer = useRef();
     const remoteContainer = useRef();
     const remoteUserCheckInterval = useRef(null);
+    const isCleaningUpRef = useRef(false); // Track if cleanup is in progress
 
     // Stable numeric UID for Agora (avoids string-UID warning)
     const numericUid = useMemo(() => {
@@ -69,19 +72,95 @@ const VideoCall = ({ myId }) => {
             audio.currentTime = 0; // Reset to beginning
         }
     };
-    const playRingtone = () => {
-        setTimeout(() => {
+    const playRingtone = async () => {
+        // First, try to unlock audio if not already unlocked
+        await unlockAudio();
+        
+        setTimeout(async () => {
             if (ringtoneAudio?.current) {
-                ringtoneAudio.current.play().catch(error => {
-                    console.warn('Failed to play ringtone:', error);
-                });
+                const audio = ringtoneAudio.current;
+                
+                // Check if audio has a valid source
+                if (!audio.src || audio.src === window.location.href) {
+                    console.warn('Ringtone audio has no valid source');
+                    return;
+                }
+                
+                // Ensure audio is not muted and volume is set
+                audio.muted = false;
+                audio.volume = 1.0;
+                
+                // Wait for audio to be ready if not already loaded
+                if (audio.readyState < 2) {
+                    const handleCanPlay = async () => {
+                        try {
+                            // Try Web Audio API first for better background playback
+                            await playAudioWithWebAudio(audio);
+                            console.log('Ringtone playing successfully');
+                        } catch (error) {
+                            console.warn('Failed to play ringtone:', error);
+                            // Fallback: try regular play
+                            try {
+                                await audio.play();
+                                console.log('Ringtone playing with fallback method');
+                            } catch (fallbackError) {
+                                console.warn('Fallback play also failed:', fallbackError);
+                                // If autoplay is blocked, try again when tab becomes visible
+                                if (fallbackError.name === 'NotAllowedError' || fallbackError.name === 'NotSupportedError') {
+                                    const handleVisibilityChange = () => {
+                                        if (document.visibilityState === 'visible' && receivingCall && incomingCall) {
+                                            playAudioWithWebAudio(audio).catch(e => console.warn('Retry play failed:', e));
+                                            document.removeEventListener('visibilitychange', handleVisibilityChange);
+                                        }
+                                    };
+                                    document.addEventListener('visibilitychange', handleVisibilityChange);
+                                }
+                            }
+                        }
+                        audio.removeEventListener('canplaythrough', handleCanPlay);
+                    };
+                    audio.addEventListener('canplaythrough', handleCanPlay);
+                    
+                    // Fallback timeout
+                    setTimeout(() => {
+                        audio.removeEventListener('canplaythrough', handleCanPlay);
+                    }, 3000);
+                } else {
+                    try {
+                        // Try Web Audio API first for better background playback
+                        await playAudioWithWebAudio(audio);
+                        console.log('Ringtone playing successfully');
+                    } catch (error) {
+                        console.warn('Failed to play ringtone with Web Audio API:', error);
+                        // Fallback: try regular play
+                        try {
+                            await audio.play();
+                            console.log('Ringtone playing with fallback method');
+                        } catch (fallbackError) {
+                            console.warn('Fallback play also failed:', fallbackError);
+                            // If autoplay is blocked, try again when tab becomes visible
+                            if (fallbackError.name === 'NotAllowedError' || fallbackError.name === 'NotSupportedError') {
+                                const handleVisibilityChange = () => {
+                                    if (document.visibilityState === 'visible' && receivingCall && incomingCall) {
+                                        playAudioWithWebAudio(audio).catch(e => console.warn('Retry play failed:', e));
+                                        document.removeEventListener('visibilitychange', handleVisibilityChange);
+                                    }
+                                };
+                                document.addEventListener('visibilitychange', handleVisibilityChange);
+                            }
+                        }
+                    }
+                }
             } else {
                 // Retry after a short delay if audio element not yet mounted
-                setTimeout(() => {
+                setTimeout(async () => {
                     if (ringtoneAudio?.current) {
-                        ringtoneAudio.current.play().catch(error => {
-                            console.warn('Failed to play ringtone after retry:', error);
-                        });
+                        const audio = ringtoneAudio.current;
+                        try {
+                            await playAudioWithWebAudio(audio);
+                        } catch (error) {
+                            audio.play().catch(e => console.warn('Failed to play ringtone after retry:', e));
+                        }
                     }
                 }, 300);
             }
@@ -89,6 +168,13 @@ const VideoCall = ({ myId }) => {
     };
 
     const cleanupVideoCall = useCallback(async () => {
+        // Prevent multiple simultaneous cleanups
+        if (isCleaningUpRef.current) {
+            console.log('Cleanup already in progress, skipping');
+            return;
+        }
+        isCleaningUpRef.current = true;
+
         stopRingtone();
 
         // Clear any running intervals
@@ -129,8 +215,6 @@ const VideoCall = ({ myId }) => {
         if (myVideo.current) myVideo.current.innerHTML = '';
         if (userVideo.current) userVideo.current.innerHTML = '';
 
-        console.log('kutta vaiggo')
-
         setCallAccepted(false);
         setIsVideoCall(false);
         setCurrentChannel(null);
@@ -151,31 +235,48 @@ const VideoCall = ({ myId }) => {
             clearInterval(minimizedDurationInterval.current);
             minimizedDurationInterval.current = null;
         }
+        
+        // Reset cleanup flag after a short delay
+        setTimeout(() => {
+            isCleaningUpRef.current = false;
+        }, 1000);
     }, [currentChannel, endMinimizedCall]);
 
     const endCall = useCallback(async (isCancelled = false) => {
+        // Prevent calling endCall multiple times
+        if (isCleaningUpRef.current) {
+            console.log('Already cleaning up, skipping endCall');
+            return;
+        }
+
         stopRingtone();
         const friendIdToNotify = incomingCall?.from || caller;
+        const channelName = currentChannel;
+
+        // If no call is active, just cleanup
+        if (!isVideoCall && !callAccepted && !receivingCall) {
+            await cleanupVideoCall();
+            return;
+        }
 
         if (!isCancelled) {
-            await cleanupVideoCall();
-            return;
-        }
-        if (!callAccepted) {
-            socket.emit('video-call-reject', { to: friendIdToNotify, friendId: myId, channelName: currentChannel });
+            // Normal call end - emit end event if we have valid data
+            if (friendIdToNotify && channelName && callAccepted && friendIdToNotify !== myId) {
+                socket.emit('video-call-end', { to: friendIdToNotify, channelName });
+                console.log('VideoCall: Emitting video-call-end to friend:', friendIdToNotify);
+            }
             await cleanupVideoCall();
             return;
         }
 
-        // Determine the friend ID to notify - use incomingCall.from if available, otherwise use caller
-        if (friendIdToNotify && callAccepted) {
-            socket.emit('video-call-ended', friendIdToNotify);
-            console.log('VideoCall: Emitting video-call-end to friend:', friendIdToNotify);
+        // Call was cancelled/rejected - only emit if we have valid data and haven't accepted
+        if (!callAccepted && friendIdToNotify && channelName && friendIdToNotify !== myId) {
+            socket.emit('video-call-reject', { to: friendIdToNotify, friendId: myId, channelName });
+            console.log('VideoCall: Emitting video-call-reject to friend:', friendIdToNotify);
         }
 
-        // Do local cleanup without re-emitting
         await cleanupVideoCall();
-    }, [incomingCall, caller, cleanupVideoCall, callAccepted, currentChannel]);
+    }, [incomingCall, caller, cleanupVideoCall, callAccepted, currentChannel, myId, isVideoCall, receivingCall]);
 
 
     const closeVideoCall = useCallback(() => {
@@ -447,18 +548,32 @@ const VideoCall = ({ myId }) => {
     useEffect(() => {
         if (ringtoneAudio?.current && receivingCall && incomingCall) {
             // Use user's ringtone preference or fallback to default
-            const ringtone = mySettings.ringtone 
-                ? ringtones.find(r => r.id === mySettings.ringtone)
-                : null;
-            const toneSrc = ringtone?.src || config?.callingBeep || '';
+            const ringtoneId = mySettings.ringtone || null;
             
-            if (toneSrc) {
+            // Get preloaded ringtone audio
+            const preloadedAudio = audioPreloader.getRingtone(ringtoneId);
+            if (preloadedAudio) {
                 const audio = ringtoneAudio.current;
+                const toneSrc = preloadedAudio.src;
                 
                 // Only load if source hasn't been set yet
                 if (!audio.src || audio.src !== toneSrc) {
                     audio.setAttribute('src', toneSrc);
                     audio.load(); // Ensure the audio is loaded
+                }
+            } else {
+                // Fallback to legacy method
+                const ringtone = ringtoneId 
+                    ? ringtones.find(r => r.id === ringtoneId)
+                    : null;
+                const toneSrc = ringtone?.src || config?.callingBeep || '';
+                
+                if (toneSrc) {
+                    const audio = ringtoneAudio.current;
+                    if (!audio.src || audio.src !== toneSrc) {
+                        audio.setAttribute('src', toneSrc);
+                        audio.load();
+                    }
                 }
             }
         }
@@ -467,6 +582,14 @@ const VideoCall = ({ myId }) => {
     useEffect(() => {
         // Listen for video calls initiated by this user (outgoing calls from sticky chat box)
         const handleOutgoingVideoCall = async (event) => {
+            // Clean up any previous call state first
+            if (isCleaningUpRef.current || isVideoCall || currentChannel) {
+                console.log('VideoCall - Cleaning up previous call before starting new one');
+                await cleanupVideoCall();
+                // Wait a bit for cleanup to complete
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
             const { to, channelName, callerName, callerProfilePic } = event.detail;
             console.log('VideoCall - Starting outgoing video call to', to, 'channel:', channelName);
             console.log('VideoCall - Friend info:', { callerName, callerProfilePic });
@@ -583,6 +706,8 @@ const VideoCall = ({ myId }) => {
             socket.off('incoming-video-call');
             socket.off('call-accepted');
             socket.off('video-call-ended');
+            socket.off('video-call-cancelled');
+            socket.off('video-call-rejected');
             socket.off('apply-video-filter');
             socket.off('updated-call-status', handleUpdatedCallStatus);
             window.removeEventListener('startVideoCall', handleOutgoingVideoCall);
@@ -1004,7 +1129,13 @@ const VideoCall = ({ myId }) => {
                 </div>
             </ModalContainer>
             {receivingCall && incomingCall && (
-                <audio ref={ringtoneAudio} loop preload="none">
+                <audio 
+                    ref={ringtoneAudio} 
+                    loop 
+                    preload="auto"
+                    playsInline
+                    crossOrigin="anonymous"
+                >
                     <track kind="captions" />
                 </audio>
             )}

@@ -1,4 +1,4 @@
-import React, { Fragment, useEffect, useState } from 'react';
+import React, { Fragment, useEffect, useState, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate, useParams } from 'react-router-dom';
 import UserPP from '../../components/UserPP';
@@ -11,50 +11,130 @@ let RightSidebar = () => {
     let userJson = localStorage.getItem('user') ? localStorage.getItem('user') : '{}'
     let { profile } = JSON.parse(userJson)
     let myProfile = useSelector(state => state.profile)
-    let [friendsData, setFriendsData] = useState([])
+    let myContacts = useSelector(state => state.message) // Get contacts with messages from Redux
     const [activeFriends, setActiveFriends] = useState([]);
+    const [triggerUpdate, setTriggerUpdate] = useState(0); // Force re-sort when messages update
 
+    // Sort friends by last message timestamp
+    const sortedFriendsData = useMemo(() => {
+        if (!myProfile.friends || !Array.isArray(myProfile.friends)) return [];
+
+        // Create a map of contact IDs to their last message timestamp
+        const contactMessageMap = new Map();
+        myContacts.forEach(contact => {
+            if (contact?.person?._id && contact?.messages?.[0]?.timestamp) {
+                contactMessageMap.set(
+                    contact.person._id, 
+                    new Date(contact.messages[0].timestamp).getTime()
+                );
+            }
+        });
+
+        // Sort friends: those with messages first (by timestamp), then those without messages
+        const sorted = [...myProfile.friends].sort((a, b) => {
+            const aTimestamp = contactMessageMap.get(a._id) || 0;
+            const bTimestamp = contactMessageMap.get(b._id) || 0;
+            
+            // If both have messages, sort by timestamp (most recent first)
+            if (aTimestamp > 0 && bTimestamp > 0) {
+                return bTimestamp - aTimestamp;
+            }
+            // If only one has messages, prioritize it
+            if (aTimestamp > 0) return -1;
+            if (bTimestamp > 0) return 1;
+            // If neither has messages, maintain original order
+            return 0;
+        });
+
+        return sorted;
+    }, [myProfile.friends, myContacts, triggerUpdate]);
 
     useEffect(() => {
+        if (!myProfile.friends || !Array.isArray(myProfile.friends)) return;
 
-        myProfile.friends && myProfile.friends.map((profile, index) => {
+        // Initial check for all friends
+        myProfile.friends.forEach((friendProfile) => {
+            socket.emit('is_active', { profileId: friendProfile._id, myId: myProfile._id })
+        });
 
-            socket.emit('is_active', { profileId: profile._id, myId: myProfile._id })
-            socket.on('is_active', (isUserActive, lastLogin, activeProfileId) => {
-                if (isUserActive == true) {
-                    if (!activeFriends.includes(activeProfileId)) {
-                        return setActiveFriends([...activeFriends, activeProfileId])
+        const handleIsActive = (isUserActive, lastLogin, activeProfileId) => {
+            if (!activeProfileId) return;
+            
+            if (isUserActive === true) {
+                setActiveFriends(prev => {
+                    if (!prev.includes(activeProfileId)) {
+                        return [...prev, activeProfileId]
                     }
-                }
-            })
-            return () => socket.off('is_active');
+                    return prev;
+                })
+            } else {
+                // Remove from active friends when they go offline
+                setActiveFriends(prev => prev.filter(id => id !== activeProfileId));
+            }
+        };
 
-        })
+        // Listen for real-time online/offline updates
+        const handleFriendOnline = (data) => {
+            const friendProfileId = data?.profileId;
+            if (friendProfileId) {
+                setActiveFriends(prev => {
+                    if (!prev.includes(friendProfileId)) {
+                        return [...prev, friendProfileId];
+                    }
+                    return prev;
+                });
+            }
+        };
 
-        return () => socket.off('is_active');
+        const handleFriendOffline = (data) => {
+            const friendProfileId = data?.profileId;
+            if (friendProfileId) {
+                setActiveFriends(prev => prev.filter(id => id !== friendProfileId));
+            }
+        };
 
-    }, [myProfile, setTimeout(() => { return true }), [2000]])
+        socket.on('is_active', handleIsActive);
+        socket.on('friend_online', handleFriendOnline);
+        socket.on('friend_offline', handleFriendOffline);
+        
+        // Listen for client-side friend_online events (when receiving messages)
+        const handleFriendOnlineClient = (event) => {
+            const friendProfileId = event.detail?.profileId;
+            if (friendProfileId) {
+                setActiveFriends(prev => {
+                    if (!prev.includes(friendProfileId)) {
+                        return [...prev, friendProfileId];
+                    }
+                    return prev;
+                });
+            }
+        };
+        
+        window.addEventListener('friend_online_client', handleFriendOnlineClient);
 
+        return () => {
+            socket.off('is_active', handleIsActive);
+            socket.off('friend_online', handleFriendOnline);
+            socket.off('friend_offline', handleFriendOffline);
+            window.removeEventListener('friend_online_client', handleFriendOnlineClient);
+        };
+    }, [myProfile._id, myProfile.friends])
 
+    // Listen for new messages to update sorting in real-time
     useEffect(() => {
+        const handleNewMessage = ({ updatedMessage }) => {
+            // Trigger re-sort when a new message arrives
+            setTriggerUpdate(prev => prev + 1);
+        };
 
-        console.log('my profile data', myProfile.friends, myProfile)
+        socket.on('newMessage', handleNewMessage);
+        socket.on('newMessageToUser', handleNewMessage);
 
-        if (!myProfile.friends) return
-
-        setFriendsData(myProfile.friends)
-
-        // profile && api.get('/friend/getFriends',{
-        //     params: {
-        //         profile: profile
-        //     }
-
-        // }).then(res => {
-        //     setFriendsData(res.data)
-        // }).catch(e => {
-        //     console.log(e)
-        // })
-    }, [myProfile?.friends])
+        return () => {
+            socket.off('newMessage', handleNewMessage);
+            socket.off('newMessageToUser', handleNewMessage);
+        };
+    }, [])
 
     let redirectToMessage = (e) => {
         let profileId = e.currentTarget.dataset.profile
@@ -72,11 +152,11 @@ let RightSidebar = () => {
                 <h3 className="rs-nav-title">Contacts</h3>
                 <ul className="rs-nav-menu">
                     {
-                        friendsData && friendsData.length > 0 ? friendsData.map((data, index) => {
+                        sortedFriendsData && sortedFriendsData.length > 0 ? sortedFriendsData.map((data, index) => {
 
-                            let isFrndActive = data?.isActive || false;
+                            let isFrndActive = activeFriends.includes(data._id);
 
-                            return <li key={index}>
+                            return <li key={data._id || index}>
                                 <div className='rs-nav-menu-item' data-profile={data._id} onClick={redirectToMessage.bind(this)}>
                                     <div className='rs-profile-img-container'>
                                         <div className='active-icon'></div>

@@ -151,8 +151,14 @@ const Chat = ({ socket }) => {
 
 
     useEffect(() => {
+        if (!friendId || !userId) return;
+
+        // Initial check
         socket.emit('is_active', { profileId: friendId, myId: userId });
-        socket.on('is_active', (data, ls) => {
+        
+        const handleIsActive = (data, ls, activeProfileId) => {
+            // Only process if this response is for the current friend
+            if (activeProfileId && activeProfileId !== friendId) return;
 
             const lastSeenTimeStamp = moment(ls)
             const currentTimeStamp = moment(Date.now())
@@ -160,7 +166,8 @@ const Chat = ({ socket }) => {
             const diffDays = currentTimeStamp.diff(lastSeenTimeStamp, 'days')
             const diffYears = currentTimeStamp.diff(lastSeenTimeStamp, 'days')
 
-            setIsActive(data === true ? true : false)
+            // Update active status - handle both true and false
+            setIsActive(data === true)
 
             let lastSeenTime;
             let formattedTime;
@@ -184,7 +191,27 @@ const Chat = ({ socket }) => {
 
 
             setLastSeen(formattedTime)
-        })
+        }
+
+        // Listen for real-time online/offline updates
+        const handleFriendOnline = (data) => {
+            if (data?.profileId === friendId) {
+                setIsActive(true);
+            }
+        };
+
+        const handleFriendOffline = (data) => {
+            if (data?.profileId === friendId) {
+                setIsActive(false);
+                // Update last seen when they go offline
+                const now = moment();
+                setLastSeen(now.format("hh:mm A"));
+            }
+        };
+
+        socket.on('is_active', handleIsActive);
+        socket.on('friend_online', handleFriendOnline);
+        socket.on('friend_offline', handleFriendOffline);
 
         socket.on('messageReacted', (messageId) => {
             const msgSelector = '#chatMessageList .chat-message-container .message-id-' + messageId
@@ -202,9 +229,11 @@ const Chat = ({ socket }) => {
         return () => {
             socket.off('messageReacted')
             socket.off('messageReactRemoved')
-            socket.off('is_active')
+            socket.off('is_active', handleIsActive)
+            socket.off('friend_online', handleFriendOnline)
+            socket.off('friend_offline', handleFriendOffline)
         }
-    }, [friendProfile, params])
+    }, [friendProfile, params, friendId, userId])
 
 
     useEffect(() => {
@@ -280,6 +309,8 @@ const Chat = ({ socket }) => {
 
             if ( chatPage === true) {
                 if (updatedMessage.receiverId == userId && updatedMessage.senderId == friendId) {
+                    // Update sender's online status to true when receiving a new message
+                    setIsActive(true);
                     setMessages((prevMessages) => [...prevMessages, updatedMessage]);
                     scrollToLastMessage()
                 }

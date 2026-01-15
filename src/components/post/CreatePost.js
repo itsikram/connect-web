@@ -25,6 +25,34 @@ let CreatePost = ({ setPosts = null }) => {
     }
     let closeCreatePostModal = () => {
         setPostModal(false)
+        setPostData(postDataInit)
+        setShowAudienceMenu(false)
+    }
+
+    const getAudienceLabel = (audience) => {
+        switch(audience) {
+            case 1: return 'Public'
+            case 2: return 'Friends'
+            case 3: return 'Only Me'
+            default: return 'Only Me'
+        }
+    }
+
+    const getAudienceIcon = (audience) => {
+        switch(audience) {
+            case 1: return 'fas fa-globe'
+            case 2: return 'fas fa-users'
+            case 3: return 'fas fa-lock'
+            default: return 'fas fa-lock'
+        }
+    }
+
+    const handleAudienceSelect = (audience) => {
+        setPostData(state => ({
+            ...state,
+            audience: parseInt(audience, 10)
+        }))
+        setShowAudienceMenu(false)
     }
 
     const postDataInit = {
@@ -38,6 +66,7 @@ let CreatePost = ({ setPosts = null }) => {
 
     let [postData, setPostData] = useState(postDataInit)
     let [attachmentType, setAttachmentType] = useState(false)
+    const [showAudienceMenu, setShowAudienceMenu] = useState(false)
 
     const [hasStory, setHasStory] = useState(false);
 
@@ -62,6 +91,23 @@ let CreatePost = ({ setPosts = null }) => {
         })
 
     }, [postData])
+
+    // Close audience menu when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (showAudienceMenu && !event.target.closest('.cpm-audience-selector-wrapper')) {
+                setShowAudienceMenu(false)
+            }
+        }
+
+        if (showAudienceMenu) {
+            document.addEventListener('mousedown', handleClickOutside)
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside)
+        }
+    }, [showAudienceMenu])
 
 
     const useMediaQuery = (query) => {
@@ -124,7 +170,7 @@ let CreatePost = ({ setPosts = null }) => {
         let currentTarget = e.currentTarget
         setPostData({ ...postData, urls: loadingImgUrl })
         $(currentTarget).parents('.cpm-attachment-upload').slideUp()
-        $(currentTarget).parents('.cpm-attachment-upload').siblings('.cpm-attachment-preview').slideDown()
+        $(currentTarget).parents('.cpm-attachment-upload').siblings('.cpm-attachment-preview').addClass('show').slideDown()
         let attachments = e.target.files[0];
         handleUploadAttachment(attachments.type, attachments)
 
@@ -164,9 +210,9 @@ let CreatePost = ({ setPosts = null }) => {
                                 ...state,
                                 urls: uploadedImageUrl,
                                 type: fileType,
-
                             }
                         })
+                        $('.cpm-attachment-preview').addClass('show')
                     }
 
                     break;
@@ -191,6 +237,7 @@ let CreatePost = ({ setPosts = null }) => {
                                 urls: uploadedWatchUrl
                             }
                         })
+                        $('.cpm-attachment-preview').addClass('show')
 
                     }
                     break;
@@ -226,9 +273,9 @@ let CreatePost = ({ setPosts = null }) => {
                     })
 
                     if (res.status === 200) {
-
                         dispatch(addPost(res.data.post))
                         setPostData(postDataInit)
+                        setAttachmentType(false)
                         if (setPosts) {
                             setPosts(posts => [res.data.post, ...posts])
                         }
@@ -253,6 +300,7 @@ let CreatePost = ({ setPosts = null }) => {
 
                     if (videoRes.status === 200) {
                         setPostData(postDataInit)
+                        setAttachmentType(false)
                         dispatch(addPost(videoRes.data.post))
                         if (setPosts) {
                             setPosts(posts => [videoRes.data.post, ...posts])
@@ -278,6 +326,7 @@ let CreatePost = ({ setPosts = null }) => {
 
                     if (defaultRes.status === 200) {
                         setPostData(postDataInit)
+                        setAttachmentType(false)
                         dispatch(addPost(defaultRes.data.post))
                         if (setPosts) {
                             setPosts(posts => [defaultRes.data.post, ...posts])
@@ -352,58 +401,138 @@ let CreatePost = ({ setPosts = null }) => {
                                 <div className="cpm-username">
                                     <h3>{profileName}</h3>
                                 </div>
-                                <div className="cpm-feelings-container ml-2">
-                                    <select name="feelings" onChange={handleCaptionField.bind(this)} className="form-control">
-                                        <option value='0'>
-                                            Select Feelings
-                                        </option>
-                                        <option value='funny'>
-                                            Funny
-                                        </option>
-                                        <option value='lovely'>
-                                            Lovely
-                                        </option>
-                                        <option value='sad'>
-                                            Sad
-                                        </option>
+                                <div className="cpm-audience-selector-wrapper">
+                                    <button 
+                                        type="button"
+                                        className="cpm-audience-button"
+                                        onClick={() => setShowAudienceMenu(!showAudienceMenu)}
+                                    >
+                                        <i className={getAudienceIcon(postData.audience || 3)}></i>
+                                        <span>{getAudienceLabel(postData.audience || 3)}</span>
+                                        <i className="fas fa-chevron-down"></i>
+                                    </button>
+                                    {showAudienceMenu && (
+                                        <div className="cpm-audience-menu">
+                                            <div 
+                                                className={`cpm-audience-option ${postData.audience === 1 ? 'active' : ''}`}
+                                                onClick={() => handleAudienceSelect(1)}
+                                            >
+                                                <i className="fas fa-globe"></i>
+                                                <div className="audience-option-content">
+                                                    <span className="audience-option-title">Public</span>
+                                                    <span className="audience-option-desc">Anyone can see this post</span>
+                                                </div>
+                                                {postData.audience === 1 && <i className="fas fa-check"></i>}
+                                            </div>
+                                            <div 
+                                                className={`cpm-audience-option ${postData.audience === 2 ? 'active' : ''}`}
+                                                onClick={() => handleAudienceSelect(2)}
+                                            >
+                                                <i className="fas fa-users"></i>
+                                                <div className="audience-option-content">
+                                                    <span className="audience-option-title">Friends</span>
+                                                    <span className="audience-option-desc">Only your friends can see this</span>
+                                                </div>
+                                                {postData.audience === 2 && <i className="fas fa-check"></i>}
+                                            </div>
+                                            <div 
+                                                className={`cpm-audience-option ${postData.audience === 3 ? 'active' : ''}`}
+                                                onClick={() => handleAudienceSelect(3)}
+                                            >
+                                                <i className="fas fa-lock"></i>
+                                                <div className="audience-option-content">
+                                                    <span className="audience-option-title">Only Me</span>
+                                                    <span className="audience-option-desc">Only you can see this post</span>
+                                                </div>
+                                                {postData.audience === 3 && <i className="fas fa-check"></i>}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="cpm-meta-options">
+                                <div className="cpm-feelings-container">
+                                    <select name="feelings" onChange={handleCaptionField.bind(this)} className="form-control cpm-meta-select">
+                                        <option value='0'>Select Feelings</option>
+                                        <option value='funny'>Funny</option>
+                                        <option value='lovely'>Lovely</option>
+                                        <option value='sad'>Sad</option>
                                     </select>
                                 </div>
                                 <div className="cpm-location-container">
-                                    <input type="text" name="location" onChange={handleCaptionField} className="form-control" placeholder="Location...." />
-                                </div>
-                                <div className="cpm-audience-container ml-2">
-                                    <select name="audience" onChange={handleCaptionField.bind(this)} className="form-control" value={postData.audience || 3}>
-                                        <option value={1}>Public</option>
-                                        <option value={2}>Friends</option>
-                                        <option value={3}>Only Me</option>
-                                    </select>
+                                    <input 
+                                        type="text" 
+                                        name="location" 
+                                        onChange={handleCaptionField} 
+                                        className="form-control cpm-meta-input" 
+                                        placeholder="Add location..." 
+                                        value={postData.location}
+                                    />
                                 </div>
                             </div>
                             <form className="cpm-form" onSubmit={preventDefault}>
                                 <div className="cpm-form-text">
-                                    <textarea name="caption" onChange={handleCaptionField} placeholder={textInputPlaceHoder} className="cpm-form-text-input" value={postData.caption}>
-
-                                    </textarea>
+                                    <textarea 
+                                        name="caption" 
+                                        onChange={handleCaptionField} 
+                                        placeholder={textInputPlaceHoder} 
+                                        className="cpm-form-text-input" 
+                                        value={postData.caption}
+                                        rows="4"
+                                    ></textarea>
                                 </div>
                                 <div className="cpm-attachment-control">
                                     <div className="cpm-attachment-preview">
-                                        {
-                                            postData.type === 'video' && <video style={{width: '100%'}} src={postData.urls}></video>
-                                        }
-
-                                        {postData.type === 'image' && <img src={postData.urls && postData.urls} alt="attachment preview" />
-                                        }
+                                        {isUploading && (
+                                            <div className="upload-progress">
+                                                <div className="upload-spinner"></div>
+                                                <span>Uploading media...</span>
+                                            </div>
+                                        )}
+                                        {postData.type === 'video' && !isUploading && (
+                                            <div className="attachment-preview-wrapper">
+                                                <video style={{width: '100%', maxHeight: '400px', borderRadius: '8px'}} src={postData.urls} controls></video>
+                                                <button 
+                                                    type="button" 
+                                                    className="remove-attachment-btn"
+                                                    onClick={() => {
+                                                        setPostData(state => ({ ...state, urls: null, type: null }))
+                                                        setAttachmentType(false)
+                                                        $('.cpm-attachment-preview').removeClass('show').slideUp()
+                                                        $('.cpm-attachment-upload').slideDown()
+                                                    }}
+                                                >
+                                                    <i className="fas fa-times"></i>
+                                                </button>
+                                            </div>
+                                        )}
+                                        {postData.type === 'image' && !isUploading && postData.urls && (
+                                            <div className="attachment-preview-wrapper">
+                                                <img src={postData.urls} alt="attachment preview" />
+                                                <button 
+                                                    type="button" 
+                                                    className="remove-attachment-btn"
+                                                    onClick={() => {
+                                                        setPostData(state => ({ ...state, urls: null, type: null }))
+                                                        setAttachmentType(false)
+                                                    }}
+                                                >
+                                                    <i className="fas fa-times"></i>
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="cpm-attachment-upload">
                                         <div className="cpm-attachment-upload-overlay">
-                                            <span className="plus-icon">
-
-                                            </span>
-                                            <span className="overlay-text">
-                                                Add Photos/Videos
-                                            </span>
+                                            <span className="plus-icon"></span>
+                                            <span className="overlay-text">Add Photos/Videos</span>
                                         </div>
-                                        <input onChange={handleAttachmentChange} name="photos_vidoes" type="file"></input>
+                                        <input 
+                                            onChange={handleAttachmentChange} 
+                                            name="photos_vidoes" 
+                                            type="file" 
+                                            accept="image/*,video/*"
+                                        ></input>
                                     </div>
                                 </div>
                                 <div className="cpm-attachment">
@@ -416,16 +545,32 @@ let CreatePost = ({ setPosts = null }) => {
                                     </div>
 
                                 </div>
-                                <div className="cpm-submit-button">
-                                    <button 
-                                        onClick={handlePostSubmit.bind(this)} 
-                                        className={`button ${isSubmitting ? 'disabled' : ''}`} 
-                                        disabled={isUploading || isSubmitting} 
-                                        type="submit"
-                                        style={{ opacity: isSubmitting ? 0.6 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer' }}
-                                    >  
-                                        {isUploading ? 'Media Uploading...' : isSubmitting ? 'Posting...' : 'Post Now'}  
-                                    </button>
+                                <div className="cpm-submit-section">
+                                    <div className="cpm-submit-button">
+                                        <button 
+                                            onClick={handlePostSubmit.bind(this)} 
+                                            className={`cpm-submit-btn ${isSubmitting || isUploading ? 'disabled' : ''}`} 
+                                            disabled={isUploading || isSubmitting} 
+                                            type="submit"
+                                        >  
+                                            {isUploading ? (
+                                                <>
+                                                    <i className="fas fa-spinner fa-spin"></i>
+                                                    <span>Uploading Media...</span>
+                                                </>
+                                            ) : isSubmitting ? (
+                                                <>
+                                                    <i className="fas fa-spinner fa-spin"></i>
+                                                    <span>Posting...</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <i className="fas fa-paper-plane"></i>
+                                                    <span>Post</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
                                 </div>
                             </form>
                         </div>

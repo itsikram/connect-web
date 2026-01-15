@@ -10,6 +10,7 @@ import { useCallMinimize } from '../../contexts/CallMinimizeContext';
 import config from '../../config/config.json';
 import { unlockAudio, playAudioWithWebAudio, initializeAudioUnlock } from '../../utils/audioUnlock';
 import { showCallNotification, closeCallNotification } from '../../utils/callNotification';
+import audioPreloader from '../../utils/audioPreloader';
 
 const AudioCall = ({ myId }) => {
     console.log('AudioCall - Component mounted/rendered with myId:', myId);
@@ -377,13 +378,13 @@ const AudioCall = ({ myId }) => {
     useEffect(() => {
         if (ringtoneAudio?.current && receivingCall && incomingCall) {
             // Use user's ringtone preference or fallback to default
-            const ringtone = mySettings.ringtone 
-                ? ringtones.find(r => r.id === mySettings.ringtone)
-                : null;
-            const toneSrc = ringtone?.src || config?.callingBeep || '';
+            const ringtoneId = mySettings.ringtone || null;
             
-            if (toneSrc) {
+            // Get preloaded ringtone audio
+            const preloadedAudio = audioPreloader.getRingtone(ringtoneId);
+            if (preloadedAudio) {
                 const audio = ringtoneAudio.current;
+                const toneSrc = preloadedAudio.src;
                 
                 // Only load if source hasn't been set yet
                 if (!audio.src || audio.src !== toneSrc) {
@@ -392,16 +393,16 @@ const AudioCall = ({ myId }) => {
                     
                     // Handle loading errors
                     const handleError = () => {
-                        console.error('Failed to load ringtone:', toneSrc);
+                        console.error('Failed to load preloaded ringtone:', toneSrc);
                     };
                     
                     // Handle successful load
                     const handleLoadStart = () => {
-                        console.log('Loading ringtone:', toneSrc);
+                        console.log('Loading preloaded ringtone:', toneSrc);
                     };
                     
                     const handleCanPlay = () => {
-                        console.log('Ringtone loaded successfully');
+                        console.log('Preloaded ringtone ready');
                         audio.removeEventListener('canplaythrough', handleCanPlay);
                         audio.removeEventListener('error', handleError);
                         audio.removeEventListener('loadstart', handleLoadStart);
@@ -410,6 +411,39 @@ const AudioCall = ({ myId }) => {
                     audio.addEventListener('error', handleError);
                     audio.addEventListener('loadstart', handleLoadStart);
                     audio.addEventListener('canplaythrough', handleCanPlay);
+                }
+            } else {
+                // Fallback to legacy method
+                const ringtone = ringtoneId 
+                    ? ringtones.find(r => r.id === ringtoneId)
+                    : null;
+                const toneSrc = ringtone?.src || config?.callingBeep || '';
+                
+                if (toneSrc) {
+                    const audio = ringtoneAudio.current;
+                    if (!audio.src || audio.src !== toneSrc) {
+                        audio.setAttribute('src', toneSrc);
+                        audio.load();
+                        
+                        const handleError = () => {
+                            console.error('Failed to load ringtone:', toneSrc);
+                        };
+                        
+                        const handleLoadStart = () => {
+                            console.log('Loading ringtone:', toneSrc);
+                        };
+                        
+                        const handleCanPlay = () => {
+                            console.log('Ringtone loaded successfully');
+                            audio.removeEventListener('canplaythrough', handleCanPlay);
+                            audio.removeEventListener('error', handleError);
+                            audio.removeEventListener('loadstart', handleLoadStart);
+                        };
+                        
+                        audio.addEventListener('error', handleError);
+                        audio.addEventListener('loadstart', handleLoadStart);
+                        audio.addEventListener('canplaythrough', handleCanPlay);
+                    }
                 }
             }
         }
@@ -847,6 +881,8 @@ const AudioCall = ({ myId }) => {
                 ref={ringtoneAudio} 
                 loop 
                 preload="auto"
+                playsInline
+                crossOrigin="anonymous"
                 style={{ display: 'none' }}
             >
                 <track kind="captions" />

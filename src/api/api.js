@@ -7,6 +7,7 @@ import { jwtDecode } from "jwt-decode";
 // This respects REACT_APP_SERVER_ADDR if set, otherwise uses fallback logic
 const serverAddr = getServerAddress();
 const baseURL = `${serverAddr}/api/`;
+// const baseURL = `https://spirits-review-carbon-berkeley.trycloudflare.com/api/`;
 
 // Helper function to check if token is expired
 const isTokenExpired = (token) => {

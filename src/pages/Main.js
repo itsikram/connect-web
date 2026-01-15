@@ -38,7 +38,8 @@ import Login from "./Login.js";
 import SignUP from "./SignUp.js";
 import MinimizedCallBar from "../components/MinimizedCallBar/MinimizedCallBar.js";
 import config from "../config/config.json";
-
+import audioPreloader from "../utils/audioPreloader";
+import IosAddToHomeScreen from "../components/IosAddToHomeScreen";
 
 // portoflio
 import PortfolioContainer from "./portfolio/PortfolioContainer.js";
@@ -213,39 +214,58 @@ const Main = () => {
     }, [profileId, token, socket, isAuthenticated])
 
 
-    const playSound = () => {
-        if (!audioReady) {
-            console.warn('Notification sound blocked until user interaction');
-            return;
-        }
+    const playSound = async () => {
         try {
-            // Create audio element dynamically only when needed to play
-            const el = getOrCreateAudioElement();
-            
-            // Set src only at the very last moment, right before playing
-            // This minimizes the chance of IDM intercepting the request
-            const targetSrc = config?.defaultNotificationSound;
-            if (!targetSrc) {
-                console.warn('Notification sound URL not configured');
-                return;
-            }
-            
-            // Only set src if it's not already set to the correct file
-            const currentSrc = el.src || '';
-            if (!currentSrc || currentSrc.includes('data:audio') || currentSrc !== targetSrc) {
-                // Set src and immediately play to minimize download window
-                el.src = targetSrc;
-                // Use load() to ensure it's ready, but don't wait for it
-                el.load();
-            }
-            
-            el.currentTime = 0;
-            el.muted = false;
-            el.play().catch(error => {
-                console.warn('Failed to play notification sound:', error);
-            });
+            // Use preloaded audio for better performance and background playback
+            await audioPreloader.playNotificationSound();
         } catch (e) {
-            console.warn('Audio play error:', e);
+            console.warn('Audio play error, falling back to legacy method:', e);
+            // Fallback to legacy method if preloader fails
+            try {
+                const el = getOrCreateAudioElement();
+                const targetSrc = config?.defaultNotificationSound;
+                if (!targetSrc) {
+                    console.warn('Notification sound URL not configured');
+                    return;
+                }
+                
+                const currentSrc = el.src || '';
+                if (!currentSrc || currentSrc.includes('data:audio') || currentSrc !== targetSrc) {
+                    el.src = targetSrc;
+                    el.load();
+                }
+                
+                el.currentTime = 0;
+                el.muted = false;
+                
+                const playPromise = el.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(error => {
+                        if (!audioReady) {
+                            console.warn('Notification sound blocked, attempting to unlock...');
+                            const tryUnlock = async () => {
+                                try {
+                                    const silentAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=');
+                                    silentAudio.muted = true;
+                                    await silentAudio.play();
+                                    silentAudio.pause();
+                                    setAudioReady(true);
+                                    el.play().catch(err => {
+                                        console.warn('Failed to play notification sound after unlock:', err);
+                                    });
+                                } catch (unlockError) {
+                                    console.warn('Failed to unlock audio:', unlockError);
+                                }
+                            };
+                            tryUnlock();
+                        } else {
+                            console.warn('Failed to play notification sound:', error);
+                        }
+                    });
+                }
+            } catch (fallbackError) {
+                console.warn('Fallback audio play also failed:', fallbackError);
+            }
         }
     }
     const notify = (text, senderName, senderPP, link) => {
@@ -440,8 +460,18 @@ const Main = () => {
         //     dispatch(addMessages(data.reverse(), true))
         // })
 
+        // Listen for received messages (when someone messages me)
         socket.on('newMessageToUser', ({ updatedMessage, senderName, senderPP }) => {
-            dispatch(newMessage(updatedMessage))
+            dispatch(newMessage(updatedMessage, profileId))
+            
+            // Update sender's online status to true when receiving a new message
+            if (updatedMessage.senderId) {
+                // Dispatch a friend_online-like event to update online status in all components
+                const friendOnlineEvent = new CustomEvent('friend_online_client', {
+                    detail: { profileId: updatedMessage.senderId }
+                });
+                window.dispatchEvent(friendOnlineEvent);
+            }
             
             // Client-side deduplication: Check if we've already shown a toast for this message
             const messageId = updatedMessage._id?.toString() || updatedMessage._id;
@@ -469,13 +499,21 @@ const Main = () => {
             // Check if user is on message page (use window.location to get current pathname)
             const isOnMessagePage = window.location.pathname.startsWith('/message');
             
-            // If not on message page, open sticky chat box
+            // If not on message page, check if sticky chat is already open for this sender
             if (!isOnMessagePage && updatedMessage.senderId) {
-                // Dispatch event to open sticky chat box
-                const openChatEvent = new CustomEvent('openStickyChat', {
-                    detail: { profileId: updatedMessage.senderId }
-                });
-                window.dispatchEvent(openChatEvent);
+                // Check if sticky chat is already open for this sender
+                const isChatOpen = typeof window.isStickyChatOpen === 'function' 
+                    ? window.isStickyChatOpen(updatedMessage.senderId) 
+                    : false;
+                
+                // Only open sticky chat if it's not already open
+                if (!isChatOpen) {
+                    // Dispatch event to open sticky chat box
+                    const openChatEvent = new CustomEvent('openStickyChat', {
+                        detail: { profileId: updatedMessage.senderId }
+                    });
+                    window.dispatchEvent(openChatEvent);
+                }
             }
 
             // Show browser notification for new messages
@@ -501,6 +539,15 @@ const Main = () => {
                 setTimeout(() => {
                     notification.close();
                 }, 5000);
+            }
+        })
+
+        // Listen for sent messages (when I send a message - update Redux to re-sort contact list)
+        socket.on('newMessage', ({ updatedMessage, senderName, senderPP, chatPage }) => {
+            // Only update Redux if this is a message I sent (to update contact list sorting)
+            // chatPage check ensures we don't duplicate updates from chat components
+            if (chatPage === true && updatedMessage.senderId === profileId) {
+                dispatch(newMessage(updatedMessage, profileId))
             }
         })
 
@@ -667,6 +714,7 @@ const Main = () => {
             socket.off('browserNotification')
             socket.off('oldMessages')
             socket.off('newMessageToUser')
+            socket.off('newMessage')
             socket.off('bumpUser')
             socket.off('friendRequestNotification')
             socket.off('friendRequestAcceptNotification')
@@ -832,6 +880,7 @@ const Main = () => {
                 {!isHeaderHiddenRoute && isAuthenticated && <Header />}
 
                 <div id="main-container" className={isLoading ? 'loading' : ''}>
+                    <IosAddToHomeScreen />
                     {/* <Face /> */}
 
                     <Routes>
