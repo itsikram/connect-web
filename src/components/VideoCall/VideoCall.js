@@ -676,6 +676,31 @@ const VideoCall = ({ myId }) => {
                 setCallerProfilePic(callerProfilePic || config?.defaultProfile);
                 setCurrentChannel(channelName);
 
+                // Set ringtone source immediately before playing (don't wait for useEffect)
+                if (ringtoneAudio?.current) {
+                    const ringtoneId = mySettings.ringtone || null;
+                    const preloadedAudio = audioPreloader.getRingtone(ringtoneId);
+                    let toneSrc = null;
+                    
+                    if (preloadedAudio) {
+                        toneSrc = preloadedAudio.src;
+                    } else {
+                        // Fallback to legacy method
+                        const ringtone = ringtoneId 
+                            ? ringtones.find(r => r.id === ringtoneId)
+                            : null;
+                        toneSrc = ringtone?.src || config?.callingBeep || '';
+                    }
+                    
+                    if (toneSrc) {
+                        const audio = ringtoneAudio.current;
+                        if (!audio.src || audio.src !== toneSrc) {
+                            audio.setAttribute('src', toneSrc);
+                            audio.load();
+                        }
+                    }
+                }
+
                 // Start local video immediately when receiving call
                 try {
                     console.log('Starting local video for incoming call preview');
@@ -690,7 +715,10 @@ const VideoCall = ({ myId }) => {
                     console.error('Failed to start local video preview:', error);
                 }
 
-                playRingtone();
+                // Small delay to ensure audio source is set before playing
+                setTimeout(() => {
+                    playRingtone();
+                }, 100);
             }
         });
 
@@ -754,7 +782,55 @@ const VideoCall = ({ myId }) => {
             window.removeEventListener('startVideoCall', handleOutgoingVideoCall);
             stopRingtone(); // Stop ringtone on cleanup
         };
-    }, [startCall, cleanupVideoCall, endCall, myId, callAccepted, receivingCall, caller]);
+    }, [startCall, cleanupVideoCall, endCall, myId, callAccepted, receivingCall, caller, mySettings]);
+
+    // Resume ringtone playback when tab becomes visible
+    useEffect(() => {
+        const handleVisibilityChange = async () => {
+            if (document.visibilityState === 'visible' && receivingCall && !callAccepted && incomingCall && ringtoneAudio?.current) {
+                const audio = ringtoneAudio.current;
+                // Resume playback if it was paused due to tab being hidden
+                if (audio.paused && audio.src && audio.src !== window.location.href) {
+                    await unlockAudio();
+                    audio.muted = false;
+                    audio.volume = 1.0;
+                    try {
+                        await playAudioWithWebAudio(audio);
+                    } catch (error) {
+                        audio.play().catch(e => {
+                            console.warn('Failed to resume ringtone on visibility change:', e);
+                        });
+                    }
+                }
+            }
+        };
+
+        const handleWindowFocus = async () => {
+            // Also try to resume ringtone on window focus
+            if (receivingCall && !callAccepted && incomingCall && ringtoneAudio?.current) {
+                const audio = ringtoneAudio.current;
+                if (audio.paused && audio.src && audio.src !== window.location.href) {
+                    await unlockAudio();
+                    audio.muted = false;
+                    audio.volume = 1.0;
+                    try {
+                        await playAudioWithWebAudio(audio);
+                    } catch (error) {
+                        audio.play().catch(e => {
+                            console.warn('Failed to resume ringtone on window focus:', e);
+                        });
+                    }
+                }
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', handleWindowFocus);
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('focus', handleWindowFocus);
+        };
+    }, [receivingCall, callAccepted, incomingCall]);
 
     // Cleanup on component unmount
     useEffect(() => {
