@@ -1,47 +1,60 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import api from '../api/api';
+import { showErrorToast } from '../utils/toastUtils';
 
 const Notes = () => {
     const [notes, setNotes] = useState([]);
     const [selectedNote, setSelectedNote] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [isCreating, setIsCreating] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
 
-    // Load notes from localStorage
+    // Load notes from API
     useEffect(() => {
-        const savedNotes = localStorage.getItem('notesApp');
-        if (savedNotes) {
-            try {
-                setNotes(JSON.parse(savedNotes));
-            } catch (e) {
-                console.error('Error loading notes:', e);
-            }
-        }
+        loadNotes();
     }, []);
 
-    // Save notes to localStorage
-    useEffect(() => {
-        if (notes.length > 0 || selectedNote) {
-            localStorage.setItem('notesApp', JSON.stringify(notes));
+    const loadNotes = async () => {
+        try {
+            setLoading(true);
+            const response = await api.get('/notes');
+            if (response.data.success) {
+                setNotes(response.data.notes || []);
+            }
+        } catch (error) {
+            console.error('Error loading notes:', error);
+            showErrorToast('Failed to load notes');
+        } finally {
+            setLoading(false);
         }
-    }, [notes, selectedNote]);
+    };
 
     const filteredNotes = notes.filter(note =>
         note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         note.content.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
-    const handleCreateNote = () => {
-        const newNote = {
-            id: Date.now(),
-            title: 'Untitled Note',
-            content: '',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-        };
-        setNotes([newNote, ...notes]);
-        setSelectedNote(newNote);
-        setIsCreating(true);
+    const handleCreateNote = async () => {
+        try {
+            setSaving(true);
+            const response = await api.post('/notes', {
+                title: 'Untitled Note',
+                content: ''
+            });
+            if (response.data.success) {
+                const newNote = response.data.note;
+                setNotes([newNote, ...notes]);
+                setSelectedNote(newNote);
+                setIsCreating(true);
+            }
+        } catch (error) {
+            console.error('Error creating note:', error);
+            showErrorToast('Failed to create note');
+        } finally {
+            setSaving(false);
+        }
     };
 
     const handleSelectNote = (note) => {
@@ -49,22 +62,55 @@ const Notes = () => {
         setIsCreating(false);
     };
 
-    const handleUpdateNote = (field, value) => {
+    const handleUpdateNote = async (field, value) => {
         if (!selectedNote) return;
+        
+        // Optimistic update
         const updatedNote = {
             ...selectedNote,
             [field]: value,
             updatedAt: new Date().toISOString()
         };
         setSelectedNote(updatedNote);
-        setNotes(notes.map(note => note.id === updatedNote.id ? updatedNote : note));
+        setNotes(notes.map(note => note._id === updatedNote._id ? updatedNote : note));
+
+        // Save to API with debounce
+        clearTimeout(handleUpdateNote.timeout);
+        handleUpdateNote.timeout = setTimeout(async () => {
+            try {
+                const response = await api.put(`/notes/${selectedNote._id}`, {
+                    [field]: value
+                });
+                if (response.data.success) {
+                    const savedNote = response.data.note;
+                    setSelectedNote(savedNote);
+                    setNotes(notes.map(note => note._id === savedNote._id ? savedNote : note));
+                }
+            } catch (error) {
+                console.error('Error updating note:', error);
+                showErrorToast('Failed to update note');
+                // Reload notes to get correct state
+                loadNotes();
+            }
+        }, 1000);
     };
 
-    const handleDeleteNote = () => {
+    const handleDeleteNote = async () => {
         if (!selectedNote) return;
         if (window.confirm('Are you sure you want to delete this note?')) {
-            setNotes(notes.filter(note => note.id !== selectedNote.id));
-            setSelectedNote(null);
+            try {
+                setSaving(true);
+                const response = await api.delete(`/notes/${selectedNote._id}`);
+                if (response.data.success) {
+                    setNotes(notes.filter(note => note._id !== selectedNote._id));
+                    setSelectedNote(null);
+                }
+            } catch (error) {
+                console.error('Error deleting note:', error);
+                showErrorToast('Failed to delete note');
+            } finally {
+                setSaving(false);
+            }
         }
     };
 
@@ -273,6 +319,7 @@ const Notes = () => {
     };
 
     const formatDate = (dateString) => {
+        if (!dateString) return '';
         const date = new Date(dateString);
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     };
@@ -301,23 +348,27 @@ const Notes = () => {
             <div style={containerStyle}>
                 <div style={sidebarStyle}>
                     <div style={notesListStyle}>
-                        {filteredNotes.length === 0 ? (
+                        {loading ? (
+                            <div style={{ padding: '24px', textAlign: 'center', opacity: 0.6 }}>
+                                Loading notes...
+                            </div>
+                        ) : filteredNotes.length === 0 ? (
                             <div style={{ padding: '24px', textAlign: 'center', opacity: 0.6 }}>
                                 {searchQuery ? 'No notes found' : 'No notes yet. Create one!'}
                             </div>
                         ) : (
                             filteredNotes.map((note) => (
                                 <div
-                                    key={note.id}
+                                    key={note._id}
                                     onClick={() => handleSelectNote(note)}
-                                    style={selectedNote?.id === note.id ? noteItemActiveStyle : noteItemStyle}
+                                    style={selectedNote?._id === note._id ? noteItemActiveStyle : noteItemStyle}
                                     onMouseEnter={(e) => {
-                                        if (selectedNote?.id !== note.id) {
+                                        if (selectedNote?._id !== note._id) {
                                             e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
                                         }
                                     }}
                                     onMouseLeave={(e) => {
-                                        if (selectedNote?.id !== note.id) {
+                                        if (selectedNote?._id !== note._id) {
                                             e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
                                         }
                                     }}
@@ -335,8 +386,8 @@ const Notes = () => {
                     {selectedNote ? (
                         <>
                             <div style={editorToolbarStyle}>
-                                <span style={{ fontSize: '13px', opacity: 0.7 }}>
-                                    Last updated: {formatDate(selectedNote.updatedAt)}
+                                    <span style={{ fontSize: '13px', opacity: 0.7 }}>
+                                    {selectedNote.updatedAt ? `Last updated: ${formatDate(selectedNote.updatedAt)}` : ''}
                                 </span>
                                 <button onClick={handleDeleteNote} style={deleteButtonStyle}>
                                     Delete
@@ -345,13 +396,13 @@ const Notes = () => {
                             <div style={editorContentStyle}>
                                 <input
                                     type="text"
-                                    value={selectedNote.title}
+                                    value={selectedNote.title || ''}
                                     onChange={(e) => handleUpdateNote('title', e.target.value)}
                                     style={titleInputStyle}
                                     placeholder="Note title..."
                                 />
                                 <textarea
-                                    value={selectedNote.content}
+                                    value={selectedNote.content || ''}
                                     onChange={(e) => handleUpdateNote('content', e.target.value)}
                                     style={contentTextareaStyle}
                                     placeholder="Start writing your note..."

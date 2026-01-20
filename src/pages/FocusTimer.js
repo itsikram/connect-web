@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import api from '../api/api';
+import { showErrorToast } from '../utils/toastUtils';
 
 const FocusTimer = () => {
     const [minutes, setMinutes] = useState(25);
@@ -10,18 +12,21 @@ const FocusTimer = () => {
     const [completedSessions, setCompletedSessions] = useState(0);
     const intervalRef = useRef(null);
 
-    // Load completed sessions from localStorage
+    // Load completed sessions from API
     useEffect(() => {
-        const saved = localStorage.getItem('timerCompletedSessions');
-        if (saved) {
-            setCompletedSessions(parseInt(saved, 10) || 0);
-        }
+        loadTimerSession();
     }, []);
 
-    // Save completed sessions to localStorage
-    useEffect(() => {
-        localStorage.setItem('timerCompletedSessions', completedSessions.toString());
-    }, [completedSessions]);
+    const loadTimerSession = async () => {
+        try {
+            const response = await api.get('/timer');
+            if (response.data.success) {
+                setCompletedSessions(response.data.session?.completedSessions || 0);
+            }
+        } catch (error) {
+            console.error('Error loading timer session:', error);
+        }
+    };
 
     // Timer presets
     const presets = {
@@ -61,11 +66,21 @@ const FocusTimer = () => {
         };
     }, [isRunning, isPaused]);
 
-    const handleTimerComplete = () => {
+    const handleTimerComplete = async () => {
         setIsRunning(false);
         setIsPaused(false);
         if (sessionType === 'focus') {
-            setCompletedSessions(prev => prev + 1);
+            try {
+                const response = await api.post('/timer/update', {
+                    sessionType: 'focus'
+                });
+                if (response.data.success) {
+                    setCompletedSessions(response.data.session?.completedSessions || 0);
+                }
+            } catch (error) {
+                console.error('Error updating timer session:', error);
+                showErrorToast('Failed to save session');
+            }
         }
         // Play notification sound or show alert
         if (window.Notification && Notification.permission === 'granted') {

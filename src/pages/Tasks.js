@@ -1,29 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import api from '../api/api';
+import { showErrorToast } from '../utils/toastUtils';
 
 const Tasks = () => {
     const [tasks, setTasks] = useState([]);
     const [newTask, setNewTask] = useState('');
     const [filter, setFilter] = useState('all'); // all, active, completed
+    const [loading, setLoading] = useState(true);
 
-    // Load tasks from localStorage
+    // Load tasks from API
     useEffect(() => {
-        const savedTasks = localStorage.getItem('tasksApp');
-        if (savedTasks) {
-            try {
-                setTasks(JSON.parse(savedTasks));
-            } catch (e) {
-                console.error('Error loading tasks:', e);
-            }
-        }
+        loadTasks();
     }, []);
 
-    // Save tasks to localStorage
-    useEffect(() => {
-        if (tasks.length >= 0) {
-            localStorage.setItem('tasksApp', JSON.stringify(tasks));
+    const loadTasks = async () => {
+        try {
+            setLoading(true);
+            const response = await api.get('/tasks');
+            if (response.data.success) {
+                setTasks(response.data.tasks || []);
+            }
+        } catch (error) {
+            console.error('Error loading tasks:', error);
+            showErrorToast('Failed to load tasks');
+        } finally {
+            setLoading(false);
         }
-    }, [tasks]);
+    };
 
     const filteredTasks = tasks.filter(task => {
         if (filter === 'active') return !task.completed;
@@ -31,31 +35,68 @@ const Tasks = () => {
         return true;
     });
 
-    const handleAddTask = () => {
+    const handleAddTask = async () => {
         if (newTask.trim()) {
-            const task = {
-                id: Date.now(),
-                text: newTask.trim(),
-                completed: false,
-                createdAt: new Date().toISOString()
-            };
-            setTasks([task, ...tasks]);
-            setNewTask('');
+            try {
+                const response = await api.post('/tasks', {
+                    text: newTask.trim()
+                });
+                if (response.data.success) {
+                    setTasks([response.data.task, ...tasks]);
+                    setNewTask('');
+                }
+            } catch (error) {
+                console.error('Error creating task:', error);
+                showErrorToast('Failed to create task');
+            }
         }
     };
 
-    const handleToggleTask = (id) => {
-        setTasks(tasks.map(task =>
-            task.id === id ? { ...task, completed: !task.completed } : task
+    const handleToggleTask = async (id) => {
+        const task = tasks.find(t => t._id === id);
+        if (!task) return;
+        
+        // Optimistic update
+        setTasks(tasks.map(t =>
+            t._id === id ? { ...t, completed: !t.completed } : t
         ));
+
+        try {
+            const response = await api.put(`/tasks/${id}`, {
+                completed: !task.completed
+            });
+            if (response.data.success) {
+                setTasks(tasks.map(t => t._id === id ? response.data.task : t));
+            }
+        } catch (error) {
+            console.error('Error updating task:', error);
+            showErrorToast('Failed to update task');
+            loadTasks(); // Reload on error
+        }
     };
 
-    const handleDeleteTask = (id) => {
-        setTasks(tasks.filter(task => task.id !== id));
+    const handleDeleteTask = async (id) => {
+        try {
+            const response = await api.delete(`/tasks/${id}`);
+            if (response.data.success) {
+                setTasks(tasks.filter(task => task._id !== id));
+            }
+        } catch (error) {
+            console.error('Error deleting task:', error);
+            showErrorToast('Failed to delete task');
+        }
     };
 
-    const handleClearCompleted = () => {
-        setTasks(tasks.filter(task => !task.completed));
+    const handleClearCompleted = async () => {
+        try {
+            const response = await api.delete('/tasks/completed/all');
+            if (response.data.success) {
+                setTasks(tasks.filter(task => !task.completed));
+            }
+        } catch (error) {
+            console.error('Error clearing completed tasks:', error);
+            showErrorToast('Failed to clear completed tasks');
+        }
     };
 
     const activeTasksCount = tasks.filter(task => !task.completed).length;
@@ -345,9 +386,13 @@ const Tasks = () => {
             ) : (
                 <>
                     <div style={tasksListStyle}>
-                        {filteredTasks.map((task) => (
+                        {loading ? (
+                            <div style={{ textAlign: 'center', padding: '24px', opacity: 0.6 }}>
+                                Loading tasks...
+                            </div>
+                        ) : filteredTasks.map((task) => (
                             <div
-                                key={task.id}
+                                key={task._id}
                                 style={task.completed ? taskItemCompletedStyle : taskItemStyle}
                                 onMouseEnter={(e) => {
                                     e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
@@ -357,7 +402,7 @@ const Tasks = () => {
                                 }}
                             >
                                 <div
-                                    onClick={() => handleToggleTask(task.id)}
+                                    onClick={() => handleToggleTask(task._id)}
                                     style={task.completed ? checkboxCheckedStyle : checkboxStyle}
                                 >
                                     {task.completed && (
@@ -368,7 +413,7 @@ const Tasks = () => {
                                     {task.text}
                                 </p>
                                 <button
-                                    onClick={() => handleDeleteTask(task.id)}
+                                    onClick={() => handleDeleteTask(task._id)}
                                     style={deleteButtonStyle}
                                     onMouseEnter={(e) => {
                                         e.currentTarget.style.background = 'rgba(239,68,68,0.3)';
