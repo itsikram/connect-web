@@ -1,24 +1,99 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import ModalContainer from '../modal/ModalContainer';
 import './LiveVoiceModal.css';
 
-const LiveVoiceModal = ({ isOpen, onClose, isActive, duration, isConnecting, role, friendName, onStop }) => {
+const LiveVoiceModal = ({ 
+    isOpen, 
+    onClose, 
+    isActive, 
+    duration, 
+    isConnecting, 
+    role, 
+    friendName, 
+    onStop,
+    transcriptionStatus = null,
+    connectionQuality = null
+}) => {
+    const [audioLevel, setAudioLevel] = useState(0);
+    
     const formatDuration = (seconds) => {
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
+    // Simulate audio level for visual feedback (can be replaced with actual audio level from Agora)
+    useEffect(() => {
+        if (!isActive) {
+            setAudioLevel(0);
+            return;
+        }
+
+        const interval = setInterval(() => {
+            // Simulate varying audio levels for visual feedback
+            setAudioLevel(Math.random() * 0.7 + 0.3);
+        }, 100);
+
+        return () => clearInterval(interval);
+    }, [isActive]);
+
+    const getConnectionQualityLabel = () => {
+        if (!connectionQuality) return 'Good';
+        if (connectionQuality >= 4) return 'Excellent';
+        if (connectionQuality >= 3) return 'Good';
+        if (connectionQuality >= 2) return 'Fair';
+        return 'Poor';
+    };
+
+    const getConnectionQualityColor = () => {
+        if (!connectionQuality) return '#1DB954';
+        if (connectionQuality >= 4) return '#1DB954';
+        if (connectionQuality >= 3) return '#FFA500';
+        if (connectionQuality >= 2) return '#FF6B6B';
+        return '#FF4444';
+    };
+
+    const getTranscriptionStatusDisplay = () => {
+        if (!transcriptionStatus) {
+            // Default: assume transcription is active if live voice is active
+            return isActive ? { status: 'active', text: 'Transcription Active', color: '#1DB954' } : null;
+        }
+        
+        switch (transcriptionStatus.toLowerCase()) {
+            case 'active':
+            case 'connected':
+                return { status: 'active', text: 'Transcription Active', color: '#1DB954' };
+            case 'connecting':
+            case 'pending':
+                return { status: 'connecting', text: 'Transcription Connecting...', color: '#FFA500' };
+            case 'error':
+            case 'failed':
+                return { status: 'error', text: 'Transcription Error', color: '#FF4444' };
+            case 'disconnected':
+            case 'inactive':
+                return { status: 'inactive', text: 'Transcription Inactive', color: '#666' };
+            default:
+                return { status: 'active', text: 'Transcription Active', color: '#1DB954' };
+        }
+    };
+
+    const transcriptionInfo = getTranscriptionStatusDisplay();
+
     return (
         <ModalContainer
             isOpen={isOpen}
             onRequestClose={onClose}
             title="Live Voice Transfer"
-            style={{ maxWidth: '400px' }}
+            style={{ maxWidth: '450px' }}
         >
             <div className="live-voice-modal">
                 <div className="live-voice-modal-header">
-                    <h3>Live Voice Transfer</h3>
+                    <div className="live-voice-header-content">
+                        <div className="live-voice-header-icon">
+                            <i className="fas fa-microphone-alt"></i>
+                        </div>
+                        <h3>Live Voice Transfer</h3>
+                    </div>
                     <button 
                         className="live-voice-close-btn"
                         onClick={onClose}
@@ -33,14 +108,30 @@ const LiveVoiceModal = ({ isOpen, onClose, isActive, duration, isConnecting, rol
                         <div className="live-voice-icon-container">
                             {isConnecting ? (
                                 <div className="live-voice-connecting">
-                                    <i className="fas fa-spinner fa-spin"></i>
+                                    <div className="live-voice-spinner-ring"></div>
+                                    <i className="fas fa-phone"></i>
                                 </div>
                             ) : isActive ? (
                                 <>
                                     <div className="live-voice-active">
+                                        <div className="live-voice-ripple"></div>
+                                        <div className="live-voice-ripple delay-1"></div>
+                                        <div className="live-voice-ripple delay-2"></div>
                                         <i className="fas fa-phone"></i>
                                     </div>
-                                    <span className="live-voice-pulse"></span>
+                                    {/* Audio level visualization */}
+                                    <div className="live-voice-audio-waves">
+                                        {[...Array(5)].map((_, i) => (
+                                            <div 
+                                                key={i} 
+                                                className="live-voice-wave-bar"
+                                                style={{
+                                                    height: `${audioLevel * (20 + i * 15)}%`,
+                                                    animationDelay: `${i * 0.1}s`
+                                                }}
+                                            />
+                                        ))}
+                                    </div>
                                 </>
                             ) : (
                                 <div className="live-voice-inactive">
@@ -52,46 +143,111 @@ const LiveVoiceModal = ({ isOpen, onClose, isActive, duration, isConnecting, rol
                         <div className="live-voice-info">
                             <div className="live-voice-status-text">
                                 {isConnecting ? (
-                                    <span className="status-connecting">Connecting...</span>
+                                    <span className="status-connecting">
+                                        <i className="fas fa-circle-notch fa-spin"></i>
+                                        Connecting...
+                                    </span>
                                 ) : isActive ? (
-                                    <span className="status-active">Live Voice Active</span>
+                                    <span className="status-active">
+                                        <i className="fas fa-circle"></i>
+                                        Live Voice Active
+                                    </span>
                                 ) : (
-                                    <span className="status-inactive">Inactive</span>
+                                    <span className="status-inactive">
+                                        <i className="fas fa-circle"></i>
+                                        Inactive
+                                    </span>
                                 )}
                             </div>
                             
                             {friendName && (
                                 <div className="live-voice-participant">
-                                    {role === 'sender' ? (
-                                        <span>Transferring to: <strong>{friendName}</strong></span>
-                                    ) : (
-                                        <span>Receiving from: <strong>{friendName}</strong></span>
-                                    )}
+                                    <i className={`fas ${role === 'sender' ? 'fa-arrow-right' : 'fa-arrow-left'}`}></i>
+                                    <span>
+                                        {role === 'sender' ? 'Transferring to' : 'Receiving from'}: 
+                                        <strong> {friendName}</strong>
+                                    </span>
                                 </div>
                             )}
                             
                             {isActive && duration !== null && (
                                 <div className="live-voice-duration">
-                                    <i className="fas fa-clock"></i>
+                                    <div className="live-voice-duration-icon">
+                                        <i className="fas fa-clock"></i>
+                                    </div>
                                     <span>{formatDuration(duration)}</span>
                                 </div>
                             )}
                         </div>
                     </div>
+
+                    {/* Connection Quality Indicator */}
+                    {isActive && (
+                        <div className="live-voice-connection-quality">
+                            <div className="connection-quality-header">
+                                <i className="fas fa-signal" style={{ color: getConnectionQualityColor() }}></i>
+                                <span>Connection Quality</span>
+                            </div>
+                            <div className="connection-quality-bar">
+                                <div 
+                                    className="connection-quality-fill"
+                                    style={{ 
+                                        width: `${(connectionQuality || 4) * 25}%`,
+                                        backgroundColor: getConnectionQualityColor()
+                                    }}
+                                ></div>
+                            </div>
+                            <span className="connection-quality-label" style={{ color: getConnectionQualityColor() }}>
+                                {getConnectionQualityLabel()}
+                            </span>
+                        </div>
+                    )}
                     
                     <div className="live-voice-details">
                         <div className="live-voice-detail-item">
-                            <i className="fas fa-info-circle"></i>
-                            <span>
-                                {role === 'sender' 
-                                    ? 'Your voice is being transmitted in real-time'
-                                    : 'You are receiving live audio'}
-                            </span>
+                            <div className="detail-icon">
+                                <i className="fas fa-info-circle"></i>
+                            </div>
+                            <div className="detail-content">
+                                <span className="detail-label">Mode</span>
+                                <span className="detail-value">
+                                    {role === 'sender' 
+                                        ? 'Real-time voice transmission'
+                                        : 'Live audio reception'}
+                                </span>
+                            </div>
                         </div>
+                        
                         <div className="live-voice-detail-item">
-                            <i className="fas fa-signal"></i>
-                            <span>Connection: {isActive ? 'Active' : isConnecting ? 'Connecting' : 'Disconnected'}</span>
+                            <div className="detail-icon">
+                                <i className="fas fa-network-wired"></i>
+                            </div>
+                            <div className="detail-content">
+                                <span className="detail-label">Connection</span>
+                                <span className="detail-value">
+                                    {isActive ? 'Active' : isConnecting ? 'Connecting' : 'Disconnected'}
+                                </span>
+                            </div>
                         </div>
+
+                        {/* Transcription Status */}
+                        {transcriptionInfo && (
+                            <div className="live-voice-detail-item transcription-status">
+                                <div className="detail-icon">
+                                    <i className="fas fa-file-alt" style={{ color: transcriptionInfo.color }}></i>
+                                </div>
+                                <div className="detail-content">
+                                    <span className="detail-label">Transcription</span>
+                                    <span 
+                                        className="detail-value transcription-status-value"
+                                        style={{ color: transcriptionInfo.color }}
+                                    >
+                                        <span className="transcription-status-dot" style={{ backgroundColor: transcriptionInfo.color }}></span>
+                                        {transcriptionInfo.text}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
                     </div>
                     
                     {role === 'sender' && isActive && (
@@ -101,7 +257,7 @@ const LiveVoiceModal = ({ isOpen, onClose, isActive, duration, isConnecting, rol
                                 onClick={onStop}
                             >
                                 <i className="fas fa-stop"></i>
-                                Stop Live Voice
+                                <span>Stop Live Voice</span>
                             </button>
                         </div>
                     )}
