@@ -9,7 +9,7 @@ import api from '../../api/api';
 import { useCallMinimize } from '../../contexts/CallMinimizeContext';
 import config from '../../config/config.json';
 import audioPreloader from '../../utils/audioPreloader';
-import { unlockAudio, playAudioWithWebAudio } from '../../utils/audioUnlock';
+import { unlockAudio, playAudioWithWebAudio, initializeAudioUnlock } from '../../utils/audioUnlock';
 const VideoCall = ({ myId }) => {
     const mySettings = useSelector(state => state.setting);
     const [isVideoCall, setIsVideoCall] = useState(false);
@@ -72,24 +72,25 @@ const VideoCall = ({ myId }) => {
             audio.currentTime = 0; // Reset to beginning
         }
     };
+
     const playRingtone = async () => {
         // First, try to unlock audio if not already unlocked
         await unlockAudio();
-        
+
         setTimeout(async () => {
             if (ringtoneAudio?.current) {
                 const audio = ringtoneAudio.current;
-                
+
                 // Check if audio has a valid source
                 if (!audio.src || audio.src === window.location.href) {
                     console.warn('Ringtone audio has no valid source');
                     return;
                 }
-                
+
                 // Ensure audio is not muted and volume is set
                 audio.muted = false;
                 audio.volume = 1.0;
-                
+
                 // Wait for audio to be ready if not already loaded
                 if (audio.readyState < 2) {
                     const handleCanPlay = async () => {
@@ -120,7 +121,7 @@ const VideoCall = ({ myId }) => {
                         audio.removeEventListener('canplaythrough', handleCanPlay);
                     };
                     audio.addEventListener('canplaythrough', handleCanPlay);
-                    
+
                     // Fallback timeout
                     setTimeout(() => {
                         audio.removeEventListener('canplaythrough', handleCanPlay);
@@ -131,7 +132,7 @@ const VideoCall = ({ myId }) => {
                         await playAudioWithWebAudio(audio);
                         console.log('Ringtone playing successfully');
                     } catch (error) {
-                        console.warn('Failed to play ringtone with Web Audio API:', error);
+                        console.warn('Failed to play ringtone:', error);
                         // Fallback: try regular play
                         try {
                             await audio.play();
@@ -155,11 +156,11 @@ const VideoCall = ({ myId }) => {
                 // Retry after a short delay if audio element not yet mounted
                 setTimeout(async () => {
                     if (ringtoneAudio?.current) {
-                        const audio = ringtoneAudio.current;
+                        await unlockAudio();
                         try {
-                            await playAudioWithWebAudio(audio);
+                            await playAudioWithWebAudio(ringtoneAudio.current);
                         } catch (error) {
-                            audio.play().catch(e => console.warn('Failed to play ringtone after retry:', e));
+                            ringtoneAudio.current.play().catch(e => console.warn('Failed to play ringtone after retry:', e));
                         }
                     }
                 }, 300);
@@ -549,30 +550,70 @@ const VideoCall = ({ myId }) => {
         if (ringtoneAudio?.current && receivingCall && incomingCall) {
             // Use user's ringtone preference or fallback to default
             const ringtoneId = mySettings.ringtone || null;
-            
+
             // Get preloaded ringtone audio
             const preloadedAudio = audioPreloader.getRingtone(ringtoneId);
             if (preloadedAudio) {
                 const audio = ringtoneAudio.current;
                 const toneSrc = preloadedAudio.src;
-                
+
                 // Only load if source hasn't been set yet
                 if (!audio.src || audio.src !== toneSrc) {
                     audio.setAttribute('src', toneSrc);
                     audio.load(); // Ensure the audio is loaded
+
+                    // Handle loading errors
+                    const handleError = () => {
+                        console.error('Failed to load preloaded ringtone:', toneSrc);
+                    };
+
+                    // Handle successful load
+                    const handleLoadStart = () => {
+                        console.log('Loading preloaded ringtone:', toneSrc);
+                    };
+
+                    const handleCanPlay = () => {
+                        console.log('Preloaded ringtone ready');
+                        audio.removeEventListener('canplaythrough', handleCanPlay);
+                        audio.removeEventListener('error', handleError);
+                        audio.removeEventListener('loadstart', handleLoadStart);
+                    };
+
+                    audio.addEventListener('error', handleError);
+                    audio.addEventListener('loadstart', handleLoadStart);
+                    audio.addEventListener('canplaythrough', handleCanPlay);
                 }
             } else {
                 // Fallback to legacy method
-                const ringtone = ringtoneId 
+                const ringtone = ringtoneId
                     ? ringtones.find(r => r.id === ringtoneId)
                     : null;
                 const toneSrc = ringtone?.src || config?.callingBeep || '';
-                
+
                 if (toneSrc) {
                     const audio = ringtoneAudio.current;
                     if (!audio.src || audio.src !== toneSrc) {
                         audio.setAttribute('src', toneSrc);
                         audio.load();
+
+                        const handleError = () => {
+                            console.error('Failed to load ringtone:', toneSrc);
+                        };
+
+                        const handleLoadStart = () => {
+                            console.log('Loading ringtone:', toneSrc);
+                        };
+
+                        const handleCanPlay = () => {
+                            console.log('Ringtone loaded successfully');
+                            audio.removeEventListener('canplaythrough', handleCanPlay);
+                            audio.removeEventListener('error', handleError);
+                            audio.removeEventListener('loadstart', handleLoadStart);
+                        };
+
+                        audio.addEventListener('error', handleError);
+                        audio.addEventListener('loadstart', handleLoadStart);
+                        audio.addEventListener('canplaythrough', handleCanPlay);
                     }
                 }
             }
@@ -720,6 +761,11 @@ const VideoCall = ({ myId }) => {
         return () => {
             stopRingtone();
         };
+    }, []);
+
+    // Initialize audio unlock on component mount
+    useEffect(() => {
+        initializeAudioUnlock();
     }, []);
 
     // Check for video input devices
@@ -1128,17 +1174,17 @@ const VideoCall = ({ myId }) => {
                     </div>
                 </div>
             </ModalContainer>
-            {receivingCall && incomingCall && (
-                <audio 
-                    ref={ringtoneAudio} 
-                    loop 
-                    preload="auto"
-                    playsInline
-                    crossOrigin="anonymous"
-                >
-                    <track kind="captions" />
-                </audio>
-            )}
+            {/* Always render audio element to avoid autoplay issues when tab is not focused */}
+            <audio
+                ref={ringtoneAudio}
+                loop
+                preload="auto"
+                playsInline
+                crossOrigin="anonymous"
+                style={{ display: 'none' }}
+            >
+                <track kind="captions" />
+            </audio>
         </div>
     );
 };

@@ -826,7 +826,20 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
                             </div>
                         )}
                         <div className='new-message-input-container'>
-                            <input ref={messageInput} onChange={handleInputChange} value={inputValue} onKeyDown={handleKeyPress} placeholder='Send Message....' id='newMessageInput' className='new-message-input' onFocus={addTyping} onBlur={removeTyping} disabled={isRecording || isUploadingAudio} />
+                            <input 
+                                ref={messageInput} 
+                                onChange={handleInputChange} 
+                                value={inputValue} 
+                                onKeyDown={handleKeyPress} 
+                                placeholder='Send Message....' 
+                                id='newMessageInput' 
+                                className='new-message-input' 
+                                onFocus={addTyping} 
+                                onBlur={removeTyping} 
+                                disabled={isRecording || isUploadingAudio}
+                                // Prevent iOS Safari from zooming on focus by ensuring font-size >= 16px
+                                style={{ fontSize: '16px' }}
+                            />
                         </div>
                         <div ref={messageActionButtonContainer} className='message-action-button-container'>
 
