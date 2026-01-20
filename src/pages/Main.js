@@ -83,6 +83,12 @@ import SavedVideos from "./SavedVideos.js";
 import LudoGame from "./ludo";
 import ChessGame from "./ChessGame";
 import VideoPlayer from "./VideoPlayer.js";
+import Notes from "./Notes.js";
+import Tasks from "./Tasks.js";
+import FocusTimer from "./FocusTimer.js";
+import Flashcards from "./Flashcards.js";
+import Calendar from "./Calendar.js";
+import Habits from "./Habits.js";
 
 // import MicRecorder from 'mic-recorder-to-mp3';
 // const recorder = new MicRecorder({ bitRate: 128 });
@@ -961,6 +967,12 @@ const Main = () => {
 
                             <Route path="/groups" element={<Groups />}> </Route>
                             <Route path="/yt-download" element={<YtDownload />}> </Route>
+                            <Route path="/notes" element={<ProtectedRoute><Notes /></ProtectedRoute>}> </Route>
+                            <Route path="/tasks" element={<ProtectedRoute><Tasks /></ProtectedRoute>}> </Route>
+                            <Route path="/timer" element={<ProtectedRoute><FocusTimer /></ProtectedRoute>}> </Route>
+                            <Route path="/flashcards" element={<ProtectedRoute><Flashcards /></ProtectedRoute>}> </Route>
+                            <Route path="/calendar" element={<ProtectedRoute><Calendar /></ProtectedRoute>}> </Route>
+                            <Route path="/habits" element={<ProtectedRoute><Habits /></ProtectedRoute>}> </Route>
                             <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>}></Route>
 
                             <Route path="/settings/" element={<ProtectedRoute><Settings /></ProtectedRoute>}>

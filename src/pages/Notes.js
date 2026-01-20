@@ -1,0 +1,374 @@
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+
+const Notes = () => {
+    const [notes, setNotes] = useState([]);
+    const [selectedNote, setSelectedNote] = useState(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [isCreating, setIsCreating] = useState(false);
+
+    // Load notes from localStorage
+    useEffect(() => {
+        const savedNotes = localStorage.getItem('notesApp');
+        if (savedNotes) {
+            try {
+                setNotes(JSON.parse(savedNotes));
+            } catch (e) {
+                console.error('Error loading notes:', e);
+            }
+        }
+    }, []);
+
+    // Save notes to localStorage
+    useEffect(() => {
+        if (notes.length > 0 || selectedNote) {
+            localStorage.setItem('notesApp', JSON.stringify(notes));
+        }
+    }, [notes, selectedNote]);
+
+    const filteredNotes = notes.filter(note =>
+        note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        note.content.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    const handleCreateNote = () => {
+        const newNote = {
+            id: Date.now(),
+            title: 'Untitled Note',
+            content: '',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+        setNotes([newNote, ...notes]);
+        setSelectedNote(newNote);
+        setIsCreating(true);
+    };
+
+    const handleSelectNote = (note) => {
+        setSelectedNote(note);
+        setIsCreating(false);
+    };
+
+    const handleUpdateNote = (field, value) => {
+        if (!selectedNote) return;
+        const updatedNote = {
+            ...selectedNote,
+            [field]: value,
+            updatedAt: new Date().toISOString()
+        };
+        setSelectedNote(updatedNote);
+        setNotes(notes.map(note => note.id === updatedNote.id ? updatedNote : note));
+    };
+
+    const handleDeleteNote = () => {
+        if (!selectedNote) return;
+        if (window.confirm('Are you sure you want to delete this note?')) {
+            setNotes(notes.filter(note => note.id !== selectedNote.id));
+            setSelectedNote(null);
+        }
+    };
+
+    const pageStyle = {
+        minHeight: '100vh',
+        background: 'linear-gradient(180deg, #0B1220 0%, #0F172A 100%)',
+        color: '#E5E7EB',
+        display: 'flex',
+        flexDirection: 'column'
+    };
+
+    const headerStyle = {
+        padding: '24px',
+        borderBottom: '1px solid rgba(255,255,255,0.1)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '16px'
+    };
+
+    const headerLeftStyle = {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '16px',
+        flex: 1
+    };
+
+    const backButtonStyle = {
+        padding: '8px 16px',
+        background: 'rgba(255,255,255,0.05)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        borderRadius: '8px',
+        color: '#E5E7EB',
+        textDecoration: 'none',
+        fontSize: '14px',
+        fontWeight: 500,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '8px',
+        transition: 'all 0.2s'
+    };
+
+    const titleStyle = {
+        margin: 0,
+        fontSize: '24px',
+        fontWeight: 700
+    };
+
+    const searchInputStyle = {
+        padding: '10px 16px',
+        background: 'rgba(255,255,255,0.05)',
+        border: '1px solid rgba(255,255,255,0.1)',
+        borderRadius: '8px',
+        color: '#E5E7EB',
+        fontSize: '14px',
+        flex: 1,
+        maxWidth: '400px'
+    };
+
+    const createButtonStyle = {
+        padding: '10px 20px',
+        background: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
+        border: 'none',
+        borderRadius: '8px',
+        color: '#ffffff',
+        fontSize: '14px',
+        fontWeight: 600,
+        cursor: 'pointer',
+        transition: 'transform 0.2s'
+    };
+
+    const containerStyle = {
+        display: 'flex',
+        flex: 1,
+        overflow: 'hidden'
+    };
+
+    const sidebarStyle = {
+        width: '300px',
+        borderRight: '1px solid rgba(255,255,255,0.1)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden'
+    };
+
+    const notesListStyle = {
+        flex: 1,
+        overflowY: 'auto',
+        padding: '8px'
+    };
+
+    const noteItemStyle = {
+        padding: '16px',
+        marginBottom: '8px',
+        background: 'rgba(255,255,255,0.04)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: '12px',
+        cursor: 'pointer',
+        transition: 'all 0.2s'
+    };
+
+    const noteItemActiveStyle = {
+        ...noteItemStyle,
+        background: 'rgba(99,102,241,0.2)',
+        borderColor: 'rgba(99,102,241,0.4)'
+    };
+
+    const noteTitleStyle = {
+        margin: '0 0 8px 0',
+        fontSize: '16px',
+        fontWeight: 600,
+        color: '#E5E7EB',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap'
+    };
+
+    const notePreviewStyle = {
+        margin: 0,
+        fontSize: '13px',
+        color: 'rgba(229,231,235,0.7)',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap'
+    };
+
+    const noteDateStyle = {
+        margin: '8px 0 0 0',
+        fontSize: '11px',
+        color: 'rgba(229,231,235,0.5)'
+    };
+
+    const editorStyle = {
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden'
+    };
+
+    const editorToolbarStyle = {
+        padding: '16px 24px',
+        borderBottom: '1px solid rgba(255,255,255,0.1)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+    };
+
+    const editorContentStyle = {
+        flex: 1,
+        padding: '24px',
+        overflowY: 'auto'
+    };
+
+    const titleInputStyle = {
+        width: '100%',
+        padding: '12px',
+        background: 'transparent',
+        border: 'none',
+        borderBottom: '2px solid rgba(255,255,255,0.1)',
+        color: '#E5E7EB',
+        fontSize: '28px',
+        fontWeight: 700,
+        marginBottom: '24px',
+        outline: 'none'
+    };
+
+    const contentTextareaStyle = {
+        width: '100%',
+        minHeight: '400px',
+        padding: '12px',
+        background: 'transparent',
+        border: 'none',
+        color: '#E5E7EB',
+        fontSize: '16px',
+        lineHeight: '1.6',
+        outline: 'none',
+        resize: 'none',
+        fontFamily: 'inherit'
+    };
+
+    const deleteButtonStyle = {
+        padding: '8px 16px',
+        background: 'rgba(239,68,68,0.2)',
+        border: '1px solid rgba(239,68,68,0.3)',
+        borderRadius: '8px',
+        color: '#EF4444',
+        fontSize: '14px',
+        fontWeight: 500,
+        cursor: 'pointer'
+    };
+
+    const emptyStateStyle = {
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '48px',
+        textAlign: 'center'
+    };
+
+    const emptyIconStyle = {
+        fontSize: '64px',
+        marginBottom: '16px',
+        opacity: 0.5
+    };
+
+    const formatDate = (dateString) => {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    };
+
+    return (
+        <div style={pageStyle}>
+            <div style={headerStyle}>
+                <div style={headerLeftStyle}>
+                    <Link to="/menu" style={backButtonStyle}>
+                        ← Back
+                    </Link>
+                    <h1 style={titleStyle}>Notes</h1>
+                </div>
+                <input
+                    type="text"
+                    placeholder="Search notes..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    style={searchInputStyle}
+                />
+                <button onClick={handleCreateNote} style={createButtonStyle}>
+                    + New Note
+                </button>
+            </div>
+
+            <div style={containerStyle}>
+                <div style={sidebarStyle}>
+                    <div style={notesListStyle}>
+                        {filteredNotes.length === 0 ? (
+                            <div style={{ padding: '24px', textAlign: 'center', opacity: 0.6 }}>
+                                {searchQuery ? 'No notes found' : 'No notes yet. Create one!'}
+                            </div>
+                        ) : (
+                            filteredNotes.map((note) => (
+                                <div
+                                    key={note.id}
+                                    onClick={() => handleSelectNote(note)}
+                                    style={selectedNote?.id === note.id ? noteItemActiveStyle : noteItemStyle}
+                                    onMouseEnter={(e) => {
+                                        if (selectedNote?.id !== note.id) {
+                                            e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+                                        }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        if (selectedNote?.id !== note.id) {
+                                            e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+                                        }
+                                    }}
+                                >
+                                    <h3 style={noteTitleStyle}>{note.title}</h3>
+                                    <p style={notePreviewStyle}>{note.content || 'No content'}</p>
+                                    <p style={noteDateStyle}>{formatDate(note.updatedAt)}</p>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+
+                <div style={editorStyle}>
+                    {selectedNote ? (
+                        <>
+                            <div style={editorToolbarStyle}>
+                                <span style={{ fontSize: '13px', opacity: 0.7 }}>
+                                    Last updated: {formatDate(selectedNote.updatedAt)}
+                                </span>
+                                <button onClick={handleDeleteNote} style={deleteButtonStyle}>
+                                    Delete
+                                </button>
+                            </div>
+                            <div style={editorContentStyle}>
+                                <input
+                                    type="text"
+                                    value={selectedNote.title}
+                                    onChange={(e) => handleUpdateNote('title', e.target.value)}
+                                    style={titleInputStyle}
+                                    placeholder="Note title..."
+                                />
+                                <textarea
+                                    value={selectedNote.content}
+                                    onChange={(e) => handleUpdateNote('content', e.target.value)}
+                                    style={contentTextareaStyle}
+                                    placeholder="Start writing your note..."
+                                />
+                            </div>
+                        </>
+                    ) : (
+                        <div style={emptyStateStyle}>
+                            <div style={emptyIconStyle}>📝</div>
+                            <h2 style={{ margin: '0 0 8px 0', fontSize: '24px' }}>No note selected</h2>
+                            <p style={{ opacity: 0.7, margin: 0 }}>Select a note from the sidebar or create a new one</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default Notes;
