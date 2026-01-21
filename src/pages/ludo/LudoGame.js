@@ -2850,6 +2850,56 @@ const LudoGame = () => {
                     return updated;
                 });
 
+                // CRITICAL: Handle captures for remote players
+                // This ensures all players see the same capture results
+                setTimeout(() => {
+                    const movingPlayerIndex = payload.playerIndex;
+                    const newSteps = payload.toSteps;
+                    const oldSteps = payload.fromSteps;
+
+                    // Only check captures if the piece is on the board (not home)
+                    if (newSteps > 0 && newSteps < maxStepsRef.current) {
+                        const newPosition = getPositionOnPath(movingPlayerIndex, newSteps);
+                        
+                        // Check for captures at the new position
+                        const capturedPieces = checkForCapture(movingPlayerIndex, newPosition, newSteps);
+                        if (Array.isArray(capturedPieces) && capturedPieces.length > 0) {
+                            console.log('[ON_MOVE] Remote capture detected', {
+                                movingPlayer: movingPlayerIndex,
+                                newPosition,
+                                capturedPieces
+                            });
+                            
+                            capturedPieces.forEach(({ playerIndex, pieceIndex }) => {
+                                // Track capture to prevent it from being overwritten
+                                const captureKey = `${playerIndex}-${pieceIndex}`;
+                                recentMovesRef.current.set(captureKey, { toSteps: 0, timestamp: Date.now(), isCapture: true });
+                                captureToken(playerIndex, pieceIndex);
+                            });
+                        }
+
+                        // Check for captures at the old position (when token moves away)
+                        if (oldSteps > 0 && oldSteps < maxStepsRef.current) {
+                            const oldPosition = getPositionOnPath(movingPlayerIndex, oldSteps);
+                            const capturedAfterMoveAway = checkForCaptureAfterMoveAway(movingPlayerIndex, oldPosition);
+                            if (capturedAfterMoveAway.length > 0) {
+                                console.log('[ON_MOVE] Remote capture after move away detected', {
+                                    movingPlayer: movingPlayerIndex,
+                                    oldPosition,
+                                    capturedAfterMoveAway
+                                });
+                                
+                                capturedAfterMoveAway.forEach(({ playerIndex, pieceIndex }) => {
+                                    // Track capture to prevent it from being overwritten
+                                    const captureKey = `${playerIndex}-${pieceIndex}`;
+                                    recentMovesRef.current.set(captureKey, { toSteps: 0, timestamp: Date.now(), isCapture: true });
+                                    captureToken(playerIndex, pieceIndex);
+                                });
+                            }
+                        }
+                    }
+                }, 100); // Small delay to ensure the move is processed first
+
                 // Update dice value if this was a move out of home (rolled 6)
                 if (payload.rolled === 6 && currentPlayerRef.current === payload.playerIndex) {
                     setDiceValueImmediate(payload.rolled);
@@ -2877,6 +2927,13 @@ const LudoGame = () => {
                         lastTurnAdvanceTimeRef.current = Date.now();
                         setDiceValueImmediate(0);
                         
+                        // CRITICAL: Allow next player to roll dice
+                        setTimeout(() => {
+                            if (currentPlayerRef.current === nextPlayer && diceValueRef.current === 0) {
+                                setCanRollDice(true);
+                            }
+                        }, 100);
+                        
                         // Save and emit state if host
                         if (myPlayerIndex === 0 && onlineMode && gameId) {
                             setTimeout(() => {
@@ -2896,6 +2953,20 @@ const LudoGame = () => {
                     setTimeout(() => {
                         setDiceValueImmediate(0);
                         // Allow same player to roll again
+                        setCanRollDice(true);
+                    }, 300);
+                } else if (isMovingPlayer && rolledSix && !movedOutOfHome) {
+                    // Player rolled 6 and made a regular move (not moving out) - they keep their turn
+                    console.log('[ON_MOVE] Player rolled 6 and made regular move, keeping turn', {
+                        playerIndex: payload.playerIndex,
+                        rolled: payload.rolled,
+                        fromSteps: payload.fromSteps,
+                        toSteps: payload.toSteps
+                    });
+                    // Don't change turn, just update dice to show they can roll again
+                    setTimeout(() => {
+                        setDiceValueImmediate(0);
+                        // Allow same player to roll again (they rolled a 6)
                         setCanRollDice(true);
                     }, 300);
                 }
@@ -2971,6 +3042,27 @@ const LudoGame = () => {
                         }
                     }, 150); // Reduced delay
                 }, 400); // Reduced delay for faster gameplay
+            } else {
+                // Remote player has moves available - they should be able to make a move
+                // The move will be handled by the player clicking on their piece
+                // We don't need to set canRollDice here since it's handled by the useEffect
+                console.log('[ON_ROLL] Remote player has moves available', {
+                    currentPlayer: currentPlayerRef.current,
+                    diceValue: value,
+                    canMove: true
+                });
+                
+                // CRITICAL: If the remote player is the current user, enable dice interaction for moving
+                // But only if it's actually their turn
+                if (currentPlayerRef.current === myPlayerIndexRef.current) {
+                    setTimeout(() => {
+                        if (currentPlayerRef.current === myPlayerIndexRef.current && diceValueRef.current === value) {
+                            // Don't set canRollDice to true - they should be moving, not rolling
+                            // The move will be handled by piece clicks
+                            console.log('[ON_ROLL] Current user should move pieces now');
+                        }
+                    }, 100);
+                }
             }
         };
 
