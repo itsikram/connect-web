@@ -2656,7 +2656,8 @@ const LudoGame = () => {
                                 playerIndex: currentPlayer,
                                 pieceIndex: pieceId,
                                 toSteps: newSteps,
-                                fromSteps: oldSteps
+                                fromSteps: oldSteps,
+                                rolled: lastDiceValueRef.current // Include the dice value that was rolled
                             });
                         } catch (_e) { }
                     }
@@ -3015,7 +3016,9 @@ const LudoGame = () => {
                             rolled: payload.rolled,
                             fromSteps: payload.fromSteps,
                             toSteps: payload.toSteps
-                        }
+                        },
+                        currentPlayer: currentPlayerRef.current,
+                        lastDiceValue: lastDiceValueRef.current
                     });
                     
                     if (isMovingPlayer && !keepTurn) {
@@ -3054,6 +3057,13 @@ const LudoGame = () => {
                         }, 200); // Small delay to ensure capture processing completes
                     } else if (isMovingPlayer && keepTurn) {
                         // Player keeps turn (rolled 6 or captured) - reset dice and allow roll again
+                        console.log('[ON_MOVE] Player should keep turn - preparing to allow roll again', {
+                            playerIndex: payload.playerIndex,
+                            rolledSix,
+                            didCapture,
+                            currentPlayerBefore: currentPlayerRef.current
+                        });
+                        
                         setTimeout(() => {
                             setDiceValueImmediate(0);
                             // Allow same player to roll again
@@ -3061,7 +3071,9 @@ const LudoGame = () => {
                             console.log('[ON_MOVE] Player keeps turn (6 or capture)', {
                                 playerIndex: payload.playerIndex,
                                 rolledSix,
-                                didCapture
+                                didCapture,
+                                currentPlayerAfter: currentPlayerRef.current,
+                                canRollDice: true
                             });
                             
                             // CRITICAL: Force update canRollDice after a short delay to ensure it's set correctly
@@ -3069,10 +3081,21 @@ const LudoGame = () => {
                             setTimeout(() => {
                                 if (currentPlayerRef.current === payload.playerIndex && diceValueRef.current === 0) {
                                     setCanRollDice(true);
-                                    console.log('[ON_MOVE] Force update canRollDice for multiple 6s');
+                                    console.log('[ON_MOVE] Force update canRollDice for multiple 6s - completed');
                                 }
                             }, 50);
                         }, 200);
+                    } else {
+                        // This case shouldn't happen, but let's log it for debugging
+                        console.log('[ON_MOVE] Unexpected turn advancement case', {
+                            isMovingPlayer,
+                            keepTurn,
+                            payload: {
+                                playerIndex: payload.playerIndex,
+                                rolled: payload.rolled
+                            },
+                            currentPlayer: currentPlayerRef.current
+                        });
                     }
                 }, 100); // Small delay to ensure the move is processed first
 
