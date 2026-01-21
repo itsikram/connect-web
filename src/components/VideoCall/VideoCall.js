@@ -10,6 +10,7 @@ import { useCallMinimize } from '../../contexts/CallMinimizeContext';
 import config from '../../config/config.json';
 import audioPreloader from '../../utils/audioPreloader';
 import { unlockAudio, playAudioWithWebAudio, initializeAudioUnlock } from '../../utils/audioUnlock';
+import { showCallNotification, closeCallNotification } from '../../utils/callNotification';
 const VideoCall = ({ myId }) => {
     const mySettings = useSelector(state => state.setting);
     const [isVideoCall, setIsVideoCall] = useState(false);
@@ -37,6 +38,8 @@ const VideoCall = ({ myId }) => {
     const userVideo = useRef();
     const callEndBtn = useRef();
     const ringtoneAudio = useRef();
+    const originalTitleRef = useRef(document?.title || '');
+    const titleFlashIntervalRef = useRef(null);
 
     // Keep minimized bar duration in sync while minimized
     const minimizedDurationInterval = useRef(null);
@@ -71,7 +74,36 @@ const VideoCall = ({ myId }) => {
             audio.pause();
             audio.currentTime = 0; // Reset to beginning
         }
+        closeCallNotification(); // Close notification when ringtone stops
     };
+
+    const startFlashingTitle = useCallback((name = 'Someone') => {
+        try {
+            if (titleFlashIntervalRef.current) return;
+            originalTitleRef.current = document.title || originalTitleRef.current || 'Connect';
+            let tick = false;
+            titleFlashIntervalRef.current = setInterval(() => {
+                tick = !tick;
+                document.title = tick ? `📞 Incoming video call — ${name}` : originalTitleRef.current;
+            }, 1000);
+        } catch (e) {
+            // ignore
+        }
+    }, []);
+
+    const stopFlashingTitle = useCallback(() => {
+        try {
+            if (titleFlashIntervalRef.current) {
+                clearInterval(titleFlashIntervalRef.current);
+                titleFlashIntervalRef.current = null;
+            }
+            if (originalTitleRef.current) {
+                document.title = originalTitleRef.current;
+            }
+        } catch (e) {
+            // ignore
+        }
+    }, []);
 
     const playRingtone = async () => {
         // First, try to unlock audio if not already unlocked
@@ -177,6 +209,7 @@ const VideoCall = ({ myId }) => {
         isCleaningUpRef.current = true;
 
         stopRingtone();
+        stopFlashingTitle();
 
         // Clear any running intervals
         if (remoteUserCheckInterval.current) {
@@ -251,6 +284,7 @@ const VideoCall = ({ myId }) => {
         }
 
         stopRingtone();
+        stopFlashingTitle();
         const friendIdToNotify = incomingCall?.from || caller;
         const channelName = currentChannel;
 
@@ -675,31 +709,14 @@ const VideoCall = ({ myId }) => {
                 setCallerName(callerName || 'Unknown Caller');
                 setCallerProfilePic(callerProfilePic || config?.defaultProfile);
                 setCurrentChannel(channelName);
+                
+                playRingtone();
 
-                // Set ringtone source immediately before playing (don't wait for useEffect)
-                if (ringtoneAudio?.current) {
-                    const ringtoneId = mySettings.ringtone || null;
-                    const preloadedAudio = audioPreloader.getRingtone(ringtoneId);
-                    let toneSrc = null;
-                    
-                    if (preloadedAudio) {
-                        toneSrc = preloadedAudio.src;
-                    } else {
-                        // Fallback to legacy method
-                        const ringtone = ringtoneId 
-                            ? ringtones.find(r => r.id === ringtoneId)
-                            : null;
-                        toneSrc = ringtone?.src || config?.callingBeep || '';
-                    }
-                    
-                    if (toneSrc) {
-                        const audio = ringtoneAudio.current;
-                        if (!audio.src || audio.src !== toneSrc) {
-                            audio.setAttribute('src', toneSrc);
-                            audio.load();
-                        }
-                    }
-                }
+                // Best-effort focus (will be ignored by most browsers unless user-initiated)
+                try { window.focus(); } catch (e) { }
+
+                // Flash title to attract attention while tab is in background
+                startFlashingTitle(callerName || 'Unknown Caller');
 
                 // Start local video immediately when receiving call
                 try {
@@ -714,11 +731,16 @@ const VideoCall = ({ myId }) => {
                 } catch (error) {
                     console.error('Failed to start local video preview:', error);
                 }
-
-                // Small delay to ensure audio source is set before playing
-                setTimeout(() => {
-                    playRingtone();
-                }, 100);
+                
+                // Show browser notification for incoming call (helps background alerting)
+                showCallNotification({
+                    callerName: callerName || 'Unknown Caller',
+                    callerProfilePic: callerProfilePic || config?.defaultProfile,
+                    callType: 'video',
+                    onClick: () => {
+                        window.focus();
+                    }
+                });
             }
         });
 
@@ -727,6 +749,7 @@ const VideoCall = ({ myId }) => {
             if (!isAudio) {
                 console.log('Agora video call accepted, joining channel:', channelName);
                 stopRingtone();
+                stopFlashingTitle();
                 setOutgoingCallStatus('');
                 startCall(channelName);
             }
@@ -745,6 +768,7 @@ const VideoCall = ({ myId }) => {
             console.log('VideoCall: Received video-call-ended event from remote user');
             // IMPORTANT: Do local cleanup ONLY. Do NOT re-emit end to avoid loops.
             stopRingtone();
+            stopFlashingTitle();
             setOutgoingCallStatus('');
             endCall();
         });
@@ -752,12 +776,14 @@ const VideoCall = ({ myId }) => {
             console.log('VideoCall: Received video-call-cancelled event from remote user');
             // IMPORTANT: Do local cleanup ONLY. Do NOT re-emit end to avoid loops.
             stopRingtone();
+            stopFlashingTitle();
             setOutgoingCallStatus('');
             endCall(true);
         });
         socket.on('video-call-rejected', async () => {
             console.log('VideoCall: Received video-call-rejected event from remote user');
             stopRingtone();
+            stopFlashingTitle();
             setOutgoingCallStatus('');
             endCall(true);
         });
@@ -781,6 +807,7 @@ const VideoCall = ({ myId }) => {
             socket.off('updated-call-status', handleUpdatedCallStatus);
             window.removeEventListener('startVideoCall', handleOutgoingVideoCall);
             stopRingtone(); // Stop ringtone on cleanup
+            stopFlashingTitle();
         };
     }, [startCall, cleanupVideoCall, endCall, myId, callAccepted, receivingCall, caller, mySettings]);
 
@@ -836,6 +863,7 @@ const VideoCall = ({ myId }) => {
     useEffect(() => {
         return () => {
             stopRingtone();
+            stopFlashingTitle();
         };
     }, []);
 

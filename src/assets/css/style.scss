@@ -6379,6 +6379,7 @@ body {
                     text-indent: 5px;
                     display: flex;
                     align-items: center;
+                    overflow: hidden;
 
                     span {
                         margin-top: 0px;
@@ -7734,6 +7735,12 @@ body {
 // Enhanced Mobile Responsive Design
 @media only screen and (max-width: 768px) {
     // Header improvements for mobile
+    .modern-message-container {
+        .container-fluid {
+            padding: 0 !important;
+        }
+
+    }
 
     #chatBox .chat-body .chat-message-list .chat-message-container {
         width: 95% !important;

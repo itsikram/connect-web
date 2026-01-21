@@ -96,8 +96,8 @@ const Chat = ({ socket }) => {
 
     const [listContainerHeight, setListContainerHeight] = useState(chatBoxHeight - chatHeaderHeight - chatFooterHeight);
     const [cmlStyles, setCmlStyles] = useState({
-        height: `${isMobile ? bodyHeight - headerHeight - chatFooterHeight - chatHeaderHeight : (chatBoxHeight - chatHeaderHeight )}px`,
-        maxHeight: `${isMobile ? listContainerHeight + headerHeight : (chatBoxHeight - chatHeaderHeight - 80)}px`,
+        height: `${isMobile ? bodyHeight - headerHeight - chatFooterHeight - chatHeaderHeight + 50 : (chatBoxHeight - chatHeaderHeight )}px`,
+        maxHeight: `${isMobile ? listContainerHeight + headerHeight +50 : (chatBoxHeight - chatHeaderHeight - 80)}px`,
         overflowY: 'scroll'
     });
 
@@ -110,8 +110,8 @@ const Chat = ({ socket }) => {
         console.log('listContainerHeight',chatBoxHeight , chatHeaderHeight , chatFooterHeight, listContainerHeight)
 
         setCmlStyles({
-            height: `${isMobile ? bodyHeight - headerHeight - chatFooterHeight - chatHeaderHeight : (chatBoxHeight - chatHeaderHeight -80)}px`,
-            maxHeight: `${isMobile ? listContainerHeight + headerHeight : (chatBoxHeight - chatHeaderHeight -80)}px`,
+            height: `${isMobile ? bodyHeight - headerHeight - chatFooterHeight - chatHeaderHeight + 50 : (chatBoxHeight - chatHeaderHeight -80)}px`,
+            maxHeight: `${isMobile ? listContainerHeight + headerHeight + 50 : (chatBoxHeight - chatHeaderHeight -80)}px`,
             overflowY: 'scroll'
         })
     }, [isReplying, isLoaded])

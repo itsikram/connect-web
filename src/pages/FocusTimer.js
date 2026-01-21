@@ -66,6 +66,8 @@ const FocusTimer = () => {
         };
     }, [isRunning, isPaused]);
 
+
+
     const handleTimerComplete = async () => {
         setIsRunning(false);
         setIsPaused(false);

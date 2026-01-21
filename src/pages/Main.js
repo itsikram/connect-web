@@ -886,7 +886,6 @@ const Main = () => {
                 {!isHeaderHiddenRoute && isAuthenticated && <Header />}
 
                 <div id="main-container" className={isLoading ? 'loading' : ''}>
-                    <IosAddToHomeScreen />
                     {/* <Face /> */}
 
                     <Routes>
