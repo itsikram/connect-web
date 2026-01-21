@@ -899,6 +899,14 @@ const LudoGame = () => {
             });
         }
         setPlayers(newPlayers);
+        
+        // CRITICAL: Initialize consecutive 6s tracking for all players
+        const initialConsecutiveSixes = {};
+        for (let i = 0; i < playerCount; i++) {
+            initialConsecutiveSixes[i] = 0;
+        }
+        setConsecutiveSixes(initialConsecutiveSixes);
+        consecutiveSixesRef.current = initialConsecutiveSixes;
     };
 
     // Save game state to localStorage for reconnection
@@ -3101,13 +3109,26 @@ const LudoGame = () => {
             
             // CRITICAL: Track consecutive 6s for remote players and handle limit
             const currentSixCount = consecutiveSixesRef.current[currentPlayerRef.current] || 0;
+            console.log('[ON_ROLL] Tracking consecutive 6s', {
+                player: currentPlayerRef.current,
+                currentSixCount,
+                diceValue: value,
+                isSix: value === 6
+            });
+            
             if (value === 6) {
                 // Increment consecutive 6s count for remote player
                 const newSixCount = currentSixCount + 1;
                 setConsecutiveSixes(prev => ({ ...prev, [currentPlayerRef.current]: newSixCount }));
                 consecutiveSixesRef.current[currentPlayerRef.current] = newSixCount;
                 
-                // Check if remote player reached the 6s limit
+                console.log('[ON_ROLL] Updated consecutive 6s', {
+                    player: currentPlayerRef.current,
+                    previousCount: currentSixCount,
+                    newCount: newSixCount
+                });
+                
+                // Check if remote player reached the 6s limit (only if explicitly flagged or count is exactly 3)
                 if (payload.reachedSixLimit || newSixCount >= 3) {
                     console.log('[ON_ROLL] Remote player reached 6s limit, advancing turn', {
                         player: currentPlayerRef.current,
@@ -3152,6 +3173,10 @@ const LudoGame = () => {
             } else {
                 // Reset consecutive 6s count if non-6 is rolled
                 if (currentSixCount > 0) {
+                    console.log('[ON_ROLL] Resetting consecutive 6s (non-6 rolled)', {
+                        player: currentPlayerRef.current,
+                        previousCount: currentSixCount
+                    });
                     setConsecutiveSixes(prev => ({ ...prev, [currentPlayerRef.current]: 0 }));
                     consecutiveSixesRef.current[currentPlayerRef.current] = 0;
                 }
@@ -3200,24 +3225,25 @@ const LudoGame = () => {
                 }, 400); // Reduced delay for faster gameplay
             } else {
                 // Remote player has moves available - they should be able to make a move
-                // The move will be handled by the player clicking on their piece
-                // We don't need to set canRollDice here since it's handled by the useEffect
+                // CRITICAL: If they rolled a 6, they should keep their turn after moving
+                // Don't advance turn automatically - let them make their move first
                 console.log('[ON_ROLL] Remote player has moves available', {
                     currentPlayer: currentPlayerRef.current,
                     diceValue: value,
-                    canMove: true
+                    canMove: true,
+                    isSix: value === 6
                 });
                 
-                // CRITICAL: If the remote player is the current user, enable dice interaction for moving
-                // But only if it's actually their turn
-                if (currentPlayerRef.current === myPlayerIndexRef.current) {
-                    setTimeout(() => {
-                        if (currentPlayerRef.current === myPlayerIndexRef.current && diceValueRef.current === value) {
-                            // Don't set canRollDice to true - they should be moving, not rolling
-                            // The move will be handled by piece clicks
-                            console.log('[ON_ROLL] Current user should move pieces now');
-                        }
-                    }, 100);
+                // CRITICAL: Don't set canRollDice to true here - they should be moving, not rolling
+                // The move will be handled by piece clicks, and turn will be handled after the move
+                // Only set canRollDice if it's NOT a 6 and they should lose their turn
+                if (value !== 6) {
+                    // For non-6 values, they might lose their turn after moving
+                    // But we still don't set canRollDice here - let the move logic handle it
+                    console.log('[ON_ROLL] Non-6 rolled - turn will be handled after move');
+                } else {
+                    // For 6, they should keep their turn after moving
+                    console.log('[ON_ROLL] 6 rolled - player will keep turn after moving');
                 }
             }
         };
