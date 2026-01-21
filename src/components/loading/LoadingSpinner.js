@@ -16,14 +16,9 @@ const LoadingSpinner = ({
   const wrapperClass = inline ? 'spinner-inline' : 'spinner-block';
 
   return (
-    <div className={`loading-spinner-wrapper ${wrapperClass} ${className}`}>
+    <div className={`loading-spinner-wrapper ${wrapperClass} ${className}`} >
       <div className={`loading-spinner ${sizeClass} ${variantClass}`}>
-        <div className="spinner-ring">
-          <div></div>
-          <div></div>
-          <div></div>
-          <div></div>
-        </div>
+
       </div>
       {text && <span className="spinner-text">{text}</span>}
     </div>

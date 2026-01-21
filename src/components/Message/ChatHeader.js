@@ -1823,16 +1823,13 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
     }, []);
 
     const handleChatOptionClick = useCallback(() => setIsChatOptionMenu(prev => !prev), []);
-    const handleChatInfoClick = useCallback(async () => {
-        if (!friendId) return;
+    const handleChatInfoClick = useCallback(() => {
         setIsUserInfoModalOpen(true);
         setLoadingUserInfo(true);
-        try {
-            // Fetch detailed user info
-            const res = await api.get('/profile', { params: { profileId: friendId } });
+        // Fetch user info
+        api.get('/profile', { params: { profileId: friendId } }).then(res => {
             if (res.status === 200) {
                 setUserInfoData(res.data);
-                // Set initial location from profile
                 if (res.data?.lastLocation?.latitude && res.data?.lastLocation?.longitude) {
                     setFriendLocation({
                         latitude: res.data.lastLocation.latitude,
@@ -1841,22 +1838,20 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                     });
                 }
             }
-        } catch (error) {
-            console.error('Error fetching user info:', error);
-            // Use existing friendProfile data as fallback
-            setUserInfoData(friendProfile);
-            // Try to get location from friend object
-            if (friendProfile?.lastLocation?.latitude && friendProfile?.lastLocation?.longitude) {
-                setFriendLocation({
-                    latitude: friendProfile.lastLocation.latitude,
-                    longitude: friendProfile.lastLocation.longitude,
-                    timestamp: friendProfile.lastLocation.timestamp || Date.now(),
-                });
-            }
-        } finally {
+        }).catch(err => {
+            console.error('Error fetching user info:', err);
+        }).finally(() => {
             setLoadingUserInfo(false);
-        }
-    }, [friendId, friendProfile]);
+        });
+    }, [friendId]);
+
+    const handleOpenStickyChat = useCallback(() => {
+        // Dispatch event to open sticky chat box
+        const openChatEvent = new CustomEvent('openStickyChat', {
+            detail: { profileId: friendId }
+        });
+        window.dispatchEvent(openChatEvent);
+    }, [friendId]);
     const handleBlockUser = useCallback(async () => {
         const res = await api.post('friend/block', { friendId });
         if (res.status === 200) alert('User Blocked');
@@ -2075,8 +2070,19 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                         role='button'
                         tabIndex={0}
                         className='info-button action-button'
+                        title='User Info'
                     >
                         <i className="fas fa-info-circle"></i>
+                    </div>
+                    <div
+                        onClick={handleOpenStickyChat}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpenStickyChat(); } }}
+                        role='button'
+                        tabIndex={0}
+                        className='sticky-chat-button action-button'
+                        title='Open Sticky Chat'
+                    >
+                        <i className="fas fa-comment-dots"></i>
                     </div>
 
                     {isChatOptionMenu && (

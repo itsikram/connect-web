@@ -222,10 +222,14 @@
     border-radius: 20px;
     padding: 8px 14px;
     color: #E4E6EA;
-    font-size: 14px;
+    font-size: 16px;
     font-family: inherit;
     outline: none;
     transition: all 0.2s ease;
+    /* Prevent iPhone zoom on focus */
+    transform: scale(1);
+    -webkit-transform: scale(1);
+    -webkit-text-size-adjust: 100%;
 }
 
 .sticky-chat-input::placeholder {
@@ -352,7 +356,7 @@
 
     .sticky-chat-input {
         padding: 6px 12px;
-        font-size: 13px;
+        font-size: 16px;
     }
 
     .sticky-chat-emoji-picker {

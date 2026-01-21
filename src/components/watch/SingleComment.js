@@ -133,7 +133,7 @@ const SingleComment = (props) => {
                         <div className="name-comment">
                             <div className="author-name">
                                 <Link to={`/${comment.author._id}`}>
-                                    {comment.author.user.firstName + ' ' + comment.author.user.surname}
+                                    {comment.author.user ? (comment.author.user.firstName + ' ' + comment.author.user.surname) : comment.author.fullName || 'Unknown User'}
                                 </Link>
                             </div>
                             <p className="comment-text">{comment.body}</p>

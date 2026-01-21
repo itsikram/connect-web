@@ -37,6 +37,7 @@ import PostReacts from "../components/post/PostReacts.js";
 import Login from "./Login.js";
 import SignUP from "./SignUp.js";
 import MinimizedCallBar from "../components/MinimizedCallBar/MinimizedCallBar.js";
+import StickyChatBoxContainer from "../components/Message/StickyChatBoxContainer.js";
 import config from "../config/config.json";
 import audioPreloader from "../utils/audioPreloader";
 import IosAddToHomeScreen from "../components/IosAddToHomeScreen";
@@ -996,6 +997,7 @@ const Main = () => {
                     <VideoCall myId={profileId}></VideoCall>
                     <AudioCall myId={profileId}></AudioCall>
                 </>
+                <StickyChatBoxContainer />
                 <ToastContainer
                     position="top-center"
                     autoClose={5000}

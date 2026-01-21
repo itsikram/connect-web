@@ -200,7 +200,7 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode }) => {
                         <div className="name-comment">
                             <div className="author-name">
                                 <Link to={`/${comment.author._id}`}>
-                                    {comment.author.user.firstName + ' ' + comment.author.user.surname}
+                                    {comment.author.user ? (comment.author.user.firstName + ' ' + comment.author.user.surname) : comment.author.user?.displayName || comment.author.user.fullName || 'Unknown User'}
                                 </Link>
                             </div>
                             <p className="comment-text">

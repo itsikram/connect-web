@@ -6354,6 +6354,17 @@ body {
                 .action-button:hover {
                     background-color: $bc;
                 }
+
+                .sticky-chat-button {
+                    background: linear-gradient(135deg, #00D4FF, #0099CC);
+                    color: white;
+                    transition: all 0.2s ease;
+
+                    &:hover {
+                        background: linear-gradient(135deg, #33E0FF, #00D4FF);
+                        transform: scale(1.1);
+                    }
+                }
             }
         }
     }
@@ -7741,6 +7752,19 @@ body {
         }
 
     }
+    .profile-post-content {
+        .nf-create-post {
+            margin: 0 !important;
+        }
+    }
+    .nf-post.share {
+        .header {
+            padding: 5px !important;
+        }
+    }
+    .comment-attachment-container {
+        padding: 5px !important;
+    }
 
     #chatBox .chat-body .chat-message-list .chat-message-container {
         width: 95% !important;
@@ -7767,7 +7791,7 @@ body {
         flex-direction: column !important;
         gap: 5px !important;
         padding-left: 70px !important;
-        align-items: flex-start !important;
+        align-items: flex-end !important;
 
     }
 
@@ -7822,15 +7846,15 @@ body {
 
     // Post improvements for mobile
     .nf-post {
-        margin: 8px;
+        margin: 8px 0;
         border-radius: 12px;
-        padding: 16px;
+        padding: 5px;
     }
 
     .nf-create-post {
         margin: 8px;
         border-radius: 12px;
-        padding: 16px;
+        padding: 10px;
     }
 
     .nf-create-post .bottom .button-container li {
@@ -8574,4 +8598,43 @@ h6 {
     top: 0;
     left: 0;
     z-index: -1;
+}
+
+/* Prevent iPhone zoom on all input fields and textareas */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="search"],
+input[type="tel"],
+input[type="url"],
+input[type="number"],
+textarea,
+select {
+    font-size: 16px !important;
+    /* Prevent iPhone zoom on focus */
+    transform: scale(1) !important;
+    -webkit-transform: scale(1) !important;
+    -webkit-text-size-adjust: 100% !important;
+}
+
+/* Specific overrides for inputs that need smaller font sizes but still prevent zoom */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]) {
+    min-height: 16px !important;
+}
+
+/* Mobile specific adjustments */
+@media (max-width: 768px) {
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="search"],
+    input[type="tel"],
+    input[type="url"],
+    input[type="number"],
+    textarea,
+    select {
+        font-size: 16px !important;
+        line-height: 1.4 !important;
+        padding: 8px 12px !important;
+    }
 }
