@@ -17,7 +17,7 @@ const APPS = [
 const pageStyle = {
     minHeight: '100vh',
     background: 'linear-gradient(180deg, #0B1220 0%, #0F172A 100%)',
-    padding: '48px 24px',
+    padding: 'clamp(24px, 6vw, 48px) clamp(16px, 4vw, 24px)',
     color: '#E5E7EB'
 }
 
@@ -28,25 +28,26 @@ const containerStyle = {
 
 const headerStyle = {
     textAlign: 'center',
-    marginBottom: 28
+    marginBottom: 'clamp(20px, 5vw, 28px)'
 }
 
 const titleStyle = {
     margin: 0,
-    fontSize: 32,
+    fontSize: 'clamp(24px, 5vw, 32px)',
     fontWeight: 700,
     letterSpacing: 0.2
 }
 
 const subtitleStyle = {
     marginTop: 8,
-    opacity: 0.8
+    opacity: 0.8,
+    fontSize: 'clamp(14px, 3vw, 16px)'
 }
 
 const gridStyle = {
     display: 'grid',
-    gap: 20,
-    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))'
+    gap: 'clamp(12px, 3vw, 20px)',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(min(280px, 100%), 1fr))'
 }
 
 const cardStyle = {
@@ -54,7 +55,7 @@ const cardStyle = {
     background: 'rgba(255,255,255,0.04)',
     border: '1px solid rgba(255,255,255,0.08)',
     borderRadius: 16,
-    padding: 16,
+    padding: 'clamp(12px, 3vw, 16px)',
     textDecoration: 'none',
     color: 'inherit',
     boxShadow: '0 2px 10px rgba(0,0,0,0.25)',
@@ -62,13 +63,13 @@ const cardStyle = {
 }
 
 const iconBadgeStyle = {
-    width: 48,
-    height: 48,
+    width: 'clamp(40px, 10vw, 48px)',
+    height: 'clamp(40px, 10vw, 48px)',
     borderRadius: 12,
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 24,
+    fontSize: 'clamp(20px, 5vw, 24px)',
     color: '#ffffff',
     marginBottom: 12
 }
@@ -87,14 +88,14 @@ const cardTitleRow = {
 
 const cardTitle = {
     margin: 0,
-    fontSize: 18,
+    fontSize: 'clamp(16px, 4vw, 18px)',
     fontWeight: 700
 }
 
 const cardDesc = {
     margin: 0,
     opacity: 0.85,
-    fontSize: 14
+    fontSize: 'clamp(12px, 3vw, 14px)'
 }
 
 const Menu = () => {

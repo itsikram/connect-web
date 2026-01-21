@@ -101,6 +101,9 @@ const LudoGame = () => {
     const [canRollDice, setCanRollDice] = useState(true);
     const [showPlayerSelection, setShowPlayerSelection] = useState(false);
     const [selectedPlayerCount, setSelectedPlayerCount] = useState(4);
+    // Track consecutive 6s per player to limit unlimited 6s
+    const [consecutiveSixes, setConsecutiveSixes] = useState({});
+    const consecutiveSixesRef = useRef({});
     // Refs to avoid re-binding socket listeners on every state change
     const playersRef = useRef(players);
     const currentPlayerRef = useRef(currentPlayer);
@@ -565,6 +568,7 @@ const LudoGame = () => {
     useEffect(() => { myPlayerIndexRef.current = myPlayerIndex; }, [myPlayerIndex]);
     useEffect(() => { selectedPlayerCountRef.current = selectedPlayerCount; }, [selectedPlayerCount]);
     useEffect(() => { winnersRef.current = winners; }, [winners]);
+    useEffect(() => { consecutiveSixesRef.current = consecutiveSixes; }, [consecutiveSixes]);
     useEffect(() => { invitedStatusByFriendIdRef.current = invitedStatusByFriendId; }, [invitedStatusByFriendId]);
     useEffect(() => { invitedSlotByFriendIdRef.current = invitedSlotByFriendId; }, [invitedSlotByFriendId]);
     useEffect(() => { maxStepsRef.current = maxSteps; }, [maxSteps]);
@@ -2095,6 +2099,83 @@ const LudoGame = () => {
             ? debugChosenValue
             : (Math.floor(Math.random() * 6) + 1);
 
+        // CRITICAL: Track consecutive 6s and limit them
+        const currentSixCount = consecutiveSixesRef.current[currentPlayer] || 0;
+        if (value === 6) {
+            // Increment consecutive 6s count
+            const newSixCount = currentSixCount + 1;
+            setConsecutiveSixes(prev => ({ ...prev, [currentPlayer]: newSixCount }));
+            consecutiveSixesRef.current[currentPlayer] = newSixCount;
+            
+            // Limit consecutive 6s to 3 (maximum allowed)
+            if (newSixCount >= 3) {
+                console.log('[ROLL_DICE] Player has reached 3 consecutive 6s, advancing turn', {
+                    player: currentPlayer,
+                    consecutiveSixes: newSixCount
+                });
+                
+                // Reset consecutive 6s count for this player
+                setConsecutiveSixes(prev => ({ ...prev, [currentPlayer]: 0 }));
+                consecutiveSixesRef.current[currentPlayer] = 0;
+                
+                // Still set the dice value to 6 for this roll, but advance turn after
+                setDiceValueImmediate(value);
+                lastDiceValueRef.current = value;
+                lastLocalDiceRollTimeRef.current = Date.now();
+                isRollingRef.current = false;
+                
+                // Play sound for rolling a 6 (special)
+                playSound('pieceOut', { frequency: 500, duration: 0.3 });
+                
+                // Broadcast dice roll to other players immediately
+                if (onlineMode && socketRef.current && gameId) {
+                    try {
+                        console.log('[ROLL] Broadcasting dice roll (3rd 6)', { value, by: myProfile?._id });
+                        socketRef.current.emit('ludo:roll', {
+                            gameId,
+                            value,
+                            by: myProfile?._id,
+                            currentPlayer: currentPlayerRef.current,
+                            reachedSixLimit: true // Indicate that 6s limit was reached
+                        });
+                    } catch (_e) { }
+                }
+                
+                // Advance turn immediately after rolling the 3rd 6
+                setTimeout(() => {
+                    const nextPlayer = getNextActivePlayer(currentPlayer);
+                    playSound('turnChange');
+                    setCurrentPlayer(nextPlayer);
+                    currentPlayerRef.current = nextPlayer;
+                    lastTurnAdvanceTimeRef.current = Date.now();
+                    setDiceValueImmediate(0);
+                    lastLocalDiceRollTimeRef.current = 0;
+                    
+                    // Allow next player to roll
+                    setTimeout(() => {
+                        if (currentPlayerRef.current === nextPlayer && diceValueRef.current === 0) {
+                            setCanRollDice(true);
+                        }
+                    }, 150);
+                    
+                    // Save and emit game state when turn changes (host only)
+                    if (myPlayerIndex === 0 && onlineMode && gameId) {
+                        setTimeout(() => {
+                            emitPlayersStateAfterSave(false);
+                        }, 100);
+                    }
+                }, 1000); // Give player time to see they rolled 6, then advance turn
+                
+                return; // Exit early - don't proceed with normal move logic
+            }
+        } else {
+            // Reset consecutive 6s count if non-6 is rolled
+            if (currentSixCount > 0) {
+                setConsecutiveSixes(prev => ({ ...prev, [currentPlayer]: 0 }));
+                consecutiveSixesRef.current[currentPlayer] = 0;
+            }
+        }
+
         // Set dice value and broadcast
         setDiceValueImmediate(value);
         lastDiceValueRef.current = value;
@@ -2773,6 +2854,12 @@ const LudoGame = () => {
                             currentPlayerRef.current = nextPlayer; // Update ref immediately to prevent race conditions
                             lastTurnAdvanceTimeRef.current = Date.now(); // Track when we advanced the turn locally
 
+                            // CRITICAL: Reset consecutive 6s for the player who lost their turn
+                            if (consecutiveSixesRef.current[movingPlayerIndex] > 0) {
+                                setConsecutiveSixes(prev => ({ ...prev, [movingPlayerIndex]: 0 }));
+                                consecutiveSixesRef.current[movingPlayerIndex] = 0;
+                            }
+
                             // Update state using functional update to ensure consistency
                             setCurrentPlayer(prev => {
                                 // Ensure we're setting the correct next player
@@ -2856,6 +2943,7 @@ const LudoGame = () => {
                     const movingPlayerIndex = payload.playerIndex;
                     const newSteps = payload.toSteps;
                     const oldSteps = payload.fromSteps;
+                    let didCapture = false; // Track if any captures occurred
 
                     // Only check captures if the piece is on the board (not home)
                     if (newSteps > 0 && newSteps < maxStepsRef.current) {
@@ -2870,6 +2958,7 @@ const LudoGame = () => {
                                 capturedPieces
                             });
                             
+                            didCapture = true; // Mark that capture occurred
                             capturedPieces.forEach(({ playerIndex, pieceIndex }) => {
                                 // Track capture to prevent it from being overwritten
                                 const captureKey = `${playerIndex}-${pieceIndex}`;
@@ -2889,6 +2978,7 @@ const LudoGame = () => {
                                     capturedAfterMoveAway
                                 });
                                 
+                                didCapture = true; // Mark that capture occurred
                                 capturedAfterMoveAway.forEach(({ playerIndex, pieceIndex }) => {
                                     // Track capture to prevent it from being overwritten
                                     const captureKey = `${playerIndex}-${pieceIndex}`;
@@ -2898,78 +2988,85 @@ const LudoGame = () => {
                             }
                         }
                     }
-                }, 100); // Small delay to ensure the move is processed first
 
-                // Update dice value if this was a move out of home (rolled 6)
-                if (payload.rolled === 6 && currentPlayerRef.current === payload.playerIndex) {
-                    setDiceValueImmediate(payload.rolled);
-                }
-
-                // CRITICAL: Handle turn changes for other players when they roll 6 and move out
-                // Check if this move should result in a turn change for the moving player
-                const isMovingPlayer = payload.playerIndex === currentPlayerRef.current;
-                const movedOutOfHome = payload.fromSteps === 0 && payload.toSteps > 0;
-                const rolledSix = payload.rolled === 6;
-                
-                // If this player moved out of home with a 6, they should keep their turn
-                // If this is a regular move (not 6), check if they should lose turn
-                if (isMovingPlayer && !rolledSix && !movedOutOfHome) {
-                    // Regular move completed - advance turn for next player
-                    setTimeout(() => {
-                        const nextPlayer = getNextActivePlayer(payload.playerIndex);
-                        console.log('[ON_MOVE] Advancing turn after regular move', {
-                            from: payload.playerIndex,
-                            to: nextPlayer,
-                            reason: 'regular move completed'
-                        });
-                        setCurrentPlayer(nextPlayer);
-                        currentPlayerRef.current = nextPlayer;
-                        lastTurnAdvanceTimeRef.current = Date.now();
-                        setDiceValueImmediate(0);
-                        
-                        // CRITICAL: Allow next player to roll dice
-                        setTimeout(() => {
-                            if (currentPlayerRef.current === nextPlayer && diceValueRef.current === 0) {
-                                setCanRollDice(true);
-                            }
-                        }, 100);
-                        
-                        // Save and emit state if host
-                        if (myPlayerIndex === 0 && onlineMode && gameId) {
-                            setTimeout(() => {
-                                emitPlayersStateAfterSave(false);
-                            }, 100);
+                    // CRITICAL: Now handle turn advancement considering captures
+                    const isMovingPlayer = payload.playerIndex === currentPlayerRef.current;
+                    const rolledSix = payload.rolled === 6;
+                    const movedOutOfHome = payload.fromSteps === 0 && payload.toSteps > 0;
+                    
+                    // Player keeps turn if they rolled 6 OR captured a token (traditional Ludo rule)
+                    const keepTurn = rolledSix || didCapture;
+                    
+                    console.log('[ON_MOVE] Turn advancement decision', {
+                        isMovingPlayer,
+                        rolledSix,
+                        didCapture,
+                        keepTurn,
+                        payload: {
+                            playerIndex: payload.playerIndex,
+                            rolled: payload.rolled,
+                            fromSteps: payload.fromSteps,
+                            toSteps: payload.toSteps
                         }
-                    }, 300); // Small delay to ensure move animation completes
-                } else if (isMovingPlayer && rolledSix && movedOutOfHome) {
-                    // Player moved out with 6 - they keep their turn but dice should reset to 0
-                    console.log('[ON_MOVE] Player moved out with 6, keeping turn', {
-                        playerIndex: payload.playerIndex,
-                        rolled: payload.rolled,
-                        fromSteps: payload.fromSteps,
-                        toSteps: payload.toSteps
                     });
-                    // Don't change turn, just update dice to show they can roll again
-                    setTimeout(() => {
-                        setDiceValueImmediate(0);
-                        // Allow same player to roll again
-                        setCanRollDice(true);
-                    }, 300);
-                } else if (isMovingPlayer && rolledSix && !movedOutOfHome) {
-                    // Player rolled 6 and made a regular move (not moving out) - they keep their turn
-                    console.log('[ON_MOVE] Player rolled 6 and made regular move, keeping turn', {
-                        playerIndex: payload.playerIndex,
-                        rolled: payload.rolled,
-                        fromSteps: payload.fromSteps,
-                        toSteps: payload.toSteps
-                    });
-                    // Don't change turn, just update dice to show they can roll again
-                    setTimeout(() => {
-                        setDiceValueImmediate(0);
-                        // Allow same player to roll again (they rolled a 6)
-                        setCanRollDice(true);
-                    }, 300);
-                }
+                    
+                    if (isMovingPlayer && !keepTurn) {
+                        // Regular move with no capture and no 6 - advance turn
+                        setTimeout(() => {
+                            const nextPlayer = getNextActivePlayer(payload.playerIndex);
+                            console.log('[ON_MOVE] Advancing turn (no capture, no 6)', {
+                                from: payload.playerIndex,
+                                to: nextPlayer,
+                                reason: 'regular move completed'
+                            });
+                            setCurrentPlayer(nextPlayer);
+                            currentPlayerRef.current = nextPlayer;
+                            lastTurnAdvanceTimeRef.current = Date.now();
+                            setDiceValueImmediate(0);
+                            
+                            // CRITICAL: Reset consecutive 6s for the player who lost their turn
+                            if (consecutiveSixesRef.current[payload.playerIndex] > 0) {
+                                setConsecutiveSixes(prev => ({ ...prev, [payload.playerIndex]: 0 }));
+                                consecutiveSixesRef.current[payload.playerIndex] = 0;
+                            }
+                            
+                            // CRITICAL: Allow next player to roll dice
+                            setTimeout(() => {
+                                if (currentPlayerRef.current === nextPlayer && diceValueRef.current === 0) {
+                                    setCanRollDice(true);
+                                }
+                            }, 100);
+                            
+                            // Save and emit state if host
+                            if (myPlayerIndex === 0 && onlineMode && gameId) {
+                                setTimeout(() => {
+                                    emitPlayersStateAfterSave(false);
+                                }, 100);
+                            }
+                        }, 200); // Small delay to ensure capture processing completes
+                    } else if (isMovingPlayer && keepTurn) {
+                        // Player keeps turn (rolled 6 or captured) - reset dice and allow roll again
+                        setTimeout(() => {
+                            setDiceValueImmediate(0);
+                            // Allow same player to roll again
+                            setCanRollDice(true);
+                            console.log('[ON_MOVE] Player keeps turn (6 or capture)', {
+                                playerIndex: payload.playerIndex,
+                                rolledSix,
+                                didCapture
+                            });
+                            
+                            // CRITICAL: Force update canRollDice after a short delay to ensure it's set correctly
+                            // This fixes the issue where multiple 6s don't work for remote players
+                            setTimeout(() => {
+                                if (currentPlayerRef.current === payload.playerIndex && diceValueRef.current === 0) {
+                                    setCanRollDice(true);
+                                    console.log('[ON_MOVE] Force update canRollDice for multiple 6s');
+                                }
+                            }, 50);
+                        }, 200);
+                    }
+                }, 100); // Small delay to ensure the move is processed first
 
             } catch (_e) {
                 console.error('[ON_MOVE] Error processing move:', _e);
@@ -3001,6 +3098,65 @@ const LudoGame = () => {
             console.log('[ON_ROLL] ✅ Processing remote roll (server validated)');
 
             const value = payload.value;
+            
+            // CRITICAL: Track consecutive 6s for remote players and handle limit
+            const currentSixCount = consecutiveSixesRef.current[currentPlayerRef.current] || 0;
+            if (value === 6) {
+                // Increment consecutive 6s count for remote player
+                const newSixCount = currentSixCount + 1;
+                setConsecutiveSixes(prev => ({ ...prev, [currentPlayerRef.current]: newSixCount }));
+                consecutiveSixesRef.current[currentPlayerRef.current] = newSixCount;
+                
+                // Check if remote player reached the 6s limit
+                if (payload.reachedSixLimit || newSixCount >= 3) {
+                    console.log('[ON_ROLL] Remote player reached 6s limit, advancing turn', {
+                        player: currentPlayerRef.current,
+                        consecutiveSixes: newSixCount,
+                        reachedLimit: payload.reachedSixLimit
+                    });
+                    
+                    // Reset consecutive 6s count for this player
+                    setConsecutiveSixes(prev => ({ ...prev, [currentPlayerRef.current]: 0 }));
+                    consecutiveSixesRef.current[currentPlayerRef.current] = 0;
+                    
+                    // Advance turn immediately for remote player who reached limit
+                    setTimeout(() => {
+                        const nextPlayer = getNextActivePlayer(currentPlayerRef.current);
+                        console.log('[ON_ROLL] Advancing turn (6s limit reached)', {
+                            from: currentPlayerRef.current,
+                            to: nextPlayer
+                        });
+                        setCurrentPlayer(nextPlayer);
+                        currentPlayerRef.current = nextPlayer;
+                        lastTurnAdvanceTimeRef.current = Date.now();
+                        setDiceValueImmediate(0);
+                        lastLocalDiceRollTimeRef.current = 0;
+
+                        // Allow next player to roll
+                        setTimeout(() => {
+                            if (currentPlayerRef.current === nextPlayer && diceValueRef.current === 0) {
+                                setCanRollDice(true);
+                            }
+                        }, 150);
+
+                        // Save and emit game state when turn changes (host only)
+                        if (myPlayerIndex === 0 && onlineMode && gameId) {
+                            setTimeout(() => {
+                                emitPlayersStateAfterSave(false);
+                            }, 100);
+                        }
+                    }, 1000); // Give time to see the 6, then advance turn
+                    
+                    return; // Exit early - don't proceed with normal move logic
+                }
+            } else {
+                // Reset consecutive 6s count if non-6 is rolled
+                if (currentSixCount > 0) {
+                    setConsecutiveSixes(prev => ({ ...prev, [currentPlayerRef.current]: 0 }));
+                    consecutiveSixesRef.current[currentPlayerRef.current] = 0;
+                }
+            }
+            
             setDiceValueImmediate(value);
             lastDiceValueRef.current = value;
             isRollingRef.current = false; // Clear rolling flag

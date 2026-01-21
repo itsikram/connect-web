@@ -149,7 +149,7 @@ const FocusTimer = () => {
         minHeight: '100vh',
         background: 'linear-gradient(180deg, #0B1220 0%, #0F172A 100%)',
         color: '#E5E7EB',
-        padding: '24px',
+        padding: 'clamp(12px, 3vw, 24px)',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -158,21 +158,21 @@ const FocusTimer = () => {
 
     const headerStyle = {
         position: 'absolute',
-        top: '24px',
-        left: '24px',
+        top: 'clamp(12px, 3vw, 24px)',
+        left: 'clamp(12px, 3vw, 24px)',
         display: 'flex',
         alignItems: 'center',
-        gap: '16px'
+        gap: 'clamp(12px, 3vw, 16px)'
     };
 
     const backButtonStyle = {
-        padding: '8px 16px',
+        padding: 'clamp(6px, 1.5vw, 8px) clamp(12px, 3vw, 16px)',
         background: 'rgba(255,255,255,0.05)',
         border: '1px solid rgba(255,255,255,0.1)',
         borderRadius: '8px',
         color: '#E5E7EB',
         textDecoration: 'none',
-        fontSize: '14px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
         fontWeight: 500,
         display: 'inline-flex',
         alignItems: 'center',
@@ -184,14 +184,14 @@ const FocusTimer = () => {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        gap: '48px',
+        gap: 'clamp(24px, 6vw, 48px)',
         maxWidth: '600px',
         width: '100%'
     };
 
     const statsStyle = {
         display: 'flex',
-        gap: '24px',
+        gap: 'clamp(16px, 4vw, 24px)',
         alignItems: 'center'
     };
 
@@ -200,7 +200,7 @@ const FocusTimer = () => {
     };
 
     const statValueStyle = {
-        fontSize: '32px',
+        fontSize: 'clamp(24px, 6vw, 32px)',
         fontWeight: 700,
         background: 'linear-gradient(135deg, #F59E0B, #F97316)',
         WebkitBackgroundClip: 'text',
@@ -209,13 +209,13 @@ const FocusTimer = () => {
     };
 
     const statLabelStyle = {
-        fontSize: '14px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
         opacity: 0.7
     };
 
     const timerCircleStyle = {
-        width: '300px',
-        height: '300px',
+        width: 'clamp(200px, 40vw, 300px)',
+        height: 'clamp(200px, 40vw, 300px)',
         borderRadius: '50%',
         background: `conic-gradient(from 0deg, #F59E0B 0% ${progress}%, rgba(255,255,255,0.1) ${progress}% 100%)`,
         display: 'flex',
@@ -226,8 +226,8 @@ const FocusTimer = () => {
     };
 
     const timerInnerStyle = {
-        width: '260px',
-        height: '260px',
+        width: 'clamp(170px, 34vw, 260px)',
+        height: 'clamp(170px, 34vw, 260px)',
         borderRadius: '50%',
         background: 'linear-gradient(180deg, #0B1220 0%, #0F172A 100%)',
         display: 'flex',
@@ -238,31 +238,31 @@ const FocusTimer = () => {
     };
 
     const timeDisplayStyle = {
-        fontSize: '56px',
+        fontSize: 'clamp(36px, 8vw, 56px)',
         fontWeight: 700,
         fontFamily: 'monospace',
-        letterSpacing: '4px'
+        letterSpacing: 'clamp(2px, 0.5vw, 4px)'
     };
 
     const sessionTypeStyle = {
-        fontSize: '14px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
         opacity: 0.7,
         textTransform: 'uppercase',
-        letterSpacing: '2px'
+        letterSpacing: 'clamp(1px, 0.25vw, 2px)'
     };
 
     const controlsStyle = {
         display: 'flex',
-        gap: '12px',
+        gap: 'clamp(8px, 2vw, 12px)',
         flexWrap: 'wrap',
         justifyContent: 'center'
     };
 
     const buttonStyle = {
-        padding: '12px 28px',
+        padding: 'clamp(10px, 2.5vw, 12px) clamp(20px, 5vw, 28px)',
         border: 'none',
         borderRadius: '12px',
-        fontSize: '16px',
+        fontSize: 'clamp(14px, 3.5vw, 16px)',
         fontWeight: 600,
         cursor: 'pointer',
         transition: 'all 0.2s'
@@ -290,18 +290,18 @@ const FocusTimer = () => {
 
     const presetsStyle = {
         display: 'flex',
-        gap: '12px',
+        gap: 'clamp(8px, 2vw, 12px)',
         flexWrap: 'wrap',
         justifyContent: 'center'
     };
 
     const presetButtonStyle = {
-        padding: '10px 24px',
+        padding: 'clamp(8px, 2vw, 10px) clamp(16px, 4vw, 24px)',
         background: 'rgba(255,255,255,0.05)',
         border: '1px solid rgba(255,255,255,0.1)',
         borderRadius: '8px',
         color: '#E5E7EB',
-        fontSize: '14px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
         fontWeight: 500,
         cursor: 'pointer',
         transition: 'all 0.2s'

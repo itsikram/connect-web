@@ -11,6 +11,16 @@ const Flashcards = () => {
     const [newCardFront, setNewCardFront] = useState('');
     const [newCardBack, setNewCardBack] = useState('');
     const [showCardForm, setShowCardForm] = useState(false);
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+    // Handle responsive layout
+    useEffect(() => {
+        const handleResize = () => {
+            setIsMobile(window.innerWidth < 768);
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     // Load decks from localStorage
     useEffect(() => {
@@ -127,28 +137,30 @@ const Flashcards = () => {
     };
 
     const headerStyle = {
-        padding: '24px',
+        padding: 'clamp(12px, 3vw, 24px)',
         borderBottom: '1px solid rgba(255,255,255,0.1)',
         display: 'flex',
-        alignItems: 'center',
+        flexDirection: isMobile ? 'column' : 'row',
+        alignItems: isMobile ? 'stretch' : 'center',
         justifyContent: 'space-between',
-        gap: '16px'
+        gap: 'clamp(12px, 3vw, 16px)'
     };
 
     const headerLeftStyle = {
         display: 'flex',
         alignItems: 'center',
-        gap: '16px'
+        gap: 'clamp(12px, 3vw, 16px)',
+        flexWrap: 'wrap'
     };
 
     const backButtonStyle = {
-        padding: '8px 16px',
+        padding: 'clamp(6px, 1.5vw, 8px) clamp(12px, 3vw, 16px)',
         background: 'rgba(255,255,255,0.05)',
         border: '1px solid rgba(255,255,255,0.1)',
         borderRadius: '8px',
         color: '#E5E7EB',
         textDecoration: 'none',
-        fontSize: '14px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
         fontWeight: 500,
         display: 'inline-flex',
         alignItems: 'center',
@@ -158,35 +170,39 @@ const Flashcards = () => {
 
     const titleStyle = {
         margin: 0,
-        fontSize: '24px',
+        fontSize: 'clamp(18px, 4vw, 24px)',
         fontWeight: 700
     };
 
     const buttonStyle = {
-        padding: '10px 20px',
+        padding: 'clamp(8px, 2vw, 10px) clamp(16px, 4vw, 20px)',
         background: 'linear-gradient(135deg, #3B82F6, #06B6D4)',
         border: 'none',
         borderRadius: '8px',
         color: '#ffffff',
-        fontSize: '14px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
         fontWeight: 600,
         cursor: 'pointer',
-        transition: 'transform 0.2s'
+        transition: 'transform 0.2s',
+        whiteSpace: 'nowrap'
     };
 
     const containerStyle = {
         display: 'flex',
         flex: 1,
-        overflow: 'hidden'
+        overflow: 'hidden',
+        flexDirection: isMobile ? 'column' : 'row'
     };
 
     const sidebarStyle = {
-        width: '300px',
-        borderRight: '1px solid rgba(255,255,255,0.1)',
+        width: isMobile ? '100%' : '300px',
+        height: isMobile ? '300px' : 'auto',
+        borderRight: isMobile ? 'none' : '1px solid rgba(255,255,255,0.1)',
+        borderBottom: isMobile ? '1px solid rgba(255,255,255,0.1)' : 'none',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        padding: '16px'
+        padding: 'clamp(12px, 3vw, 16px)'
     };
 
     const deckListStyle = {
@@ -198,7 +214,7 @@ const Flashcards = () => {
     };
 
     const deckItemStyle = {
-        padding: '16px',
+        padding: 'clamp(10px, 2.5vw, 16px)',
         background: 'rgba(255,255,255,0.04)',
         border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: '12px',
@@ -214,23 +230,23 @@ const Flashcards = () => {
 
     const deckNameStyle = {
         margin: '0 0 4px 0',
-        fontSize: '16px',
+        fontSize: 'clamp(14px, 3.5vw, 16px)',
         fontWeight: 600
     };
 
     const deckCountStyle = {
         margin: 0,
-        fontSize: '13px',
+        fontSize: 'clamp(11px, 2.5vw, 13px)',
         opacity: 0.7
     };
 
     const deleteButtonStyle = {
-        padding: '6px 12px',
+        padding: 'clamp(4px, 1vw, 6px) clamp(8px, 2vw, 12px)',
         background: 'rgba(239,68,68,0.2)',
         border: '1px solid rgba(239,68,68,0.3)',
         borderRadius: '6px',
         color: '#EF4444',
-        fontSize: '12px',
+        fontSize: 'clamp(10px, 2.5vw, 12px)',
         cursor: 'pointer',
         marginTop: '8px'
     };
@@ -241,15 +257,15 @@ const Flashcards = () => {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '48px',
-        gap: '32px'
+        padding: 'clamp(24px, 6vw, 48px)',
+        gap: 'clamp(20px, 5vw, 32px)'
     };
 
     const cardContainerStyle = {
         perspective: '1000px',
         width: '100%',
-        maxWidth: '600px',
-        height: '400px'
+        maxWidth: 'clamp(400px, 80vw, 600px)',
+        height: 'clamp(250px, 50vh, 400px)'
     };
 
     const cardStyle = {
@@ -267,7 +283,7 @@ const Flashcards = () => {
         height: '100%',
         backfaceVisibility: 'hidden',
         borderRadius: '16px',
-        padding: '32px',
+        padding: 'clamp(20px, 5vw, 32px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -283,7 +299,7 @@ const Flashcards = () => {
     };
 
     const cardTextStyle = {
-        fontSize: '24px',
+        fontSize: 'clamp(18px, 4vw, 24px)',
         fontWeight: 600,
         textAlign: 'center',
         lineHeight: '1.5'
@@ -291,50 +307,51 @@ const Flashcards = () => {
 
     const controlsStyle = {
         display: 'flex',
-        gap: '12px',
-        alignItems: 'center'
+        gap: 'clamp(8px, 2vw, 12px)',
+        alignItems: 'center',
+        flexWrap: 'wrap'
     };
 
     const navButtonStyle = {
-        padding: '12px 24px',
+        padding: 'clamp(8px, 2vw, 12px) clamp(16px, 4vw, 24px)',
         background: 'rgba(255,255,255,0.05)',
         border: '1px solid rgba(255,255,255,0.1)',
         borderRadius: '8px',
         color: '#E5E7EB',
-        fontSize: '14px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
         fontWeight: 500,
         cursor: 'pointer'
     };
 
     const flipButtonStyle = {
-        padding: '12px 32px',
+        padding: 'clamp(8px, 2vw, 12px) clamp(20px, 5vw, 32px)',
         background: 'linear-gradient(135deg, #3B82F6, #06B6D4)',
         border: 'none',
         borderRadius: '8px',
         color: '#ffffff',
-        fontSize: '16px',
+        fontSize: 'clamp(14px, 3.5vw, 16px)',
         fontWeight: 600,
         cursor: 'pointer'
     };
 
     const inputStyle = {
-        padding: '12px',
+        padding: 'clamp(8px, 2vw, 12px)',
         background: 'rgba(255,255,255,0.05)',
         border: '1px solid rgba(255,255,255,0.1)',
         borderRadius: '8px',
         color: '#E5E7EB',
-        fontSize: '14px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
         width: '100%',
-        marginBottom: '12px'
+        marginBottom: 'clamp(8px, 2vw, 12px)'
     };
 
     const formButtonStyle = {
-        padding: '10px 20px',
+        padding: 'clamp(8px, 2vw, 10px) clamp(16px, 4vw, 20px)',
         background: 'linear-gradient(135deg, #3B82F6, #06B6D4)',
         border: 'none',
         borderRadius: '8px',
         color: '#ffffff',
-        fontSize: '14px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
         fontWeight: 600,
         cursor: 'pointer'
     };
@@ -345,7 +362,7 @@ const Flashcards = () => {
     };
 
     const emptyIconStyle = {
-        fontSize: '64px',
+        fontSize: 'clamp(40px, 8vw, 64px)',
         marginBottom: '16px'
     };
 

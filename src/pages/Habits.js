@@ -6,6 +6,16 @@ const Habits = () => {
     const [newHabitName, setNewHabitName] = useState('');
     const [newHabitColor, setNewHabitColor] = useState('#22C55E');
     const [showForm, setShowForm] = useState(false);
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+    // Handle responsive layout
+    useEffect(() => {
+        const handleResize = () => {
+            setIsMobile(window.innerWidth < 768);
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     // Load habits from localStorage
     useEffect(() => {
@@ -135,32 +145,34 @@ const Habits = () => {
         minHeight: '100vh',
         background: 'linear-gradient(180deg, #0B1220 0%, #0F172A 100%)',
         color: '#E5E7EB',
-        padding: '24px'
+        padding: 'clamp(12px, 3vw, 24px)'
     };
 
     const headerStyle = {
         display: 'flex',
-        alignItems: 'center',
+        flexDirection: isMobile ? 'column' : 'row',
+        alignItems: isMobile ? 'stretch' : 'center',
         justifyContent: 'space-between',
-        marginBottom: '32px',
-        gap: '16px',
+        marginBottom: 'clamp(20px, 5vw, 32px)',
+        gap: 'clamp(12px, 3vw, 16px)',
         flexWrap: 'wrap'
     };
 
     const headerLeftStyle = {
         display: 'flex',
         alignItems: 'center',
-        gap: '16px'
+        gap: 'clamp(12px, 3vw, 16px)',
+        flexWrap: 'wrap'
     };
 
     const backButtonStyle = {
-        padding: '8px 16px',
+        padding: 'clamp(6px, 1.5vw, 8px) clamp(12px, 3vw, 16px)',
         background: 'rgba(255,255,255,0.05)',
         border: '1px solid rgba(255,255,255,0.1)',
         borderRadius: '8px',
         color: '#E5E7EB',
         textDecoration: 'none',
-        fontSize: '14px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
         fontWeight: 500,
         display: 'inline-flex',
         alignItems: 'center',
@@ -170,31 +182,32 @@ const Habits = () => {
 
     const titleStyle = {
         margin: 0,
-        fontSize: '32px',
+        fontSize: 'clamp(24px, 6vw, 32px)',
         fontWeight: 700
     };
 
     const buttonStyle = {
-        padding: '10px 20px',
+        padding: 'clamp(8px, 2vw, 10px) clamp(16px, 4vw, 20px)',
         background: 'linear-gradient(135deg, #22C55E, #84CC16)',
         border: 'none',
         borderRadius: '8px',
         color: '#ffffff',
-        fontSize: '14px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
         fontWeight: 600,
         cursor: 'pointer',
-        transition: 'transform 0.2s'
+        transition: 'transform 0.2s',
+        whiteSpace: 'nowrap'
     };
 
     const habitsListStyle = {
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-        gap: '20px',
-        marginBottom: '32px'
+        gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(280px, 70vw, 320px), 1fr))',
+        gap: 'clamp(12px, 3vw, 20px)',
+        marginBottom: 'clamp(20px, 5vw, 32px)'
     };
 
     const habitCardStyle = {
-        padding: '24px',
+        padding: 'clamp(16px, 4vw, 24px)',
         background: 'rgba(255,255,255,0.04)',
         border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: '16px',
@@ -205,29 +218,29 @@ const Habits = () => {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
-        marginBottom: '16px'
+        marginBottom: 'clamp(12px, 3vw, 16px)'
     };
 
     const habitNameStyle = {
         margin: 0,
-        fontSize: '20px',
+        fontSize: 'clamp(16px, 4vw, 20px)',
         fontWeight: 600,
         flex: 1
     };
 
     const deleteButtonStyle = {
-        padding: '6px 12px',
+        padding: 'clamp(4px, 1vw, 6px) clamp(8px, 2vw, 12px)',
         background: 'rgba(239,68,68,0.2)',
         border: '1px solid rgba(239,68,68,0.3)',
         borderRadius: '6px',
         color: '#EF4444',
-        fontSize: '12px',
+        fontSize: 'clamp(10px, 2.5vw, 12px)',
         cursor: 'pointer'
     };
 
     const checkboxStyle = {
-        width: '32px',
-        height: '32px',
+        width: 'clamp(24px, 6vw, 32px)',
+        height: 'clamp(24px, 6vw, 32px)',
         borderRadius: '8px',
         border: '3px solid rgba(255,255,255,0.3)',
         background: 'transparent',
@@ -236,7 +249,7 @@ const Habits = () => {
         alignItems: 'center',
         justifyContent: 'center',
         transition: 'all 0.2s',
-        marginBottom: '16px'
+        marginBottom: 'clamp(12px, 3vw, 16px)'
     };
 
     const checkboxCheckedStyle = {
@@ -247,36 +260,38 @@ const Habits = () => {
 
     const statsStyle = {
         display: 'flex',
-        gap: '16px',
-        marginTop: '16px'
+        gap: 'clamp(8px, 2vw, 16px)',
+        marginTop: 'clamp(12px, 3vw, 16px)',
+        flexWrap: 'wrap'
     };
 
     const statItemStyle = {
         flex: 1,
         textAlign: 'center',
-        padding: '12px',
+        padding: 'clamp(8px, 2vw, 12px)',
         background: 'rgba(255,255,255,0.05)',
-        borderRadius: '8px'
+        borderRadius: '8px',
+        minWidth: 'clamp(80px, 20vw, 120px)'
     };
 
     const statValueStyle = {
-        fontSize: '24px',
+        fontSize: 'clamp(18px, 4.5vw, 24px)',
         fontWeight: 700,
         marginBottom: '4px'
     };
 
     const statLabelStyle = {
-        fontSize: '12px',
+        fontSize: 'clamp(10px, 2.5vw, 12px)',
         opacity: 0.7
     };
 
     const completionBarStyle = {
         width: '100%',
-        height: '6px',
+        height: 'clamp(4px, 1vw, 6px)',
         background: 'rgba(255,255,255,0.1)',
         borderRadius: '3px',
         overflow: 'hidden',
-        marginTop: '12px'
+        marginTop: 'clamp(8px, 2vw, 12px)'
     };
 
     const completionFillStyle = {
@@ -286,42 +301,42 @@ const Habits = () => {
     };
 
     const formStyle = {
-        padding: '24px',
+        padding: 'clamp(16px, 4vw, 24px)',
         background: 'rgba(255,255,255,0.04)',
         border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: '16px',
-        marginBottom: '32px'
+        marginBottom: 'clamp(20px, 5vw, 32px)'
     };
 
     const inputStyle = {
         width: '100%',
-        padding: '12px',
+        padding: 'clamp(8px, 2vw, 12px)',
         background: 'rgba(255,255,255,0.05)',
         border: '1px solid rgba(255,255,255,0.1)',
         borderRadius: '8px',
         color: '#E5E7EB',
-        fontSize: '14px',
-        marginBottom: '16px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
+        marginBottom: 'clamp(12px, 3vw, 16px)',
         outline: 'none'
     };
 
     const colorInputStyle = {
-        width: '60px',
-        height: '40px',
+        width: 'clamp(48px, 12vw, 60px)',
+        height: 'clamp(32px, 8vw, 40px)',
         border: 'none',
         borderRadius: '8px',
         cursor: 'pointer',
-        marginBottom: '16px'
+        marginBottom: 'clamp(12px, 3vw, 16px)'
     };
 
     const emptyStateStyle = {
         textAlign: 'center',
-        padding: '48px',
+        padding: 'clamp(24px, 6vw, 48px)',
         opacity: 0.6
     };
 
     const emptyIconStyle = {
-        fontSize: '64px',
+        fontSize: 'clamp(40px, 8vw, 64px)',
         marginBottom: '16px'
     };
 

@@ -38,6 +38,7 @@ const ChessGame = () => {
   const [fenVersion, setFenVersion] = useState(0);
   const [promotionFromTo, setPromotionFromTo] = useState(null);
   const [boardSize, setBoardSize] = useState(600);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 640);
   
   // Multiplayer state
   const [gameMode, setGameMode] = useState(null); // null (not set), 'local', or 'online'
@@ -63,9 +64,9 @@ const ChessGame = () => {
     }
   }, [searchParams, profileId]);
 
-  // Responsive board size
+  // Responsive board size and mobile detection
   useEffect(() => {
-    const updateBoardSize = () => {
+    const updateLayout = () => {
       const width = window.innerWidth;
       const height = window.innerHeight;
       const padding = 40;
@@ -74,11 +75,12 @@ const ChessGame = () => {
       const availableHeight = height - headerHeight - padding * 2;
       const size = Math.min(availableWidth, availableHeight, 600);
       setBoardSize(Math.max(300, size));
+      setIsMobile(width < 640);
     };
 
-    updateBoardSize();
-    window.addEventListener('resize', updateBoardSize);
-    return () => window.removeEventListener('resize', updateBoardSize);
+    updateLayout();
+    window.addEventListener('resize', updateLayout);
+    return () => window.removeEventListener('resize', updateLayout);
   }, []);
 
   // Socket event handlers for online play
@@ -568,7 +570,7 @@ const ChessGame = () => {
   const pageStyle = {
     minHeight: '100vh',
     background: 'linear-gradient(180deg, #0B1220 0%, #0F172A 100%)',
-    padding: '20px',
+    padding: 'clamp(12px, 3vw, 20px)',
     color: '#E5E7EB',
     display: 'flex',
     flexDirection: 'column',
@@ -584,31 +586,33 @@ const ChessGame = () => {
 
   const topBarStyle = {
     display: 'flex',
-    flexDirection: 'row',
+    flexDirection: isMobile ? 'column' : 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     width: '100%',
     maxWidth: boardSize + 40,
-    marginBottom: '16px',
-    gap: '12px',
+    marginBottom: 'clamp(12px, 3vw, 16px)',
+    gap: 'clamp(8px, 2vw, 12px)',
   };
 
   const titleStyle = {
-    fontSize: '24px',
+    fontSize: 'clamp(18px, 4vw, 24px)',
     fontWeight: 700,
     color: '#E5E7EB',
+    textAlign: isMobile ? 'center' : 'left',
   };
 
   const buttonStyle = {
-    padding: '8px 16px',
+    padding: 'clamp(6px, 1.5vw, 8px) clamp(12px, 3vw, 16px)',
     borderRadius: '8px',
     border: '1px solid rgba(255, 255, 255, 0.2)',
     cursor: 'pointer',
-    fontSize: '14px',
+    fontSize: 'clamp(12px, 3vw, 14px)',
     fontWeight: 600,
     transition: 'all 0.2s',
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     color: '#E5E7EB',
+    whiteSpace: 'nowrap',
   };
 
   const buttonHoverStyle = {
@@ -617,8 +621,8 @@ const ChessGame = () => {
 
   const statusStyle = {
     textAlign: 'center',
-    marginBottom: '16px',
-    fontSize: '18px',
+    marginBottom: 'clamp(12px, 3vw, 16px)',
+    fontSize: 'clamp(14px, 3.5vw, 18px)',
     fontWeight: 500,
     color: '#E5E7EB',
   };
@@ -648,15 +652,16 @@ const ChessGame = () => {
   const modalCardStyle = {
     backgroundColor: 'rgba(30, 30, 50, 0.95)',
     borderRadius: '12px',
-    padding: '24px',
+    padding: 'clamp(16px, 4vw, 24px)',
     border: '1px solid rgba(255, 255, 255, 0.2)',
-    minWidth: '300px',
+    minWidth: 'min(280px, 90vw)',
+    maxWidth: '90vw',
   };
 
   const modalTitleStyle = {
-    fontSize: '18px',
+    fontSize: 'clamp(16px, 4vw, 18px)',
     fontWeight: 600,
-    marginBottom: '16px',
+    marginBottom: 'clamp(12px, 3vw, 16px)',
     textAlign: 'center',
     color: '#E5E7EB',
   };
@@ -670,13 +675,13 @@ const ChessGame = () => {
 
   const promoButtonStyle = {
     flex: 1,
-    padding: '12px',
+    padding: 'clamp(8px, 2vw, 12px)',
     borderRadius: '8px',
     border: '1px solid rgba(255, 255, 255, 0.2)',
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     color: '#E5E7EB',
     cursor: 'pointer',
-    fontSize: '16px',
+    fontSize: 'clamp(14px, 3.5vw, 16px)',
     fontWeight: 600,
     textAlign: 'center',
     transition: 'all 0.2s',
@@ -685,25 +690,25 @@ const ChessGame = () => {
   const winnerModalCardStyle = {
     backgroundColor: 'rgba(30, 30, 50, 0.95)',
     borderRadius: '16px',
-    padding: '32px',
+    padding: 'clamp(20px, 5vw, 32px)',
     border: '1px solid rgba(255, 255, 255, 0.2)',
-    minWidth: '320px',
-    maxWidth: '400px',
+    minWidth: 'min(280px, 90vw)',
+    maxWidth: 'min(400px, 90vw)',
     textAlign: 'center',
     boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
   };
 
   const winnerTitleStyle = {
-    fontSize: '28px',
+    fontSize: 'clamp(20px, 5vw, 28px)',
     fontWeight: 700,
-    marginBottom: '12px',
+    marginBottom: 'clamp(8px, 2vw, 12px)',
     color: '#E5E7EB',
   };
 
   const winnerMessageStyle = {
-    fontSize: '18px',
+    fontSize: 'clamp(14px, 3.5vw, 18px)',
     fontWeight: 500,
-    marginBottom: '24px',
+    marginBottom: 'clamp(16px, 4vw, 24px)',
     color: '#E5E7EB',
     opacity: 0.9,
   };
@@ -715,13 +720,13 @@ const ChessGame = () => {
   };
 
   const winnerButtonStyle = {
-    padding: '12px 24px',
+    padding: 'clamp(8px, 2vw, 12px) clamp(16px, 4vw, 24px)',
     borderRadius: '8px',
     border: '1px solid rgba(255, 255, 255, 0.2)',
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     color: '#E5E7EB',
     cursor: 'pointer',
-    fontSize: '16px',
+    fontSize: 'clamp(14px, 3.5vw, 16px)',
     fontWeight: 600,
     transition: 'all 0.2s',
     width: '100%',

@@ -8,6 +8,16 @@ const Calendar = () => {
     const [showEventForm, setShowEventForm] = useState(false);
     const [newEventTitle, setNewEventTitle] = useState('');
     const [newEventTime, setNewEventTime] = useState('');
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+    // Handle responsive layout
+    useEffect(() => {
+        const handleResize = () => {
+            setIsMobile(window.innerWidth < 768);
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     // Load events from localStorage
     useEffect(() => {
@@ -118,32 +128,34 @@ const Calendar = () => {
         minHeight: '100vh',
         background: 'linear-gradient(180deg, #0B1220 0%, #0F172A 100%)',
         color: '#E5E7EB',
-        padding: '24px'
+        padding: 'clamp(12px, 3vw, 24px)'
     };
 
     const headerStyle = {
         display: 'flex',
-        alignItems: 'center',
+        flexDirection: isMobile ? 'column' : 'row',
+        alignItems: isMobile ? 'stretch' : 'center',
         justifyContent: 'space-between',
-        marginBottom: '32px',
-        gap: '16px',
+        marginBottom: 'clamp(20px, 5vw, 32px)',
+        gap: 'clamp(12px, 3vw, 16px)',
         flexWrap: 'wrap'
     };
 
     const headerLeftStyle = {
         display: 'flex',
         alignItems: 'center',
-        gap: '16px'
+        gap: 'clamp(12px, 3vw, 16px)',
+        flexWrap: 'wrap'
     };
 
     const backButtonStyle = {
-        padding: '8px 16px',
+        padding: 'clamp(6px, 1.5vw, 8px) clamp(12px, 3vw, 16px)',
         background: 'rgba(255,255,255,0.05)',
         border: '1px solid rgba(255,255,255,0.1)',
         borderRadius: '8px',
         color: '#E5E7EB',
         textDecoration: 'none',
-        fontSize: '14px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
         fontWeight: 500,
         display: 'inline-flex',
         alignItems: 'center',
@@ -153,32 +165,33 @@ const Calendar = () => {
 
     const titleStyle = {
         margin: 0,
-        fontSize: '32px',
+        fontSize: 'clamp(24px, 6vw, 32px)',
         fontWeight: 700
     };
 
     const monthNavStyle = {
         display: 'flex',
         alignItems: 'center',
-        gap: '16px'
+        gap: 'clamp(12px, 3vw, 16px)',
+        flexWrap: 'wrap'
     };
 
     const navButtonStyle = {
-        padding: '8px 16px',
+        padding: 'clamp(6px, 1.5vw, 8px) clamp(12px, 3vw, 16px)',
         background: 'rgba(255,255,255,0.05)',
         border: '1px solid rgba(255,255,255,0.1)',
         borderRadius: '8px',
         color: '#E5E7EB',
-        fontSize: '14px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
         fontWeight: 500,
         cursor: 'pointer',
         transition: 'all 0.2s'
     };
 
     const monthYearStyle = {
-        fontSize: '20px',
+        fontSize: 'clamp(16px, 4vw, 20px)',
         fontWeight: 600,
-        minWidth: '200px',
+        minWidth: 'clamp(150px, 30vw, 200px)',
         textAlign: 'center'
     };
 
@@ -186,21 +199,21 @@ const Calendar = () => {
         background: 'rgba(255,255,255,0.04)',
         border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: '16px',
-        padding: '24px',
-        marginBottom: '32px'
+        padding: 'clamp(16px, 4vw, 24px)',
+        marginBottom: 'clamp(20px, 5vw, 32px)'
     };
 
     const calendarHeaderStyle = {
         display: 'grid',
         gridTemplateColumns: 'repeat(7, 1fr)',
-        gap: '8px',
-        marginBottom: '16px'
+        gap: 'clamp(4px, 1vw, 8px)',
+        marginBottom: 'clamp(12px, 3vw, 16px)'
     };
 
     const dayHeaderStyle = {
-        padding: '12px',
+        padding: 'clamp(8px, 2vw, 12px)',
         textAlign: 'center',
-        fontSize: '14px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
         fontWeight: 600,
         opacity: 0.7
     };
@@ -208,12 +221,12 @@ const Calendar = () => {
     const calendarGridStyle = {
         display: 'grid',
         gridTemplateColumns: 'repeat(7, 1fr)',
-        gap: '8px'
+        gap: 'clamp(4px, 1vw, 8px)'
     };
 
     const dayCellStyle = {
         aspectRatio: '1',
-        padding: '8px',
+        padding: 'clamp(4px, 1vw, 8px)',
         background: 'rgba(255,255,255,0.04)',
         border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: '8px',
@@ -246,13 +259,13 @@ const Calendar = () => {
     };
 
     const dayNumberStyle = {
-        fontSize: '16px',
+        fontSize: 'clamp(14px, 3.5vw, 16px)',
         fontWeight: 600
     };
 
     const eventDotStyle = {
-        width: '6px',
-        height: '6px',
+        width: 'clamp(4px, 1vw, 6px)',
+        height: 'clamp(4px, 1vw, 6px)',
         borderRadius: '50%',
         background: '#EF4444'
     };
@@ -261,58 +274,58 @@ const Calendar = () => {
         background: 'rgba(255,255,255,0.04)',
         border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: '16px',
-        padding: '24px'
+        padding: 'clamp(16px, 4vw, 24px)'
     };
 
     const eventFormStyle = {
-        marginBottom: '24px',
-        padding: '16px',
+        marginBottom: 'clamp(16px, 4vw, 24px)',
+        padding: 'clamp(12px, 3vw, 16px)',
         background: 'rgba(255,255,255,0.05)',
         borderRadius: '12px'
     };
 
     const inputStyle = {
         width: '100%',
-        padding: '12px',
+        padding: 'clamp(8px, 2vw, 12px)',
         background: 'rgba(255,255,255,0.05)',
         border: '1px solid rgba(255,255,255,0.1)',
         borderRadius: '8px',
         color: '#E5E7EB',
-        fontSize: '14px',
-        marginBottom: '12px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
+        marginBottom: 'clamp(8px, 2vw, 12px)',
         outline: 'none'
     };
 
     const buttonStyle = {
-        padding: '10px 20px',
+        padding: 'clamp(8px, 2vw, 10px) clamp(16px, 4vw, 20px)',
         background: 'linear-gradient(135deg, #EF4444, #F97316)',
         border: 'none',
         borderRadius: '8px',
         color: '#ffffff',
-        fontSize: '14px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
         fontWeight: 600,
         cursor: 'pointer',
         marginRight: '8px'
     };
 
     const eventItemStyle = {
-        padding: '16px',
+        padding: 'clamp(12px, 3vw, 16px)',
         background: 'rgba(255,255,255,0.04)',
         border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: '8px',
-        marginBottom: '12px',
+        marginBottom: 'clamp(8px, 2vw, 12px)',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center'
     };
 
     const deleteButtonStyle = {
-        padding: '6px 12px',
+        padding: 'clamp(4px, 1vw, 6px) clamp(8px, 2vw, 12px)',
         background: 'rgba(239,68,68,0.2)',
         border: '1px solid rgba(239,68,68,0.3)',
         borderRadius: '6px',
         color: '#EF4444',
-        fontSize: '12px',
+        fontSize: 'clamp(10px, 2.5vw, 12px)',
         cursor: 'pointer'
     };
 

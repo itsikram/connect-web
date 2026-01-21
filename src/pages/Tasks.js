@@ -106,7 +106,7 @@ const Tasks = () => {
         minHeight: '100vh',
         background: 'linear-gradient(180deg, #0B1220 0%, #0F172A 100%)',
         color: '#E5E7EB',
-        padding: '24px',
+        padding: 'clamp(12px, 3vw, 24px)',
         maxWidth: '800px',
         margin: '0 auto'
     };
@@ -115,25 +115,26 @@ const Tasks = () => {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: '32px',
-        gap: '16px',
+        marginBottom: 'clamp(20px, 5vw, 32px)',
+        gap: 'clamp(12px, 3vw, 16px)',
         flexWrap: 'wrap'
     };
 
     const headerLeftStyle = {
         display: 'flex',
         alignItems: 'center',
-        gap: '16px'
+        gap: 'clamp(12px, 3vw, 16px)',
+        flexWrap: 'wrap'
     };
 
     const backButtonStyle = {
-        padding: '8px 16px',
+        padding: 'clamp(6px, 1.5vw, 8px) clamp(12px, 3vw, 16px)',
         background: 'rgba(255,255,255,0.05)',
         border: '1px solid rgba(255,255,255,0.1)',
         borderRadius: '8px',
         color: '#E5E7EB',
         textDecoration: 'none',
-        fontSize: '14px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
         fontWeight: 500,
         display: 'inline-flex',
         alignItems: 'center',
@@ -143,49 +144,51 @@ const Tasks = () => {
 
     const titleStyle = {
         margin: 0,
-        fontSize: '32px',
+        fontSize: 'clamp(24px, 6vw, 32px)',
         fontWeight: 700
     };
 
     const statsStyle = {
         display: 'flex',
-        gap: '16px',
+        gap: 'clamp(8px, 2vw, 16px)',
         flexWrap: 'wrap'
     };
 
     const statItemStyle = {
-        padding: '8px 16px',
+        padding: 'clamp(6px, 1.5vw, 8px) clamp(12px, 3vw, 16px)',
         background: 'rgba(255,255,255,0.05)',
         border: '1px solid rgba(255,255,255,0.1)',
         borderRadius: '8px',
-        fontSize: '14px'
+        fontSize: 'clamp(12px, 3vw, 14px)'
     };
 
     const inputContainerStyle = {
         display: 'flex',
-        gap: '12px',
-        marginBottom: '32px'
+        gap: 'clamp(8px, 2vw, 12px)',
+        marginBottom: 'clamp(20px, 5vw, 32px)',
+        flexWrap: 'wrap'
     };
 
     const inputStyle = {
         flex: 1,
-        padding: '14px 18px',
+        padding: 'clamp(10px, 2.5vw, 14px) clamp(14px, 3.5vw, 18px)',
         background: 'rgba(255,255,255,0.05)',
         border: '1px solid rgba(255,255,255,0.1)',
         borderRadius: '12px',
         color: '#E5E7EB',
-        fontSize: '16px',
+        fontSize: 'clamp(14px, 3.5vw, 16px)',
         outline: 'none',
-        transition: 'all 0.2s'
+        transition: 'all 0.2s',
+        minWidth: '200px'
     };
 
     const addButtonStyle = {
-        padding: '14px 28px',
+        padding: 'clamp(10px, 2.5vw, 14px) clamp(20px, 5vw, 28px)',
         background: 'linear-gradient(135deg, #10B981, #34D399)',
         border: 'none',
         borderRadius: '12px',
         color: '#ffffff',
-        fontSize: '16px',
+        fontSize: 'clamp(14px, 3.5vw, 16px)',
         fontWeight: 600,
         cursor: 'pointer',
         transition: 'transform 0.2s',
@@ -194,18 +197,18 @@ const Tasks = () => {
 
     const filtersStyle = {
         display: 'flex',
-        gap: '8px',
-        marginBottom: '24px',
+        gap: 'clamp(6px, 1.5vw, 8px)',
+        marginBottom: 'clamp(16px, 4vw, 24px)',
         flexWrap: 'wrap'
     };
 
     const filterButtonStyle = {
-        padding: '10px 20px',
+        padding: 'clamp(8px, 2vw, 10px) clamp(16px, 4vw, 20px)',
         background: 'rgba(255,255,255,0.05)',
         border: '1px solid rgba(255,255,255,0.1)',
         borderRadius: '8px',
         color: '#E5E7EB',
-        fontSize: '14px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
         fontWeight: 500,
         cursor: 'pointer',
         transition: 'all 0.2s'
@@ -221,15 +224,15 @@ const Tasks = () => {
     const tasksListStyle = {
         display: 'flex',
         flexDirection: 'column',
-        gap: '12px',
-        marginBottom: '24px'
+        gap: 'clamp(8px, 2vw, 12px)',
+        marginBottom: 'clamp(16px, 4vw, 24px)'
     };
 
     const taskItemStyle = {
         display: 'flex',
         alignItems: 'center',
-        gap: '12px',
-        padding: '16px',
+        gap: 'clamp(8px, 2vw, 12px)',
+        padding: 'clamp(12px, 3vw, 16px)',
         background: 'rgba(255,255,255,0.04)',
         border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: '12px',
@@ -242,8 +245,8 @@ const Tasks = () => {
     };
 
     const checkboxStyle = {
-        width: '20px',
-        height: '20px',
+        width: 'clamp(16px, 4vw, 20px)',
+        height: 'clamp(16px, 4vw, 20px)',
         borderRadius: '6px',
         border: '2px solid rgba(255,255,255,0.3)',
         background: 'transparent',
@@ -263,7 +266,7 @@ const Tasks = () => {
 
     const taskTextStyle = {
         flex: 1,
-        fontSize: '16px',
+        fontSize: 'clamp(14px, 3.5vw, 16px)',
         color: '#E5E7EB',
         margin: 0
     };
@@ -275,24 +278,24 @@ const Tasks = () => {
     };
 
     const deleteButtonStyle = {
-        padding: '6px 12px',
+        padding: 'clamp(4px, 1vw, 6px) clamp(8px, 2vw, 12px)',
         background: 'rgba(239,68,68,0.2)',
         border: '1px solid rgba(239,68,68,0.3)',
         borderRadius: '6px',
         color: '#EF4444',
-        fontSize: '13px',
+        fontSize: 'clamp(11px, 2.5vw, 13px)',
         fontWeight: 500,
         cursor: 'pointer',
         transition: 'all 0.2s'
     };
 
     const clearButtonStyle = {
-        padding: '12px 24px',
+        padding: 'clamp(8px, 2vw, 12px) clamp(16px, 4vw, 24px)',
         background: 'rgba(239,68,68,0.2)',
         border: '1px solid rgba(239,68,68,0.3)',
         borderRadius: '8px',
         color: '#EF4444',
-        fontSize: '14px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
         fontWeight: 500,
         cursor: 'pointer',
         transition: 'all 0.2s',
@@ -301,12 +304,12 @@ const Tasks = () => {
 
     const emptyStateStyle = {
         textAlign: 'center',
-        padding: '48px',
+        padding: 'clamp(24px, 6vw, 48px)',
         opacity: 0.6
     };
 
     const emptyIconStyle = {
-        fontSize: '64px',
+        fontSize: 'clamp(40px, 8vw, 64px)',
         marginBottom: '16px'
     };
 

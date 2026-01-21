@@ -10,6 +10,16 @@ const Notes = () => {
     const [isCreating, setIsCreating] = useState(false);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+    // Handle responsive layout
+    useEffect(() => {
+        const handleResize = () => {
+            setIsMobile(window.innerWidth < 768);
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     // Load notes from API
     useEffect(() => {
@@ -123,29 +133,31 @@ const Notes = () => {
     };
 
     const headerStyle = {
-        padding: '24px',
+        padding: 'clamp(12px, 3vw, 24px)',
         borderBottom: '1px solid rgba(255,255,255,0.1)',
         display: 'flex',
-        alignItems: 'center',
+        flexDirection: isMobile ? 'column' : 'row',
+        alignItems: isMobile ? 'stretch' : 'center',
         justifyContent: 'space-between',
-        gap: '16px'
+        gap: 'clamp(12px, 3vw, 16px)'
     };
 
     const headerLeftStyle = {
         display: 'flex',
         alignItems: 'center',
-        gap: '16px',
-        flex: 1
+        gap: 'clamp(12px, 3vw, 16px)',
+        flex: 1,
+        flexWrap: 'wrap'
     };
 
     const backButtonStyle = {
-        padding: '8px 16px',
+        padding: 'clamp(6px, 1.5vw, 8px) clamp(12px, 3vw, 16px)',
         background: 'rgba(255,255,255,0.05)',
         border: '1px solid rgba(255,255,255,0.1)',
         borderRadius: '8px',
         color: '#E5E7EB',
         textDecoration: 'none',
-        fontSize: '14px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
         fontWeight: 500,
         display: 'inline-flex',
         alignItems: 'center',
@@ -155,42 +167,47 @@ const Notes = () => {
 
     const titleStyle = {
         margin: 0,
-        fontSize: '24px',
+        fontSize: 'clamp(18px, 4vw, 24px)',
         fontWeight: 700
     };
 
     const searchInputStyle = {
-        padding: '10px 16px',
+        padding: 'clamp(8px, 2vw, 10px) clamp(12px, 3vw, 16px)',
         background: 'rgba(255,255,255,0.05)',
         border: '1px solid rgba(255,255,255,0.1)',
         borderRadius: '8px',
         color: '#E5E7EB',
-        fontSize: '14px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
         flex: 1,
-        maxWidth: '400px'
+        maxWidth: isMobile ? 'none' : '400px',
+        minWidth: '200px'
     };
 
     const createButtonStyle = {
-        padding: '10px 20px',
+        padding: 'clamp(8px, 2vw, 10px) clamp(16px, 4vw, 20px)',
         background: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
         border: 'none',
         borderRadius: '8px',
         color: '#ffffff',
-        fontSize: '14px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
         fontWeight: 600,
         cursor: 'pointer',
-        transition: 'transform 0.2s'
+        transition: 'transform 0.2s',
+        whiteSpace: 'nowrap'
     };
 
     const containerStyle = {
         display: 'flex',
         flex: 1,
-        overflow: 'hidden'
+        overflow: 'hidden',
+        flexDirection: isMobile ? 'column' : 'row'
     };
 
     const sidebarStyle = {
-        width: '300px',
-        borderRight: '1px solid rgba(255,255,255,0.1)',
+        width: isMobile ? '100%' : '300px',
+        height: isMobile ? '300px' : 'auto',
+        borderRight: isMobile ? 'none' : '1px solid rgba(255,255,255,0.1)',
+        borderBottom: isMobile ? '1px solid rgba(255,255,255,0.1)' : 'none',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden'
@@ -203,8 +220,8 @@ const Notes = () => {
     };
 
     const noteItemStyle = {
-        padding: '16px',
-        marginBottom: '8px',
+        padding: 'clamp(10px, 2.5vw, 16px)',
+        marginBottom: 'clamp(6px, 1.5vw, 8px)',
         background: 'rgba(255,255,255,0.04)',
         border: '1px solid rgba(255,255,255,0.08)',
         borderRadius: '12px',
@@ -220,7 +237,7 @@ const Notes = () => {
 
     const noteTitleStyle = {
         margin: '0 0 8px 0',
-        fontSize: '16px',
+        fontSize: 'clamp(14px, 3.5vw, 16px)',
         fontWeight: 600,
         color: '#E5E7EB',
         overflow: 'hidden',
@@ -230,7 +247,7 @@ const Notes = () => {
 
     const notePreviewStyle = {
         margin: 0,
-        fontSize: '13px',
+        fontSize: 'clamp(11px, 2.5vw, 13px)',
         color: 'rgba(229,231,235,0.7)',
         overflow: 'hidden',
         textOverflow: 'ellipsis',
@@ -239,7 +256,7 @@ const Notes = () => {
 
     const noteDateStyle = {
         margin: '8px 0 0 0',
-        fontSize: '11px',
+        fontSize: 'clamp(9px, 2vw, 11px)',
         color: 'rgba(229,231,235,0.5)'
     };
 
@@ -251,40 +268,42 @@ const Notes = () => {
     };
 
     const editorToolbarStyle = {
-        padding: '16px 24px',
+        padding: 'clamp(12px, 3vw, 16px) clamp(16px, 4vw, 24px)',
         borderBottom: '1px solid rgba(255,255,255,0.1)',
         display: 'flex',
         justifyContent: 'space-between',
-        alignItems: 'center'
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 'clamp(8px, 2vw, 12px)'
     };
 
     const editorContentStyle = {
         flex: 1,
-        padding: '24px',
+        padding: 'clamp(16px, 4vw, 24px)',
         overflowY: 'auto'
     };
 
     const titleInputStyle = {
         width: '100%',
-        padding: '12px',
+        padding: 'clamp(8px, 2vw, 12px)',
         background: 'transparent',
         border: 'none',
         borderBottom: '2px solid rgba(255,255,255,0.1)',
         color: '#E5E7EB',
-        fontSize: '28px',
+        fontSize: 'clamp(20px, 5vw, 28px)',
         fontWeight: 700,
-        marginBottom: '24px',
+        marginBottom: 'clamp(16px, 4vw, 24px)',
         outline: 'none'
     };
 
     const contentTextareaStyle = {
         width: '100%',
-        minHeight: '400px',
-        padding: '12px',
+        minHeight: 'clamp(300px, 40vh, 400px)',
+        padding: 'clamp(8px, 2vw, 12px)',
         background: 'transparent',
         border: 'none',
         color: '#E5E7EB',
-        fontSize: '16px',
+        fontSize: 'clamp(14px, 3.5vw, 16px)',
         lineHeight: '1.6',
         outline: 'none',
         resize: 'none',
@@ -292,12 +311,12 @@ const Notes = () => {
     };
 
     const deleteButtonStyle = {
-        padding: '8px 16px',
+        padding: 'clamp(6px, 1.5vw, 8px) clamp(12px, 3vw, 16px)',
         background: 'rgba(239,68,68,0.2)',
         border: '1px solid rgba(239,68,68,0.3)',
         borderRadius: '8px',
         color: '#EF4444',
-        fontSize: '14px',
+        fontSize: 'clamp(12px, 3vw, 14px)',
         fontWeight: 500,
         cursor: 'pointer'
     };
@@ -308,12 +327,12 @@ const Notes = () => {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '48px',
+        padding: 'clamp(24px, 6vw, 48px)',
         textAlign: 'center'
     };
 
     const emptyIconStyle = {
-        fontSize: '64px',
+        fontSize: 'clamp(40px, 8vw, 64px)',
         marginBottom: '16px',
         opacity: 0.5
     };

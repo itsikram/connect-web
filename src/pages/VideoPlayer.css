@@ -1,7 +1,7 @@
 .video-player-page {
     min-height: calc(100vh - 60px);
     background: linear-gradient(180deg, #0B1220 0%, #0F172A 100%);
-    padding: 24px;
+    padding: clamp(12px, 3vw, 24px);
     color: #E5E7EB;
 }
 
@@ -9,14 +9,21 @@
     max-width: 1400px;
     margin: 0 auto;
     display: grid;
-    grid-template-columns: 1fr 350px;
-    gap: 24px;
+    grid-template-columns: 1fr min(300px, 25vw);
+    gap: clamp(16px, 4vw, 24px);
+}
+
+@media (max-width: 768px) {
+    .video-player-container {
+        grid-template-columns: 1fr;
+        gap: clamp(12px, 3vw, 20px);
+    }
 }
 
 .video-player-main {
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: clamp(16px, 4vw, 24px);
 }
 
 .video-player-header {
@@ -26,7 +33,7 @@
 
 .video-player-header h1 {
     margin: 0;
-    font-size: 32px;
+    font-size: clamp(24px, 5vw, 32px);
     font-weight: 700;
     color: #FFFFFF;
 }
@@ -34,23 +41,29 @@
 .video-player-header p {
     margin: 8px 0 0 0;
     opacity: 0.8;
-    font-size: 14px;
+    font-size: clamp(12px, 3vw, 14px);
 }
 
 .video-wrapper {
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 16px;
-    padding: 20px;
+    padding: clamp(12px, 3vw, 20px);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
 .main-video {
     width: 100%;
-    max-height: 600px;
+    max-height: min(600px, 50vh);
     border-radius: 12px;
     background: #000;
     outline: none;
+}
+
+@media (max-width: 768px) {
+    .main-video {
+        max-height: min(400px, 40vh);
+    }
 }
 
 .video-info {
@@ -60,7 +73,7 @@
 
 .video-info h3 {
     margin: 0 0 8px 0;
-    font-size: 20px;
+    font-size: clamp(16px, 4vw, 20px);
     font-weight: 600;
     color: #FFFFFF;
 }
@@ -68,68 +81,68 @@
 .video-info p {
     margin: 0;
     opacity: 0.7;
-    font-size: 14px;
+    font-size: clamp(12px, 3vw, 14px);
 }
 
 .no-video-placeholder {
     background: rgba(255, 255, 255, 0.04);
     border: 2px dashed rgba(255, 255, 255, 0.1);
     border-radius: 16px;
-    padding: 60px 20px;
+    padding: clamp(30px, 6vw, 60px) clamp(12px, 3vw, 20px);
     text-align: center;
 }
 
 .placeholder-icon {
-    font-size: 64px;
+    font-size: clamp(40px, 8vw, 64px);
     margin-bottom: 16px;
 }
 
 .no-video-placeholder h3 {
     margin: 0 0 8px 0;
-    font-size: 24px;
+    font-size: clamp(18px, 4vw, 24px);
     color: #FFFFFF;
 }
 
 .no-video-placeholder p {
     margin: 0;
     opacity: 0.7;
-    font-size: 14px;
+    font-size: clamp(12px, 3vw, 14px);
 }
 
 .add-video-form {
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 16px;
-    padding: 24px;
+    padding: clamp(16px, 4vw, 24px);
 }
 
 .add-video-form h3 {
-    margin: 0 0 20px 0;
-    font-size: 20px;
+    margin: 0 0 clamp(16px, 4vw, 20px) 0;
+    font-size: clamp(16px, 4vw, 20px);
     font-weight: 600;
     color: #FFFFFF;
 }
 
 .form-group {
-    margin-bottom: 16px;
+    margin-bottom: clamp(12px, 3vw, 16px);
 }
 
 .form-group label {
     display: block;
     margin-bottom: 8px;
-    font-size: 14px;
+    font-size: clamp(12px, 3vw, 14px);
     font-weight: 500;
     color: #E5E7EB;
 }
 
 .form-input {
     width: 100%;
-    padding: 12px 16px;
+    padding: clamp(10px, 2.5vw, 12px) clamp(12px, 3vw, 16px);
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     color: #FFFFFF;
-    font-size: 14px;
+    font-size: clamp(12px, 3vw, 14px);
     transition: all 0.2s;
     box-sizing: border-box;
 }
@@ -146,19 +159,33 @@
 
 .form-actions {
     display: flex;
-    gap: 12px;
-    margin-top: 20px;
+    flex-wrap: wrap;
+    gap: clamp(8px, 2vw, 12px);
+    margin-top: clamp(16px, 4vw, 20px);
+}
+
+@media (max-width: 768px) {
+    .form-actions {
+        flex-direction: column;
+    }
 }
 
 .btn {
-    padding: 12px 24px;
+    padding: clamp(10px, 2.5vw, 12px) clamp(16px, 4vw, 24px);
     border: none;
     border-radius: 8px;
-    font-size: 14px;
+    font-size: clamp(12px, 3vw, 14px);
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
     flex: 1;
+}
+
+@media (max-width: 768px) {
+    .btn {
+        flex: none;
+        width: 100%;
+    }
 }
 
 .btn-primary {
@@ -188,49 +215,56 @@
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 16px;
-    padding: 20px;
+    padding: clamp(12px, 3vw, 20px);
     height: fit-content;
     max-height: calc(100vh - 120px);
     overflow-y: auto;
     position: sticky;
-    top: 24px;
+    top: clamp(12px, 3vw, 24px);
+}
+
+@media (max-width: 768px) {
+    .video-playlist-sidebar {
+        position: static;
+        max-height: none;
+    }
 }
 
 .playlist-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
-    padding-bottom: 16px;
+    margin-bottom: clamp(12px, 3vw, 16px);
+    padding-bottom: clamp(12px, 3vw, 16px);
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .playlist-header h2 {
     margin: 0;
-    font-size: 20px;
+    font-size: clamp(16px, 4vw, 20px);
     font-weight: 600;
     color: #FFFFFF;
 }
 
 .playlist-count {
-    font-size: 12px;
+    font-size: clamp(10px, 2.5vw, 12px);
     opacity: 0.7;
     background: rgba(255, 255, 255, 0.1);
-    padding: 4px 8px;
+    padding: clamp(2px, 0.5vw, 4px) clamp(6px, 1.5vw, 8px);
     border-radius: 12px;
 }
 
 .playlist-items {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: clamp(6px, 1.5vw, 8px);
 }
 
 .playlist-item {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px;
+    gap: clamp(8px, 2vw, 12px);
+    padding: clamp(8px, 2vw, 12px);
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 8px;
@@ -250,8 +284,8 @@
 }
 
 .playlist-item-thumbnail {
-    width: 48px;
-    height: 48px;
+    width: clamp(40px, 8vw, 48px);
+    height: clamp(40px, 8vw, 48px);
     background: rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     display: flex;
@@ -261,13 +295,13 @@
 }
 
 .play-number {
-    font-size: 16px;
+    font-size: clamp(14px, 3vw, 16px);
     font-weight: 600;
     color: #FFFFFF;
 }
 
 .playing-indicator {
-    font-size: 20px;
+    font-size: clamp(16px, 4vw, 20px);
     color: #3B82F6;
     animation: pulse 1.5s ease-in-out infinite;
 }
@@ -287,7 +321,7 @@
 }
 
 .playlist-item-title {
-    font-size: 14px;
+    font-size: clamp(12px, 3vw, 14px);
     font-weight: 500;
     color: #FFFFFF;
     margin-bottom: 4px;
@@ -297,19 +331,19 @@
 }
 
 .playlist-item-type {
-    font-size: 12px;
+    font-size: clamp(10px, 2.5vw, 12px);
     opacity: 0.6;
 }
 
 .playlist-item-remove {
-    width: 24px;
-    height: 24px;
+    width: clamp(20px, 4vw, 24px);
+    height: clamp(20px, 4vw, 24px);
     border: none;
     background: rgba(255, 255, 255, 0.1);
     color: #FFFFFF;
     border-radius: 50%;
     cursor: pointer;
-    font-size: 20px;
+    font-size: clamp(16px, 4vw, 20px);
     line-height: 1;
     display: flex;
     align-items: center;
@@ -326,18 +360,18 @@
 
 .playlist-empty {
     text-align: center;
-    padding: 40px 20px;
+    padding: clamp(20px, 5vw, 40px) clamp(12px, 3vw, 20px);
     opacity: 0.6;
 }
 
 .playlist-empty p {
     margin: 0;
-    font-size: 14px;
+    font-size: clamp(12px, 3vw, 14px);
 }
 
 .playlist-empty-hint {
     margin-top: 8px !important;
-    font-size: 12px !important;
+    font-size: clamp(10px, 2.5vw, 12px) !important;
     opacity: 0.5 !important;
 }
 
@@ -372,7 +406,7 @@
     align-items: center;
     justify-content: center;
     z-index: 10000;
-    padding: 20px;
+    padding: clamp(12px, 3vw, 20px);
 }
 
 .saved-videos-modal {
@@ -380,8 +414,8 @@
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 16px;
     width: 100%;
-    max-width: 1000px;
-    max-height: 90vh;
+    max-width: min(1000px, 95vw);
+    max-height: min(90vh, 800px);
     display: flex;
     flex-direction: column;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
@@ -391,13 +425,13 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 24px;
+    padding: clamp(16px, 4vw, 24px);
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .saved-videos-modal-header h2 {
     margin: 0;
-    font-size: 24px;
+    font-size: clamp(18px, 4.5vw, 24px);
     font-weight: 600;
     color: #FFFFFF;
 }
