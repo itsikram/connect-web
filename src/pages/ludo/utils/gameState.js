@@ -11,6 +11,9 @@ export const saveGameStateToDB = async (gameState, retries = 2) => {
                 (error.response?.data?.message?.includes('VersionError') || 
                  error.response?.data?.message?.includes('No matching document'));
             
+            const isConflictError = error.response?.status === 409 && 
+                error.response?.data?.message?.includes('Game with this ID already exists');
+            
             // Version conflicts are expected in concurrent scenarios - don't log as error
             if (isVersionError) {
                 // If this is the last attempt, silently fail (version conflict is acceptable)
@@ -20,6 +23,12 @@ export const saveGameStateToDB = async (gameState, retries = 2) => {
                 // Wait before retrying (exponential backoff)
                 await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, attempt)));
                 continue;
+            }
+            
+            // 409 conflicts are now handled server-side, treat as success
+            if (isConflictError) {
+                console.debug('Game already exists (handled by server):', error.response?.data?.message);
+                return { success: true, message: 'Game state handled by server' };
             }
             
             // For other errors, log and return null

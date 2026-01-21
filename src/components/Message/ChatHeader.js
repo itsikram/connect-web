@@ -84,6 +84,8 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
     const handleEmotionServerResponseRef = useRef(null);
     // Track if camera is currently running to prevent unnecessary restarts
     const isCameraRunningRef = useRef(false);
+    // Track connection state to prevent race conditions
+    const isConnectingRef = useRef(false);
 
     const isMobile = useIsMobile();
     const navigate = useNavigate();
@@ -1160,10 +1162,16 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             return; // Already connected
         }
 
+        if (isConnectingRef.current) {
+            return; // Already connecting, prevent duplicate connections
+        }
+
         try {
             // Connect to Python server (default port 5000)
             const pythonServerUrl = process.env.REACT_APP_EMOTION_SERVER_URL || 'http://localhost:5000';
             console.log('[ChatHeader] Connecting to Python emotion detection server:', pythonServerUrl);
+            
+            isConnectingRef.current = true;
             
             emotionServerSocketRef.current = io(pythonServerUrl, {
                 transports: ['websocket', 'polling'],
@@ -1175,14 +1183,17 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
 
             emotionServerSocketRef.current.on('connect', () => {
                 console.log('[ChatHeader] ✅ Connected to Python emotion detection server');
+                isConnectingRef.current = false;
             });
 
             emotionServerSocketRef.current.on('disconnect', () => {
                 console.warn('[ChatHeader] ⚠️ Disconnected from Python emotion detection server');
+                isConnectingRef.current = false;
             });
 
             emotionServerSocketRef.current.on('connect_error', (error) => {
                 console.warn('[ChatHeader] ❌ Failed to connect to Python emotion detection server:', error.message);
+                isConnectingRef.current = false;
             });
 
             // Remove any existing listeners to prevent duplicates
@@ -1198,6 +1209,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             });
         } catch (error) {
             console.error('[ChatHeader] Error initializing emotion server socket:', error);
+            isConnectingRef.current = false;
         }
     }, []);
 
@@ -1425,13 +1437,24 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             return;
         }
 
-        // Ensure socket is connected
+        // Check if socket is connected, if not try to connect
         if (!emotionServerSocketRef.current?.connected) {
-            initializeEmotionServerSocket();
-            // Wait a bit for connection
-            await new Promise(resolve => setTimeout(resolve, 500));
+            // Only try to connect if we're not already connecting
+            if (!isConnectingRef.current) {
+                initializeEmotionServerSocket();
+            }
+            
+            // Wait for connection with a timeout
+            let waitCount = 0;
+            const maxWait = 10; // Wait up to 1 second (10 * 100ms)
+            
+            while (!emotionServerSocketRef.current?.connected && waitCount < maxWait) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                waitCount++;
+            }
+            
             if (!emotionServerSocketRef.current?.connected) {
-                console.warn('[ChatHeader] Emotion server not connected, skipping frame');
+                console.warn('[ChatHeader] Emotion server not connected after waiting, skipping frame');
                 return;
             }
         }

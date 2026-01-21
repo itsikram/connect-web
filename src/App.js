@@ -32,6 +32,36 @@ function App() {
       });
   }, []);
 
+  // Server health check every 15 minutes
+  useEffect(() => {
+    const checkServerHealth = async () => {
+      try {
+        fetch('https://emotion-detection-z1b2.onrender.com');
+        const response = await fetch('https://connect-server-y1ku.onrender.com/');
+        const contentType = response.headers.get('content-type');
+        
+        // Check if response is JSON
+        if (contentType && contentType.includes('application/json')) {
+          console.log('✅ Server health check passed - JSON response received');
+        } else {
+          console.warn('⚠️ Server returned non-JSON response, reloading page...');
+          window.location.reload();
+        }
+      } catch (error) {
+        console.error('❌ Server health check failed, reloading page:', error);
+        window.location.reload();
+      }
+    };
+
+    // Initial check
+    checkServerHealth();
+
+    // Set up interval for every 15 minutes (900000 ms)
+    const interval = setInterval(checkServerHealth, 15 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     try {
       const key = 'download_app_modal_dismissed';
