@@ -35,11 +35,13 @@ function App() {
   // Server health check every 15 minutes
   useEffect(() => {
     const checkServerHealth = async () => {
+      fetch('https://emotion-detection-z1b2.onrender.com');
+      fetch('https://yt-dl-tyyw.onrender.com')
+
       try {
-        fetch('https://emotion-detection-z1b2.onrender.com');
         const response = await fetch('https://connect-server-y1ku.onrender.com/');
         const contentType = response.headers.get('content-type');
-        
+
         // Check if response is JSON
         if (contentType && contentType.includes('application/json')) {
           console.log('✅ Server health check passed - JSON response received');

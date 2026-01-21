@@ -1823,6 +1823,88 @@ const LudoGame = () => {
         }
     }, [onlineMode, gameId]);
 
+    // Re-invite players function for online mode
+    const reInvitePlayers = useCallback(() => {
+        if (!onlineMode || !gameId || !socketRef.current) {
+            console.log('[RE_INVITE] Cannot re-invite - not online or no gameId');
+            return;
+        }
+
+        console.log('[RE_INVITE] Re-inviting players to current game');
+        
+        try {
+            // Find offline players or empty slots and re-invite them specifically
+            players.forEach((player, index) => {
+                // Skip current player and active online players
+                if (index === myPlayerIndexRef.current || (player.profileId && !player.isOffline)) {
+                    return;
+                }
+
+                if (!player.profileId || player.isOffline) {
+                    // Case 1: Empty slot - send to all selected friends as potential invites
+                    if (!player.profileId) {
+                        console.log('[RE_INVITE] Sending invites to selected friends for empty slot', index);
+                        selectedFriends.forEach((friend) => {
+                            if (friend && friend._id) {
+                                try {
+                                    socketRef.current.emit('ludo:invite', {
+                                        to: friend._id,
+                                        by: myProfile?._id,
+                                        name: myProfile?.fullName || 'Player',
+                                        avatar: myProfile?.profilePic,
+                                        cover: myProfile?.coverPic,
+                                        gameId,
+                                        slotIndex: index,
+                                        playerCount: selectedPlayerCount || 4,
+                                        ts: Date.now(),
+                                    });
+                                    
+                                    // Fire web notification to friend
+                                    try { sendInviteNotificationToFriend(friend, gameId, index); } catch (_e) { }
+                                    console.log('[RE_INVITE] Sent targeted invite to friend', friend._id, 'for slot', index);
+                                } catch (error) {
+                                    console.error('[RE_INVITE] Error sending invite to friend:', error);
+                                }
+                            }
+                        });
+                    }
+                    // Case 2: Offline player - send targeted re-invite to their profile
+                    else if (player.isOffline && player.profileId) {
+                        console.log('[RE_INVITE] Sending re-invite to offline player', player.profileId, 'for slot', index);
+                        try {
+                            socketRef.current.emit('ludo:invite', {
+                                to: player.profileId,
+                                by: myProfile?._id,
+                                name: myProfile?.fullName || 'Player',
+                                avatar: myProfile?.profilePic,
+                                cover: myProfile?.coverPic,
+                                gameId,
+                                slotIndex: index,
+                                playerCount: selectedPlayerCount || 4,
+                                ts: Date.now(),
+                            });
+                            
+                            // Fire web notification to offline player
+                            const offlineFriend = {
+                                _id: player.profileId,
+                                fullName: player.name,
+                                profilePic: player.avatar
+                            };
+                            try { sendInviteNotificationToFriend(offlineFriend, gameId, index); } catch (_e) { }
+                            console.log('[RE_INVITE] Sent re-invite to offline player', player.profileId);
+                        } catch (error) {
+                            console.error('[RE_INVITE] Error sending re-invite to offline player:', error);
+                        }
+                    }
+                }
+            });
+
+            console.log('[RE_INVITE] Re-invitation process completed');
+        } catch (error) {
+            console.error('[RE_INVITE] Error in re-invitation process:', error);
+        }
+    }, [onlineMode, gameId, players, myPlayerIndexRef.current, myProfile, selectedPlayerCount, selectedFriends]);
+
     const copyInviteLink = async () => {
         try {
             const token = createInviteToken();
@@ -5459,6 +5541,54 @@ const LudoGame = () => {
                                     <span>{soundsEnabled ? '🔊' : '🔇'}</span>
                                     <span>{soundsEnabled ? 'Sound On' : 'Sound Off'}</span>
                                 </button>
+                                
+                                {/* Reload button */}
+                                {onlineMode && (
+                                    <button
+                                        onClick={() => { playSound('buttonClick'); reloadGameState(); }}
+                                        style={{
+                                            padding: '8px 12px',
+                                            background: 'rgba(100, 100, 255, 0.3)',
+                                            border: '1px solid rgba(100, 100, 255, 0.5)',
+                                            borderRadius: 8,
+                                            color: 'white',
+                                            cursor: 'pointer',
+                                            fontSize: 14,
+                                            fontWeight: 600,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 6
+                                        }}
+                                        title="Reload game state from server"
+                                    >
+                                        <span>🔄</span>
+                                        <span>Reload</span>
+                                    </button>
+                                )}
+                                
+                                {/* Re-invite button */}
+                                {onlineMode && myPlayerIndex === 0 && (
+                                    <button
+                                        onClick={() => { playSound('buttonClick'); reInvitePlayers(); }}
+                                        style={{
+                                            padding: '8px 12px',
+                                            background: 'rgba(255, 165, 0, 0.3)',
+                                            border: '1px solid rgba(255, 165, 0, 0.5)',
+                                            borderRadius: 8,
+                                            color: 'white',
+                                            cursor: 'pointer',
+                                            fontSize: 14,
+                                            fontWeight: 600,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 6
+                                        }}
+                                        title="Re-invite players to fill empty slots"
+                                    >
+                                        <span>📨</span>
+                                        <span>Re-invite</span>
+                                    </button>
+                                )}
                                 {renderPlayerOrder.map((idx) => (
                                     <button key={`pbtn-${idx}`} onClick={() => openPlayerEditor(idx)} title={players[idx]?.name || 'Player'} style={{
                                         width: 32,
@@ -5547,62 +5677,33 @@ const LudoGame = () => {
                 </div>
             )}
 
-            {/* Connection Status & Controls */}
+            {/* Connection Status Indicator */}
             {onlineMode && gameStarted && !gameEnded && (
                 <div style={{
                     position: 'fixed',
                     top: 10,
                     right: 10,
                     zIndex: 1000,
+                    background: socketRef.current?.connected ? 'rgba(0, 200, 0, 0.9)' : 'rgba(255, 0, 0, 0.9)',
+                    color: 'white',
+                    padding: '6px 12px',
+                    borderRadius: 20,
+                    fontSize: 12,
+                    fontWeight: 'bold',
                     display: 'flex',
-                    flexDirection: 'column',
-                    gap: 8,
-                    alignItems: 'flex-end'
+                    alignItems: 'center',
+                    gap: 6,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
                 }}>
                     <div style={{
-                        background: socketRef.current?.connected ? 'rgba(0, 200, 0, 0.9)' : 'rgba(255, 0, 0, 0.9)',
-                        color: 'white',
-                        padding: '6px 12px',
-                        borderRadius: 20,
-                        fontSize: 12,
-                        fontWeight: 'bold',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
-                    }}>
-                        <div style={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: '50%',
-                            background: socketRef.current?.connected ? '#00FF00' : '#FF0000'
-                        }} />
-                        <div data-connection-status>
-                            {socketRef.current?.connected ? 'Connected' : 'Disconnected'}
-                        </div>
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        background: socketRef.current?.connected ? '#00FF00' : '#FF0000'
+                    }} />
+                    <div data-connection-status>
+                        {socketRef.current?.connected ? 'Connected' : 'Disconnected'}
                     </div>
-                    
-                    {/* Reload Button */}
-                    <button
-                        onClick={() => { playSound('buttonClick'); reloadGameState(); }}
-                        style={{
-                            background: 'rgba(100, 100, 255, 0.9)',
-                            color: 'white',
-                            padding: '6px 12px',
-                            border: 'none',
-                            borderRadius: 20,
-                            fontSize: 12,
-                            fontWeight: 'bold',
-                            cursor: 'pointer',
-                            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 4
-                        }}
-                        title="Reload game state from server"
-                    >
-                        🔄 Reload
-                    </button>
                 </div>
             )}
 
