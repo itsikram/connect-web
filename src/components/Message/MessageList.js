@@ -2,7 +2,7 @@ import React, { Fragment, useEffect, useState, useRef, useCallback, useMemo } fr
 import UserPP from "../UserPP";
 import { useSelector } from "react-redux";
 import { Link, useParams, useNavigate } from "react-router-dom";
-import socket from "../../common/socket";
+import api from "../../api/api";
 import moment from "moment";
 import MsgListSkleton from "../../skletons/message/MsgListSkleton";
 // const isProfileActive = (id) => {
@@ -49,9 +49,9 @@ function getShortTimeAgo(timestamp) {
 const userInfo = JSON.parse((localStorage.getItem('user') || '{}'))
 const profileId = userInfo.profile
 const MessageList = React.memo(({ onChatSelect }) => {
-    // const [isActive, setIsActive] = useState(false);
     const [activeFriends, setActiveFriends] = useState([]);
-    // const [contactMessages, setContactMessages] = useState([]) // Commented out as it's unused
+    const [contacts, setContacts] = useState([]);
+    const [loading, setLoading] = useState(true);
     const [messageOption, setMessageOption] = useState(false)
     const [searchQuery, setSearchQuery] = useState("")
     const [focusedIndex, setFocusedIndex] = useState(-1)
@@ -62,91 +62,72 @@ const MessageList = React.memo(({ onChatSelect }) => {
     const params = useParams();
     const myProfile = useSelector(state => state.profile)
     const myId = myProfile._id
-    const myContacts = useSelector(state => state.message)
     const navigate = useNavigate();
 
-    // Listen for real-time friend online/offline updates
+    // HTTP-based contacts fetching
+    const fetchContacts = async () => {
+        try {
+            setLoading(true);
+            const response = await api.get('/message/chatList', {
+                params: { profileId: myId }
+            });
+            console.log('fetch contacts', response.data)
+            // API returns array directly, not nested under contacts
+            setContacts(Array.isArray(response.data) ? response.data : []);
+        } catch (error) {
+            console.error('Error fetching contacts:', error);
+            setContacts([]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    // HTTP-based online status checking
+    const checkOnlineStatus = async (profileId) => {
+        try {
+            const response = await api.get('/profile/online-status', {
+                params: { profileId }
+            });
+            return response.data.isActive || false;
+        } catch (error) {
+            console.error('Error checking online status:', error);
+            return false;
+        }
+    };
+
+    // Fetch contacts on component mount
     useEffect(() => {
-        const handleFriendOnline = (data) => {
-            console.log('handleFriendOnline', data);
-            const friendProfileId = data?.profileId;
-            if (friendProfileId) {
-                setActiveFriends(prev => {
-                    if (!prev.includes(friendProfileId)) {
-                        return [...prev, friendProfileId];
-                    }
-                    return prev;
-                });
-            }
-        };
+        if (myId) {
+            fetchContacts();
+        }
+    }, [myId]);
 
-        const handleFriendOffline = (data) => {
-            console.log('handleFriendOffline', data);
-            const friendProfileId = data?.profileId;
-            if (friendProfileId) {
-                setActiveFriends(prev => prev.filter(id => id !== friendProfileId));
-            }
-        };
-
-        socket.on('friend_online', handleFriendOnline);
-        socket.on('friend_offline', handleFriendOffline);
-
-        return () => {
-            socket.off('friend_online', handleFriendOnline);
-            socket.off('friend_offline', handleFriendOffline);
-        };
-    }, []);
-
-    // Initial check for online status when contacts change
+    // Poll for online status updates
     useEffect(() => {
-        if (myContacts.length == 0) return;
+        if (!contacts.length) return;
 
-        const handleIsActive = (isUserActive, lastLogin, activeProfileId) => {
-            if (!activeProfileId) return;
-            
-            if (isUserActive === true) {
-                setActiveFriends(prev => {
-                    if (!prev.includes(activeProfileId)) {
-                        return [...prev, activeProfileId]
-                    }
-                    return prev;
-                })
-            } else {
-                // Remove from active friends when they go offline
-                setActiveFriends(prev => prev.filter(id => id !== activeProfileId));
-            }
+        const checkAllOnlineStatus = async () => {
+            const onlineStatusPromises = contacts.map(async (contact) => {
+                if (contact.person?._id) {
+                    const isOnline = await checkOnlineStatus(contact.person._id);
+                    return { profileId: contact.person._id, isOnline };
+                }
+                return null;
+            });
+
+            const results = await Promise.all(onlineStatusPromises);
+            const onlineFriends = results
+                .filter(result => result && result.isOnline)
+                .map(result => result.profileId);
+
+            setActiveFriends(onlineFriends);
         };
 
-        myContacts && myContacts.forEach((contact) => {
-            if (!contact || !contact.person || !contact.person._id) {
-                return;
-            }
+        checkAllOnlineStatus();
+        const interval = setInterval(checkAllOnlineStatus, 30000); // Check every 30 seconds
 
-            socket.emit('is_active', { profileId: contact?.person?._id, myId: profileId })
-        });
-
-        socket.on('is_active', handleIsActive);
-        
-        // Listen for client-side friend_online events (when receiving messages)
-        const handleFriendOnlineClient = (event) => {
-            const friendProfileId = event.detail?.profileId;
-            if (friendProfileId) {
-                setActiveFriends(prev => {
-                    if (!prev.includes(friendProfileId)) {
-                        return [...prev, friendProfileId];
-                    }
-                    return prev;
-                });
-            }
-        };
-        
-        window.addEventListener('friend_online_client', handleFriendOnlineClient);
-
-        return () => {
-            socket.off('is_active', handleIsActive);
-            window.removeEventListener('friend_online_client', handleFriendOnlineClient);
-        };
-    }, [myContacts, profileId])
+        return () => clearInterval(interval);
+    }, [contacts]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -186,7 +167,7 @@ const MessageList = React.memo(({ onChatSelect }) => {
 
     const filteredContacts = useMemo(() => {
         const query = (searchQuery || '').toLowerCase();
-        const filtered = (myContacts || [])
+        const filtered = (contacts || [])
             .filter((contactItem) => contactItem && contactItem.person && contactItem.person._id)
             .filter((contactItem) => {
                 if (!query) return true;
@@ -217,7 +198,7 @@ const MessageList = React.memo(({ onChatSelect }) => {
             });
         
         return filtered;
-    }, [myContacts, searchQuery])
+    }, [contacts, searchQuery])
 
     useEffect(() => {
         if (focusedIndex < 0) return;
@@ -328,7 +309,7 @@ const MessageList = React.memo(({ onChatSelect }) => {
                 <div className="modern-chat-list-container">
                     <div className="chat-list-header">
                         <span className="list-title">All Contacts</span>
-                        <span className="chat-count">{searchQuery ? `${filteredContacts.length}/${myContacts?.length || 0}` : (myContacts?.length || 0)}</span>
+                        <span className="chat-count">{searchQuery ? `${filteredContacts.length}/${contacts?.length || 0}` : (contacts?.length || 0)}</span>
                     </div>
                     
                     <ul 
@@ -357,7 +338,7 @@ const MessageList = React.memo(({ onChatSelect }) => {
                             }
                         }}
                     >
-                        {myContacts.length > 0 ? (
+                        {contacts.length > 0 ? (
                             filteredContacts.length > 0 ? filteredContacts
                             .map((contactItem, index) => {
                                 const contactPerson = contactItem.person;

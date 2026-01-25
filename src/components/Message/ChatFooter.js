@@ -1,5 +1,4 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import socket from '../../common/socket';
 import AgoraRTC from 'agora-rtc-sdk-ng';
 import api from '../../api/api';
 import $ from 'jquery'
@@ -9,7 +8,7 @@ import EmojiPicker from 'emoji-picker-react';
 import { useParams } from 'react-router-dom';
 import LiveVoiceModal from './LiveVoiceModal';
 
-const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatNewAttachment, messageActionButtonContainer, setIsReplying, userId, messageInput, replyData,messages, setReplyData, isPreview, setIsPreview, msgListRef, friendProfile }) => {
+const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatNewAttachment, messageActionButtonContainer, setIsReplying, userId, messageInput, replyData,messages, setReplyData, isPreview, setIsPreview, msgListRef, friendProfile, sendMessage }) => {
 
     const dispatch = useDispatch()
     // Removed unused width state
@@ -103,17 +102,32 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
         if (roomId) {
             const messageContent = inputValue.trim();
             
-            if (isReplying) {
-                const data = { room: roomId, senderId: userId, receiverId: friendId, message: messageContent, attachment: attachmentUrl, parent: replyData.messageId, isAi }
-                socket.emit('sendMessage', data);
-                setIsTyping(false)
-                scrollToLastMessage();
-            } else {
-                const data = { room: roomId, senderId: userId, receiverId: friendId, message: messageContent, attachment: attachmentUrl, parent: false, isAi }
-                socket.emit('sendMessage', data);
-                setIsTyping(false)
-                scrollToLastMessage();
-            }
+            const messageData = {
+                senderId: userId,
+                receiverId: friendId,
+                message: messageContent,
+                attachment: attachmentUrl,
+                parent: isReplying ? replyData.messageId : false,
+                isAi
+            };
+            
+            // Send message via HTTP
+            sendMessage(messageData)
+                .then(() => {
+                    setIsTyping(false);
+                    scrollToLastMessage();
+                })
+                .catch((error) => {
+                    console.error('Failed to send message:', error);
+                    // Optionally show error to user
+                })
+                .finally(() => {
+                    // Reset sending flag after a short delay
+                    setTimeout(() => {
+                        isSendingRef.current = false;
+                        setIsSendingMessage(false);
+                    }, 500);
+                });
         }
         
         // Clear input and reset state
@@ -122,22 +136,18 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
         setIsPreview(false)
         setAttachmentUrl('')
         setReplyData({ messageId: null, body: null })
-        
-        // Reset sending flag after a short delay to prevent rapid duplicate sends
-        setTimeout(() => {
-            isSendingRef.current = false;
-            setIsSendingMessage(false)
-        }, 500)
     },[messages, inputValue, attachmentUrl, room, userId, friendId, isReplying, replyData, isAi])
 
 
 
     const addTyping = () => {
-        socket.emit('typing', { receiverId: userId, room, isTyping: true, type: inputValue })
+        // HTTP-based typing indicator could be implemented here
+        // For now, we'll skip typing indicators as they require real-time communication
     }
 
     const removeTyping = () => {
-        socket.emit('typing', { receiverId: userId, room, isTyping: false, type: inputValue })
+        // HTTP-based typing indicator could be implemented here
+        // For now, we'll skip typing indicators as they require real-time communication
     }
 
     // let updateTyping = (e) => {
@@ -175,9 +185,8 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
     const handleInputChange = (e) => {
         setInputValue(e.target.value)
 
-        if (settings.showIsTyping) {
-            socket.emit('update_type', { room, type: e.target.value })
-        }
+        // Typing indicators removed for HTTP-based implementation
+        // Could be implemented with HTTP polling if needed
     }
 
     const handlePreviewCloseBtn = () => {
@@ -280,7 +289,9 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
                     clearInterval(liveVoiceDurationTimerRef.current);
                     liveVoiceDurationTimerRef.current = null;
                 }
-                socket.emit('live-voice-stop', { to: friendId, channelName: room });
+                // Live voice stop - HTTP-based notification could be implemented here
+                // For now, we'll just stop the local voice session
+                console.log('Stopping live voice session');
                 return;
             }
 
@@ -288,9 +299,9 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
             setIsLiveVoiceConnecting(true)
             const channelName = room || [userId, friendId].sort().join('_');
             
-            // Emit event to ensure ChatHeader leaves subscriber connection if active
-            // This prevents UID conflict when switching from receiver to sender
-            socket.emit('live-voice-leave-subscriber', { channelName });
+            // Live voice start - HTTP-based notification could be implemented here
+            // For now, we'll just start the local voice session
+            console.log('Starting live voice session for channel:', channelName);
             
             // Small delay to ensure subscriber connection is closed
             await new Promise(resolve => setTimeout(resolve, 300));
@@ -334,7 +345,8 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
             liveVoiceDurationTimerRef.current = setInterval(() => {
                 setLiveVoiceDuration(prev => prev + 1);
             }, 1000);
-            socket.emit('live-voice-start', { to: friendId, channelName });
+            // Live voice started - HTTP-based notification could be implemented here
+            console.log('Live voice session started');
         } catch (err) {
             console.error('Live voice error:', err);
             setIsLiveVoiceActive(false);
@@ -527,15 +539,22 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
                 const voiceUrl = res.data.secure_url
                 const roomId = room || [userId, friendId].sort().join('_')
                 const data = { room: roomId, senderId: userId, receiverId: friendId, message: '', attachment: voiceUrl, parent: false, isAi, messageType: 'audio' }
-                socket.emit('sendMessage', data)
-                scrollToLastMessage()
+                
+                // Send voice message via HTTP
+                sendMessage(data)
+                    .then(() => {
+                        scrollToLastMessage();
+                    })
+                    .catch((error) => {
+                        console.error('Failed to send voice message:', error);
+                    });
             }
         } catch (e) {
             console.error('Audio upload error:', e)
         } finally {
             setIsUploadingAudio(false)
         }
-    }, [room, userId, friendId, isAi])
+    }, [room, userId, friendId, isAi, sendMessage])
 
     useEffect(() => {
         return () => {
@@ -630,7 +649,7 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
 
         }
 
-    },[socket])
+    },[sendMessage])
 
     const emogiListContainer = useRef(null)
     const emogiChangeContainer = useRef(null)

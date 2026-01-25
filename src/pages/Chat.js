@@ -15,7 +15,7 @@ import SingleMsgSkleton from '../skletons/message/SingleMsgSkleton';
 
 
 
-const Chat = ({ socket }) => {
+const Chat = ({ }) => {
     const dispatch = useDispatch();
     const profile = useSelector(state => state.profile)
     const headerHeight = useSelector(state => state.option.headerHeight)
@@ -141,99 +141,130 @@ const Chat = ({ socket }) => {
     useEffect(() => {
         if (hasMoreMessages) {
             if (scrollPercent < 30) {
-                socket.emit('loadMessages', { myId: userId, friendId, skip: messages.length })
-                setIsMsgLoading(true)
-                setHasMoreMessages(false)
+                const loadMoreMessages = async () => {
+                    setIsMsgLoading(true);
+                    const response = await fetchMessages(userId, friendId, 20, messages.length);
+                    setMessages(prev => [...response.messages, ...prev]);
+                    setHasMoreMessages(response.hasMore);
+                    setIsMsgLoading(false);
+                };
+                
+                loadMoreMessages();
             }
         }
+    }, [scrollPercent, hasMoreMessages, messages.length, userId, friendId]);
 
-    }, [scrollPercent])
 
+    // HTTP-based message fetching
+    const fetchMessages = async (profileId, friendId, limit = 20, skip = 0) => {
+        try {
+            const response = await api.get('/message/getChatHistory', {
+                params: {
+                    profileId,
+                    friendId,
+                    limit,
+                    skip
+                }
+            });
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching messages:', error);
+            return { messages: [], hasMore: false };
+        }
+    };
+
+    // HTTP-based online status check
+    const checkOnlineStatus = async (profileId, friendId) => {
+        try {
+            const response = await api.get('/profile/online-status', {
+                params: { profileId: friendId, myId: profileId }
+            });
+            return response.data;
+        } catch (error) {
+            console.error('Error checking online status:', error);
+            return { isActive: false, lastSeen: null };
+        }
+    };
+
+    // HTTP-based message sending
+    const sendMessage = async (messageData) => {
+        try {
+            const response = await api.post('/message/send', messageData);
+            return response.data;
+        } catch (error) {
+            console.error('Error sending message:', error);
+            throw error;
+        }
+    };
+
+    // HTTP-based mark as seen
+    const markMessageAsSeen = async (message) => {
+        try {
+            await api.post('/message/seen', { messageId: message._id });
+        } catch (error) {
+            console.error('Error marking message as seen:', error);
+        }
+    };
+
+    // Polling for new messages
+    useEffect(() => {
+        if (!friendId || !userId) return;
+
+        const pollInterval = setInterval(async () => {
+            try {
+                const response = await api.get('/message/new-messages', {
+                    params: {
+                        profileId: userId,
+                        friendId,
+                        lastMessageId: messages.length > 0 ? messages[0]._id : null
+                    }
+                });
+                
+                if (response.data.messages && response.data.messages.length > 0) {
+                    setMessages(prev => [...response.data.messages, ...prev]);
+                    scrollToLastMessage();
+                }
+            } catch (error) {
+                console.error('Error polling for new messages:', error);
+            }
+        }, 5000); // Poll every 5 seconds
+
+        return () => clearInterval(pollInterval);
+    }, [friendId, userId, messages.length]);
 
     useEffect(() => {
         if (!friendId || !userId) return;
 
-        // Initial check
-        socket.emit('is_active', { profileId: friendId, myId: userId });
-        
-        const handleIsActive = (data, ls, activeProfileId) => {
-            // Only process if this response is for the current friend
-            if (activeProfileId && activeProfileId !== friendId) return;
-
-            const lastSeenTimeStamp = moment(ls)
-            const currentTimeStamp = moment(Date.now())
-
-            const diffDays = currentTimeStamp.diff(lastSeenTimeStamp, 'days')
-            const diffYears = currentTimeStamp.diff(lastSeenTimeStamp, 'days')
-
-            // Update active status - handle both true and false
-            setIsActive(data === true)
-
-            let lastSeenTime;
-            let formattedTime;
-            if (diffDays === 0) {
-                lastSeenTime = moment(ls)
-                formattedTime = lastSeenTime.format("hh:mm A")
-            } else if (diffYears > 0) {
-                lastSeenTime = moment(ls)
-                formattedTime = lastSeenTime.format("MM/YY hh:mm A")
-            }
-
-            else {
-                lastSeenTime = moment(ls)
-                formattedTime = lastSeenTime.format("DD/MM hh:mm A")
-            }
-
-
-
-
-
-
-
-            setLastSeen(formattedTime)
-        }
-
-        // Listen for real-time online/offline updates
-        const handleFriendOnline = (data) => {
-            if (data?.profileId === friendId) {
-                setIsActive(true);
+        // Initial online status check
+        const checkStatus = async () => {
+            const statusData = await checkOnlineStatus(userId, friendId);
+            setIsActive(statusData.isActive);
+            
+            if (statusData.lastSeen) {
+                const lastSeenTimeStamp = moment(statusData.lastSeen);
+                const currentTimeStamp = moment(Date.now());
+                const diffDays = currentTimeStamp.diff(lastSeenTimeStamp, 'days');
+                
+                let formattedTime;
+                if (diffDays === 0) {
+                    formattedTime = lastSeenTimeStamp.format("hh:mm A");
+                } else if (diffDays > 365) {
+                    formattedTime = lastSeenTimeStamp.format("MM/YY hh:mm A");
+                } else {
+                    formattedTime = lastSeenTimeStamp.format("DD/MM hh:mm A");
+                }
+                
+                setLastSeen(formattedTime);
             }
         };
 
-        const handleFriendOffline = (data) => {
-            if (data?.profileId === friendId) {
-                setIsActive(false);
-                // Update last seen when they go offline
-                const now = moment();
-                setLastSeen(now.format("hh:mm A"));
-            }
-        };
+        checkStatus();
 
-        socket.on('is_active', handleIsActive);
-        socket.on('friend_online', handleFriendOnline);
-        socket.on('friend_offline', handleFriendOffline);
+        // Poll for online status updates
+        const statusInterval = setInterval(checkStatus, 30000); // Check every 30 seconds
 
-        socket.on('messageReacted', (messageId) => {
-            const msgSelector = '#chatMessageList .chat-message-container .message-id-' + messageId
-            $(msgSelector).addClass('message-reacted')
-        })
-
-        socket.on('messageReactRemoved', (messageId) => {
-            if (messageId) {
-                const msgSelector = '#chatMessageList .chat-message-container .message-id-' + messageId
-                $(msgSelector).removeClass('message-reacted')
-            }
-
-        })
-
-        return () => {
-            socket.off('messageReacted')
-            socket.off('messageReactRemoved')
-            socket.off('is_active', handleIsActive)
-            socket.off('friend_online', handleFriendOnline)
-            socket.off('friend_offline', handleFriendOffline)
-        }
-    }, [friendProfile, params, friendId, userId])
+        return () => clearInterval(statusInterval);
+    }, [friendId, userId]);
 
 
     useEffect(() => {
@@ -266,28 +297,15 @@ const Chat = ({ socket }) => {
         if (!friendId || !userId) return; // Prevent self-chat
         const newRoom = [userId, friendId].sort().join('_');
         setRoom(newRoom);
-        
-        // Join the room via socket (for real-time features)
-        socket.emit('startChat', { user1: userId, user2: friendId });
-        socket.on('roomJoined', ({ room }) => {
-            console.log(`Joined room: ${room}`);
-            localStorage.setItem('roomId', room);
-        });
 
         // Fetch initial messages via HTTP API
         const fetchInitialMessages = async () => {
             try {
-                const response = await api.get('/message/getChatHistory', {
-                    params: {
-                        profileId: userId,
-                        friendId: friendId,
-                        limit: 20
-                    }
-                });
+                const response = await fetchMessages(userId, friendId, 20, 0);
                 
-                if (response.data && response.data.messages) {
-                    setMessages(response.data.messages);
-                    setHasMoreMessages(response.data.hasMore);
+                if (response.messages) {
+                    setMessages(response.messages);
+                    setHasMoreMessages(response.hasMore);
                 }
             } catch (error) {
                 console.error('Error fetching initial messages:', error);
@@ -297,64 +315,6 @@ const Chat = ({ socket }) => {
         };
 
         fetchInitialMessages();
-
-        socket.on('loadMessages', ({ loadedMessages, hasNewMessage }) => {
-            setHasMoreMessages(hasNewMessage)
-            setIsMsgLoading(false)
-            setMessages(messages => [...loadedMessages, ...messages])
-            // setPageNumber(currentPage + 1)
-        })
-
-        socket.on('newMessage', ({ updatedMessage, senderName, senderPP, chatPage }) => {
-
-            if ( chatPage === true) {
-                if (updatedMessage.receiverId == userId && updatedMessage.senderId == friendId) {
-                    // Update sender's online status to true when receiving a new message
-                    setIsActive(true);
-                    setMessages((prevMessages) => [...prevMessages, updatedMessage]);
-                    scrollToLastMessage()
-                }
-                if (updatedMessage.senderId == userId && updatedMessage.receiverId == friendId) {
-                    setMessages((prevMessages) => [...prevMessages, updatedMessage]);
-                    scrollToLastMessage()
-                }
-            }
-
-        });
-        socket.on('deleteMessage', (messageId) => {
-            if ($(`#chatBox .chat-body .chat-message-list`).has(`.chat-message-container.message-id-${messageId}`)) {
-                $(`#chatBox .chat-body .chat-message-list .chat-message-container.message-id-${messageId}`).hide();
-            }
-        })
-
-        socket.on('typing', ({ receiverId, isTyping, type }) => {
-
-            console.log('typing', receiverId, isTyping, type)
-
-            if (receiverId === profile._id) {
-                if (isTyping == true) {
-                    setIsTyping(true)
-                    setTypeMessage(type)
-                    scrollToLastMessage()
-
-                } else {
-                    setIsTyping(false)
-                }
-            }
-
-        })
-
-        socket.on('update_type', ({ type }) => {
-            setTypeMessage(type)
-        })
-        return () => {
-            socket.off('newMessage');
-            socket.off('roomJoined');
-            socket.off('deleteMessage')
-            socket.off('update_type')
-            socket.off('typing')
-            socket.off('loadMessages')
-        };
     }, [params, friendProfile]);
 
     useEffect(() => {
@@ -364,25 +324,20 @@ const Chat = ({ socket }) => {
                 const lastMessage = messages[messages.length - 1];
                 // Only mark as seen if the last message is from the friend (not from current user)
                 if (lastMessage && lastMessage.senderId !== userId && lastMessage.senderId === friendId) {
-                    socket.emit('seenMessage', lastMessage);
-                    dispatch(seenMessage(friendId))
+                    markMessageAsSeen(lastMessage);
+                    dispatch(seenMessage(friendId));
+                    
+                    // Update UI to show message as seen
+                    $('#chatMessageList .message-sent.chat-message-container .chat-message-seen-status').css('visibility', 'hidden');
+                    $('#chatMessageList .message-sent.chat-message-container.message-id-' + lastMessage._id + ':last-child .chat-message-seen-status').css('visibility', 'visible');
                 }
             }, 2000);
         }
-        
-        socket.on('seenMessage', (msg) => {
-            $('#chatMessageList .message-sent.chat-message-container .chat-message-seen-status').css('visibility', 'hidden');
-            $('#chatMessageList .message-sent.chat-message-container.message-id-' + msg._id + ':last-child .chat-message-seen-status').css('visibility', 'visible');
-        })
-
-        return () => {
-            socket.off('seenMessage');
-        }
-    }, [params, messages, friendId, friendProfile, userId])
+    }, [params, messages, friendId, friendProfile, userId]);
 
 
 
-    const footerProps = { chatFooter, room, friendId, setIsTyping, setIsReplying, isReplying, chatNewAttachment, messageActionButtonContainer, userId, messageInput, replyData, isPreview, setIsPreview, setReplyData, messages, friendProfile }
+    const footerProps = { chatFooter, room, friendId, setIsTyping, setIsReplying, isReplying, chatNewAttachment, messageActionButtonContainer, userId, messageInput, replyData, isPreview, setIsPreview, setReplyData, messages, friendProfile, sendMessage }
 
     return (
         <div>

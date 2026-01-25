@@ -1,13 +1,12 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import socket from '../../common/socket';
 import api from '../../api/api';
 import { useDispatch, useSelector } from 'react-redux';
 import { loadSettings } from '../../services/actions/settingsActions';
 import EmojiPicker from 'emoji-picker-react';
 import './StickyChatFooter.css';
 
-const StickyChatFooter = ({ room, friendId, setIsTyping, userId, replyData, setReplyData, messages, friendProfile, msgListRef, isAi = false }) => {
+const StickyChatFooter = ({ room, friendId, setIsTyping, userId, replyData, setReplyData, messages, friendProfile, msgListRef, isAi = false, sendMessage }) => {
     const dispatch = useDispatch();
     const settings = useSelector(state => state.setting);
     
@@ -76,23 +75,26 @@ const StickyChatFooter = ({ room, friendId, setIsTyping, userId, replyData, setR
             isAi
         };
         
-        socket.emit('sendMessage', data);
-        setIsTyping(false);
-        scrollToLastMessage();
-
+        // Send message via HTTP
+        sendMessage(data)
+            .then(() => {
+                setIsTyping(false);
+                scrollToLastMessage();
+            })
+            .catch((error) => {
+                console.error('Failed to send message:', error);
+            })
+            .finally(() => {
+                setTimeout(() => {
+                    isSendingRef.current = false;
+                    setIsSendingMessage(false);
+                }, 500);
+            });
         setInputValue('');
         setAttachmentUrl('');
         setReplyData({ messageId: null, body: null });
 
-        setTimeout(() => {
-            isSendingRef.current = false;
-            setIsSendingMessage(false);
-        }, 500);
-    }, [inputValue, attachmentUrl, room, userId, friendId, replyData, isAi, setIsTyping, setReplyData, msgListRef]);
-
-    const handleInputChange = (e) => {
-        setInputValue(e.target.value);
-    };
+    }, [inputValue, attachmentUrl, room, userId, friendId, replyData, isAi, setIsTyping, setReplyData, msgListRef, sendMessage]);
 
     const handleKeyPress = (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -103,12 +105,18 @@ const StickyChatFooter = ({ room, friendId, setIsTyping, userId, replyData, setR
         }
     };
 
+    const handleInputChange = (e) => {
+        setInputValue(e.target.value);
+    };
+
     const addTyping = () => {
-        socket.emit('typing', { receiverId: friendId, room, isTyping: true, type: inputValue });
+        // HTTP-based typing indicator could be implemented here
+        // For now, we'll skip typing indicators as they require real-time communication
     };
 
     const removeTyping = () => {
-        socket.emit('typing', { receiverId: friendId, room, isTyping: false, type: inputValue });
+        // HTTP-based typing indicator could be implemented here
+        // For now, we'll skip typing indicators as they require real-time communication
     };
 
     const likeButtonClick = () => {
@@ -122,8 +130,15 @@ const StickyChatFooter = ({ room, friendId, setIsTyping, userId, replyData, setR
             parent: false,
             isAi
         };
-        socket.emit('sendMessage', data);
-        scrollToLastMessage();
+        
+        // Send message via HTTP
+        sendMessage(data)
+            .then(() => {
+                scrollToLastMessage();
+            })
+            .catch((error) => {
+                console.error('Failed to send like message:', error);
+            });
     };
 
     const handleAttachmentButtonClick = () => {
@@ -276,15 +291,21 @@ const StickyChatFooter = ({ room, friendId, setIsTyping, userId, replyData, setR
                     isAi,
                     messageType: 'audio'
                 };
-                socket.emit('sendMessage', data);
-                scrollToLastMessage();
+                // Send voice message via HTTP
+                sendMessage(data)
+                    .then(() => {
+                        scrollToLastMessage();
+                    })
+                    .catch((error) => {
+                        console.error('Failed to send voice message:', error);
+                    });
             }
         } catch (e) {
             console.error('Audio upload error:', e);
         } finally {
             setIsUploadingAudio(false);
         }
-    }, [room, userId, friendId, isAi, msgListRef]);
+    }, [room, userId, friendId, isAi, msgListRef, sendMessage]);
 
     const msToClock = (ms) => {
         const totalSeconds = Math.floor(ms / 1000);
