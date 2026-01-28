@@ -9,7 +9,7 @@ import ringtones from '../config/ringtones.json';
 class AudioPreloader {
     constructor() {
         this.audioCache = new Map(); // Store preloaded audio elements
-        this.isPreloading = false;
+        this.preloadingInProgress = false;
         this.preloadComplete = false;
         this.preloadPromise = null;
     }
@@ -22,11 +22,11 @@ class AudioPreloader {
             return Promise.resolve();
         }
 
-        if (this.isPreloading && this.preloadPromise) {
+        if (this.preloadingInProgress && this.preloadPromise) {
             return this.preloadPromise;
         }
 
-        this.isPreloading = true;
+        this.preloadingInProgress = true;
         this.preloadPromise = this._doPreload();
         return this.preloadPromise;
     }
@@ -62,7 +62,7 @@ class AudioPreloader {
         } catch (error) {
             console.warn('⚠️ Some audio files failed to preload:', error);
         } finally {
-            this.isPreloading = false;
+            this.preloadingInProgress = false;
         }
     }
 
@@ -81,41 +81,69 @@ class AudioPreloader {
             audio.preload = 'auto';
             audio.volume = 1.0;
             
+            let timeoutId;
+            let isResolved = false;
+            
             // Set up event handlers
             const handleCanPlay = () => {
+                if (isResolved) return;
+                isResolved = true;
+                clearTimeout(timeoutId);
                 audio.removeEventListener('canplaythrough', handleCanPlay);
                 audio.removeEventListener('error', handleError);
                 audio.removeEventListener('abort', handleError);
+                audio.removeEventListener('loadstart', handleLoadStart);
                 this.audioCache.set(src, audio);
                 console.log(`✅ Preloaded: ${src}`);
                 resolve(audio);
             };
 
             const handleError = (error) => {
+                if (isResolved) return;
+                isResolved = true;
+                clearTimeout(timeoutId);
                 audio.removeEventListener('canplaythrough', handleCanPlay);
                 audio.removeEventListener('error', handleError);
                 audio.removeEventListener('abort', handleError);
-                console.warn(`⚠️ Failed to preload: ${src}`, error);
+                audio.removeEventListener('loadstart', handleLoadStart);
+                
+                // Don't log timeout as error since it's expected behavior
+                if (error.message !== 'Preload timeout') {
+                    console.warn(`⚠️ Failed to preload: ${src}`, error);
+                }
+                
                 // Still cache it so we can try to use it later
                 this.audioCache.set(src, audio);
                 resolve(audio);
             };
 
+            const handleLoadStart = () => {
+                console.log(`🔄 Loading: ${src}`);
+            };
+
             audio.addEventListener('canplaythrough', handleCanPlay, { once: true });
             audio.addEventListener('error', handleError, { once: true });
             audio.addEventListener('abort', handleError, { once: true });
+            audio.addEventListener('loadstart', handleLoadStart, { once: true });
 
             // Set source and start loading
             audio.src = src;
             audio.load();
 
-            // Timeout after 10 seconds
-            setTimeout(() => {
-                if (!this.audioCache.has(src)) {
-                    console.warn(`⏱️ Preload timeout for: ${src}`);
-                    handleError(new Error('Preload timeout'));
+            // Increase timeout to 30 seconds and handle it gracefully
+            timeoutId = setTimeout(() => {
+                if (!isResolved && !this.audioCache.has(src)) {
+                    // Check if audio has started loading (readyState > 0)
+                    if (audio.readyState > 0) {
+                        console.log(`⏱️ Audio loading in progress: ${src} (readyState: ${audio.readyState})`);
+                        // Consider it successful if it has started loading
+                        handleCanPlay();
+                    } else {
+                        console.log(`⏱️ Preload timeout for: ${src} - will load on demand`);
+                        handleError(new Error('Preload timeout'));
+                    }
                 }
-            }, 10000);
+            }, 30000); // Increased from 10 to 30 seconds
         });
     }
 
@@ -225,6 +253,13 @@ class AudioPreloader {
     isReady() {
         return this.preloadComplete;
     }
+
+    /**
+     * Check if preloading is in progress
+     */
+    get isPreloading() {
+        return this.preloadingInProgress;
+    }
 }
 
 // Create singleton instance
@@ -232,22 +267,42 @@ const audioPreloader = new AudioPreloader();
 
 // Auto-start preloading on module load (when window is available)
 if (typeof window !== 'undefined') {
-    // Preload on window load
+    // Function to start preloading
+    const startPreloading = () => {
+        // Add a small delay to ensure page is fully rendered
+        setTimeout(() => {
+            audioPreloader.preloadAll().catch(err => console.warn('Audio preload error:', err));
+        }, 1000);
+    };
+
+    // Start preloading on first user interaction (most reliable)
+    const handleUserInteraction = () => {
+        if (!audioPreloader.isReady() && !audioPreloader.isPreloading) {
+            console.log('🎵 Starting audio preload on user interaction');
+            startPreloading();
+        }
+        // Remove listeners after first interaction
+        document.removeEventListener('click', handleUserInteraction);
+        document.removeEventListener('touchstart', handleUserInteraction);
+        document.removeEventListener('keydown', handleUserInteraction);
+    };
+
+    // Add user interaction listeners
+    document.addEventListener('click', handleUserInteraction, { once: true });
+    document.addEventListener('touchstart', handleUserInteraction, { once: true });
+    document.addEventListener('keydown', handleUserInteraction, { once: true });
+
+    // Also try to preload on page load (fallback)
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        // Already loaded, start preloading immediately
-        audioPreloader.preloadAll().catch(err => console.warn('Audio preload error:', err));
+        // Already loaded, start preloading after a delay
+        console.log('🎵 Page loaded, starting audio preload');
+        startPreloading();
     } else {
         // Wait for window load
         window.addEventListener('load', () => {
-            audioPreloader.preloadAll().catch(err => console.warn('Audio preload error:', err));
-        });
-    }
-
-    // Also try to preload on DOMContentLoaded (earlier)
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            audioPreloader.preloadAll().catch(err => console.warn('Audio preload error:', err));
-        });
+            console.log('🎵 Window loaded, starting audio preload');
+            startPreloading();
+        }, { once: true });
     }
 }
 

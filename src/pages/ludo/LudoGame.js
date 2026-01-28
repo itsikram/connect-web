@@ -47,6 +47,9 @@ import { WinnerConfetti } from './components/WinnerConfetti';
 import { ConnectionStatus } from './components/ConnectionStatus';
 import { GameBoard } from './components/GameBoard';
 import { useAudio } from './hooks/useAudio';
+import { showLudoInviteToast } from '../../utils/toastUtils';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 // Web port of the RN Ludo game with matching functions and logic
 const LudoGame = () => {
@@ -140,6 +143,7 @@ const LudoGame = () => {
     const [inviteCopied, setInviteCopied] = useState(false);
     const [incomingInviteRequest, setIncomingInviteRequest] = useState(null); // { from, name, avatar, gameId, slotIndex, playerCount }
     const [pendingInvites, setPendingInvites] = useState([]); // [{ from, name, avatar, gameId, slotIndex, playerCount, ts }]
+    const [joinedGames, setJoinedGames] = useState([]); // [{ gameId, createdAt, onlinePlayers, offlinePlayers, lastPlayers, isOnline, playerCount }]
     // Lobby/waiting state
     const [waitingForPlayers, setWaitingForPlayers] = useState(false);
     // Track inviter identity to fix seat 0 identity on invitee until host snapshot is correct
@@ -4072,23 +4076,62 @@ const LudoGame = () => {
                 try {
                     if (!payload) return;
                     if (payload.to && myProfile?._id && String(payload.to) !== String(myProfile._id)) return;
+                    
+                    // Store inviter info
                     try {
                         if (payload?.by) setLastInviter({ id: payload.by, name: payload.name, avatar: payload.avatar, cover: payload.cover });
                     } catch (_e) { }
+                    
+                    // Check if this invite already exists in pending invites
                     setPendingInvites(prev => {
                         const exists = prev.find(i => String(i.gameId) === String(payload.gameId) && String(i.from) === String(payload.by));
-                        if (exists) return prev;
-                        const inv = {
-                            from: payload.by,
-                            name: payload.name,
-                            avatar: payload.avatar,
-                            cover: payload.cover,
-                            gameId: payload.gameId,
-                            slotIndex: payload.slotIndex,
-                            playerCount: payload.playerCount,
-                            ts: payload.ts || Date.now(),
-                        };
-                        return [inv, ...prev].slice(0, 20);
+                        const now = Date.now();
+                        
+                        // Show toast for new invites or re-invites after 5 minutes
+                        if (!exists || (now - (exists.ts || 0)) > 5 * 60 * 1000) {
+                            const inv = {
+                                from: payload.by,
+                                name: payload.name,
+                                avatar: payload.avatar,
+                                cover: payload.cover,
+                                gameId: payload.gameId,
+                                slotIndex: payload.slotIndex,
+                                playerCount: payload.playerCount,
+                                ts: now,
+                            };
+                            
+                            // Show toast notification for the new or re-invite
+                            showLudoInviteToast(
+                                payload.name || 'A friend',
+                                payload.avatar,
+                                () => {
+                                    // Accept callback
+                                    setIncomingInviteRequest(inv);
+                                    setTimeout(() => acceptIncomingInvite(), 0);
+                                },
+                                () => {
+                                    // Decline callback
+                                    if (socketRef.current) {
+                                        try { 
+                                            socketRef.current.emit('ludo:invites:dismiss', { 
+                                                gameId: payload.gameId, 
+                                                by: payload.by 
+                                            }); 
+                                        } catch (_e) { }
+                                    }
+                                    // Remove from pending invites
+                                    setPendingInvites(prev => 
+                                        prev.filter(i => !(String(i.gameId) === String(payload.gameId) && String(i.from) === String(payload.by)))
+                                    );
+                                }
+                            );
+                            
+                            // Update or add the invite in pending list
+                            const updated = prev.filter(i => !(String(i.gameId) === String(payload.gameId) && String(i.from) === String(payload.by)));
+                            return [inv, ...updated].slice(0, 20);
+                        }
+                        
+                        return prev; // Don't show duplicate toast for recent invites
                     });
                 } catch (_e) { }
             };
@@ -4105,18 +4148,63 @@ const LudoGame = () => {
                         playerCount: x.playerCount,
                         ts: x.ts || Date.now()
                     }));
-                    setPendingInvites(normalized);
+                    
+                    setPendingInvites(prev => {
+                        // Find invites that are new (not already in pending)
+                        const newInvites = normalized.filter(inv => 
+                            !prev.find(p => String(p.gameId) === String(inv.gameId) && String(p.from) === String(inv.from))
+                        );
+                        
+                        // Show toast for each new invite
+                        newInvites.forEach(inv => {
+                            showLudoInviteToast(
+                                inv.name || 'A friend',
+                                inv.avatar,
+                                () => {
+                                    // Accept callback
+                                    setIncomingInviteRequest(inv);
+                                    setTimeout(() => acceptIncomingInvite(), 0);
+                                },
+                                () => {
+                                    // Decline callback
+                                    if (socketRef.current) {
+                                        try { 
+                                            socketRef.current.emit('ludo:invites:dismiss', { 
+                                                gameId: inv.gameId, 
+                                                by: inv.from 
+                                            }); 
+                                        } catch (_e) { }
+                                    }
+                                    // Remove from pending invites
+                                    setPendingInvites(prev => 
+                                        prev.filter(i => !(String(i.gameId) === String(inv.gameId) && String(i.from) === String(inv.from)))
+                                    );
+                                }
+                            );
+                        });
+                        
+                        return normalized;
+                    });
+                    
                     try {
                         if (normalized[0]?.from) setLastInviter({ id: normalized[0].from, name: normalized[0].name, avatar: normalized[0].avatar });
                     } catch (_e) { }
                 } catch (_e) { }
             };
+            const onGames = (payload) => {
+                try {
+                    const games = Array.isArray(payload?.games) ? payload.games : [];
+                    setJoinedGames(games);
+                    console.log('[LUDO] Received joined games:', games.length);
+                } catch (_e) { }
+            };
             s.on('ludo:invite', onInvite);
             s.on('ludo:invites', onInvites);
+            s.on('ludo:games', onGames);
             usedSocket = s;
             inviteHandlersAttachedRef.current = true;
             // store handlers on socket for cleanup
-            s.__ludoInviteHandlers = { onInvite, onInvites };
+            s.__ludoInviteHandlers = { onInvite, onInvites, onGames };
         };
         attach();
         return () => {
@@ -4127,11 +4215,31 @@ const LudoGame = () => {
                 if (s && h) {
                     s.off('ludo:invite', h.onInvite);
                     s.off('ludo:invites', h.onInvites);
+                    s.off('ludo:games', h.onGames);
                 }
             } catch (_e) { }
             inviteHandlersAttachedRef.current = false;
         };
     }, [myProfile?._id]);
+
+    // Fetch joined games when socket connects
+    useEffect(() => {
+        if (!socketRef.current || !myProfile?._id) return;
+        try { 
+            socketRef.current.emit('ludo:games:get'); 
+            console.log('[LUDO] Requested joined games');
+        } catch (_e) { }
+    }, [myProfile?._id, socketRef.current]);
+
+    // Refresh joined games when game state changes
+    useEffect(() => {
+        if (socketRef.current && onlineMode && myProfile?._id) {
+            try { 
+                socketRef.current.emit('ludo:games:get'); 
+                console.log('[LUDO] Refreshed joined games due to state change');
+            } catch (_e) { }
+        }
+    }, [gameId, onlineMode, gameStarted]);
 
     // Cleanup socket on unmount
     useEffect(() => {
@@ -4852,6 +4960,40 @@ const LudoGame = () => {
         try { socketRef.current && socketRef.current.emit('ludo:invites:dismiss', { gameId: inv.gameId, by: inv.from }); } catch (_e) { }
     };
 
+    const joinGame = (game) => {
+        if (!game || !game.gameId) return;
+        
+        // Set up the game state for joining
+        setOnlineMode(true);
+        setGameId(game.gameId);
+        
+        // If we have lastPlayers data, use it to restore state
+        if (game.lastPlayers) {
+            const { players: gamePlayers, selectedPlayerCount, currentPlayer, gameStarted, winner, winners } = game.lastPlayers;
+            
+            // Find our player index
+            const myIndex = gamePlayers?.findIndex(p => p.profileId === myProfile?._id);
+            if (myIndex >= 0) {
+                setMyPlayerIndex(myIndex);
+                setPlayers(gamePlayers || []);
+                setSelectedPlayerCount(selectedPlayerCount || 4);
+                setCurrentPlayer(currentPlayer || 0);
+                setGameStarted(gameStarted || false);
+                setWinner(winner || null);
+                setWinners(winners || []);
+            }
+        }
+        
+        // Join the socket room
+        ensureSocketConnected();
+        setTimeout(() => {
+            try {
+                emitSocket('ludo:join', { gameId: game.gameId });
+                console.log('[JOIN_GAME] Joined game:', game.gameId);
+            } catch (_e) { }
+        }, 100);
+    };
+
     // Player editor helpers
     const openPlayerEditor = (index) => {
         if (index == null || !players[index]) return;
@@ -5120,6 +5262,9 @@ const LudoGame = () => {
             y = y - 8.5;
         }
 
+        // Calculate touchable area padding for mobile
+        const touchPadding = isMobile ? 12 : 4; // Larger padding for mobile
+
         const isCurrentPlayer = playerIndex === currentPlayer;
         const isActivePlayer = playerIndex < selectedPlayerCount;
         // Always prefer ref value when available for current player (prevents button from being disabled due to state sync issues)
@@ -5137,10 +5282,10 @@ const LudoGame = () => {
         return (
             <div key={`token-${playerIndex}-${pieceIndex}`} style={{
                 position: 'absolute',
-                left: `${x}px`,
-                top: `${y}px`,
-                width: `${tokenSize}px`,
-                height: `${tokenSize}px`,
+                left: `${x - touchPadding}px`,
+                top: `${y - touchPadding}px`,
+                width: `${tokenSize + (touchPadding * 2)}px`,
+                height: `${tokenSize + (touchPadding * 2)}px`,
                 zIndex: (effectiveDiceValue > 0 && isCurrentPlayer && !isMovingRef.current && !isAutoMovingRef.current) ? 100 : 10,
                 pointerEvents: 'auto',
                 transition: `left ${stepDurationMs}ms ease, top ${stepDurationMs}ms ease`,
@@ -5162,22 +5307,43 @@ const LudoGame = () => {
                         width: '100%',
                         height: '100%',
                         borderRadius: '50%',
-                        background: "black",
-                        border: `3px solid ${adjustHexColor(piece.color, -30)}`,
-                        boxShadow: isActivePlayer ? `0 6px 8px ${piece.color}66` : 'none',
-                        opacity: isActivePlayer ? 1 : 0.3,
+                        background: "transparent",
+                        border: 'none',
+                        boxShadow: 'none',
                         position: 'relative',
-                        overflow: 'hidden',
+                        overflow: 'visible',
                         cursor: (isActivePlayer && isCurrentPlayer && effectiveDiceValue > 0 && !isMovingRef.current && !isAutoMovingRef.current) ? 'pointer' : 'default',
-                        animation: canMove ? 'tokenPulseScale 900ms ease-in-out infinite, tokenGlow 1200ms ease-in-out infinite' : 'none',
                         // Ensure proper rendering on mobile
                         transform: 'translateZ(0)',
                         backfaceVisibility: 'hidden',
                         // Ensure button can receive clicks
-                        pointerEvents: 'auto'
+                        pointerEvents: 'auto',
+                        // Add visual feedback for touch area on mobile (optional)
+                        ...(isMobile && {
+                            WebkitTapHighlightColor: 'rgba(255, 255, 255, 0.1)',
+                        })
                     }}
                     aria-label={`Piece ${pieceIndex + 1} of ${playerNames[playerIndex]}`}
                 >
+                    {/* Actual token visual - centered in the larger touch area */}
+                    <div style={{
+                        position: 'absolute',
+                        left: `${touchPadding}px`,
+                        top: `${touchPadding}px`,
+                        width: `${tokenSize}px`,
+                        height: `${tokenSize}px`,
+                        borderRadius: '50%',
+                        background: "black",
+                        border: `3px solid ${adjustHexColor(piece.color, -30)}`,
+                        boxShadow: isActivePlayer ? `0 6px 8px ${piece.color}66` : 'none',
+                        opacity: isActivePlayer ? 1 : 0.3,
+                        overflow: 'hidden',
+                        animation: canMove ? 'tokenPulseScale 900ms ease-in-out infinite, tokenGlow 1200ms ease-in-out infinite' : 'none',
+                        // Ensure proper rendering on mobile
+                        transform: 'translateZ(0)',
+                        backfaceVisibility: 'hidden',
+                        pointerEvents: 'none' // Prevent clicks on the visual element
+                    }}>
                     {/* Color ring border inside token matching user color */}
                     <div style={{
                         position: 'absolute',
@@ -5202,6 +5368,7 @@ const LudoGame = () => {
                             pointerEvents: 'none'
                         }} />
                     ) : null}
+                    </div>
                 </button>
             </div>
         );
@@ -5347,6 +5514,94 @@ const LudoGame = () => {
                             )}
                         </div>
                     </div>
+
+                    {/* Joined Games Section */}
+                    {onlineMode && joinedGames.length > 0 && (
+                        <div style={{ marginTop: 16, marginBottom: 12 }}>
+                            <div style={{ fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <span>Your Active Games</span>
+                                <button 
+                                    onClick={() => socketRef.current?.emit('ludo:games:get')}
+                                    style={{ 
+                                        padding: '4px 8px', 
+                                        borderRadius: 8, 
+                                        background: 'rgba(255,255,255,0.1)', 
+                                        color: 'white', 
+                                        border: '1px solid rgba(255,255,255,0.2)', 
+                                        cursor: 'pointer',
+                                        fontSize: 12
+                                    }}
+                                >
+                                    Refresh
+                                </button>
+                            </div>
+                            <div style={{ display: 'grid', gap: 8, maxHeight: 200, overflow: 'auto' }}>
+                                {joinedGames.map((game) => {
+                                    const gamePlayers = game.lastPlayers?.players || [];
+                                    const myPlayerData = gamePlayers.find(p => p.profileId === myProfile?._id);
+                                    const gameStatus = game.lastPlayers?.gameStarted ? (game.lastPlayers?.winner ? 'Finished' : 'In Progress') : 'Waiting';
+                                    const statusColor = gameStatus === 'Finished' ? '#FFD700' : gameStatus === 'In Progress' ? '#B0FFB0' : '#FFB0B0';
+                                    
+                                    return (
+                                        <div 
+                                            key={game.gameId}
+                                            onClick={() => joinGame(game)}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 10,
+                                                padding: '10px',
+                                                background: 'rgba(255,255,255,0.05)',
+                                                border: '1px solid rgba(255,255,255,0.1)',
+                                                borderRadius: 8,
+                                                cursor: 'pointer',
+                                                transition: 'all 0.2s ease'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
+                                                e.currentTarget.style.transform = 'translateY(-1px)';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+                                                e.currentTarget.style.transform = 'translateY(0)';
+                                            }}
+                                        >
+                                            <div style={{
+                                                width: 40,
+                                                height: 40,
+                                                borderRadius: 8,
+                                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                fontSize: 20
+                                            }}>
+                                                🎲
+                                            </div>
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>
+                                                    Game #{game.gameId?.slice(-6) || 'Unknown'}
+                                                </div>
+                                                <div style={{ fontSize: 12, color: '#B0B0B0', marginBottom: 2 }}>
+                                                    {game.playerCount} Players • {gameStatus}
+                                                </div>
+                                                <div style={{ fontSize: 11, color: statusColor, fontWeight: 600 }}>
+                                                    {game.isOnline ? '🟢 Online' : '⚫ Offline'}
+                                                </div>
+                                            </div>
+                                            <div style={{
+                                                width: 8,
+                                                height: 8,
+                                                borderRadius: '50%',
+                                                background: game.isOnline ? '#00FF00' : '#666666'
+                                            }} />
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Offline/General: quick customize players before starting */}
                     <div style={{ marginTop: 10 }}>
                         <div style={{ fontWeight: 700, marginBottom: 8 }}>Customize Players</div>
@@ -5390,6 +5645,7 @@ const LudoGame = () => {
     }
 
     return (
+        <>
         <div style={{ minHeight: '100vh', background: '#1a1a2e', color: 'white', position: 'relative', zIndex: 10 }}>
             <AnimatedBackground />
             <style>{`
@@ -6043,6 +6299,20 @@ const LudoGame = () => {
                 </div>
             )}
         </div>
+        <ToastContainer
+            position="top-right"
+            autoClose={5000}
+            hideProgressBar={false}
+            newestOnTop={false}
+            closeOnClick
+            rtl={false}
+            pauseOnFocusLoss={false}
+            draggable
+            pauseOnHover
+            theme="dark"
+            limit={5}
+        />
+        </>
     );
 };
 

@@ -223,16 +223,14 @@ const VideoCall = ({ myId }) => {
             endMinimizedCall(callId);
         }
 
-        // Close local tracks
-        localTracks.current.forEach((track) => track.close());
-        localTracks.current = [];
-
         // Unpublish and leave Agora channel if connected, then dispose client
         try {
             if (clientRef.current && localTracks.current.length > 0) {
                 await clientRef.current.unpublish(localTracks.current);
             }
-        } catch (e) { }
+        } catch (e) { 
+            console.log('Error unpublishing tracks:', e);
+        }
         try {
             await clientRef.current?.leave();
             clientRef.current?.removeAllListeners();
@@ -241,13 +239,46 @@ const VideoCall = ({ myId }) => {
         }
         clientRef.current = null;
 
+        // Close local tracks AFTER unpublishing
+        localTracks.current.forEach((track) => {
+            try {
+                track.close();
+            } catch (e) {
+                console.log('Error closing track:', e);
+            }
+        });
+        localTracks.current = [];
+
         isJoiningOrJoined.current = false;
         hasBoundClientEvents.current = false;
         callStartTime.current = null;
 
-        // Clear video elements
-        if (myVideo.current) myVideo.current.innerHTML = '';
-        if (userVideo.current) userVideo.current.innerHTML = '';
+        // Clear video elements and stop all media streams
+        if (myVideo.current) {
+            // Stop any media tracks playing in the video element
+            const videoElement = myVideo.current;
+            if (videoElement.srcObject) {
+                const tracks = videoElement.srcObject.getTracks();
+                tracks.forEach(track => {
+                    track.stop();
+                    console.log('Stopped video track:', track.kind);
+                });
+                videoElement.srcObject = null;
+            }
+            myVideo.current.innerHTML = '';
+        }
+        if (userVideo.current) {
+            const videoElement = userVideo.current;
+            if (videoElement.srcObject) {
+                const tracks = videoElement.srcObject.getTracks();
+                tracks.forEach(track => {
+                    track.stop();
+                    console.log('Stopped remote video track:', track.kind);
+                });
+                videoElement.srcObject = null;
+            }
+            userVideo.current.innerHTML = '';
+        }
 
         setCallAccepted(false);
         setIsVideoCall(false);

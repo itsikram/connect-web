@@ -64,7 +64,7 @@ const MessageList = React.memo(({ onChatSelect }) => {
     const myId = myProfile._id
     const navigate = useNavigate();
 
-    // HTTP-based contacts fetching
+    // HTTP-based contacts fetching (now includes online status)
     const fetchContacts = async () => {
         try {
             setLoading(true);
@@ -73,61 +73,37 @@ const MessageList = React.memo(({ onChatSelect }) => {
             });
             console.log('fetch contacts', response.data)
             // API returns array directly, not nested under contacts
-            setContacts(Array.isArray(response.data) ? response.data : []);
+            const contactsData = Array.isArray(response.data) ? response.data : [];
+            setContacts(contactsData);
+            
+            // Extract online friends from the response (no separate API calls needed)
+            const onlineFriends = contactsData
+                .filter(contact => contact.isOnline && contact.person?._id)
+                .map(contact => contact.person._id);
+            setActiveFriends(onlineFriends);
+            
+            // Store contacts data in localStorage for Chat.js to use
+            localStorage.setItem('contactsData', JSON.stringify(contactsData));
         } catch (error) {
             console.error('Error fetching contacts:', error);
             setContacts([]);
+            setActiveFriends([]);
         } finally {
             setLoading(false);
         }
     };
 
-    // HTTP-based online status checking
-    const checkOnlineStatus = async (profileId) => {
-        try {
-            const response = await api.get('/profile/online-status', {
-                params: { profileId }
-            });
-            return response.data.isActive || false;
-        } catch (error) {
-            console.error('Error checking online status:', error);
-            return false;
-        }
-    };
 
-    // Fetch contacts on component mount
+    // Fetch contacts on component mount and set up periodic refresh
     useEffect(() => {
         if (myId) {
             fetchContacts();
+            // Refresh contacts list every 2 minutes to get updated online status
+            const interval = setInterval(fetchContacts, 120000);
+            return () => clearInterval(interval);
         }
     }, [myId]);
 
-    // Poll for online status updates
-    useEffect(() => {
-        if (!contacts.length) return;
-
-        const checkAllOnlineStatus = async () => {
-            const onlineStatusPromises = contacts.map(async (contact) => {
-                if (contact.person?._id) {
-                    const isOnline = await checkOnlineStatus(contact.person._id);
-                    return { profileId: contact.person._id, isOnline };
-                }
-                return null;
-            });
-
-            const results = await Promise.all(onlineStatusPromises);
-            const onlineFriends = results
-                .filter(result => result && result.isOnline)
-                .map(result => result.profileId);
-
-            setActiveFriends(onlineFriends);
-        };
-
-        checkAllOnlineStatus();
-        const interval = setInterval(checkAllOnlineStatus, 30000); // Check every 30 seconds
-
-        return () => clearInterval(interval);
-    }, [contacts]);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -351,7 +327,7 @@ const MessageList = React.memo(({ onChatSelect }) => {
                                     (contactMessages[0].isSeen && contactMessages[0].receiverId === myId ? 
                                         true : contactMessages[0].isSeen) : true;
                                 const isActive = contactPerson._id === params.profile;
-                                const isOnline = activeFriends.includes(contactPerson._id);
+                                const isOnline = contactItem.isOnline || activeFriends.includes(contactPerson._id);
                                 const unreadCount = (contactMessages || []).reduce((count, m) => {
                                     return count + ((m && m.receiverId === myId && !m.isSeen) ? 1 : 0);
                                 }, 0);

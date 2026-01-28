@@ -103,6 +103,7 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
             const messageContent = inputValue.trim();
             
             const messageData = {
+                room: roomId,
                 senderId: userId,
                 receiverId: friendId,
                 message: messageContent,

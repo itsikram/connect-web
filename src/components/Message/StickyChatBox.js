@@ -1,10 +1,11 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import moment from 'moment';
 import UserPP from '../UserPP';
 import api from '../../api/api';
+import socket from '../../common/socket';
 import SingleMessage from './SingleMessage';
 import ChatHeader from './ChatHeader';
 import StickyChatFooter from './StickyChatFooter';
@@ -88,16 +89,83 @@ const StickyChatBox = ({ friendProfile, onClose, onMinimize, isMinimized, zIndex
         }
     };
 
+    // WebSocket-based message sending with optimistic UI
     const sendMessage = async (messageData) => {
+        // Create optimistic message object for immediate display
+        const optimisticMessage = {
+            _id: `temp-${Date.now()}-${Math.random()}`, // Temporary ID
+            senderId: userId,
+            receiverId: friendId,
+            message: messageData.message,
+            attachment: messageData.attachment,
+            parent: messageData.parent,
+            messageType: messageData.messageType || 'text',
+            timestamp: new Date(),
+            isOptimistic: true // Flag to identify optimistic messages
+        };
+
+        console.log('StickyChatBox sending message via WebSocket:', messageData);
+        
+        // Add optimistic message to local state immediately
+        setMessages(prevMessages => {
+            const existingIds = new Set(prevMessages.map(m => m?._id?.toString()).filter(Boolean));
+            if (!existingIds.has(optimisticMessage._id?.toString())) {
+                return [...prevMessages, optimisticMessage];
+            }
+            return prevMessages;
+        });
+        
+        setTimeout(() => scrollToLastMessage(), 100);
+
         try {
-            const response = await api.post('/message/send', messageData);
-            return response.data;
+            // Send via WebSocket instead of HTTP
+            socket.emit('sendMessage', messageData);
+            
+            // Listen for the server confirmation
+            const handleMessageConfirmation = (data) => {
+                console.log('StickyChatBox message confirmed by server:', data);
+                
+                // Replace optimistic message with real message
+                setMessages(prevMessages => {
+                    return prevMessages.map(msg => {
+                        if (msg._id === optimisticMessage._id) {
+                            return data.updatedMessage || data.data; // Use the real message from server
+                        }
+                        return msg;
+                    });
+                });
+                
+                // Clean up listener
+                socket.off('newMessage', handleMessageConfirmation);
+                socket.off('newMessageToUser', handleMessageConfirmation);
+            };
+            
+            // Listen for confirmation
+            socket.on('newMessage', handleMessageConfirmation);
+            socket.on('newMessageToUser', handleMessageConfirmation);
+            
+            // Fallback: If no confirmation within 5 seconds, remove optimistic message
+            const fallbackTimeout = setTimeout(() => {
+                setMessages(prevMessages => prevMessages.filter(msg => msg._id !== optimisticMessage._id));
+                console.warn('StickyChatBox message not confirmed by server, removed optimistic message');
+                socket.off('newMessage', handleMessageConfirmation);
+                socket.off('newMessageToUser', handleMessageConfirmation);
+            }, 5000);
+            
+            // Store timeout ID for cleanup
+            optimisticMessage._fallbackTimeout = fallbackTimeout;
+            
         } catch (error) {
-            console.error('Error sending message:', error);
+            console.error('StickyChatBox error sending message via WebSocket:', error);
+            
+            // Remove optimistic message on error
+            setMessages(prevMessages => prevMessages.filter(msg => msg._id !== optimisticMessage._id));
+            
             throw error;
         }
     };
 
+    // Mark only the last message as seen
     const markMessageAsSeen = async (message) => {
         try {
             await api.post('/message/seen', { messageId: message._id });
@@ -425,48 +493,89 @@ const StickyChatBox = ({ friendProfile, onClose, onMinimize, isMinimized, zIndex
 
         fetchInitialMessages();
 
-        // Poll for new messages every 5 seconds
-        const pollForNewMessages = async () => {
-            try {
-                const response = await api.get('/message/new-messages', {
-                    params: { userId, friendId }
+        // Real-time socket listeners for new messages
+        const roomId = [userId, friendId].sort().join('_');
+        socket.emit('joinRoom', roomId);
+
+        const handleNewMessage = (data) => {
+            console.log('StickyChatBox received new message via socket:', data);
+            if (data.updatedMessage && 
+                (data.updatedMessage.senderId === friendId || data.updatedMessage.receiverId === friendId)) {
+                setMessages(prevMessages => {
+                    const existingIds = new Set(prevMessages.map(m => m?._id?.toString()).filter(Boolean));
+                    
+                    // Check if this is a confirmation of an optimistic message
+                    const optimisticIndex = prevMessages.findIndex(msg => 
+                        msg.isOptimistic && 
+                        msg.senderId === data.updatedMessage.senderId &&
+                        msg.message === data.updatedMessage.message &&
+                        Math.abs(new Date(msg.timestamp) - new Date(data.updatedMessage.timestamp)) < 5000 // Within 5 seconds
+                    );
+                    
+                    if (optimisticIndex !== -1) {
+                        // Replace optimistic message with real message
+                        const newMessages = [...prevMessages];
+                        newMessages[optimisticIndex] = data.updatedMessage;
+                        return newMessages;
+                    } else if (!existingIds.has(data.updatedMessage._id?.toString())) {
+                        // Update sender's online status when receiving new messages
+                        if (data.updatedMessage.senderId === friendId) {
+                            setIsActive(true);
+                        }
+                        
+                        return [...prevMessages, data.updatedMessage];
+                    }
+                    return prevMessages;
                 });
                 
-                if (response.data && response.data.messages) {
-                    const newMessages = response.data.messages;
-                    setMessages(prevMessages => {
-                        const existingIds = new Set(prevMessages.map(m => m?._id?.toString()).filter(Boolean));
-                        const filteredNew = newMessages.filter(msg => 
-                            msg?._id && !existingIds.has(msg._id.toString())
-                        );
-                        
-                        if (filteredNew.length > 0) {
-                            // Update sender's online status when receiving new messages
-                            const hasMessageFromFriend = filteredNew.some(msg => msg.senderId === friendId);
-                            if (hasMessageFromFriend) {
-                                setIsActive(true);
-                            }
-                            
-                            return deduplicateMessages([...prevMessages, ...filteredNew]);
-                        }
-                        return prevMessages;
-                    });
-                    
-                    if (response.data.messages.some(msg => msg.senderId === friendId || msg.receiverId === friendId)) {
-                        setTimeout(() => scrollToLastMessage(), 100);
-                    }
-                }
-            } catch (error) {
-                console.error('Error polling for new messages:', error);
+                setTimeout(() => scrollToLastMessage(), 100);
             }
         };
 
-        const messagePollInterval = setInterval(pollForNewMessages, 5000);
+        const handleNewMessageToUser = (data) => {
+            console.log('StickyChatBox received new message to user via socket:', data);
+            if (data.updatedMessage && 
+                (data.updatedMessage.senderId === friendId || data.updatedMessage.receiverId === friendId)) {
+                setMessages(prevMessages => {
+                    const existingIds = new Set(prevMessages.map(m => m?._id?.toString()).filter(Boolean));
+                    
+                    // Check if this is a confirmation of an optimistic message
+                    const optimisticIndex = prevMessages.findIndex(msg => 
+                        msg.isOptimistic && 
+                        msg.senderId === data.updatedMessage.senderId &&
+                        msg.message === data.updatedMessage.message &&
+                        Math.abs(new Date(msg.timestamp) - new Date(data.updatedMessage.timestamp)) < 5000 // Within 5 seconds
+                    );
+                    
+                    if (optimisticIndex !== -1) {
+                        // Replace optimistic message with real message
+                        const newMessages = [...prevMessages];
+                        newMessages[optimisticIndex] = data.updatedMessage;
+                        return newMessages;
+                    } else if (!existingIds.has(data.updatedMessage._id?.toString())) {
+                        // Update sender's online status when receiving new messages
+                        if (data.updatedMessage.senderId === friendId) {
+                            setIsActive(true);
+                        }
+                        
+                        return [...prevMessages, data.updatedMessage];
+                    }
+                    return prevMessages;
+                });
+                
+                setTimeout(() => scrollToLastMessage(), 100);
+            }
+        };
+
+        socket.on('newMessage', handleNewMessage);
+        socket.on('newMessageToUser', handleNewMessageToUser);
 
         return () => {
-            clearInterval(messagePollInterval);
+            socket.off('newMessage', handleNewMessage);
+            socket.off('newMessageToUser', handleNewMessageToUser);
+            socket.emit('leaveRoom', roomId);
         };
-    }, [friendId, userId, isLoading, friendProfile?._id]);
+    }, [friendId, userId, isLoading]);
 
     // Live voice - HTTP-based notification (simplified)
     useEffect(() => {
@@ -937,6 +1046,7 @@ const StickyChatBox = ({ friendProfile, onClose, onMinimize, isMinimized, zIndex
                                 msg={msg}
                                 friendProfile={friendProfile}
                                 messages={messages}
+                                setMessages={setMessages}
                                 isActive={isActive}
                                 setIsReplying={setIsReplying}
                                 setReplyData={setReplyData}
@@ -1000,18 +1110,29 @@ const StickyChatBox = ({ friendProfile, onClose, onMinimize, isMinimized, zIndex
                     <button 
                         className="sticky-chat-option-item"
                         onClick={() => {
-                            // Audio Call - dispatch custom event similar to video calls
+                            // Audio Call - dispatch custom event and notify other user
                             const channelName = `${userId}-${friendId}`;
+                            const callData = {
+                                to: friendId,
+                                channelName,
+                                callerName: friendProfile?.fullName || `${friendProfile?.user?.firstName} ${friendProfile?.user?.surname}` || 'Friend',
+                                callerProfilePic: friendProfile?.profilePic
+                            };
+                            
+                            // Dispatch custom event for AudioCall component
                             window.dispatchEvent(new CustomEvent('startAudioCall', {
-                                detail: {
-                                    to: friendId,
-                                    channelName,
-                                    callerName: friendProfile?.fullName || `${friendProfile?.user?.firstName} ${friendProfile?.user?.surname}` || 'Friend',
-                                    callerProfilePic: friendProfile?.profilePic
-                                }
+                                detail: callData
                             }));
-                            // HTTP-based call notification could be implemented here
-                            console.log('Audio call initiated to:', friendId);
+                            
+                            // Emit socket event to notify the other user
+                            socket.emit('audio-call', { 
+                                to: friendId, 
+                                channelName, 
+                                isAudio: true,
+                                callerName: callData.callerName,
+                                callerProfilePic: callData.callerProfilePic
+                            });
+                            
                             setShowOptionsMenu(false);
                         }}
                     >
@@ -1021,19 +1142,30 @@ const StickyChatBox = ({ friendProfile, onClose, onMinimize, isMinimized, zIndex
                     <button 
                         className="sticky-chat-option-item"
                         onClick={() => {
-                            // Video Call - dispatch custom event similar to audio calls
+                            // Video Call - dispatch custom event and notify other user
                             const channelName = `${userId}-${friendId}`;
+                            const callData = {
+                                to: friendId,
+                                channelName,
+                                callerName: friendProfile?.fullName || `${friendProfile?.user?.firstName} ${friendProfile?.user?.surname}` || 'Friend',
+                                callerProfilePic: friendProfile?.profilePic,
+                                isAudio: false
+                            };
+                            
+                            // Dispatch custom event for VideoCall component
                             window.dispatchEvent(new CustomEvent('startVideoCall', {
-                                detail: {
-                                    to: friendId,
-                                    channelName,
-                                    callerName: friendProfile?.fullName || `${friendProfile?.user?.firstName} ${friendProfile?.user?.surname}` || 'Friend',
-                                    callerProfilePic: friendProfile?.profilePic,
-                                    isAudio: false
-                                }
+                                detail: callData
                             }));
-                            // HTTP-based call notification could be implemented here
-                            console.log('Video call initiated to:', friendId);
+                            
+                            // Emit socket event to notify the other user
+                            socket.emit('video-call', { 
+                                to: friendId, 
+                                channelName, 
+                                isAudio: false,
+                                callerName: callData.callerName,
+                                callerProfilePic: callData.callerProfilePic
+                            });
+                            
                             setShowOptionsMenu(false);
                         }}
                     >

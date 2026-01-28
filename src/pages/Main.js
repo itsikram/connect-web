@@ -6,6 +6,7 @@ import { showMessageToast } from '../utils/toastUtils';
 import 'react-toastify/dist/ReactToastify.css';
 import '../components/Toast/CustomToast.css';
 import webNotificationService from '../services/webNotificationService';
+import socket from '../common/socket';
 import Header from '../partials/header/Header';
 import ProtectedRoute from "../components/ProtectedRoute.js";
 import { useAuth } from '../hooks/useAuth';
@@ -61,10 +62,6 @@ import { addNotification, addNotifications } from "../services/actions/notificat
 import { addMessages, newMessage } from "../services/actions/messageActions.js";
 import { setBodyHeight, setLoading } from "../services/actions/optionAction";
 import Settings from "./Settings";
-import socket from '../common/socket.js'
-
-
-
 import { loadSettings } from "../services/actions/settingsActions.js";
 import ProfileSetting from "../components/setting/ProfileSetting.js";
 import AccountSetting from "../components/setting/AccountSetting.js";
@@ -193,10 +190,10 @@ const Main = () => {
 
     // Initialize web notifications
     useEffect(() => {
-        if (profileId && token && socket && isAuthenticated) {
+        if (profileId && token && isAuthenticated) {
             const initializeNotifications = async () => {
                 try {
-                    const success = await webNotificationService.initialize(profileId, api, socket);
+                    const success = await webNotificationService.initialize(profileId, api);
                     if (success) {
                         console.log('Web notifications initialized successfully');
                         
@@ -218,7 +215,7 @@ const Main = () => {
                 );
             }
         };
-    }, [profileId, token, socket, isAuthenticated])
+    }, [profileId, token, isAuthenticated])
 
 
     const playSound = async () => {
@@ -412,321 +409,224 @@ const Main = () => {
         };
     }, []);
 
+    // HTTP-based notification polling
+    const fetchNotifications = async () => {
+        try {
+            const response = await api.get('/notification/new', {
+                params: { profileId }
+            });
+            
+            if (response.data.notifications && response.data.notifications.length > 0) {
+                response.data.notifications.forEach(notification => {
+                    dispatch(addNotification(notification));
+                    
+                    // Skip toast and browser notification for message types
+                    if (notification.type !== 'message') {
+                        notify(notification.text, false, notification.icon, notification.link);
+                        
+                        // Show browser notification if permission is granted
+                        if (webNotificationService.isPermissionGranted) {
+                            const browserNotification = new Notification(notification.title || 'Connect', {
+                                body: notification.text,
+                                icon: notification.icon || '/logo192.png',
+                                tag: `notification_${notification._id || Date.now()}`,
+                                data: {
+                                    url: notification.link || '/',
+                                    notificationId: notification._id
+                                }
+                            });
+
+                            browserNotification.onclick = () => {
+                                window.open(notification.link || '/', '_self');
+                                browserNotification.close();
+                            };
+
+                            setTimeout(() => {
+                                browserNotification.close();
+                            }, 5000);
+                        }
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Error fetching notifications:', error);
+        }
+    };
+
+    // HTTP-based message polling
+    const fetchNewMessages = async () => {
+        try {
+            const response = await api.get('/message/new-messages', {
+                params: { profileId }
+            });
+            
+            if (response.data.messages && response.data.messages.length > 0) {
+                response.data.messages.forEach(updatedMessage => {
+                    dispatch(newMessage(updatedMessage, profileId));
+                    
+                    // Update sender's online status
+                    if (updatedMessage.senderId) {
+                        const friendOnlineEvent = new CustomEvent('friend_online_client', {
+                            detail: { profileId: updatedMessage.senderId }
+                        });
+                        window.dispatchEvent(friendOnlineEvent);
+                    }
+                    
+                    // Client-side deduplication
+                    const messageId = updatedMessage._id?.toString() || updatedMessage._id;
+                    const now = Date.now();
+                    const lastToastTime = recentMessageToasts.get(messageId);
+                    
+                    if (lastToastTime && (now - lastToastTime) < TOAST_DEDUP_WINDOW) {
+                        return;
+                    }
+                    
+                    recentMessageToasts.set(messageId, now);
+                    
+                    // Clean up old entries
+                    for (const [msgId, timestamp] of recentMessageToasts.entries()) {
+                        if (now - timestamp > TOAST_DEDUP_WINDOW) {
+                            recentMessageToasts.delete(msgId);
+                        }
+                    }
+                    
+                    // Show notification
+                    const senderName = updatedMessage.senderName || 'Friend';
+                    const senderPP = updatedMessage.senderPP || '/default-avatar.png';
+                    notify(updatedMessage.message, senderName, senderPP, '/message/' + updatedMessage.senderId);
+                    
+                    // Handle sticky chat opening
+                    const isOnMessagePage = window.location.pathname.startsWith('/message');
+                    if (!isOnMessagePage && updatedMessage.senderId) {
+                        const isChatOpen = typeof window.isStickyChatOpen === 'function' 
+                            ? window.isStickyChatOpen(updatedMessage.senderId) 
+                            : false;
+                        
+                        if (!isChatOpen) {
+                            const openChatEvent = new CustomEvent('openStickyChat', {
+                                detail: { profileId: updatedMessage.senderId }
+                            });
+                            window.dispatchEvent(openChatEvent);
+                        }
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Error fetching new messages:', error);
+        }
+    };
+
     useEffect(() => {
         if (!profileId) return;
 
-        // socket.on('oldNotifications', data => {
-        //     dispatch(addNotifications(data.reverse(), true))
-        // })
-        // socket.on('newNotification', data => {
-        //     dispatch(addNotification(data))
-        //     // Skip toast for message notifications - they're handled by newMessageToUser
-        //     if (data.type !== 'message') {
-        //         notify(data.text, false, data.icon, data.link)
-        //     }
-        // })
-
-        // Listen for browser-specific notifications
-        socket.on('browserNotification', data => {
-            console.log('Browser-specific notification received:', data);
-            
-            // Show in-app notification
-            dispatch(addNotification(data))
-            // Skip toast and browser notification for message types - they're handled by newMessageToUser
-            if (data.type !== 'message') {
-                notify(data.text, false, data.icon, data.link)
+        // Initial fetch
+        fetchNotifications();
+        fetchNewMessages();
+        
+        // Poll for notifications every 30 seconds (keep this as it's for general notifications)
+        const notificationInterval = setInterval(fetchNotifications, 30000);
+        
+        // Listen for new messages via socket instead of polling
+        const handleNewMessageToUser = (data) => {
+            console.log('Main received new message via socket:', data);
+            if (data.updatedMessage && data.updatedMessage.receiverId === profileId) {
+                // Process the message for notifications and UI updates
+                const updatedMessage = data.updatedMessage;
                 
-                // Show browser notification if permission is granted
-                if (webNotificationService.isPermissionGranted) {
-                    const notification = new Notification(data.title || 'Connect', {
-                        body: data.text,
-                        icon: data.icon || '/logo192.png',
-                        tag: `notification_${data._id || Date.now()}`,
-                        data: {
-                            url: data.link || '/',
-                            notificationId: data._id
-                        }
-                    });
-
-                    // Handle click event
-                    notification.onclick = () => {
-                        window.open(data.link || '/', '_self');
-                        notification.close();
-                    };
-
-                    // Auto close after 5 seconds
-                    setTimeout(() => {
-                        notification.close();
-                    }, 5000);
-                }
-            }
-        })
-
-        // socket.on('oldMessages', data => {
-        //     console.log('oldMessages', data)
-        //     dispatch(addMessages(data.reverse(), true))
-        // })
-
-        // Listen for received messages (when someone messages me)
-        socket.on('newMessageToUser', ({ updatedMessage, senderName, senderPP }) => {
-            dispatch(newMessage(updatedMessage, profileId))
-            
-            // Update sender's online status to true when receiving a new message
-            if (updatedMessage.senderId) {
-                // Dispatch a friend_online-like event to update online status in all components
-                const friendOnlineEvent = new CustomEvent('friend_online_client', {
-                    detail: { profileId: updatedMessage.senderId }
-                });
-                window.dispatchEvent(friendOnlineEvent);
-            }
-            
-            // Client-side deduplication: Check if we've already shown a toast for this message
-            const messageId = updatedMessage._id?.toString() || updatedMessage._id;
-            const now = Date.now();
-            const lastToastTime = recentMessageToasts.get(messageId);
-            
-            if (lastToastTime && (now - lastToastTime) < TOAST_DEDUP_WINDOW) {
-                console.log(`Skipping duplicate toast for message ${messageId} (shown ${now - lastToastTime}ms ago)`);
-                return; // Skip showing duplicate toast
-            }
-            
-            // Mark this message as having shown a toast
-            recentMessageToasts.set(messageId, now);
-            
-            // Clean up old entries
-            for (const [msgId, timestamp] of recentMessageToasts.entries()) {
-                if (now - timestamp > TOAST_DEDUP_WINDOW) {
-                    recentMessageToasts.delete(msgId);
-                }
-            }
-            
-            // Play notification sound and show toast
-            notify(updatedMessage.message, senderName, senderPP, '/message/' + updatedMessage.senderId)
-
-            // Check if user is on message page (use window.location to get current pathname)
-            const isOnMessagePage = window.location.pathname.startsWith('/message');
-            
-            // If not on message page, check if sticky chat is already open for this sender
-            if (!isOnMessagePage && updatedMessage.senderId) {
-                // Check if sticky chat is already open for this sender
-                const isChatOpen = typeof window.isStickyChatOpen === 'function' 
-                    ? window.isStickyChatOpen(updatedMessage.senderId) 
-                    : false;
-                
-                // Only open sticky chat if it's not already open
-                if (!isChatOpen) {
-                    // Dispatch event to open sticky chat box
-                    const openChatEvent = new CustomEvent('openStickyChat', {
+                // Update sender's online status
+                if (updatedMessage.senderId) {
+                    const friendOnlineEvent = new CustomEvent('friend_online_client', {
                         detail: { profileId: updatedMessage.senderId }
                     });
-                    window.dispatchEvent(openChatEvent);
+                    window.dispatchEvent(friendOnlineEvent);
                 }
-            }
-
-            // Show browser notification for new messages
-            if (webNotificationService.isPermissionGranted) {
-                const notification = new Notification(senderName || 'New Message', {
-                    body: updatedMessage.message,
-                    icon: senderPP || '/logo192.png',
-                    tag: `message_${updatedMessage._id}`,
-                    data: {
-                        url: `/message/${updatedMessage.senderId}`,
-                        messageId: updatedMessage._id,
-                        senderId: updatedMessage.senderId
+                
+                // Client-side deduplication
+                const messageId = updatedMessage._id?.toString() || updatedMessage._id;
+                const now = Date.now();
+                const lastToastTime = recentMessageToasts.get(messageId);
+                
+                if (lastToastTime && (now - lastToastTime) < TOAST_DEDUP_WINDOW) {
+                    return;
+                }
+                
+                recentMessageToasts.set(messageId, now);
+                
+                // Clean up old entries
+                for (const [msgId, timestamp] of recentMessageToasts.entries()) {
+                    if (now - timestamp > TOAST_DEDUP_WINDOW) {
+                        recentMessageToasts.delete(msgId);
                     }
-                });
-
-                // Handle click event
-                notification.onclick = () => {
-                    window.open(`/message/${updatedMessage.senderId}`, '_self');
-                    notification.close();
-                };
-
-                // Auto close after 5 seconds
-                setTimeout(() => {
-                    notification.close();
-                }, 5000);
-            }
-        })
-
-        // Listen for sent messages (when I send a message - update Redux to re-sort contact list)
-        socket.on('newMessage', ({ updatedMessage, senderName, senderPP, chatPage }) => {
-            // Only update Redux if this is a message I sent (to update contact list sorting)
-            // chatPage check ensures we don't duplicate updates from chat components
-            if (chatPage === true && updatedMessage.senderId === profileId) {
-                dispatch(newMessage(updatedMessage, profileId))
-            }
-        })
-
-        socket.on('bumpUser', (({ friendProfileData, myProfileData }) => {
-
-            console.log('bumpUser', friendProfileData, myProfileData)
-
-            notify(`${friendProfileData.fullName} Bumped you`, friendProfileData.fullName, friendProfileData.profilePic, '/message/' + friendProfileData._id)
-
-            // Show browser notification for bump
-            if (webNotificationService.isPermissionGranted) {
-                const notification = new Notification(`${friendProfileData.fullName} Bumped you`, {
-                    body: 'Someone bumped you!',
-                    icon: friendProfileData.profilePic || '/logo192.png',
-                    tag: `bump_${friendProfileData._id}`,
-                    data: {
-                        url: `/message/${friendProfileData._id}`,
-                        senderId: friendProfileData._id
+                }
+                
+                // Show notification
+                const senderName = data.senderName || 'Friend';
+                const senderPP = data.senderPP || '/default-avatar.png';
+                notify(updatedMessage.message, senderName, senderPP, '/message/' + updatedMessage.senderId);
+                
+                // Handle sticky chat opening
+                const isOnMessagePage = window.location.pathname.startsWith('/message');
+                if (!isOnMessagePage && updatedMessage.senderId) {
+                    const isChatOpen = typeof window.isStickyChatOpen === 'function' 
+                        ? window.isStickyChatOpen(updatedMessage.senderId) 
+                        : false;
+                    
+                    if (!isChatOpen) {
+                        const openChatEvent = new CustomEvent('openStickyChat', {
+                            detail: { profileId: updatedMessage.senderId }
+                        });
+                        window.dispatchEvent(openChatEvent);
                     }
-                });
-
-                // Handle click event
-                notification.onclick = () => {
-                    window.open(`/message/${friendProfileData._id}`, '_self');
-                    notification.close();
-                };
-
-                // Auto close after 5 seconds
-                setTimeout(() => {
-                    notification.close();
-                }, 5000);
+                }
+                
+                // Dispatch message for Redux state
+                dispatch(newMessage(updatedMessage, profileId));
             }
-        }))
+        };
 
-        // Listen for friend request notifications
-        socket.on('friendRequestNotification', ({ senderName, senderPP, senderId }) => {
-            console.log('Friend request notification:', { senderName, senderPP, senderId });
-            
-            notify(`${senderName} sent you a friend request`, senderName, senderPP, `/${senderId}`);
-
-            // Show browser notification for friend request
-            if (webNotificationService.isPermissionGranted) {
-                const notification = new Notification(`${senderName} sent you a friend request`, {
-                    body: 'You have a new friend request!',
-                    icon: senderPP || '/logo192.png',
-                    tag: `friend_request_${senderId}`,
-                    data: {
-                        url: `/${senderId}`,
-                        senderId: senderId
-                    }
-                });
-
-                // Handle click event
-                notification.onclick = () => {
-                    window.open(`/${senderId}`, '_self');
-                    notification.close();
-                };
-
-                // Auto close after 10 seconds
-                setTimeout(() => {
-                    notification.close();
-                }, 10000);
-            }
-        })
-
-        // Listen for friend request acceptance notifications
-        socket.on('friendRequestAcceptNotification', ({ senderName, senderPP, senderId }) => {
-            console.log('Friend request accepted notification:', { senderName, senderPP, senderId });
-            
-            notify(`${senderName} accepted your friend request`, senderName, senderPP, `/${senderId}`);
-
-            // Show browser notification for friend request acceptance
-            if (webNotificationService.isPermissionGranted) {
-                const notification = new Notification(`${senderName} accepted your friend request`, {
-                    body: 'You are now friends!',
-                    icon: senderPP || '/logo192.png',
-                    tag: `friend_accept_${senderId}`,
-                    data: {
-                        url: `/${senderId}`,
-                        senderId: senderId
-                    }
-                });
-
-                // Handle click event
-                notification.onclick = () => {
-                    window.open(`/${senderId}`, '_self');
-                    notification.close();
-                };
-
-                // Auto close after 8 seconds
-                setTimeout(() => {
-                    notification.close();
-                }, 8000);
-            }
-        })
-
-        // Listen for post reaction notifications
-        socket.on('postReactNotification', ({ senderName, senderPP, postId, reactType }) => {
-            console.log('Post reaction notification:', { senderName, senderPP, postId, reactType });
-            
-            notify(`${senderName} reacted to your post`, senderName, senderPP, `/post/${postId}`);
-
-            // Show browser notification for post reaction
-            if (webNotificationService.isPermissionGranted) {
-                const notification = new Notification(`${senderName} reacted to your post`, {
-                    body: `Reacted with ${reactType || '❤️'}`,
-                    icon: senderPP || '/logo192.png',
-                    tag: `post_react_${postId}`,
-                    data: {
-                        url: `/post/${postId}`,
-                        postId: postId
-                    }
-                });
-
-                // Handle click event
-                notification.onclick = () => {
-                    window.open(`/post/${postId}`, '_self');
-                    notification.close();
-                };
-
-                // Auto close after 6 seconds
-                setTimeout(() => {
-                    notification.close();
-                }, 6000);
-            }
-        })
-
-        // Listen for post comment notifications
-        socket.on('postCommentNotification', ({ senderName, senderPP, postId, commentBody }) => {
-            console.log('Post comment notification:', { senderName, senderPP, postId, commentBody });
-            
-            notify(`${senderName} commented on your post`, senderName, senderPP, `/post/${postId}`);
-
-            // Show browser notification for post comment
-            if (webNotificationService.isPermissionGranted) {
-                const notification = new Notification(`${senderName} commented on your post`, {
-                    body: commentBody ? commentBody.substring(0, 100) + (commentBody.length > 100 ? '...' : '') : 'New comment',
-                    icon: senderPP || '/logo192.png',
-                    tag: `post_comment_${postId}`,
-                    data: {
-                        url: `/post/${postId}`,
-                        postId: postId
-                    }
-                });
-
-                // Handle click event
-                notification.onclick = () => {
-                    window.open(`/post/${postId}`, '_self');
-                    notification.close();
-                };
-
-                // Auto close after 8 seconds
-                setTimeout(() => {
-                    notification.close();
-                }, 8000);
-            }
-        })
-
-
+        socket.on('newMessageToUser', handleNewMessageToUser);
 
         return () => {
-            socket.off('oldNotifications')
-            socket.off('newNotification')
-            socket.off('browserNotification')
-            socket.off('oldMessages')
-            socket.off('newMessageToUser')
-            socket.off('newMessage')
-            socket.off('bumpUser')
-            socket.off('friendRequestNotification')
-            socket.off('friendRequestAcceptNotification')
-            socket.off('postReactNotification')
-            socket.off('postCommentNotification')
+            clearInterval(notificationInterval);
+            socket.off('newMessageToUser', handleNewMessageToUser);
+        };
+    }, [profileId]);
+
+    useEffect(() => {
+        if (!profileId) return;
+
+        // Listen for notification events (toast notifications)
+        socket.on('notification', (msg, senderName, senderPP) => {
+            if (isTabActive == true) {
+                // Client-side deduplication
+                const messageId = msg._id?.toString() || msg._id || `${msg.senderId}_${msg.message?.substring(0, 50)}`;
+                const now = Date.now();
+                const lastToastTime = recentMessageToasts.get(messageId);
+                
+                if (lastToastTime && (now - lastToastTime) < TOAST_DEDUP_WINDOW) {
+                    return;
+                }
+                
+                recentMessageToasts.set(messageId, now);
+                
+                for (const [msgId, timestamp] of recentMessageToasts.entries()) {
+                    if (now - timestamp > TOAST_DEDUP_WINDOW) {
+                        recentMessageToasts.delete(msgId);
+                    }
+                }
+            }
+            
+            playSound();
+            notify(msg.message, senderName, senderPP, '/message/' + msg.senderId)
+        })
+
+        socket.on('speak_message', (msg) => {
+            speakText(msg)
+        });
+
+        return () => {
+            socket.off('notification')
+            socket.off('speak_message')
         }
     }, [socket, profileId, dispatch])
 

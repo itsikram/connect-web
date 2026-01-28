@@ -1,5 +1,6 @@
 import { toast } from 'react-toastify';
 import CustomToast from '../components/Toast/CustomToast';
+import LudoInviteToast from '../components/Toast/LudoInviteToast';
 
 // Toast configuration
 const toastConfig = {
@@ -229,6 +230,34 @@ export const showCustomToast = (type, message, options = {}) => {
   scheduleAutoDismiss(id, autoClose);
 };
 
+// Ludo game invitation toast with accept/decline buttons
+export const showLudoInviteToast = (inviterName, inviterAvatar, onAccept, onDecline, options = {}) => {
+  const { autoClose = 10000 } = options; // Longer auto-close for invitations
+
+  const id = toast.info(
+    ({ closeToast }) => (
+      <LudoInviteToast 
+        inviterName={inviterName}
+        inviterAvatar={inviterAvatar}
+        onAccept={onAccept}
+        onDecline={onDecline}
+        closeToast={closeToast}
+      />
+    ), 
+    { 
+      ...toastConfig, 
+      autoClose,
+      className: 'custom-toast-ludo-invite',
+      closeOnClick: false, // Prevent accidental dismissal
+      pauseOnHover: true, // Allow user to pause while reading
+      draggable: false, // Prevent accidental dismissal
+    }
+  );
+  
+  // Don't auto-dismiss invitation toasts - let user decide
+  return id;
+};
+
 // Dismiss all toasts
 export const dismissAllToasts = () => {
   toast.dismiss();
@@ -247,6 +276,7 @@ export default {
   message: showMessageToast,
   profileUpdate: showProfileUpdateToast,
   videoSaved: showVideoSavedToast,
+  ludoInvite: showLudoInviteToast,
   custom: showCustomToast,
   dismissAll: dismissAllToasts,
   dismiss: dismissToast

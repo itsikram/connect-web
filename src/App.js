@@ -47,11 +47,11 @@ function App() {
           console.log('✅ Server health check passed - JSON response received');
         } else {
           console.warn('⚠️ Server returned non-JSON response, reloading page...');
-          window.location.reload();
+          // window.location.reload();
         }
       } catch (error) {
         console.error('❌ Server health check failed, reloading page:', error);
-        window.location.reload();
+        // window.location.reload();
       }
     };
 

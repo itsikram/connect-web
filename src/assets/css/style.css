@@ -2,6 +2,41 @@
   color: #29B1A9;
 }
 
+/* Optimistic message styling */
+.message-optimistic {
+  opacity: 0.7;
+  position: relative;
+}
+
+.message-optimistic::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, rgba(41, 177, 169, 0.1), transparent);
+  animation: optimistic-pulse 1.5s ease-in-out infinite;
+}
+
+.message-optimistic .chat-message {
+  border: 1px dashed rgba(41, 177, 169, 0.3);
+}
+
+@keyframes optimistic-pulse {
+  0% {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
 .br {
   border-right: 1px solid #3B3C3C;
 }

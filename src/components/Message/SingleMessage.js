@@ -2,9 +2,8 @@ import React, { useEffect, useState, useRef } from "react";
 import { useSelector } from "react-redux";
 import moment from "moment";
 import UserPP from "../UserPP";
-import socket from "../../common/socket";
-import $ from 'jquery'
 import api from "../../api/api";
+import $ from 'jquery'
 import checkImgLoading from "../../utils/checkImgLoading";
 import isValidUrl from "../../utils/isValiUrl";
 import ImageSkleton from "../../skletons/post/ImageSkleton";
@@ -20,14 +19,14 @@ const getMessageTime = (timestamp) => {
 
 
 
-const SingleMessage = ({ index, msg, friendProfile, messages, setReplyData, setIsReplying, msgListRef, isPreview, setIsPreview }) => {
+const SingleMessage = ({ index, msg, friendProfile, messages, setMessages, setReplyData, setIsReplying, msgListRef, isPreview, setIsPreview }) => {
 
     const myProfile = useSelector(state => state.profile)
     const myId = myProfile._id
     const friendId = friendProfile._id
     const [isReactedByMe, setIsReactedByMe] = useState((msg.reacts || []).includes(myId))
     const [foundParentMsg, setFoundParentMsg] = useState(false)
-    const [isReactedByFriend, setIsReactedByFriend] = useState(msg.reacts.includes(friendId))
+    const [isReactedByFriend, setIsReactedByFriend] = useState((msg.reacts || []).includes(friendId))
     const [imageLoaded, setImageLoaded] = useState(false)
     const [parentImageLoaded, setParentImageLoaded] = useState(false)
     const [isPlaying, setIsPlaying] = useState(false)
@@ -56,27 +55,19 @@ const SingleMessage = ({ index, msg, friendProfile, messages, setReplyData, setI
     }, [imageLoaded])
 
 
+    // Message reactions are now included with the message data - no separate polling needed
     useEffect(() => {
-        socket.on('messageReacted', (messageId) => {
-            if (msg._id === messageId) {
-                setIsReactedByFriend(true)
-            }
-        })
-
-        socket.on('messageReactRemoved', (messageId) => {
-            if (msg._id === messageId) {
-                setIsReactedByFriend(false)
-            }
-        })
-
-
-
-        return () => {
-            socket.off('messageReacted')
-            socket.off('messageReactRemoved')
-
+        // Set initial reaction state from message data
+        if (msg.reacts && friendId) {
+            const friendReacted = msg.reacts.includes(friendId);
+            setIsReactedByFriend(friendReacted);
         }
-    })
+        // Update my reaction state when message data changes
+        if (msg.reacts) {
+            const meReacted = msg.reacts.includes(myId);
+            setIsReactedByMe(meReacted);
+        }
+    }, [msg.reacts, friendId, myId]);
 
     useEffect(() => {
         if (msg?.parent?._id) {
@@ -96,7 +87,13 @@ const SingleMessage = ({ index, msg, friendProfile, messages, setReplyData, setI
     const handleDeleteMessage = async (e) => {
         const messageId = $(e.currentTarget).data('id');
         hideOptions();
-        socket.emit('deleteMessage', messageId);
+        
+        try {
+            await api.post('/message/delete', { messageId });
+            // Message will be removed through HTTP polling in parent components
+        } catch (error) {
+            console.error('Error deleting message:', error);
+        }
     }
 
     const handleLikeMessage = async (e) => {
@@ -107,12 +104,32 @@ const SingleMessage = ({ index, msg, friendProfile, messages, setReplyData, setI
             const postReactRes = await api.post('/message/addReact', { messageId, myId })
             if (postReactRes.status == 200) {
                 setIsReactedByMe(true)
+                // Update parent messages state to reflect new reaction
+                if (setMessages) {
+                    setMessages(prevMessages => 
+                        prevMessages.map(m => 
+                            m._id === messageId 
+                                ? { ...m, reacts: [...(m.reacts || []), myId] }
+                                : m
+                        )
+                    );
+                }
             }
 
         } else {
             const removeReactRes = await api.post('/message/removeReact', { messageId, myId })
             if (removeReactRes.status == 200) {
                 setIsReactedByMe(false)
+                // Update parent messages state to reflect removed reaction
+                if (setMessages) {
+                    setMessages(prevMessages => 
+                        prevMessages.map(m => 
+                            m._id === messageId 
+                                ? { ...m, reacts: (m.reacts || []).filter(id => id !== myId) }
+                                : m
+                        )
+                    );
+                }
             }
         }
     }
@@ -129,7 +146,9 @@ const SingleMessage = ({ index, msg, friendProfile, messages, setReplyData, setI
     }
     const handleSpeakMessage = async (e) => {
         hideOptions();
-        socket.emit('speak_message', {msgId:$(e.currentTarget).data('id'), friendId});
+        // HTTP-based text-to-speech could be implemented here
+        console.log('Speak message:', $(e.currentTarget).data('id'));
+        // For now, we'll just log the action
     }
 
 
@@ -299,7 +318,7 @@ const SingleMessage = ({ index, msg, friendProfile, messages, setReplyData, setI
         {msg.senderId !== myId ?
 
             (
-                <div key={index} className={`chat-message-container message-receive message-id-${msg._id} ${isReactedByMe === true || isReactedByFriend == true ? 'message-reacted' : ''}`} data-toggle="tooltip" title={getMessageTime(msg.timestamp)}>
+                <div key={index} className={`chat-message-container message-receive message-id-${msg._id} ${isReactedByMe === true || isReactedByFriend == true ? 'message-reacted' : ''} ${msg.isOptimistic ? 'message-optimistic' : ''}`} data-toggle="tooltip" title={getMessageTime(msg.timestamp)}>
                     <div className='chat-message-profilePic'>
                         <UserPP profilePic={`${friendProfile.profilePic}`} profile={friendProfile._id} active={friendProfile.isActive} ></UserPP>
                     </div>
@@ -359,7 +378,7 @@ const SingleMessage = ({ index, msg, friendProfile, messages, setReplyData, setI
             :
 
             (
-                <div key={index} className={`chat-message-container message-sent message-id-${msg._id} ${isReactedByMe === true || isReactedByFriend == true ? 'message-reacted' : ''}`} data-toggle="tooltip" title={getMessageTime(msg.timestamp)} style={{ position: 'relative' }}>
+                <div key={index} className={`chat-message-container message-sent message-id-${msg._id} ${isReactedByMe === true || isReactedByFriend == true ? 'message-reacted' : ''} ${msg.isOptimistic ? 'message-optimistic' : ''}`} data-toggle="tooltip" title={getMessageTime(msg.timestamp)} style={{ position: 'relative' }}>
 
 
                     <div className={`chat-message ${isValidUrl(messages.attachment) && 'has-attachment'}`}>

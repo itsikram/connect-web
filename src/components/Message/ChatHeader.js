@@ -1168,7 +1168,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
 
         try {
             // Connect to Python server (default port 5000)
-            const pythonServerUrl = process.env.REACT_APP_EMOTION_SERVER_URL || 'http://localhost:5000';
+            const pythonServerUrl = process.env.REACT_APP_EMOTION_SERVER_URL || 'https://emotion-detection-z1b2.onrender.com';
             console.log('[ChatHeader] Connecting to Python emotion detection server:', pythonServerUrl);
             
             isConnectingRef.current = true;
@@ -1561,8 +1561,17 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
         detectEmotions();
     }, [profileId, friendId, friendProfile?._id, detectEmotions, initializeEmotionServerSocket]);
 
-    const handleBumpBtnClick = useCallback(() => {
-        socket.emit('bump', { friendProfile: friendProfile._id, myProfile: profile._id });
+    const handleBumpBtnClick = useCallback(async () => {
+        try {
+            // Send bump via HTTP
+            await api.post('/bump', { 
+                friendProfile: friendProfile._id, 
+                myProfile: profile._id 
+            });
+            console.log('Bump sent to:', friendProfile._id);
+        } catch (error) {
+            console.error('Error sending bump:', error);
+        }
     }, [friendProfile, profile]);
 
     useEffect(() => {

@@ -3,7 +3,7 @@ import AgoraRTC from "agora-rtc-sdk-ng";
 import api from "../api/api";
 import { useSelector } from "react-redux";
 
-const VideoCallPage = ({ socket }) => {
+const VideoCallPage = () => {
   const myProfile = useSelector((state) => state.profile);
 
   const [myId, setMyId] = useState("");
@@ -21,29 +21,58 @@ const VideoCallPage = ({ socket }) => {
     if (myProfile?._id) setMyId(myProfile._id);
   }, [myProfile]);
 
-  // Socket event handlers
+  // HTTP-based call signaling
   useEffect(() => {
-    if (!socket) return;
-
-    socket.on("connect", () => console.log("Socket connected", socket.id));
-
-    socket.on("incoming-call", ({ from, channelName }) => {
-      console.log("Incoming call from", from, channelName);
-      if (window.confirm("Incoming call. Accept?")) {
-        socket.emit("answer-call", { to: from, channelName });
-        startCall(channelName);
+    // Poll for incoming calls
+    const checkIncomingCalls = async () => {
+      try {
+        const response = await api.get('/call/incoming', {
+          params: { profileId: myId }
+        });
+        
+        if (response.data.call) {
+          const { from, channelName } = response.data.call;
+          console.log('Incoming call from', from, channelName);
+          
+          if (window.confirm('Incoming call. Accept?')) {
+            // Accept call via HTTP
+            await api.post('/call/answer', { to: from, channelName });
+            startCall(channelName);
+          } else {
+            // Reject call via HTTP
+            await api.post('/call/reject', { to: from, channelName });
+          }
+        }
+      } catch (error) {
+        console.error('Error checking incoming calls:', error);
       }
-    });
+    };
 
-    socket.on("call-accepted", ({ channelName }) => {
-      startCall(channelName);
-    });
+    // Poll for call acceptance
+    const checkCallAccepted = async () => {
+      if (!currentChannel) return;
+      
+      try {
+        const response = await api.get('/call/status', {
+          params: { channelName: currentChannel }
+        });
+        
+        if (response.data.accepted) {
+          startCall(currentChannel);
+        }
+      } catch (error) {
+        console.error('Error checking call status:', error);
+      }
+    };
+
+    const callPollInterval = setInterval(checkIncomingCalls, 3000);
+    const statusPollInterval = setInterval(checkCallAccepted, 2000);
 
     return () => {
-      socket.off("incoming-call");
-      socket.off("call-accepted");
+      clearInterval(callPollInterval);
+      clearInterval(statusPollInterval);
     };
-  }, [socket]);
+  }, [myId, currentChannel]);
 
   // Get Agora token
   const getToken = async (channelName) => {
@@ -95,11 +124,19 @@ const VideoCallPage = ({ socket }) => {
   };
 
   // Call a friend
-  const callFriend = () => {
+  const callFriend = async () => {
     if (!friendId) return alert("Enter friend's ID");
     const channelName = `${myId}-${friendId}`;
     setCurrentChannel(channelName);
-    socket.emit("call-user", { to: friendId, channelName });
+    
+    try {
+      // Initiate call via HTTP
+      await api.post('/call/initiate', { to: friendId, channelName });
+      console.log('Call initiated to:', friendId);
+    } catch (error) {
+      console.error('Error initiating call:', error);
+      alert('Failed to initiate call');
+    }
   };
 
   // End call

@@ -40,6 +40,17 @@ const StickyChatBoxContainer = () => {
             return true; // Return true to indicate chat was already open
         }
 
+        // Remove all minimized chats of the same user before opening new chat
+        const minimizedChatsOfSameUser = openChatsRef.current.filter(chat => 
+            chat.isMinimized && chat.friendProfile?._id === profileId
+        );
+        
+        if (minimizedChatsOfSameUser.length > 0) {
+            setOpenChats(prev => prev.filter(chat => 
+                !(chat.isMinimized && chat.friendProfile?._id === profileId)
+            ));
+        }
+
         // If max chats reached, close the oldest minimized chat or the last one
         if (openChatsRef.current.length >= maxChats) {
             const minimizedChat = openChatsRef.current.find(chat => chat.isMinimized);

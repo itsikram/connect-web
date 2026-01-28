@@ -3,6 +3,7 @@ import { setLoading } from '../services/actions/optionAction';
 import { useDispatch, useSelector } from 'react-redux';
 import { useParams } from 'react-router-dom';
 import api from '../api/api';
+import socket from '../common/socket';
 import UserPP from '../components/UserPP';
 import moment from "moment";
 import SingleMessage from '../components/Message/SingleMessage';
@@ -173,31 +174,103 @@ const Chat = ({ }) => {
         }
     };
 
-    // HTTP-based online status check
-    const checkOnlineStatus = async (profileId, friendId) => {
+    // Get online status from contacts data (no separate API calls)
+    const getOnlineStatusFromContacts = () => {
+        // Try to get online status from localStorage or Redux store if available
         try {
-            const response = await api.get('/profile/online-status', {
-                params: { profileId: friendId, myId: profileId }
-            });
-            return response.data;
+            const contactsData = localStorage.getItem('contactsData');
+            if (contactsData) {
+                const contacts = JSON.parse(contactsData);
+                const friendContact = contacts.find(c => c.person?._id === friendId);
+                if (friendContact) {
+                    return {
+                        isActive: friendContact.isOnline || false,
+                        lastSeen: friendContact.lastSeen || null
+                    };
+                }
+            }
         } catch (error) {
-            console.error('Error checking online status:', error);
-            return { isActive: false, lastSeen: null };
+            console.error('Error getting online status from contacts:', error);
         }
+        return { isActive: false, lastSeen: null };
     };
 
-    // HTTP-based message sending
+    // WebSocket-based message sending with optimistic UI
     const sendMessage = async (messageData) => {
+        // Create optimistic message object for immediate display
+        const optimisticMessage = {
+            _id: `temp-${Date.now()}-${Math.random()}`, // Temporary ID
+            senderId: userId,
+            receiverId: friendId,
+            message: messageData.message,
+            attachment: messageData.attachment,
+            parent: messageData.parent,
+            messageType: messageData.messageType || 'text',
+            timestamp: new Date(),
+            isOptimistic: true // Flag to identify optimistic messages
+        };
+
+        console.log('Sending message via WebSocket:', messageData);
+        
+        // Add optimistic message to local state immediately
+        setMessages(prev => {
+            console.log('Adding optimistic message, previous count:', prev.length);
+            const newMessages = [...prev, optimisticMessage];
+            console.log('New messages count with optimistic:', newMessages.length);
+            return newMessages;
+        });
+        
+        scrollToLastMessage();
+
         try {
-            const response = await api.post('/message/send', messageData);
-            return response.data;
+            // Send via WebSocket instead of HTTP
+            socket.emit('sendMessage', messageData);
+            
+            // Listen for the server confirmation
+            const handleMessageConfirmation = (data) => {
+                console.log('Message confirmed by server:', data);
+                
+                // Replace optimistic message with real message
+                setMessages(prev => {
+                    return prev.map(msg => {
+                        if (msg._id === optimisticMessage._id) {
+                            return data.updatedMessage || data.data; // Use the real message from server
+                        }
+                        return msg;
+                    });
+                });
+                
+                // Clean up listener
+                socket.off('newMessage', handleMessageConfirmation);
+                socket.off('newMessageToUser', handleMessageConfirmation);
+            };
+            
+            // Listen for confirmation
+            socket.on('newMessage', handleMessageConfirmation);
+            socket.on('newMessageToUser', handleMessageConfirmation);
+            
+            // Fallback: If no confirmation within 5 seconds, remove optimistic message
+            const fallbackTimeout = setTimeout(() => {
+                setMessages(prev => prev.filter(msg => msg._id !== optimisticMessage._id));
+                console.warn('Message not confirmed by server, removed optimistic message');
+                socket.off('newMessage', handleMessageConfirmation);
+                socket.off('newMessageToUser', handleMessageConfirmation);
+            }, 5000);
+            
+            // Store timeout ID for cleanup
+            optimisticMessage._fallbackTimeout = fallbackTimeout;
+            
         } catch (error) {
-            console.error('Error sending message:', error);
+            console.error('Error sending message via WebSocket:', error);
+            
+            // Remove optimistic message on error
+            setMessages(prev => prev.filter(msg => msg._id !== optimisticMessage._id));
+            
             throw error;
         }
     };
 
-    // HTTP-based mark as seen
+    // Mark only the last message as seen
     const markMessageAsSeen = async (message) => {
         try {
             await api.post('/message/seen', { messageId: message._id });
@@ -206,38 +279,92 @@ const Chat = ({ }) => {
         }
     };
 
-    // Polling for new messages
+    // Real-time socket listeners for new messages
     useEffect(() => {
         if (!friendId || !userId) return;
 
-        const pollInterval = setInterval(async () => {
-            try {
-                const response = await api.get('/message/new-messages', {
-                    params: {
-                        profileId: userId,
-                        friendId,
-                        lastMessageId: messages.length > 0 ? messages[0]._id : null
+        // Join the chat room
+        const roomId = [userId, friendId].sort().join('_');
+        socket.emit('joinRoom', roomId);
+
+        // Listen for new messages in this room
+        const handleNewMessage = (data) => {
+            console.log('Received new message via socket:', data);
+            if (data.updatedMessage && 
+                (data.updatedMessage.senderId === friendId || data.updatedMessage.receiverId === friendId)) {
+                setMessages(prev => {
+                    const existingIds = new Set(prev.map(m => m._id?.toString()).filter(Boolean));
+                    
+                    // Check if this is a confirmation of an optimistic message
+                    const optimisticIndex = prev.findIndex(msg => 
+                        msg.isOptimistic && 
+                        msg.senderId === data.updatedMessage.senderId &&
+                        msg.message === data.updatedMessage.message &&
+                        Math.abs(new Date(msg.timestamp) - new Date(data.updatedMessage.timestamp)) < 5000 // Within 5 seconds
+                    );
+                    
+                    if (optimisticIndex !== -1) {
+                        // Replace optimistic message with real message
+                        const newMessages = [...prev];
+                        newMessages[optimisticIndex] = data.updatedMessage;
+                        return newMessages;
+                    } else if (!existingIds.has(data.updatedMessage._id?.toString())) {
+                        // Add new message from other user
+                        return [...prev, data.updatedMessage];
                     }
+                    return prev;
                 });
-                
-                if (response.data.messages && response.data.messages.length > 0) {
-                    setMessages(prev => [...response.data.messages, ...prev]);
-                    scrollToLastMessage();
-                }
-            } catch (error) {
-                console.error('Error polling for new messages:', error);
+                scrollToLastMessage();
             }
-        }, 5000); // Poll every 5 seconds
+        };
 
-        return () => clearInterval(pollInterval);
-    }, [friendId, userId, messages.length]);
+        // Listen for messages sent to this user specifically
+        const handleNewMessageToUser = (data) => {
+            console.log('Received new message to user via socket:', data);
+            if (data.updatedMessage && 
+                (data.updatedMessage.senderId === friendId || data.updatedMessage.receiverId === friendId)) {
+                setMessages(prev => {
+                    const existingIds = new Set(prev.map(m => m._id?.toString()).filter(Boolean));
+                    
+                    // Check if this is a confirmation of an optimistic message
+                    const optimisticIndex = prev.findIndex(msg => 
+                        msg.isOptimistic && 
+                        msg.senderId === data.updatedMessage.senderId &&
+                        msg.message === data.updatedMessage.message &&
+                        Math.abs(new Date(msg.timestamp) - new Date(data.updatedMessage.timestamp)) < 5000 // Within 5 seconds
+                    );
+                    
+                    if (optimisticIndex !== -1) {
+                        // Replace optimistic message with real message
+                        const newMessages = [...prev];
+                        newMessages[optimisticIndex] = data.updatedMessage;
+                        return newMessages;
+                    } else if (!existingIds.has(data.updatedMessage._id?.toString())) {
+                        // Add new message from other user
+                        return [...prev, data.updatedMessage];
+                    }
+                    return prev;
+                });
+                scrollToLastMessage();
+            }
+        };
+
+        socket.on('newMessage', handleNewMessage);
+        socket.on('newMessageToUser', handleNewMessageToUser);
+
+        return () => {
+            socket.off('newMessage', handleNewMessage);
+            socket.off('newMessageToUser', handleNewMessageToUser);
+            socket.emit('leaveRoom', roomId);
+        };
+    }, [friendId, userId]);
 
     useEffect(() => {
         if (!friendId || !userId) return;
 
-        // Initial online status check
-        const checkStatus = async () => {
-            const statusData = await checkOnlineStatus(userId, friendId);
+        // Get online status from contacts data (no API calls)
+        const setOnlineStatus = () => {
+            const statusData = getOnlineStatusFromContacts();
             setIsActive(statusData.isActive);
             
             if (statusData.lastSeen) {
@@ -258,10 +385,10 @@ const Chat = ({ }) => {
             }
         };
 
-        checkStatus();
+        setOnlineStatus();
 
-        // Poll for online status updates
-        const statusInterval = setInterval(checkStatus, 30000); // Check every 30 seconds
+        // Refresh online status every 2 minutes (aligned with contacts refresh)
+        const statusInterval = setInterval(setOnlineStatus, 120000);
 
         return () => clearInterval(statusInterval);
     }, [friendId, userId]);
@@ -353,7 +480,7 @@ const Chat = ({ }) => {
                             messages.length > 0 ? messages.map((msg, index) => {
 
                                 return (
-                                    <SingleMessage key={index} msg={msg} friendProfile={friendProfile} messages={messages} isActive={isActive} setIsReplying={setIsReplying} setReplyData={setReplyData} isPreview={isPreview} setIsPreview={setIsPreview} msgListRef={msgListRef} isMsgLoading={isMsgLoading} />
+                                    <SingleMessage key={index} msg={msg} friendProfile={friendProfile} messages={messages} setMessages={setMessages} isActive={isActive} setIsReplying={setIsReplying} setReplyData={setReplyData} isPreview={isPreview} setIsPreview={setIsPreview} msgListRef={msgListRef} isMsgLoading={isMsgLoading} />
                                 )
                             }) : <>
                                 {<SingleMsgSkleton count={10} />}
