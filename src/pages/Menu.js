@@ -14,6 +14,7 @@ const APPS = [
     { key: 'habits', name: 'Habits', desc: 'Build consistent study routines', icon: '📈', colorA: '#22C55E', colorB: '#84CC16', href: '/habits' }
 ]
 
+
 const pageStyle = {
     minHeight: '100vh',
     background: 'linear-gradient(180deg, #0B1220 0%, #0F172A 100%)',
