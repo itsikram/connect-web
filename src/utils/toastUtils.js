@@ -232,21 +232,58 @@ export const showCustomToast = (type, message, options = {}) => {
 
 // Ludo game invitation toast with accept/decline buttons
 export const showLudoInviteToast = (inviterName, inviterAvatar, onAccept, onDecline, options = {}) => {
-  const { autoClose = 10000 } = options; // Longer auto-close for invitations
+  // Don't auto-dismiss invitation toasts - let user decide
+  const { autoClose = false } = options;
 
   const id = toast.info(
-    ({ closeToast }) => (
-      <LudoInviteToast 
-        inviterName={inviterName}
-        inviterAvatar={inviterAvatar}
-        onAccept={onAccept}
-        onDecline={onDecline}
-        closeToast={closeToast}
-      />
-    ), 
+    ({ closeToast }) => {
+      // Create a safe close function that defers the call to prevent race conditions
+      const safeClose = () => {
+        try {
+          if (closeToast && typeof closeToast === 'function') {
+            // Use requestAnimationFrame to defer the close call
+            // This helps prevent race conditions with react-toastify's internal state
+            // where it might try to access properties on an already-removed toast
+            requestAnimationFrame(() => {
+              try {
+                closeToast();
+              } catch (error) {
+                // If closeToast fails, try dismissing by ID as fallback
+                try {
+                  toast.dismiss(id);
+                } catch (dismissError) {
+                  // Silently ignore - toast might already be closed
+                  if (process.env.NODE_ENV === 'development') {
+                    console.warn('Error dismissing toast (ignored):', dismissError);
+                  }
+                }
+              }
+            });
+          } else {
+            // Fallback to dismissing by ID if closeToast is not available
+            toast.dismiss(id);
+          }
+        } catch (error) {
+          // Silently ignore errors
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('Error closing toast (ignored):', error);
+          }
+        }
+      };
+
+      return (
+        <LudoInviteToast 
+          inviterName={inviterName}
+          inviterAvatar={inviterAvatar}
+          onAccept={onAccept}
+          onDecline={onDecline}
+          closeToast={safeClose}
+        />
+      );
+    }, 
     { 
       ...toastConfig, 
-      autoClose,
+      autoClose, // false means don't auto-dismiss
       className: 'custom-toast-ludo-invite',
       closeOnClick: false, // Prevent accidental dismissal
       pauseOnHover: true, // Allow user to pause while reading
@@ -254,7 +291,6 @@ export const showLudoInviteToast = (inviterName, inviterAvatar, onAccept, onDecl
     }
   );
   
-  // Don't auto-dismiss invitation toasts - let user decide
   return id;
 };
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import './LudoInviteToast.css';
 
 const LudoInviteToast = ({ 
@@ -8,6 +8,35 @@ const LudoInviteToast = ({
   onDecline, 
   closeToast 
 }) => {
+  const isClosingRef = useRef(false);
+
+  // Safe wrapper for closeToast to prevent errors and multiple calls
+  const safeCloseToast = () => {
+    if (isClosingRef.current) {
+      return; // Already closing, prevent multiple calls
+    }
+    
+    isClosingRef.current = true;
+    
+    // The closeToast function from toastUtils is already wrapped safely
+    // Just call it directly, but prevent multiple calls
+    try {
+      if (closeToast && typeof closeToast === 'function') {
+        closeToast();
+      }
+    } catch (error) {
+      // Silently ignore errors - the wrapper in toastUtils should handle this
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Error closing toast (ignored):', error);
+      }
+    }
+    
+    // Reset after a short delay
+    setTimeout(() => {
+      isClosingRef.current = false;
+    }, 200);
+  };
+
   return (
     <div className="ludo-invite-toast">
       <button 
@@ -15,7 +44,7 @@ const LudoInviteToast = ({
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          if (closeToast) closeToast();
+          safeCloseToast();
         }}
         aria-label="Close"
       >
@@ -45,8 +74,14 @@ const LudoInviteToast = ({
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            onAccept();
-            closeToast();
+            try {
+              if (onAccept && typeof onAccept === 'function') {
+                onAccept();
+              }
+            } catch (error) {
+              console.error('Error in onAccept:', error);
+            }
+            safeCloseToast();
           }}
         >
           Accept
@@ -56,8 +91,14 @@ const LudoInviteToast = ({
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            onDecline();
-            closeToast();
+            try {
+              if (onDecline && typeof onDecline === 'function') {
+                onDecline();
+              }
+            } catch (error) {
+              console.error('Error in onDecline:', error);
+            }
+            safeCloseToast();
           }}
         >
           Decline

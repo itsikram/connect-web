@@ -1,4 +1,4 @@
-import React, { Fragment, useEffect, useState, useRef } from "react";
+import React, { Fragment, useEffect, useState, useRef, useCallback } from "react";
 import { ToastContainer } from 'react-toastify';
 import { Routes, Route, useParams, useLocation } from 'react-router-dom'
 import NProgress from 'nprogress';
@@ -159,6 +159,7 @@ const Main = () => {
     }
 
     const [isTabActive, setIsTabActive] = useState(!document.hidden);
+    const notificationIntervalRef = useRef(null);
 
     const profileId = user?.profile
 
@@ -409,8 +410,10 @@ const Main = () => {
         };
     }, []);
 
-    // HTTP-based notification polling
-    const fetchNotifications = async () => {
+    // HTTP-based notification polling - memoized to prevent recreation on every render
+    const fetchNotifications = useCallback(async () => {
+        if (!profileId) return;
+        
         try {
             const response = await api.get('/notification/new', {
                 params: { profileId }
@@ -451,10 +454,12 @@ const Main = () => {
         } catch (error) {
             console.error('Error fetching notifications:', error);
         }
-    };
+    }, [profileId, dispatch]);
 
-    // HTTP-based message polling
-    const fetchNewMessages = async () => {
+    // HTTP-based message polling - memoized to prevent recreation on every render
+    const fetchNewMessages = useCallback(async () => {
+        if (!profileId) return;
+        
         try {
             const response = await api.get('/message/new-messages', {
                 params: { profileId }
@@ -514,17 +519,33 @@ const Main = () => {
         } catch (error) {
             console.error('Error fetching new messages:', error);
         }
-    };
+    }, [profileId, dispatch]);
 
     useEffect(() => {
-        if (!profileId) return;
+        if (!profileId) {
+            // Clear interval if profileId is not available
+            if (notificationIntervalRef.current) {
+                clearInterval(notificationIntervalRef.current);
+                notificationIntervalRef.current = null;
+            }
+            return;
+        }
+
+        // Clear any existing interval before creating a new one
+        if (notificationIntervalRef.current) {
+            clearInterval(notificationIntervalRef.current);
+            notificationIntervalRef.current = null;
+        }
 
         // Initial fetch
         fetchNotifications();
         fetchNewMessages();
         
         // Poll for notifications every 30 seconds (keep this as it's for general notifications)
-        const notificationInterval = setInterval(fetchNotifications, 30000);
+        // Use ref to track interval for proper cleanup
+        notificationIntervalRef.current = setInterval(() => {
+            fetchNotifications();
+        }, 30000);
         
         // Listen for new messages via socket instead of polling
         const handleNewMessageToUser = (data) => {
@@ -587,10 +608,14 @@ const Main = () => {
         socket.on('newMessageToUser', handleNewMessageToUser);
 
         return () => {
-            clearInterval(notificationInterval);
+            // Clean up interval
+            if (notificationIntervalRef.current) {
+                clearInterval(notificationIntervalRef.current);
+                notificationIntervalRef.current = null;
+            }
             socket.off('newMessageToUser', handleNewMessageToUser);
         };
-    }, [profileId]);
+    }, [profileId, fetchNotifications, fetchNewMessages, dispatch]);
 
     useEffect(() => {
         if (!profileId) return;

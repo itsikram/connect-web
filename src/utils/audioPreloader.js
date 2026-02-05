@@ -211,19 +211,46 @@ class AudioPreloader {
         if (!audio) return;
 
         try {
-            // Ensure audio is ready
+            // Ensure audio is ready, but don't block too long
             if (audio.readyState < 2) {
-                await new Promise((resolve, reject) => {
-                    const timeout = setTimeout(() => reject(new Error('Timeout')), 2000);
-                    audio.addEventListener('canplaythrough', () => {
-                        clearTimeout(timeout);
-                        resolve();
-                    }, { once: true });
-                    audio.addEventListener('error', () => {
-                        clearTimeout(timeout);
-                        reject(new Error('Load error'));
-                    }, { once: true });
-                });
+                try {
+                    await new Promise((resolve, reject) => {
+                        const timeout = setTimeout(() => {
+                            // Don't reject on timeout - audio might still be playable
+                            // Just resolve and try to play anyway
+                            resolve();
+                        }, 5000); // Increased from 2 to 5 seconds
+                        
+                        const handleCanPlay = () => {
+                            clearTimeout(timeout);
+                            resolve();
+                        };
+                        
+                        const handleError = () => {
+                            clearTimeout(timeout);
+                            reject(new Error('Load error'));
+                        };
+                        
+                        // If already loaded enough, resolve immediately
+                        if (audio.readyState >= 2) {
+                            clearTimeout(timeout);
+                            resolve();
+                            return;
+                        }
+                        
+                        audio.addEventListener('canplaythrough', handleCanPlay, { once: true });
+                        audio.addEventListener('canplay', handleCanPlay, { once: true }); // Also listen for canplay as fallback
+                        audio.addEventListener('error', handleError, { once: true });
+                        
+                        // If audio hasn't started loading, trigger load
+                        if (audio.readyState === 0) {
+                            audio.load();
+                        }
+                    });
+                } catch (loadError) {
+                    // If load fails, still try to play - might work
+                    console.warn('Audio load warning (will still attempt playback):', loadError);
+                }
             }
 
             audio.currentTime = 0;
@@ -233,7 +260,10 @@ class AudioPreloader {
             // Try to play
             await audio.play();
         } catch (error) {
-            console.warn('Failed to play notification sound:', error);
+            // Only log if it's not a timeout (timeout is handled gracefully above)
+            if (error.message !== 'Timeout') {
+                console.warn('Failed to play notification sound:', error);
+            }
             // Try again when tab becomes visible
             if (error.name === 'NotAllowedError' && document.hidden) {
                 const handleVisibilityChange = () => {

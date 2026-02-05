@@ -139,11 +139,13 @@ const LudoGame = () => {
     const searchTimeoutRef = useRef(null);
     const inviteHandlersAttachedRef = useRef(false);
     const isSavingGameStateRef = useRef(false); // Track if a save operation is in progress to prevent concurrent saves
+    const shownInviteToastsRef = useRef(new Map()); // Track shown toasts: key = "gameId:from", value = timestamp
     const [incomingInvite, setIncomingInvite] = useState(null);
     const [inviteCopied, setInviteCopied] = useState(false);
     const [incomingInviteRequest, setIncomingInviteRequest] = useState(null); // { from, name, avatar, gameId, slotIndex, playerCount }
     const [pendingInvites, setPendingInvites] = useState([]); // [{ from, name, avatar, gameId, slotIndex, playerCount, ts }]
     const [joinedGames, setJoinedGames] = useState([]); // [{ gameId, createdAt, onlinePlayers, offlinePlayers, lastPlayers, isOnline, playerCount }]
+    const joinedGamesRef = useRef([]); // Ref to track joinedGames for invite handlers
     // Lobby/waiting state
     const [waitingForPlayers, setWaitingForPlayers] = useState(false);
     // Track inviter identity to fix seat 0 identity on invitee until host snapshot is correct
@@ -158,6 +160,7 @@ const LudoGame = () => {
     const socketRef = useRef(null);
     const socketCreatingRef = useRef(false); // Guard to prevent multiple simultaneous socket creations
     const [gameId, setGameId] = useState(null);
+    const gameIdRef = useRef(null); // Ref to track current gameId for invite handlers
     const [myPlayerIndex, setMyPlayerIndex] = useState(0);
     const myPlayerIndexRef = useRef(0);
     // Track last roll to prevent multiple rolls
@@ -1033,6 +1036,28 @@ const LudoGame = () => {
             // First try loading from localStorage
             const savedState = loadGameState();
 
+            // CRITICAL: Check if this game was explicitly exited by the user
+            if (savedState && savedState.gameId) {
+                try {
+                    const exitedGames = JSON.parse(localStorage.getItem('ludo_exited_games') || '[]');
+                    const gameIdStr = String(savedState.gameId);
+                    const isExited = Array.isArray(exitedGames) && exitedGames.some(gid => String(gid) === gameIdStr);
+                    if (isExited) {
+                        console.log('[RECONNECT] Skipping reconnection - game was explicitly exited:', savedState.gameId);
+                        // Clear the saved state since we're not reconnecting
+                        try {
+                            localStorage.removeItem('ludo_game_state');
+                            savedGameStateRef.current = null;
+                        } catch (_e) {
+                            // Ignore errors
+                        }
+                        return;
+                    }
+                } catch (_e) {
+                    // Ignore errors reading exited games list
+                }
+            }
+
             // CRITICAL: Skip if we're joining via invite or if we already have a gameId from invite
             if (isJoiningViaInviteRef.current) {
                 // Skipping reconnection - joining via invite (checked after load)
@@ -1619,15 +1644,16 @@ const LudoGame = () => {
             const inviteStatus = profileIdStr ? (currentInvitedStatus[profileIdStr] || currentInvitedStatus[seat.profileId]) : null;
             const wasInvitedToThisSlot = profileIdStr && (currentInvitedSlots[profileIdStr] === i || currentInvitedSlots[seat.profileId] === i);
 
-            // Consider them joined only if:
-            // - If they were invited to this slot: only joined if status is explicitly 'joined'
-            // - If they were NOT invited to this slot: joined (offline assignment)
+            // CRITICAL: If player has profileId, consider them joined by default
+            // The invite status might not be set properly when host is from Android
+            // If they have a profileId in the players array, they've joined the game
+            // Only check invite status if it's explicitly 'invited' (meaning they haven't joined yet)
             const isJoined = wasInvitedToThisSlot
-                ? inviteStatus === 'joined'  // If invited, only joined if status is 'joined'
-                : inviteStatus !== 'invited';  // If not invited, joined unless status is 'invited'
+                ? (inviteStatus === 'joined' || inviteStatus === undefined || inviteStatus === null)  // If invited, joined if status is 'joined' OR undefined (from server)
+                : (inviteStatus !== 'invited');  // If not invited, joined unless status is explicitly 'invited'
 
             if (!isJoined) {
-                // This player hasn't actually joined yet
+                // This player hasn't actually joined yet (status is explicitly 'invited')
                 return false;
             }
         }
@@ -4064,6 +4090,15 @@ const LudoGame = () => {
         }
     }, [currentPlayer, diceValue]);
 
+    // Keep refs in sync with state for invite handlers
+    useEffect(() => {
+        gameIdRef.current = gameId;
+    }, [gameId]);
+
+    useEffect(() => {
+        joinedGamesRef.current = joinedGames;
+    }, [joinedGames]);
+
     // Invite listeners attached regardless of onlineMode, so users receive invites anytime
     useEffect(() => {
         let retryTimer = null;
@@ -4077,6 +4112,37 @@ const LudoGame = () => {
                     if (!payload) return;
                     if (payload.to && myProfile?._id && String(payload.to) !== String(myProfile._id)) return;
                     
+                    // Skip invites for games the user is already in
+                    const currentGameId = gameIdRef.current;
+                    const joinedGamesList = joinedGamesRef.current;
+                    if (currentGameId && String(payload.gameId) === String(currentGameId)) {
+                        return; // User is already in this game
+                    }
+                    if (Array.isArray(joinedGamesList) && joinedGamesList.some(g => String(g.gameId) === String(payload.gameId))) {
+                        return; // User has already joined this game
+                    }
+                    
+                    // Create unique key for this invite
+                    const inviteKey = `${payload.gameId}:${payload.by}`;
+                    const now = Date.now();
+                    
+                    // CRITICAL: Check and mark synchronously BEFORE any async operations
+                    // This prevents race conditions when both onInvite and onInvites fire
+                    const lastShownTime = shownInviteToastsRef.current.get(inviteKey);
+                    if (lastShownTime && (now - lastShownTime) < 30000) {
+                        return; // Already shown a toast for this invite recently (30 seconds), skip
+                    }
+                    
+                    // Mark immediately to prevent duplicate toasts from other handlers
+                    shownInviteToastsRef.current.set(inviteKey, now);
+                    
+                    // Clean up old entries (older than 1 minute)
+                    for (const [key, timestamp] of shownInviteToastsRef.current.entries()) {
+                        if (now - timestamp > 60000) {
+                            shownInviteToastsRef.current.delete(key);
+                        }
+                    }
+                    
                     // Store inviter info
                     try {
                         if (payload?.by) setLastInviter({ id: payload.by, name: payload.name, avatar: payload.avatar, cover: payload.cover });
@@ -4085,7 +4151,6 @@ const LudoGame = () => {
                     // Check if this invite already exists in pending invites
                     setPendingInvites(prev => {
                         const exists = prev.find(i => String(i.gameId) === String(payload.gameId) && String(i.from) === String(payload.by));
-                        const now = Date.now();
                         
                         // Show toast for new invites or re-invites after 5 minutes
                         if (!exists || (now - (exists.ts || 0)) > 5 * 60 * 1000) {
@@ -4149,11 +4214,44 @@ const LudoGame = () => {
                         ts: x.ts || Date.now()
                     }));
                     
-                    setPendingInvites(prev => {
-                        // Find invites that are new (not already in pending)
-                        const newInvites = normalized.filter(inv => 
-                            !prev.find(p => String(p.gameId) === String(inv.gameId) && String(p.from) === String(inv.from))
-                        );
+                    // Filter out invites for games the user is already in
+                    const currentGameId = gameIdRef.current;
+                    const joinedGamesList = joinedGamesRef.current;
+                    const filteredNormalized = normalized.filter(inv => {
+                        // Skip if user is already in this game
+                        if (currentGameId && String(inv.gameId) === String(currentGameId)) {
+                            return false;
+                        }
+                        // Skip if user has already joined this game
+                        if (Array.isArray(joinedGamesList) && joinedGamesList.some(g => String(g.gameId) === String(inv.gameId))) {
+                            return false;
+                        }
+                        return true;
+                    });
+                    
+                    const now = Date.now();
+                    
+                    // CRITICAL: Filter and mark toasts synchronously BEFORE state updates
+                    // This prevents race conditions when both onInvite and onInvites fire
+                    const newInvites = filteredNormalized.filter(inv => {
+                        // Check if we've already shown a toast for this invite recently (within 30 seconds)
+                        const inviteKey = `${inv.gameId}:${inv.from}`;
+                        const lastShownTime = shownInviteToastsRef.current.get(inviteKey);
+                        if (lastShownTime && (now - lastShownTime) < 30000) {
+                            return false; // Already shown a toast for this invite recently, skip
+                        }
+                        
+                        // Mark immediately to prevent duplicate toasts from other handlers
+                        shownInviteToastsRef.current.set(inviteKey, now);
+                        return true;
+                    });
+                    
+                    // Clean up old entries (older than 1 minute) - do this once
+                    for (const [key, timestamp] of shownInviteToastsRef.current.entries()) {
+                        if (now - timestamp > 60000) {
+                            shownInviteToastsRef.current.delete(key);
+                        }
+                    }
                         
                         // Show toast for each new invite
                         newInvites.forEach(inv => {
@@ -4182,12 +4280,19 @@ const LudoGame = () => {
                                 }
                             );
                         });
+                    
+                    setPendingInvites(prev => {
+                        // Find invites that are new (not already in pending)
+                        const invitesToAdd = filteredNormalized.filter(inv => 
+                            !prev.find(p => String(p.gameId) === String(inv.gameId) && String(p.from) === String(inv.from))
+                        );
                         
-                        return normalized;
+                        // Only add filtered invites to pending list
+                        return [...prev, ...invitesToAdd].slice(0, 20);
                     });
                     
                     try {
-                        if (normalized[0]?.from) setLastInviter({ id: normalized[0].from, name: normalized[0].name, avatar: normalized[0].avatar });
+                        if (filteredNormalized[0]?.from) setLastInviter({ id: filteredNormalized[0].from, name: filteredNormalized[0].name, avatar: filteredNormalized[0].avatar });
                     } catch (_e) { }
                 } catch (_e) { }
             };
@@ -4286,6 +4391,12 @@ const LudoGame = () => {
         setShowReconnectModal(false);
         // Clear saved game state
         clearGameState();
+        // Clear exited games flag to allow new games
+        try {
+            localStorage.removeItem('ludo_exited_games');
+        } catch (_e) {
+            // Ignore errors
+        }
         // Reset game state
         setGameId(null);
         setOnlineMode(false);
@@ -4333,6 +4444,17 @@ const LudoGame = () => {
 
         // Clear all localStorage game state
         try {
+            // Store the exited gameId to prevent reconnection after page reload
+            if (gameId) {
+                const exitedGames = JSON.parse(localStorage.getItem('ludo_exited_games') || '[]');
+                const gameIdStr = String(gameId);
+                const alreadyExited = Array.isArray(exitedGames) && exitedGames.some(gid => String(gid) === gameIdStr);
+                if (!alreadyExited) {
+                    exitedGames.push(gameId);
+                    localStorage.setItem('ludo_exited_games', JSON.stringify(exitedGames));
+                    console.log('[EXIT_GAME] Marked game as exited to prevent reconnection:', gameId);
+                }
+            }
             localStorage.removeItem('ludo_game_state');
             savedGameStateRef.current = null;
             console.log('[EXIT_GAME] Cleared localStorage game state');
@@ -4803,6 +4925,12 @@ const LudoGame = () => {
             savedGameStateRef.current = null;
             try {
                 localStorage.removeItem('ludo_game_state');
+                // Remove this gameId from exited games list if it exists (in case user exited and then got re-invited)
+                const exitedGames = JSON.parse(localStorage.getItem('ludo_exited_games') || '[]');
+                const filtered = exitedGames.filter(gid => String(gid) !== String(payload.gameId));
+                if (filtered.length !== exitedGames.length) {
+                    localStorage.setItem('ludo_exited_games', JSON.stringify(filtered));
+                }
             } catch (_e) {
                 // Ignore localStorage errors
             }
@@ -4932,128 +5060,40 @@ const LudoGame = () => {
             setIncomingInviteRequest(null);
         } finally {
             setIncomingInviteRequest(null);
-            // Don't set gameStarted to true yet - wait for host to send game state
-            // This prevents the disconnect handler from thinking we're in an active game
-            // setGameStarted(true); // Removed - let onPlayers handler set this when we receive state
-            // Remove invite from list locally
-            setPendingInvites(prev => prev.filter(i => !(String(i.gameId) === String(payload.gameId) && String(i.from) === String(payload.from))));
         }
     };
 
     const declineIncomingInvite = () => {
         const payload = incomingInviteRequest;
-        setIncomingInviteRequest(null);
-        if (payload && socketRef.current) {
-            try { socketRef.current.emit('ludo:invites:dismiss', { gameId: payload.gameId, by: payload.from }); } catch (_e) { }
-        }
-    };
-
-    const acceptInvite = (inv) => {
-        if (!inv) return;
-        setIncomingInviteRequest(inv);
-        setTimeout(() => acceptIncomingInvite(), 0);
-    };
-
-    const dismissInvite = (inv) => {
-        if (!inv) return;
-        setPendingInvites(prev => prev.filter(i => !(String(i.gameId) === String(inv.gameId) && String(i.from) === String(inv.from))));
-        try { socketRef.current && socketRef.current.emit('ludo:invites:dismiss', { gameId: inv.gameId, by: inv.from }); } catch (_e) { }
-    };
-
-    const joinGame = (game) => {
-        if (!game || !game.gameId) return;
+        if (!payload) return;
         
-        // Set up the game state for joining
-        setOnlineMode(true);
-        setGameId(game.gameId);
-        
-        // If we have lastPlayers data, use it to restore state
-        if (game.lastPlayers) {
-            const { players: gamePlayers, selectedPlayerCount, currentPlayer, gameStarted, winner, winners } = game.lastPlayers;
-            
-            // Find our player index
-            const myIndex = gamePlayers?.findIndex(p => p.profileId === myProfile?._id);
-            if (myIndex >= 0) {
-                setMyPlayerIndex(myIndex);
-                setPlayers(gamePlayers || []);
-                setSelectedPlayerCount(selectedPlayerCount || 4);
-                setCurrentPlayer(currentPlayer || 0);
-                setGameStarted(gameStarted || false);
-                setWinner(winner || null);
-                setWinners(winners || []);
-            }
-        }
-        
-        // Join the socket room
-        ensureSocketConnected();
-        setTimeout(() => {
-            try {
-                emitSocket('ludo:join', { gameId: game.gameId });
-                console.log('[JOIN_GAME] Joined game:', game.gameId);
-            } catch (_e) { }
-        }, 100);
-    };
-
-    // Player editor helpers
-    const openPlayerEditor = (index) => {
-        if (index == null || !players[index]) return;
-        setEditingPlayerIndex(index);
-        setEditName(players[index]?.name || '');
-        setEditAvatarUrl(players[index]?.avatar || '');
-        setShowPlayerEditor(true);
-    };
-
-    const closePlayerEditor = () => {
-        setShowPlayerEditor(false);
-        setEditingPlayerIndex(null);
-    };
-
-    const onPickAvatarFile = (e) => {
         try {
-            const f = e?.target?.files?.[0];
-            if (!f) return;
-            const url = URL.createObjectURL(f);
-            setEditAvatarUrl(url);
-        } catch (_e) { }
+            // Emit dismiss event to socket
+            if (socketRef.current) {
+                try { 
+                    socketRef.current.emit('ludo:invites:dismiss', { 
+                        gameId: payload.gameId, 
+                        by: payload.from 
+                    }); 
+                } catch (_e) { }
+            }
+            
+            // Remove from pending invites
+            setPendingInvites(prev => 
+                prev.filter(i => !(String(i.gameId) === String(payload.gameId) && String(i.from) === String(payload.from)))
+            );
+            
+            // Clear the incoming invite request
+            setIncomingInviteRequest(null);
+        } catch (error) {
+            console.error('[DECLINE_INVITE] Error declining invite:', error);
+            // Still clear the state even on error
+            setIncomingInviteRequest(null);
+        }
     };
 
-    const savePlayerEditor = () => {
-        if (editingPlayerIndex == null) return closePlayerEditor();
-        setPlayers(prev => {
-            const updated = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
-            const target = updated[editingPlayerIndex];
-            if (!target) return prev;
-            target.name = (editName && editName.trim().length > 0) ? editName.trim() : target.name;
-            target.avatar = (editAvatarUrl && editAvatarUrl.trim().length > 0) ? editAvatarUrl.trim() : undefined;
-            return updated;
-        });
-        closePlayerEditor();
-    };
-
-    // Rendering helpers - memoized for performance
-    const homePositions = HOME_POSITIONS;
-
-    // Compute overlapping tokens in the same board cell for better visibility
-    // Optimized: only recalculate when players actually change
-    const cellOccupancy = useMemo(() => {
-        const map = new Map();
-        players.forEach((player, playerIndex) => {
-            if (!player || !Array.isArray(player.pieces)) return;
-            player.pieces.forEach((piece, pieceIndex) => {
-                // Include pieces that are in play OR finished (at end of path)
-                if (piece && typeof piece.steps === 'number' && piece.steps > 0 && !piece.isHome) {
-                    const pos = getPositionOnPath(playerIndex, piece.steps);
-                    const key = `${pos.x},${pos.y}`;
-                    if (!map.has(key)) map.set(key, []);
-                    map.get(key).push({ playerIndex, pieceIndex });
-                }
-            });
-        });
-        return map;
-    }, [players, getPositionOnPath]);
-
-    const getOverlapOffset = (count, index) => {
-        // Keep overlapping tokens within the same cell
+    // Helper function to calculate token offset for multiple tokens in the same cell
+    const getTokenOffset = (index, count) => {
         // Use a fraction of cell size for spacing, rounded to whole pixels
         const delta = Math.round(CELL_SIZE * 0.35);
         if (count <= 1) return { dx: 0, dy: 0 };
@@ -5213,11 +5253,33 @@ const LudoGame = () => {
         boxSizing: 'border-box'
     };
 
+    // Calculate cell occupancy for tokens that are in play (to handle overlapping tokens)
+    const cellOccupancy = useMemo(() => {
+        const occupancy = new Map();
+        renderPlayerOrder.forEach((playerIndex) => {
+            const player = players[playerIndex];
+            if (!player) return;
+            player.pieces.forEach((piece, pieceIndex) => {
+                // Only track pieces that are in play or finished (not at home)
+                if (piece.isInPlay || (piece.steps > 0 && piece.steps === maxSteps)) {
+                    const stepsToUse = piece.steps === maxSteps ? maxSteps : piece.steps;
+                    const pos = getPositionOnPath(playerIndex, stepsToUse);
+                    const key = `${pos.x},${pos.y}`;
+                    if (!occupancy.has(key)) {
+                        occupancy.set(key, []);
+                    }
+                    occupancy.get(key).push({ playerIndex, pieceIndex });
+                }
+            });
+        });
+        return occupancy;
+    }, [players, renderPlayerOrder, maxSteps]);
+
     const tokenNode = (playerIndex, pieceIndex, piece) => {
         let x = 0;
         let y = 0;
         if (piece.isHome) {
-            const pos = homePositions[playerIndex][pieceIndex];
+            const pos = HOME_POSITIONS[playerIndex][pieceIndex];
             // Calculate cell center position precisely
             // Cell left edge is at pos.x * CELL_SIZE, right edge at (pos.x + 1) * CELL_SIZE
             // Center is exactly halfway: pos.x * CELL_SIZE + CELL_SIZE / 2 = (pos.x + 0.5) * CELL_SIZE
@@ -5246,7 +5308,7 @@ const LudoGame = () => {
             const key = `${pos.x},${pos.y}`;
             const group = cellOccupancy.get(key) || [];
             const idxInGroup = group.findIndex(g => g.playerIndex === playerIndex && g.pieceIndex === pieceIndex);
-            const { dx, dy } = getOverlapOffset(group.length, idxInGroup);
+            const { dx, dy } = getTokenOffset(idxInGroup >= 0 ? idxInGroup : group.length, group.length);
             x += dx;
             y += dy;
         }
