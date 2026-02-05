@@ -22,7 +22,7 @@ function App() {
 
   // Send HTTP request to yt-dl service on app start
   useEffect(() => {
-    fetch('https://yt-dl-tyyw.onrender.com')
+    fetch('https://yt-dl-ufvy.onrender.com')
       .catch(() => {
         // Silently fail - fire and forget
       });
@@ -36,7 +36,7 @@ function App() {
   useEffect(() => {
     const checkServerHealth = async () => {
       fetch('https://emotion-detection-z1b2.onrender.com');
-      fetch('https://yt-dl-tyyw.onrender.com')
+      fetch('https://yt-dl-ufvy.onrender.com')
 
       try {
         const response = await fetch('https://connect-server-y1ku.onrender.com/');
@@ -59,7 +59,7 @@ function App() {
     checkServerHealth();
 
     // Set up interval for every 15 minutes (900000 ms)
-    const interval = setInterval(checkServerHealth, 15 * 60 * 1000);
+    const interval = setInterval(checkServerHealth, 2 * 60 * 60 * 1000);
 
     return () => clearInterval(interval);
   }, []);
