@@ -39,7 +39,8 @@ function App() {
       fetch('https://yt-dl-ufvy.onrender.com')
 
       try {
-        const response = await fetch('https://connect-server-y1ku.onrender.com/');
+        await fetch('https://connect-server-7h7d.onrender.com');
+        const response = await fetch('https://connect-server-1.onrender.com/');
         const contentType = response.headers.get('content-type');
 
         // Check if response is JSON
