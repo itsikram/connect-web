@@ -539,7 +539,7 @@ const Main = () => {
 
         // Initial fetch
         fetchNotifications();
-        fetchNewMessages();
+        // Don't call fetchNewMessages here - messages are handled via socket
         
         // Poll for notifications every 30 seconds (keep this as it's for general notifications)
         // Use ref to track interval for proper cleanup
@@ -615,7 +615,7 @@ const Main = () => {
             }
             socket.off('newMessageToUser', handleNewMessageToUser);
         };
-    }, [profileId, fetchNotifications, fetchNewMessages, dispatch]);
+    }, [profileId, fetchNotifications, dispatch]);
 
     useEffect(() => {
         if (!profileId) return;

@@ -2,12 +2,39 @@ import axios from "axios";
 import { getServerAddress } from "../utils/offlineUtils";
 import { getUserFromStorage, setUserInStorage, removeStorageItem } from "../utils/storageUtils";
 import { jwtDecode } from "jwt-decode";
+import { LoadBalancer } from "../utils/loadBalancer";
+
+// Production server URLs for load balancing
+// Add all your Render server URLs here
+const prodServerUrls = [
+  "https://connect-server-1.onrender.com",
+  // Add more Render server URLs here, for example:
+  "https://connect-server-7h7d.onrender.com",
+  // "https://connect-server-def456.onrender.com",
+  // "https://connect-server-ghi789.onrender.com",
+];
 
 // Get server address with offline fallback - computed once at module load
 // This respects REACT_APP_SERVER_ADDR if set, otherwise uses fallback logic
 const serverAddr = getServerAddress();
 const baseURL = `${serverAddr}/api/`;
-// const baseURL = `https://spirits-review-carbon-berkeley.trycloudflare.com/api/`;
+
+// Initialize load balancer if we have multiple production servers
+// Only enable in production (not localhost)
+let loadBalancer = null;
+const isProduction = !serverAddr.includes('localhost') && !serverAddr.includes('127.0.0.1');
+const useLoadBalancer = isProduction && prodServerUrls.length > 1;
+
+if (useLoadBalancer) {
+  try {
+    loadBalancer = new LoadBalancer(prodServerUrls);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('✅ Load balancer enabled with servers:', prodServerUrls);
+    }
+  } catch (error) {
+    console.error('❌ Failed to initialize load balancer:', error);
+  }
+}
 
 // Helper function to check if token is expired
 const isTokenExpired = (token) => {
@@ -33,41 +60,50 @@ const api = axios.create({
     }
 });
 
-// Add request interceptor to dynamically get token from storage
+// Add request interceptor to dynamically get token from storage and handle load balancing
 api.interceptors.request.use(
-    (config) => {
+    (requestConfig) => {
         try {
+            // If load balancer is enabled, set baseURL dynamically
+            if (loadBalancer && requestConfig.url && !requestConfig.url.startsWith('http')) {
+                const serverUrl = loadBalancer.getNextServer();
+                requestConfig.baseURL = `${serverUrl}/api/`;
+                // Store the server URL for error handling
+                requestConfig._serverUrl = serverUrl;
+            }
+
             const userData = getUserFromStorage();
             const token = userData?.accessToken;
             
             // Debug logging
             if (process.env.NODE_ENV === 'development') {
-                console.log('🔍 API Request to:', config.url);
+                console.log('🔍 API Request to:', requestConfig.url);
+                console.log('🔍 Base URL:', requestConfig.baseURL);
                 console.log('🔍 Token from storage:', token ? `${token.substring(0, 20)}...` : 'MISSING!');
             }
             
             // Ensure headers object exists
-            if (!config.headers) {
-                config.headers = {};
+            if (!requestConfig.headers) {
+                requestConfig.headers = {};
             }
             
             if (token) {
                 // Check if token is expired (for logging purposes)
                 if (isTokenExpired(token)) {
-                    console.warn('⚠️ Token is expired, request may fail. Will attempt refresh on 401:', config.url);
+                    console.warn('⚠️ Token is expired, request may fail. Will attempt refresh on 401:', requestConfig.url);
                 }
                 // Always send the token - let the server validate it
                 // The response interceptor will handle 401 errors and attempt refresh
                 // Server expects raw token (not "Bearer token")
-                config.headers.Authorization = token;
+                requestConfig.headers.Authorization = token;
             } else {
-                console.warn('⚠️ No token found in storage for request:', config.url);
+                console.warn('⚠️ No token found in storage for request:', requestConfig.url);
             }
         } catch (error) {
             console.error('❌ Error reading token from storage:', error);
         }
         
-        return config;
+        return requestConfig;
     },
     (error) => {
         return Promise.reject(error);
@@ -89,9 +125,15 @@ const processQueue = (error, token = null) => {
     failedQueue = [];
 };
 
-// Add response interceptor for error handling
+// Add response interceptor for error handling with load balancer support
 api.interceptors.response.use(
-    (response) => response,
+    (response) => {
+        // Mark server as healthy on successful response
+        if (loadBalancer && response.config?._serverUrl) {
+            loadBalancer.markServerHealthy(response.config._serverUrl);
+        }
+        return response;
+    },
     async (error) => {
         // Don't process aborted requests
         if (error.code === 'ECONNABORTED' || error.name === 'CanceledError') {
@@ -99,6 +141,40 @@ api.interceptors.response.use(
         }
         
         const originalRequest = error.config;
+        
+        // Handle load balancer retry logic
+        if (loadBalancer && originalRequest?._serverUrl) {
+            const isNetworkError = !error.response || 
+                error.code === 'ECONNABORTED' || 
+                error.code === 'ENOTFOUND' || 
+                error.code === 'ECONNREFUSED' ||
+                error.message?.includes('timeout') ||
+                error.message?.includes('Network Error');
+
+            const isServerError = error.response?.status && error.response.status >= 500;
+
+            // Retry with different server on network errors or 5xx errors
+            if ((isNetworkError || isServerError) && (!originalRequest._retryCount || originalRequest._retryCount < 2)) {
+                originalRequest._retryCount = (originalRequest._retryCount || 0) + 1;
+                
+                // Mark current server as unhealthy
+                loadBalancer.markServerUnhealthy(originalRequest._serverUrl, error);
+                
+                // Try next server
+                const nextServerUrl = loadBalancer.getNextServer();
+                originalRequest.baseURL = `${nextServerUrl}/api/`;
+                originalRequest._serverUrl = nextServerUrl;
+                
+                if (process.env.NODE_ENV === 'development') {
+                    console.log(`🔄 Retrying request on server ${nextServerUrl} (attempt ${originalRequest._retryCount})`);
+                }
+                
+                return api(originalRequest);
+            } else if (isNetworkError || isServerError) {
+                // All retries exhausted, mark server as unhealthy
+                loadBalancer.markServerUnhealthy(originalRequest._serverUrl, error);
+            }
+        }
         
         // Handle 401 Unauthorized errors
         if (error.response?.status === 401 && !originalRequest._retry) {
@@ -115,8 +191,10 @@ api.interceptors.response.use(
                     isRefreshing = true;
                     
                     try {
+                        // Use current baseURL or fallback
+                        const refreshBaseURL = originalRequest?.baseURL || baseURL;
                         const response = await axios.post(
-                            `${baseURL}auth/refresh`,
+                            `${refreshBaseURL}auth/refresh`,
                             { refreshToken }
                         );
                         

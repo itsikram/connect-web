@@ -1,4 +1,4 @@
-import React, { Fragment, useEffect, useState, useMemo } from 'react';
+import React, { Fragment, useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate, useParams } from 'react-router-dom';
 import UserPP from '../../components/UserPP';
@@ -14,6 +14,8 @@ let RightSidebar = () => {
     let myContacts = useSelector(state => state.message) // Get contacts with messages from Redux
     const [activeFriends, setActiveFriends] = useState([]);
     const [triggerUpdate, setTriggerUpdate] = useState(0); // Force re-sort when messages update
+    const messageIntervalRef = useRef(null);
+    const statusIntervalRef = useRef(null);
 
     // Sort friends by last message timestamp
     const sortedFriendsData = useMemo(() => {
@@ -86,8 +88,9 @@ let RightSidebar = () => {
         }
     };
 
-    // HTTP-based message checking for sorting
-    const checkForNewMessages = async () => {
+    // HTTP-based message checking for sorting - memoized to prevent recreation
+    const checkForNewMessages = useCallback(async () => {
+        if (!myProfile._id) return;
         try {
             const response = await api.get('/message/new-messages-count', {
                 params: { profileId: myProfile._id }
@@ -98,10 +101,31 @@ let RightSidebar = () => {
         } catch (error) {
             console.error('Error checking for new messages:', error);
         }
-    };
+    }, [myProfile._id]);
 
     useEffect(() => {
-        if (!myProfile.friends || !Array.isArray(myProfile.friends)) return;
+        if (!myProfile._id || !myProfile.friends || !Array.isArray(myProfile.friends)) {
+            // Clear intervals if profile is not available
+            if (messageIntervalRef.current) {
+                clearInterval(messageIntervalRef.current);
+                messageIntervalRef.current = null;
+            }
+            if (statusIntervalRef.current) {
+                clearInterval(statusIntervalRef.current);
+                statusIntervalRef.current = null;
+            }
+            return;
+        }
+
+        // Clear any existing intervals before creating new ones
+        if (messageIntervalRef.current) {
+            clearInterval(messageIntervalRef.current);
+            messageIntervalRef.current = null;
+        }
+        if (statusIntervalRef.current) {
+            clearInterval(statusIntervalRef.current);
+            statusIntervalRef.current = null;
+        }
 
         // Get online status from contacts data (no API calls)
         const setOnlineStatusFromContacts = () => {
@@ -122,16 +146,22 @@ let RightSidebar = () => {
         setOnlineStatusFromContacts();
 
         // Refresh online status every 2 minutes (aligned with contacts refresh)
-        const statusInterval = setInterval(setOnlineStatusFromContacts, 120000);
+        statusIntervalRef.current = setInterval(setOnlineStatusFromContacts, 120000);
 
-        // Poll for new messages every 15 seconds (keep this for message sorting)
-        const messageInterval = setInterval(checkForNewMessages, 15000);
+        // Poll for new messages every 30 seconds (reduced frequency to prevent loops)
+        messageIntervalRef.current = setInterval(checkForNewMessages, 30000);
 
         return () => {
-            clearInterval(statusInterval);
-            clearInterval(messageInterval);
+            if (statusIntervalRef.current) {
+                clearInterval(statusIntervalRef.current);
+                statusIntervalRef.current = null;
+            }
+            if (messageIntervalRef.current) {
+                clearInterval(messageIntervalRef.current);
+                messageIntervalRef.current = null;
+            }
         };
-    }, [myProfile._id, myProfile.friends])
+    }, [myProfile._id, checkForNewMessages])
 
     // Remove duplicate message polling since it's already handled above
 

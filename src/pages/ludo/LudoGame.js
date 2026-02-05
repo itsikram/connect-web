@@ -46,138 +46,218 @@ import { AnimatedBackground } from './components/AnimatedBackground';
 import { WinnerConfetti } from './components/WinnerConfetti';
 import { ConnectionStatus } from './components/ConnectionStatus';
 import { GameBoard } from './components/GameBoard';
+import { GameEndedScreen } from './components/GameEndedScreen';
+import { WinnerModal } from './components/WinnerModal';
+import { IncomingInviteModal } from './components/IncomingInviteModal';
+import { PlayerEditorModal } from './components/PlayerEditorModal';
+import { GameHeader } from './components/GameHeader';
+import { PendingInvitesBanner } from './components/PendingInvitesBanner';
+import { PlayerSelectionModal } from './components/PlayerSelectionModal';
 import { useAudio } from './hooks/useAudio';
 import { showLudoInviteToast } from '../../utils/toastUtils';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
-// Web port of the RN Ludo game with matching functions and logic
+/**
+ * LudoGame Component
+ * 
+ * Web port of the React Native Ludo game with matching functions and logic.
+ * Handles both offline and online multiplayer gameplay with real-time synchronization.
+ * 
+ * @component
+ */
 const LudoGame = () => {
-    // Layout
-    const getWindowSize = () => ({ width: window.innerWidth, height: window.innerHeight });
+    // ============================================================================
+    // SECTION 1: LAYOUT & RESPONSIVE CALCULATIONS
+    // ============================================================================
+    
+    /**
+     * Get current window dimensions
+     */
+    const getWindowSize = () => ({ 
+        width: window.innerWidth, 
+        height: window.innerHeight 
+    });
+    
     const [winSize, setWinSize] = useState(getWindowSize());
+    
+    // Update window size on resize
     useEffect(() => {
-        const onResize = () => setWinSize(getWindowSize());
-        window.addEventListener('resize', onResize);
-        return () => window.removeEventListener('resize', onResize);
+        const handleResize = () => setWinSize(getWindowSize());
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    // Ensure board fits within viewport on very small screens
-    // Calculate responsive padding (5-20px based on screen size)
-    const responsivePadding = Math.min(20, Math.max(5, winSize.width * 0.05));
-    const totalPadding = responsivePadding * 2; // padding on both sides
-    // Account for padding and ensure board fits
-    const availableWidth = Math.max(200, winSize.width - totalPadding);
-    const availableHeight = Math.max(200, winSize.height - totalPadding);
-    const maxBoardSize = 600; // Maximum size for larger screens
-    // Calculate board size based on available space, ensuring it fits
-    const calculatedBoardSize = Math.min(availableWidth * 0.98, availableHeight * 0.65, maxBoardSize);
-    // Ensure minimum board size but don't exceed available space
-    const minBoardSize = Math.min(250, availableWidth * 0.95); // Minimum but respect viewport
-    const BOARD_SIZE = Math.max(minBoardSize, Math.min(maxBoardSize, calculatedBoardSize));
-    // Calculate CELL_SIZE precisely - use exact division to maintain grid alignment
-    const CELL_SIZE = BOARD_SIZE / 15;
+    // Board size calculations for responsive design
+    const RESPONSIVE_PADDING_MIN = 5;
+    const RESPONSIVE_PADDING_MAX = 20;
+    const BOARD_SIZE_MAX = 600;
+    const BOARD_SIZE_MIN = 250;
+    const AVAILABLE_WIDTH_MIN = 200;
+    const AVAILABLE_HEIGHT_MIN = 200;
+    const BOARD_CELLS = 15; // 15x15 grid
 
-    // Types mirrored from RN (JS only)
-    // Position: { x: number, y: number }
-    // Piece: { id, color, position, isHome, isInPlay, steps }
-    // Player: { id, name, color, pieces, isActive, avatar, profileId }
+    const responsivePadding = Math.min(
+        RESPONSIVE_PADDING_MAX, 
+        Math.max(RESPONSIVE_PADDING_MIN, winSize.width * 0.05)
+    );
+    const totalPadding = responsivePadding * 2;
+    
+    const availableWidth = Math.max(AVAILABLE_WIDTH_MIN, winSize.width - totalPadding);
+    const availableHeight = Math.max(AVAILABLE_HEIGHT_MIN, winSize.height - totalPadding);
+    
+    const calculatedBoardSize = Math.min(
+        availableWidth * 0.98, 
+        availableHeight * 0.65, 
+        BOARD_SIZE_MAX
+    );
+    
+    const minBoardSize = Math.min(BOARD_SIZE_MIN, availableWidth * 0.95);
+    const BOARD_SIZE = Math.max(
+        minBoardSize, 
+        Math.min(BOARD_SIZE_MAX, calculatedBoardSize)
+    );
+    const CELL_SIZE = BOARD_SIZE / BOARD_CELLS;
 
-    // Use constants from extracted module
+    // ============================================================================
+    // SECTION 2: GAME CONSTANTS & CONFIGURATION
+    // ============================================================================
+    
+    // Game constants from extracted modules
     const colors = COLORS;
     const playerNames = PLAYER_NAMES;
     const playerEmojis = PLAYER_EMOJIS;
 
-    // Use exact path length as the true max steps (prevents overruns near home)
+    // Maximum steps a piece can take (prevents overruns near home)
     const maxSteps = useMemo(() => getMaxSteps(), []);
 
-    // State (mirrors RN)
+    // ============================================================================
+    // SECTION 3: CORE GAME STATE
+    // ============================================================================
+    
+    // User profile from Redux store
     const myProfile = useSelector(state => state.profile);
+    
+    // Game state
     const [players, setPlayers] = useState([]);
     const [currentPlayer, setCurrentPlayer] = useState(0);
     const [diceValue, setDiceValue] = useState(0);
     const [gameStarted, setGameStarted] = useState(false);
-    const [winner, setWinner] = useState(null);
-    const [winners, setWinners] = useState([]);
-    const [showWinnerModal, setShowWinnerModal] = useState(false);
     const [gameEnded, setGameEnded] = useState(false);
     const [canRollDice, setCanRollDice] = useState(true);
     const [showPlayerSelection, setShowPlayerSelection] = useState(false);
     const [selectedPlayerCount, setSelectedPlayerCount] = useState(4);
-    // Track consecutive 6s per player to limit unlimited 6s
+    
+    // Winner state
+    const [winner, setWinner] = useState(null);
+    const [winners, setWinners] = useState([]);
+    const [showWinnerModal, setShowWinnerModal] = useState(false);
+    
+    // Consecutive sixes tracking (prevents unlimited 6s)
     const [consecutiveSixes, setConsecutiveSixes] = useState({});
     const consecutiveSixesRef = useRef({});
-    // Refs to avoid re-binding socket listeners on every state change
+    
+    // ============================================================================
+    // SECTION 4: STATE REFS (for synchronous access in event handlers)
+    // ============================================================================
+    
+    // Refs to avoid re-binding socket listeners and ensure synchronous access
     const playersRef = useRef(players);
     const currentPlayerRef = useRef(currentPlayer);
     const selectedPlayerCountRef = useRef(selectedPlayerCount);
     const winnersRef = useRef(winners);
     const maxStepsRef = useRef(0);
-    const lastDiceValueRef = useRef(0);
     const diceValueRef = useRef(diceValue);
     const gameStartedRef = useRef(gameStarted);
     const gameEndedRef = useRef(gameEnded);
-    const autoStartTriggeredRef = useRef(false); // Track if auto-start has been triggered
-    const lastLocalDiceRollTimeRef = useRef(0); // Track when dice was last rolled locally (to prevent stale broadcasts from overwriting)
-    const currentPlayerUpdatedFromServerRef = useRef(false); // Track if currentPlayer was just updated from server (to prevent broadcast loop)
-    const lastBroadcastRef = useRef(0); // Track last broadcast time for throttling
-    const recentMovesRef = useRef(new Map()); // Track recent moves: pieceKey -> { toSteps, timestamp } to prevent overwrites
-    const lastTurnAdvanceTimeRef = useRef(0); // Track when turn was last advanced locally (to prevent stale broadcasts from reverting it)
-    const lastCanRollDiceUpdateRef = useRef({ value: false, timestamp: 0, reason: '' }); // Track last canRollDice update to prevent loops
-    // Online friends selection
+    
+    // Timing and synchronization refs
+    const lastDiceValueRef = useRef(0);
+    const lastLocalDiceRollTimeRef = useRef(0);
+    const lastBroadcastRef = useRef(0);
+    const lastTurnAdvanceTimeRef = useRef(0);
+    const lastCanRollDiceUpdateRef = useRef({ value: false, timestamp: 0, reason: '' });
+    const currentPlayerUpdatedFromServerRef = useRef(false);
+    const autoStartTriggeredRef = useRef(false);
+    const recentMovesRef = useRef(new Map()); // pieceKey -> { toSteps, timestamp }
+    // ============================================================================
+    // SECTION 5: ONLINE MULTIPLAYER STATE
+    // ============================================================================
+    
+    // Online mode and connection
     const [onlineMode, setOnlineMode] = useState(false);
-    const [selectedFriends, setSelectedFriends] = useState([]); // [{ _id, fullName, profilePic }]
+    const [gameId, setGameId] = useState(null);
+    const [myPlayerIndex, setMyPlayerIndex] = useState(0);
+    const [waitingForPlayers, setWaitingForPlayers] = useState(false);
+    const [isReconnecting, setIsReconnecting] = useState(false);
+    const [showReconnectModal, setShowReconnectModal] = useState(false);
+    const [disconnectedPlayers, setDisconnectedPlayers] = useState(new Set());
+    
+    // Friend selection and invites
+    const [selectedFriends, setSelectedFriends] = useState([]);
     const [friendSearchQuery, setFriendSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState([]);
     const [loadingSearch, setLoadingSearch] = useState(false);
     const [friendList, setFriendList] = useState([]);
-    const [invitedStatusByFriendId, setInvitedStatusByFriendId] = useState({}); // { friendId: 'invited'|'joined'|'declined' }
-    const [invitedSlotByFriendId, setInvitedSlotByFriendId] = useState({}); // { friendId: slotIndex }
-    const invitedStatusByFriendIdRef = useRef({}); // Ref to track invited status for synchronous checks in event handlers
-    const invitedSlotByFriendIdRef = useRef({}); // Ref to track invited slots for synchronous checks
-    const inviteTimestampsRef = useRef({}); // Track when each friend was invited to prevent immediate accept events
+    
+    // Invite management
+    const [invitedStatusByFriendId, setInvitedStatusByFriendId] = useState({});
+    const [invitedSlotByFriendId, setInvitedSlotByFriendId] = useState({});
+    const [incomingInvite, setIncomingInvite] = useState(null);
+    const [incomingInviteRequest, setIncomingInviteRequest] = useState(null);
+    const [pendingInvites, setPendingInvites] = useState([]);
+    const [inviteCopied, setInviteCopied] = useState(false);
+    const [joinedGames, setJoinedGames] = useState([]);
+    const [lastInviter, setLastInviter] = useState(null);
+    
+    // Online multiplayer refs
+    const invitedStatusByFriendIdRef = useRef({});
+    const invitedSlotByFriendIdRef = useRef({});
+    const inviteTimestampsRef = useRef({});
     const searchTimeoutRef = useRef(null);
     const inviteHandlersAttachedRef = useRef(false);
-    const isSavingGameStateRef = useRef(false); // Track if a save operation is in progress to prevent concurrent saves
-    const shownInviteToastsRef = useRef(new Map()); // Track shown toasts: key = "gameId:from", value = timestamp
-    const [incomingInvite, setIncomingInvite] = useState(null);
-    const [inviteCopied, setInviteCopied] = useState(false);
-    const [incomingInviteRequest, setIncomingInviteRequest] = useState(null); // { from, name, avatar, gameId, slotIndex, playerCount }
-    const [pendingInvites, setPendingInvites] = useState([]); // [{ from, name, avatar, gameId, slotIndex, playerCount, ts }]
-    const [joinedGames, setJoinedGames] = useState([]); // [{ gameId, createdAt, onlinePlayers, offlinePlayers, lastPlayers, isOnline, playerCount }]
-    const joinedGamesRef = useRef([]); // Ref to track joinedGames for invite handlers
-    // Lobby/waiting state
-    const [waitingForPlayers, setWaitingForPlayers] = useState(false);
-    // Track inviter identity to fix seat 0 identity on invitee until host snapshot is correct
-    const [lastInviter, setLastInviter] = useState(null); // { id, name, avatar }
-    // Player editor modal
+    const isSavingGameStateRef = useRef(false);
+    const shownInviteToastsRef = useRef(new Map());
+    const joinedGamesRef = useRef([]);
+    const gameIdRef = useRef(null);
+    const myPlayerIndexRef = useRef(0);
+    // ============================================================================
+    // SECTION 6: PLAYER EDITOR STATE
+    // ============================================================================
+    
     const [showPlayerEditor, setShowPlayerEditor] = useState(false);
     const [editingPlayerIndex, setEditingPlayerIndex] = useState(null);
     const [editName, setEditName] = useState('');
     const [editAvatarUrl, setEditAvatarUrl] = useState('');
     const avatarFileInputRef = useRef(null);
-    // Online play socket state
+    
+    // ============================================================================
+    // SECTION 7: SOCKET & CONNECTION STATE
+    // ============================================================================
+    
     const socketRef = useRef(null);
-    const socketCreatingRef = useRef(false); // Guard to prevent multiple simultaneous socket creations
-    const [gameId, setGameId] = useState(null);
-    const gameIdRef = useRef(null); // Ref to track current gameId for invite handlers
-    const [myPlayerIndex, setMyPlayerIndex] = useState(0);
-    const myPlayerIndexRef = useRef(0);
-    // Track last roll to prevent multiple rolls
+    const socketCreatingRef = useRef(false);
+    const savedGameStateRef = useRef(null);
+    const hasProcessedReconnectionStateRef = useRef(false);
+    const isRestoringFromServerRef = useRef(false);
+    const isJoiningViaInviteRef = useRef(false);
+    const inviteAcceptTimestampRef = useRef(0);
+    const lastJoinRequestRef = useRef({ gameId: null, timestamp: 0 });
+    
+    // ============================================================================
+    // SECTION 8: DICE & ANIMATION STATE
+    // ============================================================================
+    
     const lastRollTimeRef = useRef(0);
     const isRollingRef = useRef(false);
-    // Game state persistence for reconnection
-    const savedGameStateRef = useRef(null); // { gameId, myPlayerIndex, onlineMode, selectedPlayerCount }
-    const [isReconnecting, setIsReconnecting] = useState(false);
-    const [showReconnectModal, setShowReconnectModal] = useState(false);
-    const [disconnectedPlayers, setDisconnectedPlayers] = useState(new Set()); // Track disconnected friend profile IDs
-    const hasProcessedReconnectionStateRef = useRef(false); // Track if we've processed initial reconnection state
-    const isRestoringFromServerRef = useRef(false); // Track if we're currently restoring state from server (prevent save loops)
-    const isJoiningViaInviteRef = useRef(false); // Track if we're joining via invite (not reconnecting)
-    const inviteAcceptTimestampRef = useRef(0); // Track when we accepted an invite (to prevent reconnection logic)
-    const lastJoinRequestRef = useRef({ gameId: null, timestamp: 0 }); // Track last join request to prevent loops
-
-    // Sound effects manager
+    const moveTimersRef = useRef([]);
+    const isMovingRef = useRef(false);
+    const isAutoMovingRef = useRef(false);
+    
+    // ============================================================================
+    // SECTION 9: SOUND EFFECTS
+    // ============================================================================
+    
     const [soundsEnabled, setSoundsEnabled] = useState(true);
     const soundRefs = useRef({
         diceRoll: null,
@@ -589,7 +669,13 @@ const LudoGame = () => {
     useEffect(() => { gameStartedRef.current = gameStarted; }, [gameStarted]);
     useEffect(() => { gameEndedRef.current = gameEnded; }, [gameEnded]);
 
-    // Debug flag (show dev-only controls on localhost)
+    // ============================================================================
+    // SECTION 10: DEBUG & SPECIAL FEATURES
+    // ============================================================================
+    
+    /**
+     * Check if running in debug mode (localhost)
+     */
     const isDebug = useMemo(() => {
         try {
             return /localhost|127\.0\.0\.1/.test(window.location.hostname);
@@ -598,54 +684,90 @@ const LudoGame = () => {
         }
     }, []);
 
-
-    // Control mode for specific user (enables dice value prompt)
+    /**
+     * Control mode enables dice value prompts for testing
+     */
     const [controlMode, setControlMode] = useState(false);
+    
+    /**
+     * Check if current user is a special user (has access to control mode)
+     */
     const isSpecialUser = useMemo(() => {
         return myProfile?._id === '67bf1e4009395add03e1e234';
     }, [myProfile?._id]);
 
-    // Check if it's the current player's turn (for UI rendering)
+    /**
+     * Check if it's the current player's turn
+     */
     const isMyTurn = useMemo(() => {
         if (!onlineMode) return true; // Offline mode - always your turn
         return currentPlayer === myPlayerIndex;
     }, [onlineMode, currentPlayer, myPlayerIndex]);
 
-    // Turn order helper
-    // 4 players: Red -> Green -> Yellow -> Blue (0,1,3,2)
-    // 2/3 players: [Red, Green] or [Red, Green, Blue]
+    // ============================================================================
+    // SECTION 11: GAME LOGIC HELPERS
+    // ============================================================================
+    
+    /**
+     * Get the next active player in turn order
+     * Turn order: 4 players = Red -> Green -> Yellow -> Blue (0,1,3,2)
+     *             2/3 players = [Red, Green] or [Red, Green, Blue]
+     * 
+     * @param {number} fromIndex - Current player index
+     * @returns {number} Next active player index
+     */
     const getNextActivePlayer = useCallback((fromIndex) => {
-        const baseOrder = selectedPlayerCount === 4 ? [0, 1, 3, 2] : [0, 1, 2].slice(0, selectedPlayerCount);
-        const order = baseOrder;
-        if (order.length === 0) return fromIndex;
-        let idx = order.indexOf(fromIndex);
-        if (idx === -1) idx = 0;
+        const PLAYER_ORDER_4 = [0, 1, 3, 2]; // Red, Green, Yellow, Blue
+        const PLAYER_ORDER_2_3 = [0, 1, 2]; // Red, Green, Blue
+        
+        const baseOrder = selectedPlayerCount === 4 
+            ? PLAYER_ORDER_4 
+            : PLAYER_ORDER_2_3.slice(0, selectedPlayerCount);
+        
+        if (baseOrder.length === 0) return fromIndex;
+        
+        let currentIndex = baseOrder.indexOf(fromIndex);
+        if (currentIndex === -1) currentIndex = 0;
+        
+        // Find next active player (skip offline players and winners)
         let attempts = 0;
-        while (attempts < order.length) {
-            idx = (idx + 1) % order.length;
-            const candidate = order[idx];
-            const player = players[candidate];
-            // Skip offline players and winners
-            const playerWon = winners.some(w => w.id === candidate);
-            const isOffline = player && player.isOffline && !player.isBot;
-            if (!playerWon && !isOffline) return candidate;
+        while (attempts < baseOrder.length) {
+            currentIndex = (currentIndex + 1) % baseOrder.length;
+            const candidateIndex = baseOrder[currentIndex];
+            const player = players[candidateIndex];
+            
+            const hasWon = winners.some(w => w.id === candidateIndex);
+            const isOffline = player?.isOffline && !player?.isBot;
+            
+            if (!hasWon && !isOffline) {
+                return candidateIndex;
+            }
             attempts++;
         }
+        
         return fromIndex;
     }, [selectedPlayerCount, winners, players]);
 
-    // Rendering order to match dice sequence
+    /**
+     * Player rendering order (matches dice sequence)
+     */
     const renderPlayerOrder = useMemo(() => {
-        return selectedPlayerCount === 4 ? [0, 1, 3, 2] : [0, 1, 2].slice(0, selectedPlayerCount);
+        const ORDER_4_PLAYERS = [0, 1, 3, 2];
+        const ORDER_2_3_PLAYERS = [0, 1, 2];
+        
+        return selectedPlayerCount === 4 
+            ? ORDER_4_PLAYERS 
+            : ORDER_2_3_PLAYERS.slice(0, selectedPlayerCount);
     }, [selectedPlayerCount]);
 
-    // Animation timing (web simulation) - optimized for faster gameplay
+    /**
+     * Animation timing for piece movement
+     */
     const stepDurationMs = STEP_DURATION_MS;
-    const moveTimersRef = useRef([]);
-    const isMovingRef = useRef(false); // Prevent multiple moves from single dice roll
-    const isAutoMovingRef = useRef(false); // Track if an automatic move is in progress
+    
+    // Cleanup move timers on unmount
     useEffect(() => () => {
-        moveTimersRef.current.forEach(t => clearTimeout(t));
+        moveTimersRef.current.forEach(timer => clearTimeout(timer));
     }, []);
 
     // Helpers (identical logic) - memoized for performance
@@ -679,6 +801,14 @@ const LudoGame = () => {
         return SAFE_CELLS.has(`${position.x},${position.y}`);
     };
 
+    /**
+     * Check if a move results in capturing opponent pieces
+     * 
+     * @param {number} movingPlayerIndex - Index of the player making the move
+     * @param {{x: number, y: number}} newPosition - New position of the moving piece
+     * @param {number} movingPieceNewSteps - New step count of the moving piece
+     * @returns {Array<{playerIndex: number, pieceIndex: number}>} Array of captured pieces
+     */
     const checkForCapture = (movingPlayerIndex, newPosition, movingPieceNewSteps) => {
         const srcPlayers = playersRef.current && Array.isArray(playersRef.current) ? playersRef.current : players;
         const captured = [];
@@ -794,6 +924,14 @@ const LudoGame = () => {
     };
 
     // Check for captures when a token moves AWAY from a position (rule 2: friend moves token away)
+    /**
+     * Check if any pieces can be captured after a piece moves away from a position
+     * This handles cases where moving a piece reveals a capture opportunity
+     * 
+     * @param {number} movingPlayerIndex - Index of the player who moved
+     * @param {{x: number, y: number}} oldPosition - Previous position of the moved piece
+     * @returns {Array<{playerIndex: number, pieceIndex: number}>} Array of pieces that can now be captured
+     */
     const checkForCaptureAfterMoveAway = (movingPlayerIndex, oldPosition) => {
         const srcPlayers = playersRef.current && Array.isArray(playersRef.current) ? playersRef.current : players;
         const captured = [];
@@ -1947,6 +2085,9 @@ const LudoGame = () => {
         }
     }, [onlineMode, gameId, players, myPlayerIndexRef.current, myProfile, selectedPlayerCount, selectedFriends]);
 
+    /**
+     * Copy the game invite link to clipboard
+     */
     const copyInviteLink = async () => {
         try {
             const token = createInviteToken();
@@ -1959,7 +2100,30 @@ const LudoGame = () => {
         }
     };
 
-    // Helper to find all playable pieces for a given dice value
+    // ============================================================================
+    // SECTION 12: PLAYER EDITOR FUNCTIONS
+    // ============================================================================
+    
+    /**
+     * Open the player editor modal for a specific player
+     * 
+     * @param {number} playerIndex - Index of the player to edit
+     */
+    const openPlayerEditor = (playerIndex) => {
+        if (playerIndex == null || playerIndex < 0 || playerIndex >= players.length) return;
+        setEditingPlayerIndex(playerIndex);
+        setEditName(players[playerIndex]?.name || '');
+        setEditAvatarUrl(players[playerIndex]?.avatar || '');
+        setShowPlayerEditor(true);
+    };
+
+    /**
+     * Find all pieces that can be moved with the current dice value
+     * 
+     * @param {number} playerIndex - Index of the player
+     * @param {number} diceVal - Current dice value
+     * @returns {Array<number>} Array of piece indices that can be moved
+     */
     const getPlayablePieces = useCallback((playerIndex, diceVal) => {
         const playerData = players[playerIndex];
         if (!playerData || !Array.isArray(playerData.pieces)) return [];
@@ -1974,6 +2138,10 @@ const LudoGame = () => {
         return playable;
     }, [players, maxSteps]);
 
+    /**
+     * Roll the dice for the current player
+     * Handles both offline and online modes with proper synchronization
+     */
     const rollDice = () => {
         // DEBUG: Log roll attempt
         console.log('[ROLL_DICE] Attempt to roll dice', {
@@ -2290,101 +2458,7 @@ const LudoGame = () => {
         }
     };
 
-    const DiceSVG = ({ value, size = 80, strokeColor = '#d0d0d0' }) => {
-        const pipR = 7;
-        const scaleFactor = 0.75; // 10% smaller
-        const pip = (cx, cy, key) => (
-            <circle key={key} cx={cx} cy={cy} r={pipR} fill="#111" />
-        );
-        const positions = {
-            1: [[50, 50]],
-            2: [[30, 30], [70, 70]],
-            3: [[30, 30], [50, 50], [70, 70]],
-            4: [[30, 30], [70, 30], [30, 70], [70, 70]],
-            5: [[30, 30], [70, 30], [50, 50], [30, 70], [70, 70]],
-            6: [[30, 25], [70, 25], [30, 50], [70, 50], [30, 75], [70, 75]],
-        };
-        const pts = (value && positions[value]) ? positions[value] : [];
-        return (
-            <svg width={size} height={size} viewBox="0 0 100 100" style={{ display: 'block', filter: 'drop-shadow(0 6px 10px rgba(0,0,0,0.4))' }}>
-                <defs>
-                    <linearGradient id="diceGrad" x1="0" y1="0" x2="1" y2="1">
-                        <stop offset="0%" stopColor="#ffffff" />
-                        <stop offset="100%" stopColor="#e9e9e9" />
-                    </linearGradient>
-                </defs>
-                <g transform={`translate(50,50) scale(${scaleFactor}) translate(-50,-50)`}>
-                    <rect x="5" y="5" width="90" height="90" rx="18" ry="18" fill="url(#diceGrad)" stroke={strokeColor} strokeWidth="3" />
-                    {pts.map(([x, y], idx) => pip(x, y, idx))}
-                </g>
-            </svg>
-        );
-    };
-
-    // Animated background matching site's accent colors
-    const AnimatedBackground = () => {
-        const primary = '#FFD700'; // gold accent used across app
-        const secondary = '#29B1A9'; // teal accent used in buttons
-        const base1 = '#1a1a2e';
-        const base2 = '#0f1420';
-        return (
-            <>
-                <style>{`
-                @keyframes driftA { 0% { transform: translate3d(-10%, -10%, 0) scale(1); } 50% { transform: translate3d(5%, 10%, 0) scale(1.05); } 100% { transform: translate3d(-10%, -10%, 0) scale(1); } }
-                @keyframes driftB { 0% { transform: translate3d(10%, 20%, 0) scale(1); } 50% { transform: translate3d(-5%, -10%, 0) scale(1.08); } 100% { transform: translate3d(10%, 20%, 0) scale(1); } }
-                @keyframes driftC { 0% { transform: translate3d(-20%, 15%, 0) scale(1); } 50% { transform: translate3d(10%, -15%, 0) scale(1.06); } 100% { transform: translate3d(-20%, 15%, 0) scale(1); } }
-                `}</style>
-                <div style={{ position: 'fixed', inset: 0, zIndex: -1, pointerEvents: 'none', overflow: 'hidden', background: `radial-gradient(1200px 800px at 10% -10%, ${base2} 0%, ${base1} 60%)` }}>
-                    <div style={{ position: 'absolute', width: '50vw', height: '50vw', left: '-10vw', top: '-10vw', background: primary, opacity: 0.08, filter: 'blur(70px)', borderRadius: '50%', animation: 'driftA 18s ease-in-out infinite' }} />
-                    <div style={{ position: 'absolute', width: '45vw', height: '45vw', right: '-12vw', top: '5vh', background: secondary, opacity: 0.10, filter: 'blur(80px)', borderRadius: '50%', animation: 'driftB 22s ease-in-out infinite' }} />
-                    <div style={{ position: 'absolute', width: '60vw', height: '60vw', left: '10vw', bottom: '-20vw', background: primary, opacity: 0.06, filter: 'blur(90px)', borderRadius: '50%', animation: 'driftC 26s ease-in-out infinite' }} />
-                </div>
-            </>
-        );
-    };
-
-    // Lightweight confetti for winner modal
-    const WinnerConfetti = ({ count = 60 }) => {
-        const pieces = Array.from({ length: count }).map((_, i) => {
-            const left = Math.random() * 100; // vw percentage
-            const size = 6 + Math.random() * 6;
-            const hue = Math.floor(Math.random() * 360);
-            const delay = (Math.random() * 1.5).toFixed(2) + 's';
-            const duration = (2 + Math.random() * 2.5).toFixed(2) + 's';
-            const rotate = Math.random() * 360;
-            return (
-                <div key={i} style={{
-                    position: 'absolute',
-                    top: -20,
-                    left: left + '%',
-                    width: size,
-                    height: size * 0.36,
-                    background: `hsl(${hue} 85% 60%)`,
-                    transform: `rotate(${rotate}deg)`,
-                    borderRadius: 2,
-                    animation: `confettiFall ${duration} ease-in forwards`,
-                    animationDelay: delay,
-                    boxShadow: '0 0 6px rgba(0,0,0,0.15)'
-                }} />
-            );
-        });
-        return (
-            <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden' }}>
-                <style>{`
-                    @keyframes confettiFall {
-                        0% { transform: translateY(-20px) rotate(0deg); opacity: 0; }
-                        10% { opacity: 1; }
-                        100% { transform: translateY(100vh) rotate(720deg); opacity: 0.9; }
-                    }
-                    @keyframes winnerPop { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); }
-                    }
-                    @keyframes winnerGlow { 0% { opacity: 0.6; transform: scale(0.9); } 50% { opacity: 1; transform: scale(1.05);} 100% { opacity: 0.6; transform: scale(0.9);} }
-                    @keyframes textShine { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-                `}</style>
-                {pieces}
-            </div>
-        );
-    };
+    // Components are now imported from separate files
 
     const captureToken = (playerIndex, pieceIndex) => {
         // Play capture sound
@@ -5438,271 +5512,57 @@ const LudoGame = () => {
 
     // Screens
     if (gameEnded) {
-        return (
-            <div style={{ minHeight: '100vh', background: '#1a1a2e', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-                <div style={{ maxWidth: 600, textAlign: 'center' }}>
-                    <div style={{ fontSize: 100, color: '#FFD700', marginBottom: 16 }}>🏆</div>
-                    <div style={{ fontSize: 36, fontWeight: 'bold', color: '#FFD700', marginBottom: 8 }}>Game Complete!</div>
-                    <div style={{ color: '#B0B0B0', marginBottom: 24 }}>All players have finished!</div>
-                    <div>
-                        {winners.map((w, i) => (
-                            <div key={w.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: w.color, padding: 12, borderRadius: 12, marginBottom: 10 }}>
-                                <div style={{ fontWeight: 'bold' }}>#{i + 1}</div>
-                                <div style={{ fontWeight: 'bold', flex: 1 }}>{w.name}</div>
-                                <div>{playerEmojis[w.id]}</div>
-                            </div>
-                        ))}
-                    </div>
-                    <button onClick={resetGame} style={{ marginTop: 16, background: '#00AA00', color: 'white', padding: '12px 24px', borderRadius: 20, border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>
-                        Play Again
-                    </button>
-                </div>
-            </div>
-        );
+        return <GameEndedScreen winners={winners} onResetGame={resetGame} />;
     }
 
     if (showPlayerSelection) {
         return (
-            <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.8)', padding: 20, position: 'fixed', inset: 0, zIndex: 2000, overflowY: 'auto' }}>
-                <div style={{ width: '100%', maxWidth: 420, maxHeight: '85vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', background: 'rgba(26, 35, 50, 0.95)', borderRadius: 24, padding: 28, border: '1px solid rgba(255, 215, 0, 0.3)', color: 'white' }}>
-                    <div style={{ textAlign: 'center', marginBottom: 20 }}>
-                        <div style={{ fontSize: 32, color: '#FFD700', fontWeight: 'bold' }}>Select Players</div>
-                        <div style={{ color: '#B0B0B0' }}>Choose how many players will join the game</div>
-                    </div>
-                    <div>
-                        {[2, 3, 4].map(count => (
-                            <button key={count} onClick={() => setSelectedPlayerCount(count)} style={{
-                                width: '100%',
-                                textAlign: 'left',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                gap: 12,
-                                padding: 16,
-                                marginBottom: 12,
-                                background: selectedPlayerCount === count ? 'rgba(42, 26, 58, 0.9)' : 'rgba(42, 42, 42, 0.8)',
-                                border: `2px solid ${selectedPlayerCount === count ? '#FFD700' : 'transparent'}`,
-                                borderRadius: 16,
-                                color: 'white',
-                                cursor: 'pointer'
-                            }}>
-                                <div>
-                                    <div style={{ fontWeight: 'bold', color: selectedPlayerCount === count ? '#FFD700' : '#B0B0B0' }}>{count}</div>
-                                    <div style={{ color: selectedPlayerCount === count ? 'white' : '#B0B0B0' }}>{count === 2 ? 'Two Players' : count === 3 ? 'Three Players' : 'Four Players'}</div>
-                                </div>
-                                <div style={{ display: 'flex', gap: 8 }}>
-                                    {[0, 1, 3, 2].slice(0, count).map((idx) => (
-                                        <div key={idx} style={{ width: 20, height: 20, borderRadius: 10, background: colors[idx], border: '2px solid #fff' }} />
-                                    ))}
-                                </div>
-                            </button>
-                        ))}
-                    </div>
-                    {/* Online toggle and friend picker */}
-                    <div style={{ marginTop: 8, marginBottom: 12 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                            <div style={{ fontWeight: 700 }}>Play Online with Friends</div>
-                            <button onClick={() => setOnlineMode(!onlineMode)} style={{ padding: '6px 12px', borderRadius: 16, background: onlineMode ? '#29B1A9' : 'rgba(255,255,255,0.1)', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 600 }}>{onlineMode ? 'On' : 'Off'}</button>
-                        </div>
-                        <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(255,255,255,0.2)', borderRadius: 10, padding: '8px 10px' }}>
-                                <span role="img" aria-label="search">🔎</span>
-                                <input
-                                    placeholder="Search friends by name..."
-                                    value={friendSearchQuery}
-                                    onChange={(e) => onChangeFriendSearch(e.target.value)}
-                                    style={{ flex: 1, background: 'transparent', color: 'white', border: 'none', outline: 'none' }}
-                                />
-                            </div>
-                            <div style={{ maxHeight: 220, overflow: 'auto', marginTop: 8 }}>
-                                {loadingSearch && <div style={{ color: '#B0B0B0', fontSize: 12, marginTop: 6 }}>Searching...</div>}
-                                {(friendSearchQuery ? searchResults : friendList).map((f) => {
-                                    const key = f?._id || String(f?.id) || Math.random().toString(36);
-                                    const isSelected = selectedFriends.some(sf => sf._id === f._id);
-                                    const inviteStatus = invitedStatusByFriendId[f?._id];
-                                    const maxPlayers = Math.max(2, Math.min(4, selectedPlayerCount));
-                                    const isAssignedOffline = !onlineMode && players.slice(1, maxPlayers).some(p => p?.profileId && String(p.profileId) === String(f?._id));
-                                    const canAction = onlineMode ? (!inviteStatus && getNextOpenSlot() != null) : (!isAssignedOffline && getNextOpenSlot() != null);
-                                    return (
-                                        <div key={key} onClick={() => {
+            <PlayerSelectionModal
+                show={showPlayerSelection}
+                selectedPlayerCount={selectedPlayerCount}
+                onlineMode={onlineMode}
+                friendSearchQuery={friendSearchQuery}
+                loadingSearch={loadingSearch}
+                searchResults={searchResults}
+                friendList={friendList}
+                selectedFriends={selectedFriends}
+                invitedStatusByFriendId={invitedStatusByFriendId}
+                players={players}
+                myProfile={myProfile}
+                joinedGames={joinedGames}
+                inviteCopied={inviteCopied}
+                incomingInvite={incomingInvite}
+                socketRef={socketRef}
+                onPlayerCountChange={setSelectedPlayerCount}
+                onOnlineModeToggle={() => setOnlineMode(!onlineMode)}
+                onFriendSearchChange={onChangeFriendSearch}
+                onFriendSelect={(f, isSelected) => {
                                             setSelectedFriends(prev => {
                                                 if (isSelected) return prev.filter(p => p._id !== f._id);
                                                 const next = [...prev, f];
                                                 return next.slice(0, Math.max(0, selectedPlayerCount - 1));
                                             });
-                                        }} role="button" tabIndex={0} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'transparent', border: 'none', color: 'white', padding: '8px 0', cursor: 'pointer' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                <div style={{ width: 28, height: 28, borderRadius: 14, overflow: 'hidden', background: '#333' }}>
-                                                    {f?.profilePic ? <img src={f.profilePic} alt=" " style={{ width: 28, height: 28, objectFit: 'cover' }} /> : null}
-                                                </div>
-                                                <div style={{ fontSize: 14 }}>{f?.fullName || 'Unknown'}</div>
-                                            </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                <span>{isSelected ? '✅' : '⭕'}</span>
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); onlineMode ? inviteFriend(f) : assignFriendOffline(f); }}
-                                                    disabled={!canAction}
-                                                    style={{ padding: '4px 8px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.2)', background: onlineMode ? (inviteStatus ? 'rgba(255,255,255,0.1)' : '#29B1A9') : (isAssignedOffline ? 'rgba(255,255,255,0.1)' : '#29B1A9'), color: 'white', cursor: canAction ? 'pointer' : 'default', fontSize: 12 }}
-                                                >
-                                                    {onlineMode ? (inviteStatus === 'joined' ? 'Joined' : inviteStatus === 'invited' ? 'Invited' : 'Invite') : (isAssignedOffline ? 'Assigned' : 'Add')}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                            <div style={{ color: '#B0B0B0', fontSize: 12, marginTop: 6 }}>Selected: {selectedFriends.length} / {Math.max(0, selectedPlayerCount - 1)}</div>
-                            {onlineMode && (
-                                <div style={{ marginTop: 10 }}>
-                                    <div style={{ fontWeight: 700, marginBottom: 6 }}>Seat status</div>
-                                    <div style={{ display: 'grid', gap: 6 }}>
-                                        {Array.from({ length: Math.max(2, Math.min(4, selectedPlayerCount)) }).map((_, i) => {
-                                            const seat = players[i];
-                                            const joined = i === 0 ? Boolean(seat?.profileId || myProfile?._id) : Boolean(seat?.profileId);
-                                            const name = seat?.name || (i === 0 ? (myProfile?.fullName || 'You') : `Seat ${i + 1}`);
-                                            const invitedName = !joined ? getInvitedNameForSlot(i) : null;
-                                            return (
-                                                <div key={`preseat-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.04)', padding: '6px 8px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)' }}>
-                                                    <div style={{ width: 20, height: 20, borderRadius: 10, overflow: 'hidden', background: '#333', border: '2px solid #111', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                        {seat?.avatar ? <img src={seat.avatar} alt=" " style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 10 }}>{['R', 'G', 'Y', 'B'][i] || 'P'}</span>}
-                                                    </div>
-                                                    <div style={{ fontSize: 12, flex: 1, textAlign: 'left' }}>{name}</div>
-                                                    <div style={{ fontSize: 11, fontWeight: 700, color: joined ? '#B0FFB0' : '#FFD700' }}>{joined ? 'Joined' : (invitedName ? `Invited: ${invitedName}` : 'Waiting…')}</div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Joined Games Section */}
-                    {onlineMode && joinedGames.length > 0 && (
-                        <div style={{ marginTop: 16, marginBottom: 12 }}>
-                            <div style={{ fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <span>Your Active Games</span>
-                                <button 
-                                    onClick={() => socketRef.current?.emit('ludo:games:get')}
-                                    style={{ 
-                                        padding: '4px 8px', 
-                                        borderRadius: 8, 
-                                        background: 'rgba(255,255,255,0.1)', 
-                                        color: 'white', 
-                                        border: '1px solid rgba(255,255,255,0.2)', 
-                                        cursor: 'pointer',
-                                        fontSize: 12
-                                    }}
-                                >
-                                    Refresh
-                                </button>
-                            </div>
-                            <div style={{ display: 'grid', gap: 8, maxHeight: 200, overflow: 'auto' }}>
-                                {joinedGames.map((game) => {
-                                    const gamePlayers = game.lastPlayers?.players || [];
-                                    const myPlayerData = gamePlayers.find(p => p.profileId === myProfile?._id);
-                                    const gameStatus = game.lastPlayers?.gameStarted ? (game.lastPlayers?.winner ? 'Finished' : 'In Progress') : 'Waiting';
-                                    const statusColor = gameStatus === 'Finished' ? '#FFD700' : gameStatus === 'In Progress' ? '#B0FFB0' : '#FFB0B0';
-                                    
-                                    return (
-                                        <div 
-                                            key={game.gameId}
-                                            onClick={() => joinGame(game)}
-                                            style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: 10,
-                                                padding: '10px',
-                                                background: 'rgba(255,255,255,0.05)',
-                                                border: '1px solid rgba(255,255,255,0.1)',
-                                                borderRadius: 8,
-                                                cursor: 'pointer',
-                                                transition: 'all 0.2s ease'
-                                            }}
-                                            onMouseEnter={(e) => {
-                                                e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
-                                                e.currentTarget.style.transform = 'translateY(-1px)';
-                                            }}
-                                            onMouseLeave={(e) => {
-                                                e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
-                                                e.currentTarget.style.transform = 'translateY(0)';
-                                            }}
-                                        >
-                                            <div style={{
-                                                width: 40,
-                                                height: 40,
-                                                borderRadius: 8,
-                                                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                fontSize: 20
-                                            }}>
-                                                🎲
-                                            </div>
-                                            <div style={{ flex: 1 }}>
-                                                <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>
-                                                    Game #{game.gameId?.slice(-6) || 'Unknown'}
-                                                </div>
-                                                <div style={{ fontSize: 12, color: '#B0B0B0', marginBottom: 2 }}>
-                                                    {game.playerCount} Players • {gameStatus}
-                                                </div>
-                                                <div style={{ fontSize: 11, color: statusColor, fontWeight: 600 }}>
-                                                    {game.isOnline ? '🟢 Online' : '⚫ Offline'}
-                                                </div>
-                                            </div>
-                                            <div style={{
-                                                width: 8,
-                                                height: 8,
-                                                borderRadius: '50%',
-                                                background: game.isOnline ? '#00FF00' : '#666666'
-                                            }} />
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Offline/General: quick customize players before starting */}
-                    <div style={{ marginTop: 10 }}>
-                        <div style={{ fontWeight: 700, marginBottom: 8 }}>Customize Players</div>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            {[0, 1, 3, 2].slice(0, selectedPlayerCount).map((idx) => (
-                                <button key={`preedit-${idx}`} onClick={() => openPlayerEditor(idx)} title={players[idx]?.name || 'Player'} style={{
-                                    width: 36,
-                                    height: 36,
-                                    borderRadius: 18,
-                                    background: players[idx]?.color,
-                                    border: '2px solid #222',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
-                                }} aria-label={`Edit ${players[idx]?.name || 'player'}`}>
-                                    {players[idx]?.avatar ? (
-                                        <img src={players[idx].avatar} alt=" " style={{ width: 28, height: 28, borderRadius: 14, objectFit: 'cover', border: '2px solid #fff' }} />
-                                    ) : (
-                                        <span style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>{['R', 'G', 'Y', 'B'][idx] || 'P'}</span>
-                                    )}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                    {/* Migrate to another device via invite link */}
-                    <div style={{ marginTop: 4, paddingTop: 10, borderTop: '1px dashed rgba(255,255,255,0.2)' }}>
-                        <div style={{ marginBottom: 8, fontWeight: 700 }}>Migrate to another device</div>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                            <button onClick={() => { playSound('buttonClick'); copyInviteLink(); }} style={{ background: '#4444FF', color: 'white', padding: '10px 12px', border: 'none', borderRadius: 12, cursor: 'pointer', fontWeight: 'bold' }}>Copy Invite Link</button>
-                            {inviteCopied && <span style={{ color: '#B0FFB0', alignSelf: 'center' }}>Copied!</span>}
-                        </div>
-                        {incomingInvite && (
-                            <div style={{ marginTop: 8, color: '#B0B0B0', fontSize: 12 }}>Invite detected from {incomingInvite?.name}. Start the game to continue on this device.</div>
-                        )}
-                    </div>
-                    <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
-                        <button onClick={() => setShowPlayerSelection(false)} style={{ flex: 1, background: '#FF4444', color: 'white', padding: '12px 0', border: 'none', borderRadius: 20, cursor: 'pointer', fontWeight: 'bold' }}>Cancel</button>
-                        <button onClick={() => { playSound('buttonClick'); confirmPlayerCount(); }} style={{ flex: 1, background: '#00AA00', color: 'white', padding: '12px 0', border: 'none', borderRadius: 20, cursor: 'pointer', fontWeight: 'bold' }}>Start Game</button>
-                    </div>
-                </div>
-            </div>
+                }}
+                onInviteFriend={inviteFriend}
+                onAssignFriendOffline={assignFriendOffline}
+                onGetNextOpenSlot={getNextOpenSlot}
+                onGetInvitedNameForSlot={getInvitedNameForSlot}
+                onOpenPlayerEditor={openPlayerEditor}
+                onCopyInviteLink={copyInviteLink}
+                onPlaySound={playSound}
+                onCancel={() => setShowPlayerSelection(false)}
+                onConfirmPlayerCount={confirmPlayerCount}
+                onJoinGame={(game) => {
+                    // Handle join game logic
+                    setGameId(game.gameId);
+                    setOnlineMode(true);
+                    ensureSocketConnected();
+                    if (socketRef.current) {
+                        socketRef.current.emit('ludo:join', { gameId: game.gameId });
+                        socketRef.current.emit('ludo:players:get', { gameId: game.gameId });
+                    }
+                }}
+            />
         );
     }
 
@@ -5723,127 +5583,41 @@ const LudoGame = () => {
                     100% { transform: rotateX(360deg) rotateY(360deg) rotateZ(180deg) scale(1); }
                 }
             `}</style>
-            <div style={{ padding: '10px 20px', background: 'rgba(26, 35, 50, 0.9)', borderBottom: '1px solid rgba(255, 215, 0, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'space-around' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ color: '#00D4FF', fontSize: 28, fontWeight: 'bold' }}>Ludo Classic</div>
-                </div>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                    {!gameStarted ? (
-                        <>
-                            <button onClick={startGame} style={{ background: '#00D4FF', color: 'white', padding: '8px 36px', border: 'none', borderRadius: 20, cursor: 'pointer', fontWeight: 'bold' }}>Start</button>
-                            {(gameId || savedGameStateRef.current) && (
-                                <button
-                                    onClick={exitGame}
-                                    style={{
-                                        background: '#888888',
-                                        color: 'white',
-                                        padding: '10px 20px',
-                                        border: 'none',
-                                        borderRadius: 20,
-                                        cursor: 'pointer',
-                                        fontWeight: 'bold',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: 6
-                                    }}
-                                    title="Exit game and clear all saved data"
-                                >
-                                    <span>🚪</span>
-                                    <span>Exit Game</span>
-                                </button>
-                            )}
-                        </>
-                    ) : (
-                        <>
-                            <button
-                                onClick={resetGame}
-                                style={{
-                                    background: '#FF4444',
-                                    color: 'white',
-                                    padding: '10px 20px',
-                                    border: 'none',
-                                    borderRadius: 20,
-                                    cursor: 'pointer',
-                                    fontWeight: 'bold',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 6
-                                }}
-                                title="Restart the game from beginning"
-                            >
-                                <span>🔄</span>
-                                <span>Restart</span>
-                            </button>
-                            <button
-                                onClick={exitGame}
-                                style={{
-                                    background: '#888888',
-                                    color: 'white',
-                                    padding: '10px 20px',
-                                    border: 'none',
-                                    borderRadius: 20,
-                                    cursor: 'pointer',
-                                    fontWeight: 'bold',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 6
-                                }}
-                                title="Exit game and clear all saved data"
-                            >
-                                <span>🚪</span>
-                                <span>Exit Game</span>
-                            </button>
-                        </>
-                    )}
-                    {isDebug && (
-                        <button onClick={triggerDebugCelebration} title="Debug: Test celebration" style={{ background: 'transparent', color: '#FFD700', padding: '6px 10px', border: '1px solid #FFD700', borderRadius: 12, cursor: 'pointer', fontWeight: 700 }}>Debug Celebrate</button>
-                    )}
-                    {(isSpecialUser || isDebug) && (
-                        <button
-                            onClick={() => {
-                                setControlMode(!controlMode);
-                                playSound('buttonClick');
-                            }}
-                            title={controlMode ? "Disable control mode (dice prompts)" : "Enable control mode (dice prompts)"}
-                            style={{
-                                background: controlMode ? '#29B1A9' : 'transparent',
-                                color: controlMode ? 'white' : '#29B1A9',
-                                padding: '6px 10px',
-                                border: `1px solid ${controlMode ? '#29B1A9' : '#29B1A9'}`,
-                                borderRadius: 12,
-                                cursor: 'pointer',
-                                fontWeight: 700
-                            }}
-                        >
-                            {controlMode ? 'Control On' : 'Control Off'}
-                        </button>
-                    )}
-                </div>
-            </div>
+            <GameHeader
+                gameStarted={gameStarted}
+                gameId={gameId}
+                savedGameStateRef={savedGameStateRef}
+                isDebug={isDebug}
+                isSpecialUser={isSpecialUser}
+                controlMode={controlMode}
+                onStartGame={startGame}
+                onResetGame={resetGame}
+                onExitGame={exitGame}
+                onTriggerDebugCelebration={triggerDebugCelebration}
+                onToggleControlMode={() => setControlMode(!controlMode)}
+                onPlaySound={playSound}
+            />
 
-            {/* Pending invitations banner/list */}
-            {pendingInvites.length > 0 && (
-                <div style={{ padding: '10px 20px', background: 'rgba(26, 35, 50, 0.85)', borderBottom: '1px dashed rgba(255, 215, 0, 0.2)' }}>
-                    <div style={{ color: '#FFD700', fontWeight: 800, marginBottom: 8 }}>Invitations</div>
-                    <div style={{ display: 'grid', gap: 8 }}>
-                        {pendingInvites.map((inv, idx) => (
-                            <div key={`${inv.gameId}-${inv.from}-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.04)', padding: 8, borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)' }}>
-                                <div style={{ width: 28, height: 28, borderRadius: 14, overflow: 'hidden', background: '#333', border: '2px solid #FFD700' }}>
-                                    {inv.avatar ? <img src={inv.avatar} alt=" " style={{ width: 28, height: 28, objectFit: 'cover' }} /> : null}
-                                </div>
-                                <div style={{ flex: 1 }}>
-                                    <div style={{ fontSize: 13, fontWeight: 700 }}>{inv.name || 'Friend'} invited you</div>
-                                    <div style={{ color: '#B0B0B0', fontSize: 11 }}>Players: {inv.playerCount} • Slot #{(inv.slotIndex ?? 0) + 1}</div>
-                                </div>
-                                <div style={{ display: 'flex', gap: 6 }}>
-                                    <button onClick={() => dismissInvite(inv)} style={{ background: 'transparent', color: '#ccc', padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.15)', cursor: 'pointer', fontWeight: 600 }}>Dismiss</button>
-                                    <button onClick={() => acceptInvite(inv)} style={{ background: '#29B1A9', color: 'white', padding: '6px 10px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 800 }}>Accept</button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
+            <PendingInvitesBanner
+                pendingInvites={pendingInvites}
+                onDismissInvite={(inv) => {
+                    if (socketRef.current) {
+                        try { 
+                            socketRef.current.emit('ludo:invites:dismiss', { 
+                                gameId: inv.gameId, 
+                                by: inv.from 
+                            }); 
+                        } catch (_e) { }
+                    }
+                    setPendingInvites(prev => 
+                        prev.filter(i => !(String(i.gameId) === String(inv.gameId) && String(i.from) === String(inv.from)))
+                    );
+                }}
+                onAcceptInvite={(inv) => {
+                    setIncomingInviteRequest(inv);
+                    setTimeout(() => acceptIncomingInvite(), 0);
+                }}
+            />
 
             {((gameStarted || (onlineMode && waitingForPlayers) || isReconnecting) && (!onlineMode || gameId)) && (
                 <div style={{ padding: responsivePadding }}>
@@ -6226,71 +6000,18 @@ const LudoGame = () => {
                 </div>
             )}
 
-            {showWinnerModal && (
-                <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 3000 }}>
-                    <div style={{ width: '100%', maxWidth: 520, position: 'relative' }}>
-                        <WinnerConfetti />
-                        <div style={{
-                            background: 'linear-gradient(180deg, rgba(26,35,50,0.95), rgba(26,35,50,0.92))',
-                            borderRadius: 28,
-                            padding: 28,
-                            border: '2px solid rgba(255, 215, 0, 0.6)',
-                            color: 'white',
-                            textAlign: 'center',
-                            boxShadow: '0 12px 40px rgba(0,0,0,0.5)'
-                        }}>
-                            <div style={{ position: 'relative', marginBottom: 10 }}>
-                                <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: 160, height: 160, borderRadius: 80, background: winner?.color || '#FFD700', filter: 'blur(32px)', opacity: 0.6, animation: 'winnerGlow 2.2s ease-in-out infinite' }} />
-                                <div style={{ fontSize: 74, position: 'relative', animation: 'winnerPop 600ms ease forwards' }}>🏆</div>
-                            </div>
-                            <div style={{
-                                fontSize: 28,
-                                fontWeight: 900,
-                                marginBottom: 6,
-                                background: 'linear-gradient(90deg, #fff, #FFD700, #fff)',
-                                WebkitBackgroundClip: 'text',
-                                backgroundClip: 'text',
-                                color: 'transparent',
-                                backgroundSize: '200% 100%',
-                                animation: 'textShine 2.8s linear infinite'
-                            }}>{winner?.name} Wins!</div>
-                            <div style={{ color: '#B0B0B0', marginBottom: 18 }}>Congratulations on your victory!</div>
-                            <div style={{ display: 'flex', gap: 12 }}>
-                                {!gameEnded && (
-                                    <button onClick={continueGame} style={{ flex: 1, background: winner?.color || '#555', color: 'white', padding: '12px 0', border: 'none', borderRadius: 20, cursor: 'pointer', fontWeight: 'bold' }}>Continue Game</button>
-                                )}
-                                <button onClick={endGame} style={{ flex: 1, background: '#FF4444', color: 'white', padding: '12px 0', border: 'none', borderRadius: 20, cursor: 'pointer', fontWeight: 'bold' }}>End Game</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <WinnerModal
+                winner={winner}
+                gameEnded={gameEnded}
+                onContinueGame={continueGame}
+                onEndGame={endGame}
+            />
 
-            {/* Incoming Invite Modal */}
-            {incomingInviteRequest && (
-                <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 3000 }}>
-                    <div style={{ width: '100%', maxWidth: 420, background: 'rgba(26, 35, 50, 0.95)', borderRadius: 24, padding: 22, border: '2px solid rgba(255, 215, 0, 0.5)', color: 'white' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                            <div style={{ width: 48, height: 48, borderRadius: 24, overflow: 'hidden', background: '#222', border: '2px solid #FFD700', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {incomingInviteRequest.avatar ? (
-                                    <img src={incomingInviteRequest.avatar} alt="inviter" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                ) : (
-                                    <span>🎲</span>
-                                )}
-                            </div>
-                            <div>
-                                <div style={{ fontWeight: 800, fontSize: 16 }}>Game Invite</div>
-                                <div style={{ color: '#B0B0B0', fontSize: 13 }}>{incomingInviteRequest.name || 'A friend'} invited you to play Ludo</div>
-                            </div>
-                        </div>
-                        <div style={{ color: '#B0B0B0', fontSize: 12, marginBottom: 12 }}>Players: {incomingInviteRequest.playerCount} • Slot #{(incomingInviteRequest.slotIndex ?? 0) + 1}</div>
-                        <div style={{ display: 'flex', gap: 10 }}>
-                            <button onClick={declineIncomingInvite} style={{ flex: 1, background: '#555', color: 'white', padding: '10px 0', border: 'none', borderRadius: 12, cursor: 'pointer', fontWeight: 'bold' }}>Decline</button>
-                            <button onClick={acceptIncomingInvite} style={{ flex: 1, background: '#29B1A9', color: 'white', padding: '10px 0', border: 'none', borderRadius: 12, cursor: 'pointer', fontWeight: 'bold' }}>Accept</button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <IncomingInviteModal
+                inviteRequest={incomingInviteRequest}
+                onAccept={acceptIncomingInvite}
+                onDecline={declineIncomingInvite}
+            />
 
             {/* Connection Status Indicator */}
             {onlineMode && gameStarted && !gameEnded && (
@@ -6322,44 +6043,50 @@ const LudoGame = () => {
                 </div>
             )}
 
-            {/* Player Editor Modal */}
-            {showPlayerEditor && editingPlayerIndex != null && (
-                <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 3000 }}>
-                    <div style={{ width: '100%', maxWidth: 460, background: 'rgba(26, 35, 50, 0.95)', borderRadius: 24, padding: 22, border: `2px solid ${players[editingPlayerIndex]?.color || 'rgba(255, 215, 0, 0.5)'}`, color: 'white' }}>
-                        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>Edit Player</div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                            <div style={{ width: 56, height: 56, borderRadius: 28, overflow: 'hidden', border: `3px solid ${players[editingPlayerIndex]?.color || '#FFD700'}`, background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {editAvatarUrl ? (
-                                    <img src={editAvatarUrl} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                ) : (
-                                    <span style={{ fontSize: 22 }}>{playerEmojis[editingPlayerIndex]}</span>
-                                )}
-                            </div>
-                            <div>
-                                <div style={{ fontSize: 12, color: '#B0B0B0' }}>Player #{editingPlayerIndex + 1}</div>
-                                <div style={{ fontWeight: 700 }}>{players[editingPlayerIndex]?.name}</div>
-                            </div>
-                        </div>
-                        <div style={{ display: 'grid', gap: 10 }}>
-                            <input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Enter name" style={{ padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.06)', color: 'white' }} />
-                            <input value={editAvatarUrl} onChange={(e) => setEditAvatarUrl(e.target.value)} placeholder="Avatar image URL" style={{ padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.06)', color: 'white' }} />
-                            <div>
-                                <input ref={avatarFileInputRef} type="file" accept="image/*" onChange={onPickAvatarFile} style={{ display: 'none' }} />
-                                <button onClick={() => avatarFileInputRef.current && avatarFileInputRef.current.click()} style={{ background: '#4444FF', color: 'white', padding: '10px 12px', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 'bold' }}>Upload Picture</button>
-                            </div>
-                        </div>
-                        <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px dashed rgba(255,255,255,0.2)' }}>
-                            <div style={{ fontWeight: 700, marginBottom: 8 }}>Migrate to another device</div>
-                            <button onClick={copyInviteLink} style={{ background: '#29B1A9', color: 'white', padding: '10px 12px', border: 'none', borderRadius: 10, cursor: 'pointer', fontWeight: 'bold' }}>Copy Invite Link</button>
-                            {inviteCopied && <span style={{ color: '#B0FFB0', marginLeft: 10 }}>Copied!</span>}
-                        </div>
-                        <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-                            <button onClick={closePlayerEditor} style={{ flex: 1, background: '#555', color: 'white', padding: '10px 0', border: 'none', borderRadius: 12, cursor: 'pointer', fontWeight: 'bold' }}>Cancel</button>
-                            <button onClick={savePlayerEditor} style={{ flex: 1, background: players[editingPlayerIndex]?.color || '#00AA00', color: 'white', padding: '10px 0', border: 'none', borderRadius: 12, cursor: 'pointer', fontWeight: 'bold' }}>Save</button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <PlayerEditorModal
+                show={showPlayerEditor}
+                editingPlayerIndex={editingPlayerIndex}
+                player={editingPlayerIndex != null ? players[editingPlayerIndex] : null}
+                editName={editName}
+                editAvatarUrl={editAvatarUrl}
+                inviteCopied={inviteCopied}
+                avatarFileInputRef={avatarFileInputRef}
+                onNameChange={setEditName}
+                onAvatarUrlChange={setEditAvatarUrl}
+                onPickAvatarFile={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                            setEditAvatarUrl(event.target.result);
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                }}
+                onCopyInviteLink={copyInviteLink}
+                onClose={() => {
+                    setShowPlayerEditor(false);
+                    setEditingPlayerIndex(null);
+                    setEditName('');
+                    setEditAvatarUrl('');
+                }}
+                onSave={() => {
+                    if (editingPlayerIndex != null) {
+                        setPlayers(prev => {
+                            const copy = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
+                            if (copy[editingPlayerIndex]) {
+                                if (editName.trim()) copy[editingPlayerIndex].name = editName.trim();
+                                if (editAvatarUrl.trim()) copy[editingPlayerIndex].avatar = editAvatarUrl.trim();
+                            }
+                            return copy;
+                        });
+                        setShowPlayerEditor(false);
+                        setEditingPlayerIndex(null);
+                        setEditName('');
+                        setEditAvatarUrl('');
+                    }
+                }}
+            />
         </div>
         <ToastContainer
             position="top-right"

@@ -72,7 +72,7 @@ export const getYtDownloadApiUrl = () => {
   }
   
   // PRIORITY 3: Default remote URL when online
-  return 'https://yt-dl-tyyw.onrender.com';
+  return 'https://yt-dl-ufvy.onrender.com';
 };
 
 /**
