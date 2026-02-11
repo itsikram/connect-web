@@ -55,8 +55,6 @@ import { PendingInvitesBanner } from './components/PendingInvitesBanner';
 import { PlayerSelectionModal } from './components/PlayerSelectionModal';
 import { useAudio } from './hooks/useAudio';
 import { showLudoInviteToast } from '../../utils/toastUtils';
-import { ToastContainer } from 'react-toastify';
-import 'react-toastify/dist/ReactToastify.css';
 
 /**
  * LudoGame Component
@@ -243,6 +241,7 @@ const LudoGame = () => {
     const isJoiningViaInviteRef = useRef(false);
     const inviteAcceptTimestampRef = useRef(0);
     const lastJoinRequestRef = useRef({ gameId: null, timestamp: 0 });
+    const acceptIncomingInviteRef = useRef(null);
     
     // ============================================================================
     // SECTION 8: DICE & ANIMATION STATE
@@ -1145,6 +1144,80 @@ const LudoGame = () => {
         }
     }, [myProfile?._id, ensureSocketConnected]);
 
+    // Check for pending invite from global handler (Main.js) and auto-accept if needed
+    useEffect(() => {
+        if (!myProfile?._id) return;
+        
+        try {
+            const pendingInviteStr = localStorage.getItem('ludo_pending_invite');
+            if (!pendingInviteStr) return;
+            
+            const pendingInvite = JSON.parse(pendingInviteStr);
+            if (!pendingInvite || !pendingInvite.autoAccept) {
+                // Not an auto-accept invite, clear it
+                localStorage.removeItem('ludo_pending_invite');
+                return;
+            }
+            
+            // Clear the pending invite from localStorage immediately to prevent re-processing
+            localStorage.removeItem('ludo_pending_invite');
+            
+            // Wait a bit for socket to be ready, then set the invite request
+            const setPendingInvite = () => {
+                if (!socketRef.current) {
+                    // Socket not ready yet, retry
+                    setTimeout(setPendingInvite, 200);
+                    return;
+                }
+                
+                // Set the invite request - this will trigger the auto-accept effect below
+                setIncomingInviteRequest(pendingInvite);
+            };
+            
+            // Wait for socket connection before setting invite
+            if (socketRef.current && socketRef.current.connected) {
+                setPendingInvite();
+            } else {
+                // Wait for socket to connect
+                const onConnect = () => {
+                    if (socketRef.current) {
+                        socketRef.current.off('connect', onConnect);
+                    }
+                    setPendingInvite();
+                };
+                if (socketRef.current) {
+                    socketRef.current.once('connect', onConnect);
+                } else {
+                    // Socket doesn't exist yet, wait a bit
+                    setTimeout(setPendingInvite, 500);
+                }
+            }
+        } catch (error) {
+            console.error('[LUDO] Error processing pending invite:', error);
+            try {
+                localStorage.removeItem('ludo_pending_invite');
+            } catch (_e) {
+                // Ignore
+            }
+        }
+    }, [myProfile?._id]);
+
+    // Auto-accept invite if it has the autoAccept flag (from global handler)
+    useEffect(() => {
+        if (!incomingInviteRequest || !incomingInviteRequest.autoAccept) return;
+        if (!myProfile?._id) return;
+        
+        // Small delay to ensure everything is ready
+        const timer = setTimeout(() => {
+            // Call acceptIncomingInvite via ref
+            if (acceptIncomingInviteRef.current) {
+                acceptIncomingInviteRef.current();
+            }
+        }, 300);
+        
+        return () => clearTimeout(timer);
+    }, [incomingInviteRequest, myProfile?._id]);
+
     // Load saved game state on mount and attempt to reconnect
     useEffect(() => {
         if (!myProfile?._id) return;
@@ -1366,6 +1439,127 @@ const LudoGame = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [myProfile?._id, loadGameState, ensureSocketConnected]);
 
+    // Handle visibility change (iPhone lock/unlock) - sync game state when page becomes visible
+    useEffect(() => {
+        if (!onlineMode || !gameId) return;
+
+        // Shared function to sync game state
+        const syncGameState = (source) => {
+            // If we're in an active game, ensure we have the latest state
+            if (gameId && gameStartedRef.current && !gameEnded) {
+                console.log(`[${source}] Syncing game state`, {
+                    gameId,
+                    gameStarted: gameStartedRef.current,
+                    socketConnected: socketRef.current?.connected
+                });
+
+                const socket = socketRef.current;
+                
+                // If socket is not connected, ensure it connects
+                if (!socket || !socket.connected) {
+                    console.log(`[${source}] Socket not connected - ensuring connection`);
+                    ensureSocketConnected();
+                    
+                    // Wait for connection, then request state
+                    const waitForConnection = () => {
+                        if (socketRef.current?.connected) {
+                            // Prevent multiple requests
+                            const now = Date.now();
+                            const lastRequest = lastPlayersGetRequestRef.current;
+                            const timeSinceLastRequest = now - lastRequest.timestamp;
+                            const MIN_REQUEST_INTERVAL = 1000;
+
+                            if (lastRequest.gameId !== gameId || timeSinceLastRequest >= MIN_REQUEST_INTERVAL) {
+                                lastPlayersGetRequestRef.current = { gameId, timestamp: now };
+                                try {
+                                    console.log(`[${source}] Requesting latest game state after reconnection`);
+                                    socketRef.current.emit('ludo:join', { gameId });
+                                    socketRef.current.emit('ludo:players:get', { gameId });
+                                } catch (e) {
+                                    console.error(`[${source}] Error requesting game state:`, e);
+                                }
+                            }
+                        } else if (socketRef.current) {
+                            // Wait for connection
+                            socketRef.current.once('connect', () => {
+                                const now = Date.now();
+                                const lastRequest = lastPlayersGetRequestRef.current;
+                                const timeSinceLastRequest = now - lastRequest.timestamp;
+                                const MIN_REQUEST_INTERVAL = 1000;
+
+                                if (lastRequest.gameId !== gameId || timeSinceLastRequest >= MIN_REQUEST_INTERVAL) {
+                                    lastPlayersGetRequestRef.current = { gameId, timestamp: now };
+                                    try {
+                                        console.log(`[${source}] Requesting latest game state after connection`);
+                                        socketRef.current.emit('ludo:join', { gameId });
+                                        socketRef.current.emit('ludo:players:get', { gameId });
+                                    } catch (e) {
+                                        console.error(`[${source}] Error requesting game state:`, e);
+                                    }
+                                }
+                            });
+                        } else {
+                            // Retry after a delay
+                            setTimeout(waitForConnection, 500);
+                        }
+                    };
+                    
+                    setTimeout(waitForConnection, 300);
+                } else {
+                    // Socket is connected, just request latest state
+                    const now = Date.now();
+                    const lastRequest = lastPlayersGetRequestRef.current;
+                    const timeSinceLastRequest = now - lastRequest.timestamp;
+                    const MIN_REQUEST_INTERVAL = 1000;
+
+                    if (lastRequest.gameId !== gameId || timeSinceLastRequest >= MIN_REQUEST_INTERVAL) {
+                        lastPlayersGetRequestRef.current = { gameId, timestamp: now };
+                        try {
+                            console.log(`[${source}] Requesting latest game state (socket already connected)`);
+                            socket.emit('ludo:join', { gameId });
+                            socket.emit('ludo:players:get', { gameId });
+                        } catch (e) {
+                            console.error(`[${source}] Error requesting game state:`, e);
+                        }
+                    }
+                }
+            }
+        };
+
+        const handleVisibilityChange = () => {
+            // Only handle when page becomes visible (not when it becomes hidden)
+            if (document.visibilityState === 'visible') {
+                syncGameState('VISIBILITY');
+            }
+        };
+
+        const handlePageShow = (e) => {
+            // Handle pageshow event (mobile browsers restore from cache)
+            // Only sync if page was restored from cache (not initial load)
+            if (e.persisted) {
+                syncGameState('PAGESHOW');
+            }
+        };
+
+        const handleFocus = () => {
+            // Backup handler for window focus (some mobile browsers)
+            // Only sync if we're in an active game and page is visible
+            if (gameId && gameStartedRef.current && !gameEnded && document.visibilityState === 'visible') {
+                syncGameState('FOCUS');
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('pageshow', handlePageShow);
+        window.addEventListener('focus', handleFocus);
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('pageshow', handlePageShow);
+            window.removeEventListener('focus', handleFocus);
+        };
+    }, [onlineMode, gameId, gameEnded, ensureSocketConnected]);
+
     // Fetch pending invites on connect/profile available
     useEffect(() => {
         if (!socketRef.current || !myProfile?._id) return;
@@ -1501,15 +1695,22 @@ const LudoGame = () => {
 
     // Create initial game state in database (host only) - called when starting a new game
     const createInitialGameState = useCallback(async (gid, currentPlayers) => {
-        if (!onlineMode || !gid || !myProfile?._id) return false;
+        console.log('[CREATE_INITIAL_GAME_STATE] Called', { gid, onlineMode, hasProfile: !!myProfile?._id, playersCount: currentPlayers?.length });
+        
+        if (!onlineMode || !gid || !myProfile?._id) {
+            console.log('[CREATE_INITIAL_GAME_STATE] Skipped - invalid params', { onlineMode, gid, hasProfile: !!myProfile?._id });
+            return false;
+        }
 
         // Prevent concurrent saves to avoid version conflicts
         if (isSavingGameStateRef.current) {
+            console.log('[CREATE_INITIAL_GAME_STATE] Skipped - save already in progress');
             return false; // Skip if a save is already in progress
         }
 
         try {
             isSavingGameStateRef.current = true; // Mark as saving
+            console.log('[CREATE_INITIAL_GAME_STATE] Starting to create game state...');
 
             const minimalPlayers = currentPlayers.map(p => ({
                 id: p.id,
@@ -1534,10 +1735,13 @@ const LudoGame = () => {
                 selectedPlayerCount: selectedPlayerCountRef.current
             };
 
+            console.log('[CREATE_INITIAL_GAME_STATE] Saving game state to DB...', { gameId: gid, playersCount: minimalPlayers.length });
             const result = await saveGameStateToDB(gameState);
-            return result !== null; // Return true if successfully created
+            const success = result !== null;
+            console.log('[CREATE_INITIAL_GAME_STATE] Save result:', { success, result });
+            return success; // Return true if successfully created
         } catch (error) {
-            console.debug('Failed to create initial game state:', error);
+            console.error('[CREATE_INITIAL_GAME_STATE] Failed to create initial game state:', error);
             return false;
         } finally {
             // Always reset the flag, even if save fails
@@ -1678,6 +1882,33 @@ const LudoGame = () => {
 
     const inviteFriend = useCallback((friend) => {
         if (!friend || !friend._id) return;
+        
+        const friendIdStr = String(friend._id);
+        
+        // CRITICAL: Check if friend has already joined before sending invite
+        const currentStatus = invitedStatusByFriendIdRef.current[friendIdStr];
+        if (currentStatus === 'joined') {
+            console.log(`[INVITE_FRIEND] Skipping invite to ${friendIdStr} - already joined`);
+            return;
+        }
+        
+        // Also check if the friend is already in the game
+        const currentPlayers = playersRef.current || players;
+        const friendAlreadyInGame = currentPlayers.some(p => 
+            p?.profileId && String(p.profileId) === friendIdStr
+        );
+        if (friendAlreadyInGame) {
+            console.log(`[INVITE_FRIEND] Skipping invite to ${friendIdStr} - already in game`);
+            // Update status to 'joined' if not already set
+            if (currentStatus !== 'joined') {
+                setInvitedStatusByFriendId(prev => ({
+                    ...prev,
+                    [friendIdStr]: 'joined'
+                }));
+            }
+            return;
+        }
+        
         // Must be online mode to invite
         if (!onlineMode) setOnlineMode(true);
         ensureSocketConnected();
@@ -1696,13 +1927,27 @@ const LudoGame = () => {
             copy[slot].profileId = friend._id;
             return copy;
         });
-        const friendIdStr = String(friend._id);
         setInvitedStatusByFriendId(prev => {
             const updated = { ...prev, [friendIdStr]: 'invited' };
             // Setting status to 'invited' for friend
             return updated;
         });
         setInvitedSlotByFriendId(prev => ({ ...prev, [friendIdStr]: slot }));
+        
+        // CRITICAL: Add friend to selectedFriends if not already there
+        setSelectedFriends(prev => {
+            const already = prev.some(p => String(p?._id) === String(friend._id));
+            if (already) {
+                console.log(`[INVITE_FRIEND] Friend ${friendIdStr} already in selectedFriends`);
+                return prev;
+            }
+            const next = [...prev, friend];
+            const maxFriends = Math.max(0, selectedPlayerCount - 1);
+            const limited = next.slice(0, maxFriends);
+            console.log(`[INVITE_FRIEND] Added friend ${friendIdStr} to selectedFriends (${limited.length}/${maxFriends})`);
+            return limited;
+        });
+        
         // Track when this friend was invited to prevent processing accept events that arrive immediately
         inviteTimestampsRef.current[friendIdStr] = Date.now();
 
@@ -1715,6 +1960,14 @@ const LudoGame = () => {
             try {
                 const targetId = friend?._id || friend?.id;
                 if (!targetId) return;
+                
+                // Double-check status before sending (race condition protection)
+                const statusBeforeSend = invitedStatusByFriendIdRef.current[friendIdStr];
+                if (statusBeforeSend === 'joined') {
+                    console.log(`[INVITE_FRIEND] Skipping invite to ${friendIdStr} - status changed to joined`);
+                    return;
+                }
+                
                 // Join/create room for host immediately (do before sending invite)
                 try { emitSocket('ludo:join', { gameId: gid }); } catch (_e) { }
                 // Send invite (queued if socket is still connecting)
@@ -1734,7 +1987,7 @@ const LudoGame = () => {
             } catch (_e) { }
         }
         // If game hasn't started, the invitation will be sent in confirmPlayerCount after game state is created
-    }, [onlineMode, ensureSocketConnected, gameId, gameStarted, myProfile?._id, myProfile?.fullName, myProfile?.profilePic, selectedPlayerCount, getNextOpenSlot, emitSocket]);
+    }, [onlineMode, ensureSocketConnected, gameId, gameStarted, myProfile?._id, myProfile?.fullName, myProfile?.profilePic, selectedPlayerCount, getNextOpenSlot, emitSocket, players]);
 
     // Offline: assign a searched friend/profile to the next open local seat (no socket)
     const assignFriendOffline = useCallback((friend) => {
@@ -1767,6 +2020,18 @@ const LudoGame = () => {
         const currentInvitedStatus = invitedStatusByFriendIdRef.current;
         const currentInvitedSlots = invitedSlotByFriendIdRef.current;
 
+        console.log('[CHECK_ALL_PLAYERS_JOINED] Checking players', {
+            maxPlayers,
+            players: currentPlayers.map((p, idx) => ({
+                index: idx,
+                name: p?.name,
+                profileId: p?.profileId,
+                hasProfileId: Boolean(p?.profileId)
+            })),
+            invitedStatus: currentInvitedStatus,
+            invitedSlots: currentInvitedSlots
+        });
+
         // Check each seat (excluding host at 0)
         for (let i = 1; i < maxPlayers; i++) {
             const seat = currentPlayers[i];
@@ -1774,6 +2039,7 @@ const LudoGame = () => {
 
             if (!hasProfileId) {
                 // No profileId means seat is empty - not all players joined
+                console.log(`[CHECK_ALL_PLAYERS_JOINED] Seat ${i} is empty - not all players joined`);
                 return false;
             }
 
@@ -1782,21 +2048,39 @@ const LudoGame = () => {
             const inviteStatus = profileIdStr ? (currentInvitedStatus[profileIdStr] || currentInvitedStatus[seat.profileId]) : null;
             const wasInvitedToThisSlot = profileIdStr && (currentInvitedSlots[profileIdStr] === i || currentInvitedSlots[seat.profileId] === i);
 
-            // CRITICAL: If player has profileId, consider them joined by default
-            // The invite status might not be set properly when host is from Android
-            // If they have a profileId in the players array, they've joined the game
-            // Only check invite status if it's explicitly 'invited' (meaning they haven't joined yet)
-            const isJoined = wasInvitedToThisSlot
-                ? (inviteStatus === 'joined' || inviteStatus === undefined || inviteStatus === null)  // If invited, joined if status is 'joined' OR undefined (from server)
-                : (inviteStatus !== 'invited');  // If not invited, joined unless status is explicitly 'invited'
+            console.log(`[CHECK_ALL_PLAYERS_JOINED] Seat ${i} check:`, {
+                profileId: profileIdStr,
+                inviteStatus,
+                wasInvitedToThisSlot,
+                hasProfileId
+            });
+
+            // CRITICAL: If player was invited to this slot, they must have status 'joined' to be considered joined
+            // If status is 'invited' or undefined/null, they haven't joined yet
+            // Only if status is explicitly 'joined' or they weren't invited (offline player), consider them joined
+            let isJoined = false;
+            
+            if (wasInvitedToThisSlot) {
+                // Player was invited to this slot - must have status 'joined' to be considered joined
+                // If status is 'invited', undefined, or null, they haven't joined yet
+                isJoined = inviteStatus === 'joined';
+                console.log(`[CHECK_ALL_PLAYERS_JOINED] Seat ${i} was invited to this slot - isJoined: ${isJoined} (status: ${inviteStatus})`);
+            } else {
+                // Player wasn't invited to this slot (might be offline player or already joined from another device)
+                // If they have a profileId and status is not 'invited', consider them joined
+                isJoined = inviteStatus !== 'invited';
+                console.log(`[CHECK_ALL_PLAYERS_JOINED] Seat ${i} was NOT invited to this slot - isJoined: ${isJoined} (status: ${inviteStatus})`);
+            }
 
             if (!isJoined) {
-                // This player hasn't actually joined yet (status is explicitly 'invited')
+                // This player hasn't actually joined yet
+                console.log(`[CHECK_ALL_PLAYERS_JOINED] Seat ${i} player hasn't joined yet - status: ${inviteStatus}`);
                 return false;
             }
         }
 
         // All seats are filled and all players have joined
+        console.log('[CHECK_ALL_PLAYERS_JOINED] ✅ All players have joined');
         return true;
     }, [onlineMode, selectedPlayerCount]);
 
@@ -2003,6 +2287,104 @@ const LudoGame = () => {
         }
     }, [onlineMode, gameId]);
 
+    // Reconnect socket and sync game state
+    const reconnectSocket = useCallback(() => {
+        if (!onlineMode || !gameId) {
+            console.log('[RECONNECT_SOCKET] Cannot reconnect - not online or no gameId');
+            return;
+        }
+
+        console.log('[RECONNECT_SOCKET] Manually reconnecting socket');
+        
+        const socket = socketRef.current;
+        
+        // Show feedback to user
+        const statusElement = document.querySelector('[data-connection-status]');
+        const originalText = statusElement?.textContent || 'Connected';
+        
+        if (statusElement) {
+            statusElement.textContent = 'Reconnecting...';
+        }
+
+        // Disconnect if connected
+        if (socket && socket.connected) {
+            console.log('[RECONNECT_SOCKET] Disconnecting current socket');
+            socket.disconnect();
+        }
+
+        // Clean up old socket
+        cleanupSocket();
+
+        // Create new connection
+        ensureSocketConnected();
+
+        // Wait for connection and then rejoin game
+        const waitForConnectionAndRejoin = () => {
+            if (socketRef.current?.connected) {
+                console.log('[RECONNECT_SOCKET] Socket connected, rejoining game');
+                
+                // Rejoin game
+                const now = Date.now();
+                lastJoinRequestRef.current = { gameId, timestamp: now };
+                lastPlayersGetRequestRef.current = { gameId, timestamp: now };
+                
+                try {
+                    socketRef.current.emit('ludo:join', { gameId });
+                    socketRef.current.emit('ludo:players:get', { gameId });
+                    
+                    if (statusElement) {
+                        statusElement.textContent = 'Reconnected';
+                        setTimeout(() => {
+                            statusElement.textContent = originalText;
+                        }, 2000);
+                    }
+                } catch (error) {
+                    console.error('[RECONNECT_SOCKET] Error rejoining game:', error);
+                    if (statusElement) {
+                        statusElement.textContent = 'Reconnect failed';
+                        setTimeout(() => {
+                            statusElement.textContent = originalText;
+                        }, 3000);
+                    }
+                }
+            } else if (socketRef.current) {
+                // Wait for connection
+                socketRef.current.once('connect', () => {
+                    console.log('[RECONNECT_SOCKET] Socket connected via event, rejoining game');
+                    
+                    const now = Date.now();
+                    lastJoinRequestRef.current = { gameId, timestamp: now };
+                    lastPlayersGetRequestRef.current = { gameId, timestamp: now };
+                    
+                    try {
+                        socketRef.current.emit('ludo:join', { gameId });
+                        socketRef.current.emit('ludo:players:get', { gameId });
+                        
+                        if (statusElement) {
+                            statusElement.textContent = 'Reconnected';
+                            setTimeout(() => {
+                                statusElement.textContent = originalText;
+                            }, 2000);
+                        }
+                    } catch (error) {
+                        console.error('[RECONNECT_SOCKET] Error rejoining game:', error);
+                        if (statusElement) {
+                            statusElement.textContent = 'Reconnect failed';
+                            setTimeout(() => {
+                                statusElement.textContent = originalText;
+                            }, 3000);
+                        }
+                    }
+                });
+            } else {
+                // Retry after a delay
+                setTimeout(waitForConnectionAndRejoin, 500);
+            }
+        };
+
+        setTimeout(waitForConnectionAndRejoin, 300);
+    }, [onlineMode, gameId, ensureSocketConnected]);
+
     // Re-invite players function for online mode
     const reInvitePlayers = useCallback(() => {
         if (!onlineMode || !gameId || !socketRef.current) {
@@ -2026,6 +2408,24 @@ const LudoGame = () => {
                         console.log('[RE_INVITE] Sending invites to selected friends for empty slot', index);
                         selectedFriends.forEach((friend) => {
                             if (friend && friend._id) {
+                                const friendIdStr = String(friend._id);
+                                
+                                // CRITICAL: Check if friend has already joined before sending invite
+                                const currentStatus = invitedStatusByFriendIdRef.current[friendIdStr];
+                                if (currentStatus === 'joined') {
+                                    console.log(`[RE_INVITE] Skipping invite to ${friendIdStr} - already joined`);
+                                    return;
+                                }
+                                
+                                // Also check if the friend is already in the game
+                                const friendAlreadyInGame = players.some(p => 
+                                    p?.profileId && String(p.profileId) === friendIdStr
+                                );
+                                if (friendAlreadyInGame) {
+                                    console.log(`[RE_INVITE] Skipping invite to ${friendIdStr} - already in game`);
+                                    return;
+                                }
+                                
                                 try {
                                     socketRef.current.emit('ludo:invite', {
                                         to: friend._id,
@@ -2050,6 +2450,15 @@ const LudoGame = () => {
                     }
                     // Case 2: Offline player - send targeted re-invite to their profile
                     else if (player.isOffline && player.profileId) {
+                        const playerIdStr = String(player.profileId);
+                        
+                        // CRITICAL: Check if player has already joined (status might be 'joined' even if marked offline)
+                        const currentStatus = invitedStatusByFriendIdRef.current[playerIdStr];
+                        if (currentStatus === 'joined') {
+                            console.log(`[RE_INVITE] Skipping re-invite to ${playerIdStr} - already joined (status: joined)`);
+                            return;
+                        }
+                        
                         console.log('[RE_INVITE] Sending re-invite to offline player', player.profileId, 'for slot', index);
                         try {
                             socketRef.current.emit('ludo:invite', {
@@ -3632,9 +4041,26 @@ const LudoGame = () => {
                                 // keep name/avatar as-is; host snapshot should correct soon
                             }
                         }
+                        // Check if current user successfully joined the game
+                        const myId = myProfile?._id;
+                        const isUserInPlayers = myId && next.some(p => 
+                            p && p.profileId && String(p.profileId) === String(myId)
+                        );
+                        
+                        // If user successfully joined, dismiss all other pending invites
+                        if (isUserInPlayers && socketRef.current && socketRef.current.connected) {
+                            try {
+                                // Request invites to dismiss them
+                                socketRef.current.emit('ludo:invites:get', {});
+                                // Set flag to dismiss all other invites when received
+                                localStorage.setItem('ludo_dismiss_all_other_invites', 'true');
+                            } catch (_e) {
+                                // Ignore errors
+                            }
+                        }
+                        
                         // Resolve my slot from snapshot by matching my profileId; fall back to current myPlayerIndex
                         let resolvedMyIndex = undefined;
-                        const myId = myProfile?._id;
                         if (myId) {
                             const foundIdx = next.findIndex(p => p && p.profileId && String(p.profileId) === String(myId));
                             if (foundIdx >= 0) {
@@ -3746,6 +4172,43 @@ const LudoGame = () => {
                     setPlayers(protectedNext);
                     // Update ref immediately
                     playersRef.current = protectedNext;
+
+                    // CRITICAL: Only update invite status to 'joined' if player was previously invited AND game has started
+                    // This prevents automatically joining players who haven't accepted the invite
+                    // The onAccepted handler is the ONLY place that should mark players as 'joined' when they accept
+                    // We only update here during reconnection or if game has started (meaning they must have accepted)
+                    if (myPlayerIndex === 0) { // Only host should update invite status
+                        protectedNext.forEach((player, playerIndex) => {
+                            if (player && player.profileId && playerIndex > 0) { // Skip host (index 0)
+                                const playerIdStr = String(player.profileId);
+                                const currentStatus = invitedStatusByFriendIdRef.current[playerIdStr];
+                                
+                                // Only update to 'joined' if:
+                                // 1. Player was previously invited (status === 'invited')
+                                // 2. AND game has started (meaning they must have accepted at some point)
+                                // This prevents auto-joining players who haven't accepted yet
+                                if (currentStatus === 'invited' && (payload.gameStarted || gameStartedRef.current)) {
+                                    console.log(`[ON_PLAYERS] Updating invite status to 'joined' for player ${playerIdStr} at slot ${playerIndex} (game started)`);
+                                    setInvitedStatusByFriendId(prev => ({
+                                        ...prev,
+                                        [playerIdStr]: 'joined'
+                                    }));
+                                } else if (currentStatus !== 'invited' && currentStatus !== 'joined' && (payload.gameStarted || gameStartedRef.current)) {
+                                    // For reconnection scenarios: if game started and player is in snapshot but wasn't invited,
+                                    // they must have joined somehow (maybe from another device), so mark as joined
+                                    console.log(`[ON_PLAYERS] Updating invite status to 'joined' for player ${playerIdStr} at slot ${playerIndex} (reconnection, game started)`);
+                                    setInvitedStatusByFriendId(prev => ({
+                                        ...prev,
+                                        [playerIdStr]: 'joined'
+                                    }));
+                                } else if (currentStatus === 'invited' && !payload.gameStarted && !gameStartedRef.current) {
+                                    // CRITICAL: If player was invited but game hasn't started, DON'T mark as joined
+                                    // They must explicitly accept via onAccepted handler
+                                    console.log(`[ON_PLAYERS] Player ${playerIdStr} at slot ${playerIndex} is invited but game hasn't started - NOT marking as joined`);
+                                }
+                            }
+                        });
+                    }
 
                     // Clear the flag after a delay to allow normal saves again
                     setTimeout(() => {
@@ -4644,6 +5107,15 @@ const LudoGame = () => {
     };
 
     const confirmPlayerCount = () => {
+        console.log('[CONFIRM_PLAYER_COUNT] Called', {
+            onlineMode,
+            selectedPlayerCount,
+            selectedFriendsCount: selectedFriends.length,
+            selectedFriends: selectedFriends.map(f => ({ id: f._id, name: f.fullName })),
+            gameId,
+            invitedSlots: invitedSlotByFriendIdRef.current
+        });
+        
         setShowPlayerSelection(false);
 
         // Initialize game state (but don't start yet in online mode if players haven't joined)
@@ -4679,6 +5151,9 @@ const LudoGame = () => {
             return next;
         });
         // Re-apply any reserved invited slots to the fresh players list
+        // CRITICAL: Don't set profileId until friend accepts - only set name/avatar for display
+        // This prevents the server from thinking they've joined before they accept
+        // The profileId will be set when they accept via the onAccepted handler
         if (onlineMode && invitedSlotByFriendId && Object.keys(invitedSlotByFriendId).length > 0) {
             setPlayers(prev => {
                 const copy = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
@@ -4686,10 +5161,21 @@ const LudoGame = () => {
                     const slot = Number(slotStr);
                     const friend = [...selectedFriends, ...friendList, ...searchResults].find(f => String(f?._id) === String(fid));
                     if (copy[slot] && friend) {
+                        const friendIdStr = String(friend._id);
+                        const inviteStatus = invitedStatusByFriendIdRef.current[friendIdStr];
+                        
+                        // Set name/avatar for UI display (so host can see who they invited)
                         copy[slot].name = friend.fullName || copy[slot].name;
                         copy[slot].avatar = friend.profilePic || copy[slot].avatar;
                         copy[slot].cover = friend.coverPic || copy[slot].cover;
-                        copy[slot].profileId = friend._id;
+                        
+                        // CRITICAL: Only set profileId if friend has already accepted (status === 'joined')
+                        // Otherwise, DON'T set profileId - this prevents the server from thinking they've joined
+                        // The profileId will be set when they accept via the onAccepted handler
+                        if (inviteStatus === 'joined') {
+                            copy[slot].profileId = friend._id;
+                        }
+                        // If status is not 'joined', leave profileId undefined - this is intentional
                     }
                 });
                 // Update ref immediately to keep state synchronized
@@ -4701,64 +5187,194 @@ const LudoGame = () => {
         // Setup online room/socket and check if we should wait for players
         if (onlineMode && myProfile?._id) {
             const gid = gameId || generateGameId();
+            console.log('[CONFIRM_PLAYER_COUNT] Setting up online game', { gid, hasGameId: !!gameId });
             setGameId(gid);
             ensureSocketConnected();
+            
+            console.log('[CONFIRM_PLAYER_COUNT] Socket status', {
+                hasSocket: !!socketRef.current,
+                connected: socketRef.current?.connected
+            });
 
             // CRITICAL: Wait for players state to update, then create game state in database first, then send invitations
             // Use setTimeout to ensure state updates have been applied
             setTimeout(() => {
+                console.log('[CONFIRM_PLAYER_COUNT] Inside setTimeout, preparing to create game state', {
+                    gid,
+                    playersRefLength: playersRef.current?.length,
+                    playersLength: players.length,
+                    selectedFriendsCount: selectedFriends.length
+                });
+                
                 // Get current players state for initial game creation (after state update)
                 const currentPlayersForDB = playersRef.current && playersRef.current.length > 0
                     ? playersRef.current
                     : players; // Fallback to state if ref not updated yet
 
+                console.log('[CONFIRM_PLAYER_COUNT] Calling createInitialGameState', {
+                    gid,
+                    playersCount: currentPlayersForDB.length
+                });
+
                 // Create initial game state in database
                 createInitialGameState(gid, currentPlayersForDB).then((gameStateCreated) => {
+                    console.log('[CONFIRM_PLAYER_COUNT] createInitialGameState completed', { gameStateCreated });
                     if (gameStateCreated) {
-                        // Game state created successfully - now send invitations to all selected friends
-                        // Send invitations to all friends in selectedFriends list
-                        // This includes friends that were selected before "Start Game" was clicked
-                        selectedFriends.forEach((friend) => {
-                            if (friend && friend._id) {
-                                const friendIdStr = String(friend._id);
-                                const slot = invitedSlotByFriendIdRef.current[friendIdStr];
-
-                                // Send invitation after game state is created
-                                setTimeout(() => {
-                                    try {
-                                        const targetId = friend?._id || friend?.id;
-                                        if (!targetId) return;
-
-                                        // Join/create room for host (if not already joined)
-                                        try { emitSocket('ludo:join', { gameId: gid }); } catch (_e) { }
-
-                                        // Send invite now that game state exists
-                                        emitSocket('ludo:invite', {
-                                            to: targetId,
-                                            by: myProfile?._id,
-                                            name: myProfile?.fullName || 'Player',
-                                            avatar: myProfile?.profilePic,
-                                            cover: myProfile?.coverPic,
-                                            gameId: gid,
-                                            slotIndex: slot,
-                                            playerCount: selectedPlayerCount,
-                                            ts: Date.now(),
-                                        });
-
-                                        // Fire a web notification to the friend's active browsers
-                                        try { sendInviteNotificationToFriend(friend, gid, slot); } catch (_e) { }
-
-                                        // Update status to 'invited' if not already set
-                                        if (invitedStatusByFriendIdRef.current[friendIdStr] !== 'joined') {
-                                            setInvitedStatusByFriendId(prev => ({
+                        console.log('[CONFIRM_PLAYER_COUNT] Game state created, preparing to send invites', {
+                            selectedFriendsCount: selectedFriends.length,
+                            selectedFriends: selectedFriends.map(f => ({ id: f._id, name: f.fullName })),
+                            invitedSlots: invitedSlotByFriendIdRef.current
+                        });
+                        
+                        // Wait for socket to be connected before sending invites
+                        const sendInvitesWhenReady = () => {
+                            if (!socketRef.current) {
+                                console.log('[CONFIRM_PLAYER_COUNT] Socket not available, waiting...');
+                                setTimeout(sendInvitesWhenReady, 200);
+                                return;
+                            }
+                            
+                            if (!socketRef.current.connected) {
+                                console.log('[CONFIRM_PLAYER_COUNT] Socket not connected, waiting for connection...');
+                                socketRef.current.once('connect', () => {
+                                    console.log('[CONFIRM_PLAYER_COUNT] Socket connected, sending invites');
+                                    sendInvitesToFriends();
+                                });
+                                return;
+                            }
+                            
+                            // Socket is connected, send invites
+                            console.log('[CONFIRM_PLAYER_COUNT] Socket connected, sending invites immediately');
+                            sendInvitesToFriends();
+                        };
+                        
+                        const sendInvitesToFriends = () => {
+                            // Game state created successfully - now send invitations to all selected friends
+                            // Send invitations to all friends in selectedFriends list
+                            // This includes friends that were selected before "Start Game" was clicked
+                            if (!selectedFriends || selectedFriends.length === 0) {
+                                console.log('[CONFIRM_PLAYER_COUNT] No selected friends to invite');
+                                return;
+                            }
+                            
+                            console.log('[CONFIRM_PLAYER_COUNT] Sending invites to', selectedFriends.length, 'friends');
+                            
+                            selectedFriends.forEach((friend) => {
+                                if (friend && friend._id) {
+                                    const friendIdStr = String(friend._id);
+                                    const slot = invitedSlotByFriendIdRef.current[friendIdStr];
+                                    
+                                    // If slot is not set, try to get it from the players array
+                                    let actualSlot = slot;
+                                    if (actualSlot === undefined) {
+                                        const currentPlayers = playersRef.current || players;
+                                        const playerIndex = currentPlayers.findIndex(p => 
+                                            p?.profileId && String(p.profileId) === friendIdStr
+                                        );
+                                        if (playerIndex >= 0) {
+                                            actualSlot = playerIndex;
+                                            // Update the ref
+                                            invitedSlotByFriendIdRef.current[friendIdStr] = actualSlot;
+                                            setInvitedSlotByFriendId(prev => ({
                                                 ...prev,
-                                                [friendIdStr]: 'invited'
+                                                [friendIdStr]: actualSlot
                                             }));
                                         }
-                                    } catch (_e) { }
-                                }, 100); // Small delay to ensure game state is fully created
-                            }
-                        });
+                                    }
+                                    
+                                    if (actualSlot === undefined) {
+                                        console.error(`[CONFIRM_PLAYER_COUNT] No slot found for friend ${friendIdStr}, skipping invite`);
+                                        return;
+                                    }
+                                    
+                                    // CRITICAL: Only skip if friend has actually joined (status === 'joined')
+                                    // Don't skip if status is 'invited' or undefined - we need to send/re-send the invite
+                                    const currentStatus = invitedStatusByFriendIdRef.current[friendIdStr];
+                                    if (currentStatus === 'joined') {
+                                        console.log(`[CONFIRM_PLAYER_COUNT] Skipping invite to ${friendIdStr} - already joined`);
+                                        return;
+                                    }
+
+                                    // Send invitation after game state is created
+                                    setTimeout(() => {
+                                        try {
+                                            const targetId = friend?._id || friend?.id;
+                                            if (!targetId) {
+                                                console.error(`[CONFIRM_PLAYER_COUNT] No targetId for friend ${friendIdStr}`);
+                                                return;
+                                            }
+                                            
+                                            // Double-check status before sending (race condition protection)
+                                            const statusBeforeSend = invitedStatusByFriendIdRef.current[friendIdStr];
+                                            if (statusBeforeSend === 'joined') {
+                                                console.log(`[CONFIRM_PLAYER_COUNT] Skipping invite to ${friendIdStr} - status changed to joined`);
+                                                return;
+                                            }
+
+                                            // Ensure socket is still connected
+                                            if (!socketRef.current || !socketRef.current.connected) {
+                                                console.error(`[CONFIRM_PLAYER_COUNT] Socket not connected when trying to send invite to ${friendIdStr}`);
+                                                return;
+                                            }
+
+                                            // Join/create room for host (if not already joined)
+                                            try { 
+                                                socketRef.current.emit('ludo:join', { gameId: gid });
+                                            } catch (_e) {
+                                                console.error(`[CONFIRM_PLAYER_COUNT] Error joining game room:`, _e);
+                                            }
+
+                                            console.log(`[CONFIRM_PLAYER_COUNT] Sending invite to ${friendIdStr} (${friend.fullName || friend.name}) for slot ${actualSlot}`, {
+                                                gameId: gid,
+                                                slotIndex: actualSlot,
+                                                playerCount: selectedPlayerCount,
+                                                socketConnected: socketRef.current.connected
+                                            });
+                                            
+                                            // Send invite now that game state exists
+                                            try {
+                                                socketRef.current.emit('ludo:invite', {
+                                                    to: targetId,
+                                                    by: myProfile?._id,
+                                                    name: myProfile?.fullName || 'Player',
+                                                    avatar: myProfile?.profilePic,
+                                                    cover: myProfile?.coverPic,
+                                                    gameId: gid,
+                                                    slotIndex: actualSlot,
+                                                    playerCount: selectedPlayerCount,
+                                                    ts: Date.now(),
+                                                });
+                                                console.log(`[CONFIRM_PLAYER_COUNT] ✅ Invite sent successfully to ${friendIdStr}`);
+                                            } catch (emitError) {
+                                                console.error(`[CONFIRM_PLAYER_COUNT] ❌ Error emitting invite to ${friendIdStr}:`, emitError);
+                                            }
+
+                                            // Fire a web notification to the friend's active browsers
+                                            try { 
+                                                sendInviteNotificationToFriend(friend, gid, actualSlot);
+                                            } catch (notifError) {
+                                                console.error(`[CONFIRM_PLAYER_COUNT] Error sending notification to ${friendIdStr}:`, notifError);
+                                            }
+
+                                            // Update status to 'invited' if not already set
+                                            if (invitedStatusByFriendIdRef.current[friendIdStr] !== 'joined') {
+                                                setInvitedStatusByFriendId(prev => ({
+                                                    ...prev,
+                                                    [friendIdStr]: 'invited'
+                                                }));
+                                            }
+                                        } catch (_e) { 
+                                            console.error(`[CONFIRM_PLAYER_COUNT] Error sending invite to ${friendIdStr}:`, _e);
+                                        }
+                                    }, 100); // Small delay to ensure game state is fully created
+                                }
+                            });
+                        };
+                        
+                        // Start the invite sending process
+                        sendInvitesWhenReady();
+                    } else {
+                        console.error('[CONFIRM_PLAYER_COUNT] Failed to create game state in database');
                     }
                 });
             }, 200); // Wait for state updates to complete
@@ -4815,39 +5431,21 @@ const LudoGame = () => {
             };
             setTimeout(waitAndEmit, 100);
 
-            // Check if all players have joined after state updates
-            // Use setTimeout to ensure state has updated
+            // CRITICAL: Set waiting state immediately after confirmPlayerCount
+            // Don't check if all players joined yet - wait for invites to be sent and accepted
+            setGameStarted(false);
+            gameStartedRef.current = false;
+            setCanRollDice(false);
+            
+            // Wait longer before checking if all players joined
+            // This gives time for invites to be sent and players to accept
             setTimeout(() => {
-                const allPlayersJoined = checkAllPlayersJoined();
-
-                if (allPlayersJoined) {
-                    // All players have joined - start the game
-                    setGameStarted(true);
-                    gameStartedRef.current = true;
-                    autoStartTriggeredRef.current = false;
-                    // CRITICAL: Don't set canRollDice to true unconditionally - let the useEffect handle it
-                    // Even though this is the host (player 0), let the useEffect check if it's their turn
-                    // This ensures consistency and prevents bugs
-                    // setCanRollDice(true); // Removed - let useEffect handle based on turn
-
-                    // Save and emit game start state
-                    if (myPlayerIndex === 0 && socketRef.current && gid) {
-                        setTimeout(() => {
-                            emitPlayersStateAfterSave(false);
-                        }, 300);
-                    }
-                } else {
-                    // Not all players have joined - enter waiting mode
-                    setGameStarted(false);
-                    gameStartedRef.current = false;
-                    autoStartTriggeredRef.current = false;
-                    setCanRollDice(false);
-                    // recomputeWaitingState will be called by useEffect when players/invitedStatus changes
-                }
-
-                // Always recompute waiting state to update UI
                 recomputeWaitingState();
-            }, 200);
+                
+                // Check if all players have joined after invites have been sent
+                // This check will be handled by recomputeWaitingState and the useEffect that watches for player joins
+                // Don't auto-start here - let the recomputeWaitingState and auto-start logic handle it
+            }, 1000); // Wait 1 second for invites to be sent
         } else {
             // Offline mode - start immediately
             setGameStarted(true);
@@ -5136,6 +5734,11 @@ const LudoGame = () => {
             setIncomingInviteRequest(null);
         }
     };
+    
+    // Store accept function in ref for use in effects
+    useEffect(() => {
+        acceptIncomingInviteRef.current = acceptIncomingInvite;
+    }, [acceptIncomingInvite]);
 
     const declineIncomingInvite = () => {
         const payload = incomingInviteRequest;
@@ -5393,10 +5996,6 @@ const LudoGame = () => {
 
         // Mobile device detection and adjustment
         const isMobile = winSize.width <= 500 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        if (isMobile) {
-            // Add -10px margin top adjustment for mobile devices
-            y = y - 8.5;
-        }
 
         // Calculate touchable area padding for mobile
         const touchPadding = isMobile ? 12 : 4; // Larger padding for mobile
@@ -5955,6 +6554,30 @@ const LudoGame = () => {
                                     </button>
                                 )}
                                 
+                                {/* Reconnect socket button */}
+                                {onlineMode && gameStarted && !gameEnded && (
+                                    <button
+                                        onClick={() => { playSound('buttonClick'); reconnectSocket(); }}
+                                        style={{
+                                            padding: '8px 12px',
+                                            background: 'rgba(0, 200, 100, 0.3)',
+                                            border: '1px solid rgba(0, 200, 100, 0.5)',
+                                            borderRadius: 8,
+                                            color: 'white',
+                                            cursor: 'pointer',
+                                            fontSize: 14,
+                                            fontWeight: 600,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: 6
+                                        }}
+                                        title="Reconnect socket and sync game state"
+                                    >
+                                        <span>🔌</span>
+                                        <span>Reconnect</span>
+                                    </button>
+                                )}
+                                
                                 {/* Re-invite button */}
                                 {onlineMode && myPlayerIndex === 0 && (
                                     <button
@@ -6088,19 +6711,6 @@ const LudoGame = () => {
                 }}
             />
         </div>
-        <ToastContainer
-            position="top-right"
-            autoClose={5000}
-            hideProgressBar={false}
-            newestOnTop={false}
-            closeOnClick
-            rtl={false}
-            pauseOnFocusLoss={false}
-            draggable
-            pauseOnHover
-            theme="dark"
-            limit={5}
-        />
         </>
     );
 };

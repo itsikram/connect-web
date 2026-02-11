@@ -1,8 +1,8 @@
 import React, { Fragment, useEffect, useState, useRef, useCallback } from "react";
 import { ToastContainer } from 'react-toastify';
-import { Routes, Route, useParams, useLocation } from 'react-router-dom'
+import { Routes, Route, useParams, useLocation, useNavigate } from 'react-router-dom'
 import NProgress from 'nprogress';
-import { showMessageToast } from '../utils/toastUtils';
+import { showMessageToast, showLudoInviteToast, dismissToast } from '../utils/toastUtils';
 import 'react-toastify/dist/ReactToastify.css';
 import '../components/Toast/CustomToast.css';
 import webNotificationService from '../services/webNotificationService';
@@ -139,9 +139,11 @@ const Main = () => {
     const dispatch = useDispatch();
     const { token, user, isAuthenticated, logout } = useAuth();
     const isLoading = useSelector(state => state.option.isLoading);
+    const myProfile = useSelector(state => state.profile);
     // const settings = useSelector(state => state.setting)
     const params = useParams();
     const location = useLocation();
+    const navigate = useNavigate();
     const audioElement = useRef(null)
     const [audioReady, setAudioReady] = useState(false)
 
@@ -160,6 +162,10 @@ const Main = () => {
 
     const [isTabActive, setIsTabActive] = useState(!document.hidden);
     const notificationIntervalRef = useRef(null);
+    // Track shown ludo invite toasts to prevent duplicates
+    const shownLudoInviteToastsRef = useRef(new Map()); // inviteKey -> timestamp
+    // Track current active ludo invite toast ID (only one toast at a time)
+    const currentLudoInviteToastIdRef = useRef(null);
 
     const profileId = user?.profile
 
@@ -716,6 +722,370 @@ const Main = () => {
         };
     }, [socket, isTabActive])
 
+    // Global ludo game invitation handlers - work throughout the entire app
+    useEffect(() => {
+        if (!profileId || !myProfile?._id || !isAuthenticated) return;
+
+        // Helper to check if user is already in a game (by checking localStorage)
+        const isUserInGame = (gameId) => {
+            try {
+                const savedState = localStorage.getItem('ludo_game_state');
+                if (savedState) {
+                    const parsed = JSON.parse(savedState);
+                    if (parsed.gameId && String(parsed.gameId) === String(gameId)) {
+                        return true;
+                    }
+                }
+            } catch (_e) {
+                // Ignore errors
+            }
+            return false;
+        };
+
+        const onInvite = (payload) => {
+            try {
+                if (!payload) return;
+                // Check if invite is for this user
+                if (payload.to && String(payload.to) !== String(myProfile._id)) return;
+                
+                // Skip invites for games the user is already in
+                if (isUserInGame(payload.gameId)) {
+                    return;
+                }
+                
+                // Create unique key for this invite
+                const inviteKey = `${payload.gameId}:${payload.by}`;
+                const now = Date.now();
+                
+                // Check if we've already shown a toast for this invite recently (30 seconds)
+                const lastShownTime = shownLudoInviteToastsRef.current.get(inviteKey);
+                if (lastShownTime && (now - lastShownTime) < 30000) {
+                    return; // Already shown a toast for this invite recently, skip
+                }
+                
+                // Mark immediately to prevent duplicate toasts
+                shownLudoInviteToastsRef.current.set(inviteKey, now);
+                
+                // Clean up old entries (older than 1 minute)
+                for (const [key, timestamp] of shownLudoInviteToastsRef.current.entries()) {
+                    if (now - timestamp > 60000) {
+                        shownLudoInviteToastsRef.current.delete(key);
+                    }
+                }
+                
+                // Dismiss previous ludo invite toast if one exists (only show one at a time)
+                if (currentLudoInviteToastIdRef.current !== null) {
+                    try {
+                        dismissToast(currentLudoInviteToastIdRef.current);
+                    } catch (_e) {
+                        // Ignore errors
+                    }
+                    currentLudoInviteToastIdRef.current = null;
+                }
+                
+                // Show toast notification
+                const toastId = showLudoInviteToast(
+                    payload.name || 'A friend',
+                    payload.avatar,
+                    () => {
+                        // Accept callback - navigate to ludo game and store invite data
+                        try {
+                            // Dismiss all ludo invite toasts
+                            if (currentLudoInviteToastIdRef.current !== null) {
+                                try {
+                                    dismissToast(currentLudoInviteToastIdRef.current);
+                                } catch (_e) {
+                                    // Ignore errors
+                                }
+                                currentLudoInviteToastIdRef.current = null;
+                            }
+                            
+                            // Dismiss all other pending invites on server
+                            try {
+                                if (socket && socket.connected) {
+                                    // Get all pending invites and dismiss them except the accepted one
+                                    socket.emit('ludo:invites:get', {});
+                                    // We'll handle dismissing others in the onInvites callback
+                                    // For now, store a flag to dismiss all others
+                                    localStorage.setItem('ludo_dismiss_all_other_invites', 'true');
+                                }
+                            } catch (_e) {
+                                // Ignore errors
+                            }
+                            
+                            // Store invite data in localStorage so LudoGame can pick it up
+                            const inviteData = {
+                                from: payload.by,
+                                name: payload.name,
+                                avatar: payload.avatar,
+                                cover: payload.cover,
+                                gameId: payload.gameId,
+                                slotIndex: payload.slotIndex,
+                                playerCount: payload.playerCount,
+                                ts: Date.now(),
+                                autoAccept: true // Flag to auto-accept when LudoGame loads
+                            };
+                            localStorage.setItem('ludo_pending_invite', JSON.stringify(inviteData));
+                            
+                            // Navigate to ludo game page
+                            navigate('/ludo-game');
+                        } catch (error) {
+                            console.error('[LUDO_INVITE] Error accepting invite:', error);
+                        }
+                    },
+                    () => {
+                        // Decline callback
+                        try {
+                            if (socket && socket.connected) {
+                                socket.emit('ludo:invites:dismiss', {
+                                    gameId: payload.gameId,
+                                    by: payload.by
+                                });
+                            }
+                            // Clear current toast reference
+                            if (currentLudoInviteToastIdRef.current === toastId) {
+                                currentLudoInviteToastIdRef.current = null;
+                            }
+                        } catch (_e) {
+                            console.error('[LUDO_INVITE] Error declining invite:', _e);
+                        }
+                    }
+                );
+                
+                // Store current toast ID
+                currentLudoInviteToastIdRef.current = toastId;
+            } catch (error) {
+                console.error('[LUDO_INVITE] Error handling invite:', error);
+            }
+        };
+
+        const onInvites = (payload) => {
+            try {
+                const arr = Array.isArray(payload?.invites) ? payload.invites : [];
+                const normalized = arr.map(x => ({
+                    from: x.by ?? x.from,
+                    name: x.name,
+                    avatar: x.avatar,
+                    cover: x.cover,
+                    gameId: x.gameId,
+                    slotIndex: x.slotIndex,
+                    playerCount: x.playerCount,
+                    ts: x.ts || Date.now()
+                }));
+                
+                // Filter out invites for games the user is already in
+                const filteredNormalized = normalized.filter(inv => {
+                    return !isUserInGame(inv.gameId);
+                });
+                
+                const now = Date.now();
+                
+                // Filter and mark toasts synchronously to prevent duplicates
+                const newInvites = filteredNormalized.filter(inv => {
+                    const inviteKey = `${inv.gameId}:${inv.from}`;
+                    const lastShownTime = shownLudoInviteToastsRef.current.get(inviteKey);
+                    if (lastShownTime && (now - lastShownTime) < 30000) {
+                        return false; // Already shown a toast for this invite recently, skip
+                    }
+                    
+                    // Mark immediately to prevent duplicate toasts
+                    shownLudoInviteToastsRef.current.set(inviteKey, now);
+                    return true;
+                });
+                
+                // Clean up old entries (older than 1 minute)
+                for (const [key, timestamp] of shownLudoInviteToastsRef.current.entries()) {
+                    if (now - timestamp > 60000) {
+                        shownLudoInviteToastsRef.current.delete(key);
+                    }
+                }
+                
+                // Check if we should dismiss all other invites (when accepting one)
+                const shouldDismissOthers = localStorage.getItem('ludo_dismiss_all_other_invites') === 'true';
+                if (shouldDismissOthers) {
+                    localStorage.removeItem('ludo_dismiss_all_other_invites');
+                    // Dismiss all other invites on server
+                    filteredNormalized.forEach(inv => {
+                        try {
+                            if (socket && socket.connected) {
+                                socket.emit('ludo:invites:dismiss', {
+                                    gameId: inv.gameId,
+                                    by: inv.from
+                                });
+                            }
+                        } catch (_e) {
+                            // Ignore errors
+                        }
+                    });
+                    // Clear all toast tracking
+                    shownLudoInviteToastsRef.current.clear();
+                    // Don't show any toasts - user already accepted one
+                    return;
+                }
+                
+                // Dismiss previous ludo invite toast if one exists (only show one at a time)
+                if (currentLudoInviteToastIdRef.current !== null) {
+                    try {
+                        dismissToast(currentLudoInviteToastIdRef.current);
+                    } catch (_e) {
+                        // Ignore errors
+                    }
+                    currentLudoInviteToastIdRef.current = null;
+                }
+                
+                // Show toast only for the first new invite (only one toast at a time)
+                if (newInvites.length > 0) {
+                    const inv = newInvites[0]; // Only show the first one
+                    const toastId = showLudoInviteToast(
+                        inv.name || 'A friend',
+                        inv.avatar,
+                        () => {
+                            // Accept callback
+                            try {
+                                // Dismiss all ludo invite toasts
+                                if (currentLudoInviteToastIdRef.current !== null) {
+                                    try {
+                                        dismissToast(currentLudoInviteToastIdRef.current);
+                                    } catch (_e) {
+                                        // Ignore errors
+                                    }
+                                    currentLudoInviteToastIdRef.current = null;
+                                }
+                                
+                                // Dismiss all other pending invites on server
+                                try {
+                                    if (socket && socket.connected) {
+                                        // Dismiss all other invites
+                                        filteredNormalized.forEach(otherInv => {
+                                            if (String(otherInv.gameId) !== String(inv.gameId) || String(otherInv.from) !== String(inv.from)) {
+                                                try {
+                                                    socket.emit('ludo:invites:dismiss', {
+                                                        gameId: otherInv.gameId,
+                                                        by: otherInv.from
+                                                    });
+                                                } catch (_e) {
+                                                    // Ignore errors
+                                                }
+                                            }
+                                        });
+                                    }
+                                } catch (_e) {
+                                    // Ignore errors
+                                }
+                                
+                                const inviteData = {
+                                    from: inv.from,
+                                    name: inv.name,
+                                    avatar: inv.avatar,
+                                    cover: inv.cover,
+                                    gameId: inv.gameId,
+                                    slotIndex: inv.slotIndex,
+                                    playerCount: inv.playerCount,
+                                    ts: Date.now(),
+                                    autoAccept: true
+                                };
+                                localStorage.setItem('ludo_pending_invite', JSON.stringify(inviteData));
+                                navigate('/ludo-game');
+                            } catch (error) {
+                                console.error('[LUDO_INVITE] Error accepting invite:', error);
+                            }
+                        },
+                        () => {
+                            // Decline callback
+                            try {
+                                if (socket && socket.connected) {
+                                    socket.emit('ludo:invites:dismiss', {
+                                        gameId: inv.gameId,
+                                        by: inv.from
+                                    });
+                                }
+                                // Clear current toast reference
+                                if (currentLudoInviteToastIdRef.current === toastId) {
+                                    currentLudoInviteToastIdRef.current = null;
+                                }
+                            } catch (_e) {
+                                console.error('[LUDO_INVITE] Error declining invite:', _e);
+                            }
+                        }
+                    );
+                    
+                    // Store current toast ID
+                    currentLudoInviteToastIdRef.current = toastId;
+                }
+            } catch (error) {
+                console.error('[LUDO_INVITES] Error handling invites:', error);
+            }
+        };
+
+        // Handle when player successfully joins a game - dismiss all other invites
+        const onPlayers = (payload) => {
+            try {
+                // When players list is received, it means we've successfully joined a game
+                // Dismiss all other pending invites
+                if (payload?.players && Array.isArray(payload.players) && payload.players.length > 0) {
+                    // Check if current user is in the players list (successfully joined)
+                    const isUserInPlayers = payload.players.some(p => 
+                        p.profileId && myProfile?._id && String(p.profileId) === String(myProfile._id)
+                    ) || payload.players.some(p => 
+                        p._id && myProfile?._id && String(p._id) === String(myProfile._id)
+                    );
+                    
+                    if (isUserInPlayers) {
+                        // User successfully joined - dismiss all other pending invites
+                        try {
+                            if (socket && socket.connected) {
+                                // Request current invites to dismiss them
+                                socket.emit('ludo:invites:get', {});
+                                // Set flag to dismiss all when invites are received
+                                localStorage.setItem('ludo_dismiss_all_other_invites', 'true');
+                            }
+                        } catch (_e) {
+                            // Ignore errors
+                        }
+                        
+                        // Dismiss current toast if any
+                        if (currentLudoInviteToastIdRef.current !== null) {
+                            try {
+                                dismissToast(currentLudoInviteToastIdRef.current);
+                            } catch (_e) {
+                                // Ignore errors
+                            }
+                            currentLudoInviteToastIdRef.current = null;
+                        }
+                        
+                        // Clear toast tracking
+                        shownLudoInviteToastsRef.current.clear();
+                    }
+                }
+            } catch (error) {
+                console.error('[LUDO_PLAYERS] Error handling players event:', error);
+            }
+        };
+
+        // Attach socket listeners
+        if (socket) {
+            socket.on('ludo:invite', onInvite);
+            socket.on('ludo:invites', onInvites);
+            socket.on('ludo:players', onPlayers);
+            
+            // Request pending invites on mount
+            if (socket.connected) {
+                try {
+                    socket.emit('ludo:invites:get', {});
+                } catch (_e) {
+                    // Ignore errors
+                }
+            }
+        }
+
+        return () => {
+            if (socket) {
+                socket.off('ludo:invite', onInvite);
+                socket.off('ludo:invites', onInvites);
+                socket.off('ludo:players', onPlayers);
+            }
+        };
+    }, [profileId, myProfile?._id, isAuthenticated, navigate, socket]);
 
     useEffect(() => {
         dispatch(setBodyHeight(window.innerHeight));

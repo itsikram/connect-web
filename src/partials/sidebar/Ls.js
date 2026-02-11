@@ -209,6 +209,18 @@ let LeftSidebar = () => {
                             </div>
                         </div>
                     </li>
+                    <li>
+                        <Link to="/menu/" className='text-decoration-none'>
+                            <div className='ls-nav-menu-item'>
+                                <div className='ls-icon lsi-menu'>
+
+                                </div>
+                                <div className='ls-text'>
+                                    Menu
+                                </div>
+                            </div>
+                        </Link>
+                    </li>
 
 
 
