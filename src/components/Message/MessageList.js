@@ -48,10 +48,7 @@ function getShortTimeAgo(timestamp) {
 
 const userInfo = JSON.parse((localStorage.getItem('user') || '{}'))
 const profileId = userInfo.profile
-const MessageList = React.memo(({ onChatSelect }) => {
-    const [activeFriends, setActiveFriends] = useState([]);
-    const [contacts, setContacts] = useState([]);
-    const [loading, setLoading] = useState(true);
+const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
     const [messageOption, setMessageOption] = useState(false)
     const [searchQuery, setSearchQuery] = useState("")
     const [focusedIndex, setFocusedIndex] = useState(-1)
@@ -63,27 +60,52 @@ const MessageList = React.memo(({ onChatSelect }) => {
     const myProfile = useSelector(state => state.profile)
     const myId = myProfile._id
     const navigate = useNavigate();
+    const effectiveProfileId = myId || profileId;
+
+    const cachedContacts = useMemo(() => {
+        if (!effectiveProfileId) return [];
+        try {
+            const cacheKey = `contactsData_${effectiveProfileId}`;
+            const cached = localStorage.getItem(cacheKey) || localStorage.getItem('contactsData');
+            if (!cached) return [];
+            const data = JSON.parse(cached);
+            return Array.isArray(data) ? data : [];
+        } catch (e) {
+            return [];
+        }
+    }, [effectiveProfileId]);
+
+    const [contacts, setContacts] = useState(() => cachedContacts);
+    const [activeFriends, setActiveFriends] = useState(() => {
+        return cachedContacts
+            .filter(contact => contact?.isOnline && contact.person?._id)
+            .map(contact => contact.person._id);
+    });
+    const [loading, setLoading] = useState(() => cachedContacts.length === 0);
 
     // HTTP-based contacts fetching (now includes online status)
-    const fetchContacts = async () => {
+    const fetchContacts = useCallback(async (showLoading = true) => {
+        if (!effectiveProfileId) return;
         try {
-            setLoading(true);
+            if (showLoading) setLoading(true);
             const response = await api.get('/message/chatList', {
-                params: { profileId: myId }
+                params: { profileId: effectiveProfileId }
             });
             console.log('fetch contacts', response.data)
             // API returns array directly, not nested under contacts
             const contactsData = Array.isArray(response.data) ? response.data : [];
             setContacts(contactsData);
-            
+
             // Extract online friends from the response (no separate API calls needed)
             const onlineFriends = contactsData
                 .filter(contact => contact.isOnline && contact.person?._id)
                 .map(contact => contact.person._id);
             setActiveFriends(onlineFriends);
-            
-            // Store contacts data in localStorage for Chat.js to use
+
+            // Store contacts data in localStorage for Chat.js and cache (skeleton only on first load)
+            const cacheKey = `contactsData_${effectiveProfileId}`;
             localStorage.setItem('contactsData', JSON.stringify(contactsData));
+            localStorage.setItem(cacheKey, JSON.stringify(contactsData));
         } catch (error) {
             console.error('Error fetching contacts:', error);
             setContacts([]);
@@ -91,18 +113,32 @@ const MessageList = React.memo(({ onChatSelect }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [effectiveProfileId]);
 
-
-    // Fetch contacts on component mount and set up periodic refresh
     useEffect(() => {
-        if (myId) {
-            fetchContacts();
-            // Refresh contacts list every 2 minutes to get updated online status
-            const interval = setInterval(fetchContacts, 120000);
-            return () => clearInterval(interval);
+        if (!effectiveProfileId) return;
+        if (cachedContacts.length > 0) {
+            setContacts(cachedContacts);
+            setActiveFriends(
+                cachedContacts
+                    .filter(contact => contact?.isOnline && contact.person?._id)
+                    .map(contact => contact.person._id)
+            );
+            setLoading(false);
+            return;
         }
-    }, [myId]);
+        setContacts([]);
+        setActiveFriends([]);
+        setLoading(true);
+    }, [effectiveProfileId, cachedContacts]);
+
+    // Fetch contacts on component mount: use cache to skip skeleton on revisit
+    useEffect(() => {
+        if (!effectiveProfileId) return;
+        fetchContacts(cachedContacts.length === 0); // show loading only when no cache
+        const interval = setInterval(() => fetchContacts(false), 120000);
+        return () => clearInterval(interval);
+    }, [effectiveProfileId, cachedContacts.length, fetchContacts]);
 
 
     useEffect(() => {
@@ -217,6 +253,153 @@ const MessageList = React.memo(({ onChatSelect }) => {
         );
     }
 
+    // Compact dropdown mode - message page contact list style
+    if (compact) {
+        const compactGoToLink = (e) => {
+            navigate(`/message/${e.currentTarget.dataset.id}`);
+            onChatSelect && onChatSelect();
+        };
+        return (
+            <div className="modern-message-list-container" style={{ padding: '0 10px 10px', minHeight: 0 }}>
+                {/* Search */}
+                <div className="search-section" style={{ padding: '8px 0' }}>
+                    <div className="search-container">
+                        <i className="fas fa-search search-icon"></i>
+                        <input
+                            ref={searchInputRef}
+                            type="text"
+                            placeholder="Search conversations..."
+                            className="search-input"
+                            value={searchQuery}
+                            onChange={(e) => { setSearchQuery(e.target.value); setFocusedIndex(-1); }}
+                            aria-label="Search conversations"
+                            role="searchbox"
+                        />
+                        {searchQuery && (
+                            <button
+                                type="button"
+                                className="clear-search-btn"
+                                aria-label="Clear search"
+                                onClick={() => { setSearchQuery(""); searchInputRef.current?.focus(); }}
+                            >
+                                <i className="fas fa-times"></i>
+                            </button>
+                        )}
+                    </div>
+                </div>
+                {/* Contact list - same as message page */}
+                <div className="modern-chat-list-container" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                    <div className="chat-list-header">
+                        <span className="list-title">All Contacts</span>
+                        <span className="chat-count">{searchQuery ? `${filteredContacts.length}/${contacts?.length || 0}` : (contacts?.length || 0)}</span>
+                    </div>
+                    <ul
+                        className="modern-chat-list"
+                        role="listbox"
+                        aria-label="Conversation list"
+                        style={{ ...(menuStyle || {}), overflowY: 'auto', overflowX: 'hidden' }}
+                    >
+                        {loading ? (
+                            <div className="empty-state">
+                                <MsgListSkleton count={5} />
+                            </div>
+                        ) : filteredContacts.length > 0 ? (
+                            filteredContacts.map((contactItem, index) => {
+                                const contactPerson = contactItem.person;
+                                const contactMessages = contactItem.messages || [];
+                                const authorFullName = contactPerson?.fullName ||
+                                    (contactPerson?.user ?
+                                        `${contactPerson?.user?.firstName || ''} ${contactPerson?.user?.surname || ''}`.trim() :
+                                        'Unknown User');
+                                const isMsgSeen = contactMessages[0] ?
+                                    (contactMessages[0].isSeen && contactMessages[0].receiverId === myId ?
+                                        true : contactMessages[0].isSeen) : true;
+                                const isActive = contactPerson._id === params.profile;
+                                const isOnline = contactItem.isOnline || activeFriends.includes(contactPerson._id);
+                                const unreadCount = (contactMessages || []).reduce((count, m) => {
+                                    return count + ((m && m.receiverId === myId && !m.isSeen) ? 1 : 0);
+                                }, 0);
+                                const lastMessage = contactMessages[0] || {};
+                                const isOutgoing = lastMessage && lastMessage.senderId === myId;
+                                const statusTitle = isOutgoing ? (lastMessage.isSeen ? 'Seen' : 'Delivered') : '';
+                                return (
+                                    <li
+                                        key={contactPerson._id || index}
+                                        className={`modern-chat-item ${isActive ? 'active' : ''} ${!isMsgSeen ? 'unread' : ''}`}
+                                        data-id={contactPerson._id}
+                                        onClick={compactGoToLink}
+                                        style={{ '--animation-delay': `${index * 0.05}s` }}
+                                    >
+                                        <div className="chat-item-content chat-card">
+                                            <div className="avatar-section">
+                                                <div className="avatar-container">
+                                                    <UserPP
+                                                        profilePic={contactPerson.profilePic}
+                                                        profile={contactPerson._id}
+                                                        active={isOnline}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="chat-info">
+                                                <div className="chat-header">
+                                                    <h3 className="contact-name">{authorFullName}</h3>
+                                                    <div className="message-meta">
+                                                        {unreadCount > 0 && (
+                                                            <span className="unread-count" aria-label={`${unreadCount} unread messages`}>{unreadCount}</span>
+                                                        )}
+                                                        {contactMessages.length > 0 && (
+                                                            <span className="message-time" title={moment(lastMessage.timestamp).format('LT, ll')}>
+                                                                {getShortTimeAgo(lastMessage.timestamp)}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="last-message-preview">
+                                                    {isOutgoing && (
+                                                        <i
+                                                            className={`message-status-icon ${lastMessage.isSeen ? 'fas fa-check-double seen' : 'fas fa-check delivered'}`}
+                                                            title={statusTitle}
+                                                            aria-hidden="true"
+                                                        ></i>
+                                                    )}
+                                                    <span className="message-text">
+                                                        {lastMessage?.message ?
+                                                            truncateString(lastMessage.message, 64) :
+                                                            'Start a conversation...'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </li>
+                                );
+                            })
+                        ) : (
+                            <li className="empty-state no-results" role="note">
+                                <div>
+                                    <i className="fas fa-inbox"></i>
+                                    <p>{searchQuery ? `No conversations match "${searchQuery}"` : 'No Messages Found'}</p>
+                                    {searchQuery && (
+                                        <button
+                                            type="button"
+                                            className="clear-search-secondary"
+                                            onClick={() => { setSearchQuery(""); searchInputRef.current?.focus(); }}
+                                        >Clear search</button>
+                                    )}
+                                </div>
+                            </li>
+                        )}
+                    </ul>
+                </div>
+                {/* Footer */}
+                <div className="chat-list-footer">
+                    <button className="footer-action-btn" onClick={() => { navigate('/friends/suggestions'); onChatSelect && onChatSelect(); }}>
+                        <i className="fas fa-plus"></i>
+                        <span>New Chat</span>
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <Fragment>
@@ -375,9 +558,10 @@ const MessageList = React.memo(({ onChatSelect }) => {
                                                                 {getShortTimeAgo(lastMessage.timestamp)}
                                                             </span>
                                                         )}
+
                                                     </div>
                                                 </div>
-                                                <div className="last-message-preview">
+                                                                                                                                                        <div className="last-message-preview" style={{display:'block'}}>
                                                     {isOutgoing && (
                                                         <i 
                                                             className={`message-status-icon ${lastMessage.isSeen ? 'fas fa-check-double seen' : 'fas fa-check delivered'}`}
@@ -391,6 +575,7 @@ const MessageList = React.memo(({ onChatSelect }) => {
                                                             'Start a conversation...'}
                                                     </span>
                                                 </div>
+
                                             </div>
                                         </div>
                                         

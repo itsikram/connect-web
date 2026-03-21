@@ -67,7 +67,7 @@ const MessageOptions = () => {
             <div className="media-sidebar-header">
                 <div className="media-header-content">
                     <h2 className="media-title">
-                        <i className="fas fa-photo-video"></i>
+                        {/* <i className="fas fa-photo-video"></i> */}
                         Shared Media
                     </h2>
                     <div className="media-count-badge">

@@ -3268,6 +3268,7 @@ body {
         .form-group {
             .input-group-prepend .input-group-text {
                 background-color: $profilebg !important;
+                line-height: 2.2;
                 color: #fff;
                 border-top-right-radius: 0;
                 border-bottom-right-radius: 0;
@@ -7582,6 +7583,31 @@ body {
     color: $tc;
 }
 
+.hr-mega-menu  {
+    .modern-chat-list {
+        max-height: 55vh !important;
+    }
+
+    .search-section {
+        padding-top: 0 !important;
+    }
+
+    .modern-chat-item {
+        background: rgba(3, 194, 232, 0.05);
+      }
+
+      .modern-chat-item:hover {
+        background: rgba(255, 255, 255, 0.05);
+      }
+
+}
+.message-sidebar {
+    .modern-message-header {
+        margin-bottom: 10px !important;
+    }
+}
+
+
 .hr-notification-menu-container {
     padding: 10px;
     padding-right: 0;
@@ -7595,10 +7621,12 @@ body {
         display: flex;
         justify-content: space-between;
         align-items: center;
+        margin-bottom: 10px;
 
         .notification-leftside-title {
             font-size: 24px;
             color: #B0B3B8;
+            margin-bottom: 0;
         }
 
         .notification-sidebar-header-menu {
@@ -7655,6 +7683,8 @@ body {
         overflow-x: hidden;
         flex: 1;
         min-height: 0;
+
+
 
         // Custom scrollbar styling to match message contact list
         &::-webkit-scrollbar {
@@ -8544,6 +8574,9 @@ h6 {
         margin-bottom: 8px;
     }
 
+    .skeleton-line:last-child {
+        margin-bottom: 0;
+    }
     .skeleton-line.button {
         height: 25px !important;
         border: 2px solid $profilebg;

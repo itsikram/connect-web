@@ -1,4 +1,4 @@
-import React, { Fragment, useState, useEffect, useRef } from "react";
+import React, { Fragment, useState, useEffect, useRef, useMemo } from "react";
 import { Container, Col, Row } from 'react-bootstrap';
 import { useDispatch, useSelector } from "react-redux";
 import Ls from '../partials/sidebar/Ls';
@@ -57,12 +57,21 @@ const Home = () => {
             setHasNewPosts(hasPosts)
             setLoadNewPosts(false)
         }
+        dispatch(setLoading(false))
+    }
+
+    const fetchStories = async () => {
         const strRes = await api.get('/story/')
         if (strRes.status === 200) {
             setStories(strRes.data)
         }
-        dispatch(setLoading(false))
     }
+
+    const memoizedStories = useMemo(() => {
+        return stories.map((story, index) => {
+            return <StoryCard key={index} data={story}></StoryCard>
+        })
+    }, [stories])
 
 
     useEffect(() => {
@@ -107,6 +116,7 @@ const Home = () => {
         })
         setHasNewPosts(true)
         setLoadNewPosts(true)
+        fetchStories()
     }, [])
 
     useEffect(() => {
@@ -137,11 +147,7 @@ const Home = () => {
                                         <div id="nf-story-container" >
                                             <div ref={storyContainer} className="nf-story-overflow-container">
 
-                                                {
-                                                    stories.map((story, index) => {
-                                                        return <StoryCard key={index} data={story}></StoryCard>
-                                                    })
-                                                }
+                                                {memoizedStories}
                                             </div>
 
                                             <div className="nf-story-arrow-left" onClick={scrollLeft.bind(this)} >

@@ -26,6 +26,8 @@ let HeaderRight = ({ dispatch, useSelector }) => {
     
     const [notificationOption, setNotificationOption] = useState(false);
     const notficationOptionMenuRef = useRef(null);
+    const [messageOption, setMessageOption] = useState(false);
+    const messageOptionMenuRef = useRef(null);
 
 
     let notificationMenuHeight = optionData.bodyHeight - optionData.headerHeight - 100
@@ -67,7 +69,7 @@ let HeaderRight = ({ dispatch, useSelector }) => {
         setTotalMessages(unseenMessages.length)
     }, [messageData, profileData._id])
 
-    let showMsgList = (e) => {
+    let showMsgList = () => {
         setIsMsgMenu(!isMsgMenu)
         setIsProfileMenu(false)
         setIsNotificationMenu(false)
@@ -142,6 +144,41 @@ let HeaderRight = ({ dispatch, useSelector }) => {
         };
     }, []);
 
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (messageOptionMenuRef.current && !messageOptionMenuRef.current.contains(event.target)) {
+                setMessageOption(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, []);
+
+    let handleMessageToggleClick = useCallback(() => {
+        setMessageOption(prev => !prev);
+    }, []);
+
+    let MessageOptionMenu = () => (
+        <div className="header-message-option-menu" style={{ position: 'relative', display: 'inline-block' }} ref={messageOptionMenuRef}>
+            {messageOption && (
+                <div style={{
+                    position: 'absolute',
+                    top: '20px',
+                    right: '0',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                    zIndex: 1003,
+                    width: '200px'
+                }}>
+                    <ul className="notification-option-menu" style={{ listStyle: 'none', margin: 0, padding: '8px 0' }}>
+                        <li style={{ padding: '8px 16px', cursor: 'pointer' }}><Link to={'/settings/message'}>Message Settings</Link></li>
+                    </ul>
+                </div>
+            )}
+        </div>
+    );
+
     let goToProfilePath = useCallback(e => {
         navigate(profilePath)
     }, [navigate])
@@ -200,13 +237,42 @@ let HeaderRight = ({ dispatch, useSelector }) => {
                             {totalMessages > 0 && (<span className="hr-counter-badge"><span className="counter">{totalMessages}</span></span>)}
                         </div>
                     </li>
-                    {
-                        isMsgMenu && (
-                            <MegaMC style={{ right: '50%', zIndex: 1002, transform: 'translateX(50%)', top: '101%', width: '300px', backgroundColor: '#242526', borderRadius: '5px', display: 'block', boxShadow: '0px 0px 2px 0px rgba(255,255,255,0.3)' }} className="hr-mega-menu">
-                                <MessageList />
-                            </MegaMC>
-                        )
-                    }
+                    
+                   {isMsgMenu && (  
+                    <MegaMC
+                        style={{
+                            right: '50%',
+                            zIndex: 1002,
+                            transform: 'translateX(50%)',
+                            top: '101%',
+                            width: '300px',
+                            backgroundColor: '#242526',
+                            borderRadius: '5px',
+                            display: isMsgMenu ? 'block' : 'none',
+                            boxShadow: '0px 0px 2px 0px rgba(255,255,255,0.3)'
+                        }}
+                        className="hr-mega-menu"
+                    >
+                        <div className="hr-mm-container">
+                            <div className="hr-notification-menu-container">
+                                <div className="notification-leftside-header">
+                                    <h2 className="notification-leftside-title">Messages</h2>
+                                    <div className="notification-sidebar-header-menu">
+                                        <div onClick={handleMessageToggleClick} className="header-menu-icons">
+                                            <i className="far fa-ellipsis-h"></i>
+                                            {messageOption && <MessageOptionMenu />}
+                                        </div>
+                                    </div>
+                                </div>
+                                <MessageList
+                                    compact
+                                    menuStyle={notificationMenuStyle}
+                                    onChatSelect={() => setIsMsgMenu(false)}
+                                />
+                            </div>
+                        </div>
+                    </MegaMC>
+                    )}
                     <li onClick={showNotificationList} className={`header-quick-menu-item ${isNotificationMenu ? 'active' : ''}`} title="">
                         <div className="header-quick-menu-icon">
                             <i className="far fa-bell"></i>

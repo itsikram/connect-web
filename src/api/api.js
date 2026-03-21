@@ -75,8 +75,8 @@ api.interceptors.request.use(
             const userData = getUserFromStorage();
             const token = userData?.accessToken;
             
-            // Debug logging
-            if (process.env.NODE_ENV === 'development') {
+            // Debug logging (opt-in): set REACT_APP_DEBUG_API=true to enable
+            if (process.env.NODE_ENV === 'development' && process.env.REACT_APP_DEBUG_API === 'true') {
                 console.log('🔍 API Request to:', requestConfig.url);
                 console.log('🔍 Base URL:', requestConfig.baseURL);
                 console.log('🔍 Token from storage:', token ? `${token.substring(0, 20)}...` : 'MISSING!');

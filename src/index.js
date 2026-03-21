@@ -10,14 +10,12 @@ import { BrowserRouter as BR } from 'react-router-dom';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
-  <React.StrictMode>
-    <Provider store={store}>
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-      <BR future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <App />
-      </BR>
-    </Provider>
-  </React.StrictMode>
+  <Provider store={store}>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <BR future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <App />
+    </BR>
+  </Provider>
 );
 
 

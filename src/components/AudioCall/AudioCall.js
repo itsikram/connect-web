@@ -13,7 +13,11 @@ import { showCallNotification, closeCallNotification } from '../../utils/callNot
 import audioPreloader from '../../utils/audioPreloader';
 
 const AudioCall = ({ myId }) => {
-    console.log('AudioCall - Component mounted/rendered with myId:', myId);
+    useEffect(() => {
+        if (process.env.NODE_ENV === 'development') {
+            console.log('AudioCall mounted with myId:', myId);
+        }
+    }, [myId]);
     const mySettings = useSelector(state => state.setting);
     const [isAudioCall, setIsAudioCall] = useState(false);
     const [callerName, setCallerName] = useState('');
@@ -891,4 +895,4 @@ const AudioCall = ({ myId }) => {
     );
 };
 
-export default AudioCall;
+export default React.memo(AudioCall);
