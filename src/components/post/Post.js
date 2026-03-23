@@ -688,7 +688,7 @@ const Post = React.memo(({ data, postContainer, index }) => {
                                                                     <UserPP profilePic={myProfile.profilePic}></UserPP>
 
                                                                 </div>
-                                                                <div className="col-3">
+                                                                <div className="col-6">
                                                                     <h3>{myProfile.fullName}</h3>
                                                                 </div>
                                                             </div>
@@ -940,7 +940,7 @@ const Post = React.memo(({ data, postContainer, index }) => {
                                                         <UserPP profilePic={myProfile.profilePic}></UserPP>
 
                                                     </div>
-                                                    <div className="col-3">
+                                                    <div className="col-6">
                                                         <h3>{myProfile.fullName}</h3>
                                                     </div>
                                                 </div>

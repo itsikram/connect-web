@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { setLoading } from '../services/actions/optionAction';
 import { useDispatch, useSelector } from 'react-redux';
 import { useParams } from 'react-router-dom';
@@ -39,7 +39,8 @@ const Chat = ({ }) => {
     const [typeMessage, setTypeMessage] = useState('');
     const [hasMoreMessages, setHasMoreMessages] = useState(true);
     const [isLoaded, setIsLoaded] = useState(false)
-    const [scrollPercent, setScrollPercent] = useState(0);
+    // Default as "at bottom" so load-older logic does not run until the user scrolls (real % from handler).
+    const [scrollPercent, setScrollPercent] = useState(100);
     const [replyData, setReplyData] = useState({ messageId: null, body: null });
     const msgListRef = useRef(null);
     const messageInput = useRef(null);
@@ -91,9 +92,26 @@ const Chat = ({ }) => {
     const params = useParams()
     const friendId = params.profile;
 
+    const fetchMessages = useCallback(async (profileId, friendIdArg, limit = 20, skip = 0) => {
+        try {
+            const response = await api.get('/message/getChatHistory', {
+                params: {
+                    profileId,
+                    friendId: friendIdArg,
+                    limit,
+                    skip
+                }
+            });
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching messages:', error);
+            return { messages: [], hasMore: false };
+        }
+    }, []);
+
     useEffect(() => {
-        dispatch(seenMessage(params.profile))
-    }, [params])
+        if (friendId) dispatch(seenMessage(friendId))
+    }, [friendId, dispatch])
 
     const [listContainerHeight, setListContainerHeight] = useState(chatBoxHeight - chatHeaderHeight - chatFooterHeight);
     const [cmlStyles, setCmlStyles] = useState({
@@ -121,8 +139,10 @@ const Chat = ({ }) => {
     useEffect(() => {
         const handleScroll = () => {
             const el = msgListRef.current;
+            if (!el) return;
             const scrollTop = el.scrollTop;
             const scrollHeight = el.scrollHeight - el.clientHeight;
+            if (scrollHeight <= 0) return;
             const percent = (scrollTop / scrollHeight) * 100;
             setScrollPercent(percent);
         };
@@ -139,40 +159,34 @@ const Chat = ({ }) => {
         };
     }, []);
 
+    const messagesRef = useRef(messages);
     useEffect(() => {
-        if (hasMoreMessages) {
-            if (scrollPercent < 30) {
-                const loadMoreMessages = async () => {
-                    setIsMsgLoading(true);
-                    const response = await fetchMessages(userId, friendId, 20, messages.length);
-                    setMessages(prev => [...response.messages, ...prev]);
-                    setHasMoreMessages(response.hasMore);
-                    setIsMsgLoading(false);
-                };
-                
-                loadMoreMessages();
+        messagesRef.current = messages;
+    }, [messages]);
+
+    const loadingOlderRef = useRef(false);
+
+    useEffect(() => {
+        if (!friendId || !userId || !hasMoreMessages) return;
+        if (scrollPercent >= 30 || !Number.isFinite(scrollPercent)) return;
+        const skip = messagesRef.current.length;
+        if (skip === 0) return;
+        if (loadingOlderRef.current || isMsgLoading) return;
+
+        loadingOlderRef.current = true;
+        (async () => {
+            setIsMsgLoading(true);
+            try {
+                const response = await fetchMessages(userId, friendId, 20, skip);
+                setMessages(prev => [...(response.messages || []), ...prev]);
+                setHasMoreMessages(response.hasMore);
+            } finally {
+                setIsMsgLoading(false);
+                loadingOlderRef.current = false;
             }
-        }
-    }, [scrollPercent, hasMoreMessages, messages.length, userId, friendId]);
-
-
-    // HTTP-based message fetching
-    const fetchMessages = async (profileId, friendId, limit = 20, skip = 0) => {
-        try {
-            const response = await api.get('/message/getChatHistory', {
-                params: {
-                    profileId,
-                    friendId,
-                    limit,
-                    skip
-                }
-            });
-            return response.data;
-        } catch (error) {
-            console.error('Error fetching messages:', error);
-            return { messages: [], hasMore: false };
-        }
-    };
+        })();
+        // Intentionally omit isMsgLoading: when it flips false, deps would match again and load every page in one burst.
+    }, [scrollPercent, hasMoreMessages, userId, friendId, fetchMessages]);
 
     // Get online status from contacts data (no separate API calls)
     const getOnlineStatusFromContacts = () => {
@@ -395,11 +409,7 @@ const Chat = ({ }) => {
 
 
     useEffect(() => {
-        setIsLoaded(!isLoaded)
-    }, [listContainerHeight])
-
-    useEffect(() => {
-
+        if (!friendId) return;
         api.get('/profile', {
             params: {
                 profileId: friendId
@@ -410,26 +420,26 @@ const Chat = ({ }) => {
 
         }).catch(e => console.log(e))
 
-    }, [params, friendId])
+    }, [friendId, dispatch])
 
     useEffect(() => {
-
-        if (friendProfile) {
+        if (friendProfile && profile._id) {
             setIsBlockedMe(friendProfile.blockedUsers ? friendProfile.blockedUsers.includes(profile._id) : false)
         }
+    }, [friendProfile, profile._id])
 
-        scrollToLastMessage()
+    useEffect(() => {
+        if (!friendId || !userId) return;
+        setRoom([userId, friendId].sort().join('_'));
+        setMessages([]);
+        setHasMoreMessages(true);
+        setScrollPercent(100);
+        loadingOlderRef.current = false;
 
-
-        if (!friendId || !userId) return; // Prevent self-chat
-        const newRoom = [userId, friendId].sort().join('_');
-        setRoom(newRoom);
-
-        // Fetch initial messages via HTTP API
         const fetchInitialMessages = async () => {
             try {
                 const response = await fetchMessages(userId, friendId, 20, 0);
-                
+
                 if (response.messages) {
                     setMessages(response.messages);
                     setHasMoreMessages(response.hasMore);
@@ -441,26 +451,30 @@ const Chat = ({ }) => {
             }
         };
 
-        fetchInitialMessages();
-    }, [params, friendProfile]);
+        fetchInitialMessages().then(() => {
+            setTimeout(() => scrollToLastMessage(), 0);
+        });
+    }, [friendId, userId, fetchMessages]);
 
     useEffect(() => {
-        // Only process seen message if we have messages, friendId, and friend profile is loaded
+        setIsLoaded(true);
+    }, []);
+
+    useEffect(() => {
         if (messages.length > 0 && friendId && friendProfile?._id) {
-            setTimeout(() => {
+            const t = setTimeout(() => {
                 const lastMessage = messages[messages.length - 1];
-                // Only mark as seen if the last message is from the friend (not from current user)
                 if (lastMessage && lastMessage.senderId !== userId && lastMessage.senderId === friendId) {
                     markMessageAsSeen(lastMessage);
                     dispatch(seenMessage(friendId));
-                    
-                    // Update UI to show message as seen
+
                     $('#chatMessageList .message-sent.chat-message-container .chat-message-seen-status').css('visibility', 'hidden');
                     $('#chatMessageList .message-sent.chat-message-container.message-id-' + lastMessage._id + ':last-child .chat-message-seen-status').css('visibility', 'visible');
                 }
             }, 2000);
+            return () => clearTimeout(t);
         }
-    }, [params, messages, friendId, friendProfile, userId]);
+    }, [messages, friendId, friendProfile?._id, userId, dispatch]);
 
 
 

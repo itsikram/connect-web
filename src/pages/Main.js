@@ -1109,7 +1109,8 @@ const Main = () => {
 
 
 
-    }, [params, token, profileId, isAuthenticated, dispatch])
+    // Do not depend on `useParams()` object — it is often a new reference each render and would re-POST /profile endlessly.
+    }, [token, profileId, isAuthenticated, dispatch])
 
 
     // Listen for auth logout events from API interceptor

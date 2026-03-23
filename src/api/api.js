@@ -7,12 +7,19 @@ import { LoadBalancer } from "../utils/loadBalancer";
 // Production server URLs for load balancing
 // Add all your Render server URLs here
 const prodServerUrls = [
-  "https://connect-server-1.onrender.com",
-  // Add more Render server URLs here, for example:
   "https://connect-server-7h7d.onrender.com",
+  // Add more Render server URLs here, for example:
   // "https://connect-server-def456.onrender.com",
   // "https://connect-server-ghi789.onrender.com",
 ];
+
+// const prodServerUrls = [
+//     "https://connect-server-1.onrender.com",
+//     // Add more Render server URLs here, for example:
+//     "https://connect-server-7h7d.onrender.com",
+//     // "https://connect-server-def456.onrender.com",
+//     // "https://connect-server-ghi789.onrender.com",
+//   ];
 
 // Get server address with offline fallback - computed once at module load
 // This respects REACT_APP_SERVER_ADDR if set, otherwise uses fallback logic
