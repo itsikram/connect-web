@@ -268,6 +268,44 @@ export const AuthProvider = ({ children }) => {
         }
     }, []);
 
+    const handleForgotPassword = useCallback(async (email) => {
+        setAuthError(null);
+        try {
+            const response = await axios.post(
+                `${process.env.REACT_APP_SERVER_ADDR}/api/auth/forgot-password`,
+                { email }
+            );
+
+            return {
+                success: response.status === 200,
+                message: response.data?.message || 'Password reset link sent if account exists.'
+            };
+        } catch (error) {
+            const errorMsg = error.response?.data?.message || 'Failed to send reset link. Please try again.';
+            setAuthError(errorMsg);
+            return { success: false, error: errorMsg };
+        }
+    }, []);
+
+    const handleResetPassword = useCallback(async (token, password, confirmPassword) => {
+        setAuthError(null);
+        try {
+            const response = await axios.post(
+                `${process.env.REACT_APP_SERVER_ADDR}/api/auth/reset-password/${token}`,
+                { password, confirmPassword }
+            );
+
+            return {
+                success: response.status === 200,
+                message: response.data?.message || 'Password reset successful.'
+            };
+        } catch (error) {
+            const errorMsg = error.response?.data?.message || 'Failed to reset password. Please try again.';
+            setAuthError(errorMsg);
+            return { success: false, error: errorMsg };
+        }
+    }, []);
+
     // Handle logout
     const handleLogout = useCallback(() => {
         console.log('🚪 Logging out user...');
@@ -365,6 +403,8 @@ export const AuthProvider = ({ children }) => {
         login: handleLogin,
         googleLogin: handleGoogleLogin,
         signup: handleSignup,
+        forgotPassword: handleForgotPassword,
+        resetPassword: handleResetPassword,
         logout: handleLogout,
         updateUser,
         getToken,

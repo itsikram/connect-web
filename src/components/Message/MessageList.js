@@ -53,6 +53,7 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
     const [searchQuery, setSearchQuery] = useState("")
     const [focusedIndex, setFocusedIndex] = useState(-1)
     const messageMenuRef = useRef()
+    const lastEffectiveProfileIdRef = useRef(null);
     const searchInputRef = useRef(null)
     const listRef = useRef(null)
     const itemRefs = useRef([])
@@ -92,8 +93,12 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
                 params: { profileId: effectiveProfileId }
             });
             console.log('fetch contacts', response.data)
-            // API returns array directly, not nested under contacts
-            const contactsData = Array.isArray(response.data) ? response.data : [];
+            // API should return an array, but be defensive in case backend returns a wrapper.
+            const body = response.data;
+            const contactsData = Array.isArray(body)
+                ? body
+                : (Array.isArray(body?.contacts) ? body.contacts
+                    : (Array.isArray(body?.data) ? body.data : []));
             setContacts(contactsData);
 
             // Extract online friends from the response (no separate API calls needed)
@@ -108,8 +113,8 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
             localStorage.setItem(cacheKey, JSON.stringify(contactsData));
         } catch (error) {
             console.error('Error fetching contacts:', error);
-            setContacts([]);
-            setActiveFriends([]);
+            // IMPORTANT: don't clear the existing list on transient failures.
+            // If the API times out (408/5xx) we don't want the whole sidebar to disappear.
         } finally {
             setLoading(false);
         }
@@ -117,6 +122,8 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
 
     useEffect(() => {
         if (!effectiveProfileId) return;
+        const profileChanged = lastEffectiveProfileIdRef.current !== effectiveProfileId;
+        lastEffectiveProfileIdRef.current = effectiveProfileId;
         if (cachedContacts.length > 0) {
             setContacts(cachedContacts);
             setActiveFriends(
@@ -127,8 +134,9 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
             setLoading(false);
             return;
         }
-        setContacts([]);
-        setActiveFriends([]);
+        // Don't clear the UI if we already have contacts in state; only clear on user change.
+        setContacts(prev => (profileChanged ? [] : prev));
+        setActiveFriends(prev => (profileChanged ? [] : prev));
         setLoading(true);
     }, [effectiveProfileId, cachedContacts]);
 

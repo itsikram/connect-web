@@ -51,11 +51,11 @@ const Chat = ({ }) => {
     const chatNewAttachment = useRef(null);
     const messageActionButtonContainer = useRef(null);
 
-    const chatHeaderHeight = chatHeader.current?.offsetHeight;
-    const chatFooterHeight = chatFooter.current?.offsetHeight;
-    const chatFooterWidth = chatFooter.current?.offsetWidth;
-    const newAttachmentWidth = chatNewAttachment.current?.offsetWidth;
-    const messageActionButtonContainerWidth = messageActionButtonContainer.current?.offsetWidth;
+    const chatHeaderHeight = chatHeader.current?.offsetHeight || 0;
+    const chatFooterHeight = chatFooter.current?.offsetHeight || 0;
+    const chatFooterWidth = chatFooter.current?.offsetWidth || 0;
+    const newAttachmentWidth = chatNewAttachment.current?.offsetWidth || 0;
+    const messageActionButtonContainerWidth = messageActionButtonContainer.current?.offsetWidth || 0;
     const messageInputWidth = chatFooterWidth - newAttachmentWidth - messageActionButtonContainerWidth
 
     const scrollToLastMessage = () => {
@@ -113,24 +113,32 @@ const Chat = ({ }) => {
         if (friendId) dispatch(seenMessage(friendId))
     }, [friendId, dispatch])
 
-    const [listContainerHeight, setListContainerHeight] = useState(chatBoxHeight - chatHeaderHeight - chatFooterHeight);
+    const [listContainerHeight, setListContainerHeight] = useState(Math.max(0, chatBoxHeight - chatHeaderHeight - chatFooterHeight));
     const [cmlStyles, setCmlStyles] = useState({
-        height: `${isMobile ? bodyHeight - headerHeight - chatFooterHeight - chatHeaderHeight + 50 : (chatBoxHeight - chatHeaderHeight )}px`,
-        maxHeight: `${isMobile ? listContainerHeight + headerHeight +50 : (chatBoxHeight - chatHeaderHeight - 80)}px`,
+        height: `${isMobile
+            ? bodyHeight - headerHeight - chatFooterHeight - chatHeaderHeight + 50
+            : Math.max(0, chatBoxHeight - chatHeaderHeight - chatFooterHeight)}px`,
+        maxHeight: `${isMobile
+            ? listContainerHeight + headerHeight + 50
+            : Math.max(0, chatBoxHeight - chatHeaderHeight - chatFooterHeight)}px`,
         overflowY: 'scroll'
     });
 
 
 
     useEffect(() => {
-        const newListHeaderHeight = bodyHeight - headerHeight - chatHeaderHeight - chatFooterHeight
+        const newListHeaderHeight = Math.max(0, bodyHeight - headerHeight - chatHeaderHeight - chatFooterHeight)
         setListContainerHeight(newListHeaderHeight)
 
         console.log('listContainerHeight',chatBoxHeight , chatHeaderHeight , chatFooterHeight, listContainerHeight)
 
         setCmlStyles({
-            height: `${isMobile ? bodyHeight - headerHeight - chatFooterHeight - chatHeaderHeight + 50 : (chatBoxHeight - chatHeaderHeight -80)}px`,
-            maxHeight: `${isMobile ? listContainerHeight + headerHeight + 50 : (chatBoxHeight - chatHeaderHeight -80)}px`,
+            height: `${isMobile
+                ? bodyHeight - headerHeight - chatFooterHeight - chatHeaderHeight + 50
+                : newListHeaderHeight}px`,
+            maxHeight: `${isMobile
+                ? newListHeaderHeight + headerHeight + 50
+                : newListHeaderHeight}px`,
             overflowY: 'scroll'
         })
     }, [isReplying, isLoaded])

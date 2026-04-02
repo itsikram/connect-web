@@ -37,6 +37,8 @@ import PostComments from "../components/post/PostComments.js";
 import PostReacts from "../components/post/PostReacts.js";
 import Login from "./Login.js";
 import SignUP from "./SignUp.js";
+import ForgotPassword from "./ForgotPassword.js";
+import ResetPassword from "./ResetPassword.js";
 import MinimizedCallBar from "../components/MinimizedCallBar/MinimizedCallBar.js";
 import StickyChatBoxContainer from "../components/Message/StickyChatBoxContainer.js";
 import config from "../config/config.json";
@@ -1194,6 +1196,8 @@ const Main = () => {
                             <Route path="downloads/:videoId" element={<SingleVideo />}></Route>
                             <Route path="login" element={<Login />}></Route>
                             <Route path="signup" element={<SignUP />}></Route>
+                            <Route path="forgot-password" element={<ForgotPassword />}></Route>
+                            <Route path="reset-password/:token" element={<ResetPassword />}></Route>
                             {/* <Route path="face" element={<ProtectedRoute><Face /></ProtectedRoute>}></Route> */}
 
                             <Route index element={<ProtectedRoute><Home /></ProtectedRoute>}></Route>

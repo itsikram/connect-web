@@ -233,7 +233,7 @@ let Login = (props) => {
                                 disabled={isLoggingIn || isGoogleSigningIn}
                                 style={{ opacity: isLoggingIn || isGoogleSigningIn ? 0.6 : 1, cursor: isLoggingIn || isGoogleSigningIn ? 'not-allowed' : 'pointer' }}
                             />
-                            <span className="forgot-password">
+                            <span className="forgot-password" onClick={() => navigate('/forgot-password')} style={{ cursor: 'pointer' }}>
                                 Forgotten password?
                             </span>
 

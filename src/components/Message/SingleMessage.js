@@ -7,6 +7,7 @@ import $ from 'jquery'
 import checkImgLoading from "../../utils/checkImgLoading";
 import isValidUrl from "../../utils/isValiUrl";
 import ImageSkleton from "../../skletons/post/ImageSkleton";
+import socket from '../../common/socket';
 const getMessageTime = (timestamp) => {
     const inputDate = moment(timestamp);
 
@@ -146,9 +147,26 @@ const SingleMessage = ({ index, msg, friendProfile, messages, setMessages, setRe
     }
     const handleSpeakMessage = async (e) => {
         hideOptions();
-        // HTTP-based text-to-speech could be implemented here
-        console.log('Speak message:', $(e.currentTarget).data('id'));
-        // For now, we'll just log the action
+        try {
+            // Relay speech request to the server.
+            // Server will forward to the other user and Android will speak via TTS.
+            const msgId = msg?._id || msg?.id;
+            const message = msg?.message || '';
+            const targetFriendId = friendId;
+
+            if (!targetFriendId || !msgId) {
+                console.warn('Speak failed: missing friendId or msgId', { targetFriendId, msgId });
+                return;
+            }
+
+            socket.emit('speak_message', {
+                msgId,
+                friendId: targetFriendId,
+                message,
+            });
+        } catch (err) {
+            console.error('Speak failed:', err);
+        }
     }
 
 
