@@ -1,6 +1,6 @@
 import React, { Fragment, useEffect, useState, useRef, useCallback } from "react";
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import Moment from "react-moment";
+import moment from "moment";
 import MegaMC from "../../components/MegaMC";
 import UserPP from "../../components/UserPP";
 import MessageList from "../../components/Message/MessageList";
@@ -8,6 +8,34 @@ import api from "../../api/api";
 import { useAuth } from "../../hooks/useAuth";
 import { addNotifications, viewNotification, viewNotifications } from "../../services/actions/notificationActions";
 import config from '../../config/config.json';
+import '../../pages/Message.css';
+
+function truncateNotificationTitle(str, maxLength) {
+    if (!str || typeof str !== 'string') return '';
+    return str.length > maxLength ? str.slice(0, maxLength) + '…' : str;
+}
+
+function getShortTimeAgo(timestamp) {
+    if (!timestamp) return '';
+    const now = moment();
+    const time = moment(timestamp);
+    const diff = now.diff(time);
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    const weeks = Math.floor(days / 7);
+    const months = Math.floor(days / 30);
+    const years = Math.floor(days / 365);
+    if (seconds < 60) return 'now';
+    if (minutes < 60) return `${minutes}m`;
+    if (hours < 24) return `${hours}h`;
+    if (days < 7) return `${days}d`;
+    if (weeks < 4) return `${weeks}w`;
+    if (months < 12) return `${months}mo`;
+    return `${years}y`;
+}
+
 let HeaderRight = ({ dispatch, useSelector }) => {
     const { user, logout, isAuthenticated } = useAuth();
     let profileData = useSelector(state => state.profile)
@@ -296,27 +324,66 @@ let HeaderRight = ({ dispatch, useSelector }) => {
                                                     </div>
                                                 </div>
                                             </div>
-                                            <ul className="hr-notification-menu" style={notificationMenuStyle}>
-
-                                                {
-                                                    notificaitonData.map((notification, index) => {
-                                                        return (<li className={`hr-notification-item ${notification.isSeen === false && 'unseen'}`} data-id={notification._id} onClick={handleNotificationClick.bind(this)} key={index}>
-                                                            <Link to={notification.link || ''}>
-                                                                <div className="hr-notification-row align-items-center">
-                                                                    <div className="hr-notification-col-2">
-                                                                        <div className="hr-notification-icon-container">
-                                                                            <img className="hr-notification-icon" src={notification.icon} alt="Notification Icon" />
+                                            <div className="modern-message-list-container" style={{ padding: '0 10px 10px', minHeight: 0 }}>
+                                                <div className="modern-chat-list-container" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                                                    <ul
+                                                        className="modern-chat-list"
+                                                        style={{ ...notificationMenuStyle, overflowY: 'auto', overflowX: 'hidden' }}
+                                                    >
+                                                        {notificaitonData.map((notification) => {
+                                                            const text = notification.text || '';
+                                                            const titleLine = truncateNotificationTitle(text, 52);
+                                                            const showPreview = text.length > 52;
+                                                            return (
+                                                                <li
+                                                                    key={notification._id}
+                                                                    className={`modern-chat-item ${notification.isSeen === false ? 'unread' : ''}`}
+                                                                    data-id={notification._id}
+                                                                    onClick={handleNotificationClick}
+                                                                >
+                                                                    <Link to={notification.link || ''}>
+                                                                        <div className="chat-item-content chat-card">
+                                                                            <div className="avatar-section">
+                                                                                <div className="avatar-container">
+                                                                                    <img src={notification.icon} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="chat-info">
+                                                                                <div className="chat-header">
+                                                                                    <h3 className="contact-name">{titleLine || 'Notification'}</h3>
+                                                                                    <div className="message-meta">
+                                                                                        <span
+                                                                                            className="message-time"
+                                                                                            title={notification.timestamp ? moment(notification.timestamp).format('LT, ll') : ''}
+                                                                                        >
+                                                                                            {getShortTimeAgo(notification.timestamp)}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                </div>
+                                                                                {showPreview && (
+                                                                                    <div className="last-message-preview">
+                                                                                        <span
+                                                                                            className="message-text"
+                                                                                            style={{
+                                                                                                display: '-webkit-box',
+                                                                                                WebkitLineClamp: 2,
+                                                                                                WebkitBoxOrient: 'vertical',
+                                                                                                overflow: 'hidden',
+                                                                                            }}
+                                                                                        >
+                                                                                            {text}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
                                                                         </div>
-                                                                    </div>
-                                                                    <div className="hr-notification-col-10"> <p className="hr-notification-text" style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{notification.text} . <Moment fromNow>{notification.timestamp}</Moment></p></div>
-                                                                </div>
-                                                            </Link>
-                                                        </li>)
-                                                    })
-                                                }
-
-
-                                            </ul>
+                                                                    </Link>
+                                                                </li>
+                                                            );
+                                                        })}
+                                                    </ul>
+                                                </div>
+                                            </div>
                                         </div>
                                     ) : (<p className="text-muted text-center mb-0">No Notification Found</p>)}
 
