@@ -13,16 +13,22 @@ import { showCallNotification, closeCallNotification } from '../../utils/callNot
 import audioPreloader from '../../utils/audioPreloader';
 
 const AudioCall = ({ myId }) => {
-    useEffect(() => {
-        if (process.env.NODE_ENV === 'development') {
-            console.log('AudioCall mounted with myId:', myId);
-        }
-    }, [myId]);
     const mySettings = useSelector(state => state.setting);
     const [isAudioCall, setIsAudioCall] = useState(false);
     const [callerName, setCallerName] = useState('');
     const [callerProfilePic, setCallerProfilePic] = useState('');
     const [receivingCall, setReceivingCall] = useState(false);
+    
+    // Keep receivingCall ref in sync with state (must be after receivingCall declaration)
+    useEffect(() => {
+        receivingCallRef.current = receivingCall;
+    }, [receivingCall]);
+
+    useEffect(() => {
+        if (process.env.NODE_ENV === 'development') {
+            console.log('AudioCall mounted with myId:', myId);
+        }
+    }, [myId]);
     const [caller, setCaller] = useState('');
     const [callAccepted, setCallAccepted] = useState(false);
     const [isMicrophone, setIsMicrophone] = useState(true);
@@ -36,6 +42,7 @@ const AudioCall = ({ myId }) => {
     const callEndBtn = useRef();
     const ringtoneAudio = useRef();
     const isTerminating = useRef(false);
+    const receivingCallRef = useRef(receivingCall);
     
     // Agora RTC refs for audio (fresh client per call)
     const clientRef = useRef(null);
@@ -568,14 +575,18 @@ const AudioCall = ({ myId }) => {
 
         window.addEventListener('startAudioCall', handleOutgoingAudioCall);
 
-        socket.on('call-accepted', ({ channelName, isAudio }) => {
+        socket.on('call-accepted', ({ channelName, isAudio, callerId }) => {
             // Caller side should join upon acceptance; callee already joined in answerCall
-            if (isAudio && !receivingCall) {
+            // Use ref to avoid stale closure issue
+            if (isAudio && !receivingCallRef.current) {
                 console.log('Agora audio call accepted, joining channel:', channelName);
+                console.log('Call accepted data:', { channelName, isAudio, callerId });
                 stopRingtone();
+                setOutgoingCallStatus('');
                 // Call startCall directly since it's defined above
                 startCall(channelName);
-                setOutgoingCallStatus('');
+            } else if (isAudio && receivingCallRef.current) {
+                console.log('Received call-accepted but we are the receiver (receivingCall=true), callee already joined in answerCall');
             }
         });
 

@@ -1,6 +1,7 @@
 {
   "short_name": "Connect",
-  "name": "Connect - Social Media App",
+  "name": "Connect App - Social Media Platform by Ikramul",
+  "description": "Connect by Ikramul - A modern social media platform for connecting with friends, sharing moments, video calls, and building communities. Download the Connect app today!",
   "icons": [
     {
       "src": "favicon.ico",
@@ -10,21 +11,29 @@
     {
       "src": "logo192.png",
       "type": "image/png",
-      "sizes": "192x192"
+      "sizes": "192x192",
+      "purpose": "any maskable"
     },
     {
       "src": "logo512.png",
       "type": "image/png",
-      "sizes": "512x512"
+      "sizes": "512x512",
+      "purpose": "any maskable"
     }
   ],
   "start_url": ".",
   "display": "standalone",
   "theme_color": "#000000",
   "background_color": "#ffffff",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "en",
+  "categories": ["social", "networking", "communication"],
   "gcm_sender_id": "103953800507",
   "gcm_user_visible_only": true,
   "permissions": [
     "notifications"
-  ]
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false
 }
