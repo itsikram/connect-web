@@ -1,16 +1,4 @@
-# https://www.robotstxt.org/robotstxt.html
 User-agent: *
-Disallow:
-
-# Sitemap
-Sitemap: https://your-domain.com/sitemap.xml
-
-# Allow all crawlers to access the site
 Allow: /
 
-# Block access to private API endpoints (if any are exposed)
-Disallow: /api/private/
-Disallow: /admin/
-
-# Crawl-delay for respectful crawling
-Crawl-delay: 10
+Sitemap: https://connect-zfgx.onrender.com/sitemap.xml
