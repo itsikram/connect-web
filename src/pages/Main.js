@@ -111,12 +111,14 @@ import Habits from "./Habits.js";
 
 
 function showNotification(msg, receiverId) {
-    const notification = new Notification("New Message!", {
-        body: msg.message,
-        icon: config?.logo
+    const titleText = (msg?.title && String(msg.title).trim()) || (msg?.senderName && String(msg.senderName).trim()) || 'New Message';
+    const bodyText = (msg?.message && String(msg.message).trim()) || (msg?.text && String(msg.text).trim()) || 'You have a new message';
+
+    const notification = new Notification(titleText, {
+        body: bodyText,
+        icon: config?.logo || undefined,
     });
 
-    // Handle click event
     notification.onclick = () => {
         window.open(`${process.env.REACT_APP_URL}/message/${receiverId}`);
     };
@@ -148,6 +150,62 @@ const Main = () => {
     const navigate = useNavigate();
     const audioElement = useRef(null)
     const [audioReady, setAudioReady] = useState(false)
+
+    const seoPages = [
+        {
+            match: /^\/$/,
+            title: 'Connect App - Social Media Home | Connect by Ikramul',
+            description: 'Connect by Ikramul is a modern social media app for connecting with friends, sharing moments, video calls, and building communities.',
+        },
+        {
+            match: /^\/login$/,
+            title: 'Login | Connect App by Ikramul',
+            description: 'Sign in to Connect app by Ikramul to chat, share moments, and stay connected with friends and communities.',
+        },
+        {
+            match: /^\/signup$/,
+            title: 'Sign Up | Connect App by Ikramul',
+            description: 'Create your Connect account today to start building your social media network with the Connect app.',
+        },
+        {
+            match: /^\/forgot-password$/,
+            title: 'Reset Password | Connect App',
+            description: 'Reset your Connect password and get back to messaging, sharing, and calling your friends on the Connect social media app.',
+        },
+        {
+            match: /^\/portfolio/, 
+            title: 'Connect App Portfolio | Connect by Ikramul',
+            description: 'Explore the Connect app portfolio by Ikramul and learn how the social media platform brings people together through chat, stories, and live media.',
+        }
+    ];
+
+    useEffect(() => {
+        const baseUrl = 'https://connect-zfgx.onrender.com';
+        const pathname = location.pathname || '/';
+        const pageMeta = seoPages.find(page => page.match.test(pathname)) || seoPages[0];
+
+        document.title = pageMeta.title;
+        document.documentElement.lang = 'en';
+
+        const updateMeta = (selector, value) => {
+            const element = document.querySelector(selector);
+            if (element) {
+                element.setAttribute('content', value);
+            }
+        };
+
+        updateMeta('meta[name="description"]', pageMeta.description);
+        updateMeta('meta[property="og:title"]', pageMeta.title);
+        updateMeta('meta[property="og:description"]', pageMeta.description);
+        updateMeta('meta[name="twitter:title"]', pageMeta.title);
+        updateMeta('meta[name="twitter:description"]', pageMeta.description);
+        updateMeta('meta[property="og:url"]', `${baseUrl}${pathname}`);
+
+        const canonical = document.querySelector('link[rel="canonical"]');
+        if (canonical) {
+            canonical.setAttribute('href', `${baseUrl}${pathname}`);
+        }
+    }, [location.pathname]);
 
     // Create audio element dynamically only when needed
     const getOrCreateAudioElement = () => {

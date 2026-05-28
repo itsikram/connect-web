@@ -15,43 +15,55 @@ let Profile = (props) => {
     let dispatch = useDispatch()
     let myProfileData = useSelector(state => state.profile) || {}
     let myProfileId = myProfileData._id
-    let [isAuth, setIsAuth] = useState(params.profile === myProfileId || params.profile == myProfileData.username? true : false)
-    let [profileData, setProfileData] = useState(isAuth ? {  ...myProfileData  }: {})
+    let [isAuth, setIsAuth] = useState(false)
+    let [profileData, setProfileData] = useState({})
+    let [isFriend, setIsFriend] = useState(false)
 
     useEffect(() => {
-        setIsAuth(params.profile === myProfileId? true : false)
-        
-        myProfileData.friends && myProfileData.friends.filter(friendData => {
-            if (friendData._id === params.profile) {
-                setIsFriend(true)
-            }
-        })
-    },[myProfileData])
+        const profileIdentifier = params.profile;
+        const authProfile = profileIdentifier === myProfileId || profileIdentifier === myProfileData.username;
+        setIsAuth(authProfile);
+        setIsFriend(false);
 
-    let [isFriend, setIsFriend] = useState(false)
+        if (authProfile) {
+            setProfileData({ ...myProfileData });
+        } else {
+            setProfileData({});
+        }
+
+        if (Array.isArray(myProfileData.friends)) {
+            const friendExists = myProfileData.friends.some(friendData => friendData._id === profileIdentifier);
+            setIsFriend(friendExists);
+        }
+    }, [params.profile, myProfileId, myProfileData.username, myProfileData, myProfileData.friends]);
 
     // setting effects
     useEffect(() => {
-        if(isAuth) return;
-        dispatch(setLoading(true))
+        if (isAuth) return;
+        dispatch(setLoading(true));
 
-        try {
+        let active = true;
 
-            api.post('/profile', { profile: params.profile }).then(res => {
+        api.post('/profile', { profile: params.profile })
+            .then(res => {
+                if (!active) return;
                 if (res.status === 200) {
-                    setProfileData(res.data)
-                    dispatch(setLoading(false))
+                    setProfileData(res.data);
                 }
-
-            }).catch(e => {
-                console.log(e)
             })
+            .catch(e => {
+                console.error('Failed to load profile:', e);
+            })
+            .finally(() => {
+                if (active) {
+                    dispatch(setLoading(false));
+                }
+            });
 
-        } catch (error) {
-            console(error)
-        }
-
-    }, [params])
+        return () => {
+            active = false;
+        };
+    }, [params.profile, isAuth, dispatch]);
 
 
     let profilePath = "/" + profileData._id + "/"

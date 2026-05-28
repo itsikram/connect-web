@@ -151,9 +151,16 @@
   display: flex;
   height: 100%;
   position: relative;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: stretch;
 }
 
-/* Sidebar Base Styles */
+.modern-message-container {
+  width: 100%;
+  max-width: 100%;
+}
+
 .message-sidebar {
   background: var(--msg-glass-bg);
   backdrop-filter: blur(20px);

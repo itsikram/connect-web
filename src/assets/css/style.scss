@@ -54,6 +54,34 @@ body {
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    min-width: 320px;
+    overflow-x: hidden;
+}
+
+html {
+    scroll-behavior: smooth;
+    min-width: 320px;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+img,
+video,
+iframe,
+svg {
+    max-width: 100%;
+    height: auto;
+}
+
+button,
+input,
+textarea,
+select {
+    font: inherit;
 }
 
 .forgot-password {
@@ -413,6 +441,10 @@ body {
         position: relative;
         z-index: 1000;
         overflow: visible;
+        width: 90%;
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 0 16px;
 
         // Slim header padding
         .row {
@@ -1615,13 +1647,27 @@ body {
 
 
 #home {
+    width: 90%;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 0 16px;
 
     .nf-create-post {
-        width: 90%;
+        width: 100%;
         margin: auto;
         margin-top: 20px;
+        max-width: 100%;
     }
 
+}
+
+@media (max-width: 1200px) {
+    #header .header-container,
+    .sticky-header .header-container,
+    #home {
+        width: 100%;
+        padding: 0 16px;
+    }
 }
 
 .nf-create-post {
