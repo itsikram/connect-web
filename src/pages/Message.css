@@ -118,6 +118,12 @@
 
 /* Main Container */
 .modern-message-container {
+  width: 90%;
+  max-width: 1400px;
+  min-width: 320px;
+  margin: 0 auto 1.5rem;
+  padding: 0 16px;
+  box-sizing: border-box;
   height: calc(100vh - 82px);
   background: linear-gradient(135deg, var(--msg-bg-primary) 0%, var(--msg-bg-secondary) 100%);
   position: relative;
@@ -126,6 +132,13 @@
   transform: translateY(20px);
   transition: all var(--msg-transition-slow);
   margin-top: 7px;
+}
+
+@media (max-width: 1200px) {
+  .modern-message-container {
+    width: 100%;
+    padding: 0 12px;
+  }
 }
 
 .modern-message-container.loaded {

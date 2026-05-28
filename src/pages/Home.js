@@ -42,22 +42,24 @@ const Home = () => {
 
         if (hasNewPosts === false) return;
 
-        const nfRes = await api.get('/post/newsFeed/', {
-            params: {
-                pageNumber: pageNumber + 1
+        const nextPage = pageNumber + 1;
+        try {
+            const nfRes = await api.get('/post/newsFeed/', {
+                params: {
+                    pageNumber: nextPage
+                }
+            })
+            if (nfRes.status === 200) {
+                dispatch(loadPosts([...nfRes.data.posts] || []))
+                setPageNumber(nextPage)
+                setHasNewPosts(nfRes.data.hasNewPost ?? false)
             }
-        })
-        if (nfRes.status === 200) {
-
-            // let loaded
-            dispatch(loadPosts([...nfRes.data.posts] || []))
-            setPageNumber(pageNumber + 1)
-            // setNewsFeed(state => [...state, ...nfRes.data.posts])
-            const hasPosts = nfRes.data.hasNewPost
-            setHasNewPosts(hasPosts)
+        } catch (error) {
+            console.error('Error loading news feed:', error);
+        } finally {
             setLoadNewPosts(false)
+            dispatch(setLoading(false))
         }
-        dispatch(setLoading(false))
     }
 
     const fetchStories = async () => {
@@ -84,15 +86,14 @@ const Home = () => {
             const scrolled = (scrollTop + windowHeight) / fullHeight;
 
             if (scrolled >= 0.8) {
-
-                if (loadNewPosts == false) {
+                if (!loadNewPosts) {
                     setLoadNewPosts(true)
                 }
             }
         };
         window.addEventListener("scroll", handleScroll);
-        //   return () => window.removeEventListener("scroll", handleScroll);
-    }, []);
+        return () => window.removeEventListener("scroll", handleScroll);
+    }, [loadNewPosts]);
 
 
 

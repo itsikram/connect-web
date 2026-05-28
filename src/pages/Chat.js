@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import { setLoading } from '../services/actions/optionAction';
 import { useDispatch, useSelector } from 'react-redux';
 import { useParams } from 'react-router-dom';
@@ -116,10 +116,10 @@ const Chat = ({ }) => {
     const [listContainerHeight, setListContainerHeight] = useState(Math.max(0, chatBoxHeight - chatHeaderHeight - chatFooterHeight));
     const [cmlStyles, setCmlStyles] = useState({
         height: `${isMobile
-            ? bodyHeight - headerHeight - chatFooterHeight - chatHeaderHeight + 50
+            ? safeBodyHeight - safeHeaderHeight - chatFooterHeight - chatHeaderHeight + 50
             : Math.max(0, chatBoxHeight - chatHeaderHeight - chatFooterHeight)}px`,
         maxHeight: `${isMobile
-            ? listContainerHeight + headerHeight + 50
+            ? Math.max(0, safeBodyHeight - safeHeaderHeight - chatHeaderHeight - chatFooterHeight) + safeHeaderHeight + 50
             : Math.max(0, chatBoxHeight - chatHeaderHeight - chatFooterHeight)}px`,
         overflowY: 'scroll'
     });
@@ -127,21 +127,19 @@ const Chat = ({ }) => {
 
 
     useEffect(() => {
-        const newListHeaderHeight = Math.max(0, bodyHeight - headerHeight - chatHeaderHeight - chatFooterHeight)
-        setListContainerHeight(newListHeaderHeight)
-
-        console.log('listContainerHeight',chatBoxHeight , chatHeaderHeight , chatFooterHeight, listContainerHeight)
+        const newListHeaderHeight = Math.max(0, safeBodyHeight - safeHeaderHeight - chatHeaderHeight - chatFooterHeight);
+        setListContainerHeight(newListHeaderHeight);
 
         setCmlStyles({
             height: `${isMobile
-                ? bodyHeight - headerHeight - chatFooterHeight - chatHeaderHeight + 50
+                ? safeBodyHeight - safeHeaderHeight - chatFooterHeight - chatHeaderHeight + 50
                 : newListHeaderHeight}px`,
             maxHeight: `${isMobile
-                ? newListHeaderHeight + headerHeight + 50
+                ? newListHeaderHeight + safeHeaderHeight + 50
                 : newListHeaderHeight}px`,
             overflowY: 'scroll'
-        })
-    }, [isReplying, isLoaded])
+        });
+    }, [safeBodyHeight, safeHeaderHeight, chatHeaderHeight, chatFooterHeight, isMobile, isReplying, isLoaded]);
 
 
     useEffect(() => {
@@ -445,22 +443,29 @@ const Chat = ({ }) => {
         loadingOlderRef.current = false;
 
         const fetchInitialMessages = async () => {
+            setIsMsgLoading(true);
             try {
                 const response = await fetchMessages(userId, friendId, 20, 0);
 
                 if (response.messages) {
                     setMessages(response.messages);
-                    setHasMoreMessages(response.hasMore);
+                    setHasMoreMessages(response.hasMore ?? false);
+                } else {
+                    setMessages([]);
+                    setHasMoreMessages(false);
                 }
             } catch (error) {
                 console.error('Error fetching initial messages:', error);
                 setMessages([]);
                 setHasMoreMessages(false);
+            } finally {
+                setIsMsgLoading(false);
+                setIsLoaded(true);
             }
         };
 
         fetchInitialMessages().then(() => {
-            setTimeout(() => scrollToLastMessage(), 0);
+            scrollToLastMessage();
         });
     }, [friendId, userId, fetchMessages]);
 
