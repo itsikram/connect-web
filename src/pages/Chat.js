@@ -58,11 +58,15 @@ const Chat = ({ }) => {
     const messageActionButtonContainerWidth = messageActionButtonContainer.current?.offsetWidth || 0;
     const messageInputWidth = chatFooterWidth - newAttachmentWidth - messageActionButtonContainerWidth
 
+    const safeBodyHeight = bodyHeight ?? (typeof window !== 'undefined' ? window.innerHeight : 0);
+    const safeHeaderHeight = headerHeight ?? 0;
+    const chatBoxHeight = safeBodyHeight - safeHeaderHeight;
+
     const scrollToLastMessage = () => {
         if (msgListRef.current != null) {
             const isLastMsg = setInterval(() => {
                 const lastMsg = document.querySelector('#chatMessageList .chat-message-container:last-child')
-                lastMsg?.scrollIntoView({ behavior: "smooth" });
+                lastMsg?.scrollIntoView({ behavior: "smooth", block: "end" });
             }, 500)
 
             msgListRef.current.addEventListener('scroll', (e) => {
@@ -87,8 +91,6 @@ const Chat = ({ }) => {
         messageInput.current.style.width = messageInputWidth + 'px'
     }
 
-
-    const chatBoxHeight = bodyHeight - headerHeight
     const params = useParams()
     const friendId = params.profile;
 

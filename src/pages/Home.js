@@ -34,6 +34,7 @@ const Home = () => {
     const [newsFeeds, setNewsFeed] = useState([])
     const [stories, setStories] = useState([])
     const [lastVisitPost, setLastVisitPost] = useState(false)
+    const [feedLoaded, setFeedLoaded] = useState(false)
     const [pageNumber, setPageNumber] = useState(0)
     const myProfile = useSelector(state => state.profile)
     const newsFeedPosts = useSelector(state => state.post)
@@ -58,6 +59,7 @@ const Home = () => {
             console.error('Error loading news feed:', error);
         } finally {
             setLoadNewPosts(false)
+            setFeedLoaded(true)
             dispatch(setLoading(false))
         }
     }
@@ -189,10 +191,18 @@ const Home = () => {
                                             newsFeedPosts.map((newsFeed, index) => {
                                                 return <Post key={index} index={newsFeedPosts.indexOf(newsFeed)} postContainer={postContainer} data={newsFeed}></Post>
                                             })
-
-                                            : <PostSkeleton count={3} />
+                                        : feedLoaded ? (
+                                            <div className="no-posts-message text-center py-4">
+                                                <h4>No posts yet</h4>
+                                                <p>There are no more posts to show right now.</p>
+                                            </div>
+                                        ) : (
+                                            <PostSkeleton count={3} />
+                                        )
                                     }
-                                    <PostSkeleton count={1} />
+                                    {
+                                        hasNewPosts && newsFeedPosts.length > 0 && <PostSkeleton count={1} />
+                                    }
 
                                 </div>
 

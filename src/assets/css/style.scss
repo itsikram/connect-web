@@ -1498,7 +1498,8 @@ select {
 
 #right-sidebar {
     margin-top: 12px;
-    right: 0;
+    margin-left: 30px;
+    right: auto;
     min-width: 280px;
     width: 280px;
     margin-right: 20px;
@@ -1666,7 +1667,7 @@ select {
     .sticky-header .header-container,
     #home {
         width: 100%;
-        padding: 0 16px;
+        // padding: 0 16px;
     }
 }
 
@@ -4607,7 +4608,7 @@ select {
 
 #newsfeed-container {
 
-    width: 90%;
+    // width: 90%;
     margin: auto;
     margin-top: 20px;
 
@@ -4774,6 +4775,7 @@ select {
                     border-radius: 50%;
                     overflow: hidden;
                     border: 3.5px solid gray;
+                    background: #0E0E0F;
 
                 }
 
@@ -7882,7 +7884,7 @@ select {
     }
 
     #chatBox .chat-footer {
-        bottom: -125px;
+        bottom: 0;
     }
 
     #header:not(.sticky-header) {
@@ -7928,7 +7930,7 @@ select {
     }
 
     .nf-create-post {
-        margin: 8px;
+        // margin: 8px;
         border-radius: 12px;
         padding: 10px;
     }

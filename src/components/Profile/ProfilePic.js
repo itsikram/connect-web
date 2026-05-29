@@ -2,26 +2,31 @@ import React, { Fragment, useState, useEffect } from "react";
 import ModalContainer from "../modal/ModalContainer";
 import AvatarEditor from "react-avatar-editor";
 import api from "../../api/api";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
 import { useParams } from "react-router-dom"
 import ImageSkleton from "../../skletons/post/ImageSkleton";
 import checkImgLoading from "../../utils/checkImgLoading";
 import isValidUrl from "../../utils/isValiUrl";
 import PpSkleton from "../../skletons/profile/PpSkleton";
 import config from "../../config/config.json";
+import { getProfileSuccess } from "../../services/actions/profileActions";
 const defaultPpSrc = config?.defaultProfile;
 
 let ProfilePic = ({ profileData }) => {
     let { profile } = useParams()
 
     let myProfileData = useSelector(state => state.profile)
+    const dispatch = useDispatch();
     // handle profile pic upload
 
     const [isPPModal, setIsPPModal] = useState(false)
     const [isPPViewModal, setIsPPViewModal] = useState(false)
     const [profileImage, setProfileimage] = useState()
     const [ppUrl, setPpUrl] = useState(profileData.profilePic)
+    const [displayPpUrl, setDisplayPpUrl] = useState(profileData.profilePic)
     const [isPpLoaded, setIsPpLoaded] = useState(profileData.profilePic);
+    const [isPpUploading, setIsPpUploading] = useState(false)
+    const [uploadProgress, setUploadProgress] = useState(0)
     const [hasStory, setHasStory] = useState(false);
     const [ppCaption, setPpCaption] = useState('');
     useEffect(() => {
@@ -33,17 +38,28 @@ let ProfilePic = ({ profileData }) => {
 
     }, [profile])
 
+    const getCacheBustedUrl = (url) => {
+        if (!url) return url;
+        const separator = url.includes('?') ? '&' : '?';
+        return `${url}${separator}cb=${Date.now()}`;
+    };
+
     useEffect(() => {
         if(profileData) {
-        setPpUrl(isValidUrl(profileData.profilePic) ? profileData.profilePic : '')
-
-        }else {
+            const url = isValidUrl(profileData.profilePic) ? profileData.profilePic : '';
+            setPpUrl(url)
+            setDisplayPpUrl(getCacheBustedUrl(url))
+        } else {
             setPpUrl(defaultPpSrc)
+            setDisplayPpUrl(defaultPpSrc)
         }
     },[profileData])
 
-    useEffect(e => {
-          ppUrl && checkImgLoading(ppUrl, setIsPpLoaded)
+    useEffect(() => {
+          if (ppUrl) {
+              setDisplayPpUrl(getCacheBustedUrl(ppUrl));
+              checkImgLoading(ppUrl, setIsPpLoaded)
+          }
     }, [ppUrl])
 
 
@@ -80,7 +96,6 @@ let ProfilePic = ({ profileData }) => {
 
     let handlePPUploadSubmit = async (e) => {
         e.preventDefault()
-        setIsPPModal(false)
         try {
 
 
@@ -95,11 +110,18 @@ let ProfilePic = ({ profileData }) => {
                 let ppFormData = new FormData();
                 ppFormData.append('image', profilePicFile)
 
-                let uplaodPPRes = await api.post('/upload', ppFormData, {
-                    headers: {
-                        'Content-Type': 'multipart/form-data'
-                    }
-                })
+setUploadProgress(0)
+                    setIsPpUploading(true)
+                    let uplaodPPRes = await api.post('/upload', ppFormData, {
+                        headers: {
+                            'Content-Type': 'multipart/form-data'
+                        },
+                        onUploadProgress: (progressEvent) => {
+                            const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
+                            setUploadProgress(percentCompleted)
+                        }
+                    })
+                    setIsPpUploading(false)
 
                 if (uplaodPPRes.status === 200) {
 
@@ -115,7 +137,20 @@ let ProfilePic = ({ profileData }) => {
                         }
                     })
                     if (res.status === 200) {
-                        window.location.reload()
+                        setPpUrl(profilePicUrl)
+                        setDisplayPpUrl(getCacheBustedUrl(profilePicUrl))
+                        setIsPpLoaded(false)
+                        setPpCaption("")
+                        setProfileimage(undefined)
+                        setIsPPModal(false)
+                        setUploadProgress(0)
+
+                        const updatedProfile = res.data?.profile || res.data;
+                        if (updatedProfile && updatedProfile._id) {
+                            dispatch(getProfileSuccess(updatedProfile));
+                        } else if (myProfileData?._id === profileData._id) {
+                            dispatch(getProfileSuccess({ ...myProfileData, profilePic: profilePicUrl }));
+                        }
                     }
 
                 }
@@ -126,6 +161,8 @@ let ProfilePic = ({ profileData }) => {
 
         } catch (error) {
             console.log(error)
+            setIsPpUploading(false)
+            setUploadProgress(0)
         }
 
 
@@ -164,7 +201,7 @@ let ProfilePic = ({ profileData }) => {
 
 
                 <div className={`profilePic-container ${hasStory == 'yes' ? 'has-story' : ''}`} onClick={PPContainerClick}>
-                { isPpLoaded ? <img src={ppUrl} alt="" /> : <ImageSkleton  /> }
+{ isPpLoaded ? <img src={displayPpUrl} alt="" /> : <ImageSkleton  /> }
 
                 </div>
 
@@ -194,7 +231,7 @@ let ProfilePic = ({ profileData }) => {
 
                     </div>
                     <div className="modal-body text-center">
-                        <img src={profileData.profilePic} className="w-100" alt="Ikram" />
+                        <img src={displayPpUrl} className="w-100" alt="Ikram" />
 
                     </div>
                 </ModalContainer>
@@ -235,7 +272,13 @@ let ProfilePic = ({ profileData }) => {
                                 />
                             }
                             <input onChange={ppInputChange} name="profilePic" className="pp-upload-input" type='file'></input>
-                            <button className="pp-upload-button" type="submit">Upload</button>
+                            <button className="pp-upload-button" type="submit" disabled={isPpUploading}>{isPpUploading ? `Uploading ${uploadProgress}%` : 'Upload'}</button>
+                            {isPpUploading && (
+                                <div className="upload-progress-bar" style={{ marginTop: '12px' }}>
+                                    <div style={{ background: '#3B82F6', height: '6px', width: `${uploadProgress}%`, borderRadius: '4px', transition: 'width 0.2s ease' }} />
+                                    <div style={{ marginTop: '6px', fontSize: '12px', color: '#555' }}>{uploadProgress}%</div>
+                                </div>
+                            )}
                         </form>
                     </div>
                 </ModalContainer>

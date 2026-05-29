@@ -1,28 +1,31 @@
 import React, { Fragment, useState, useEffect,useCallback } from "react";
 import ModalContainer from "../modal/ModalContainer";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
 import api from "../../api/api";
 import Cropper from 'react-easy-crop';
 import getCroppedImg from "../../inc/getCroppedImg";
 import CpSkleton from "../../skletons/profile/CpSkleton";
 import { useParams } from "react-router-dom";
-import { param } from "jquery";
+import { getProfileSuccess } from "../../services/actions/profileActions";
 
 const CoverPic = ({ profileData }) => {
 
     // Modal visibility functions
     const [isCpModal, setCpModal] = useState(false)
     const [isCpUploading, setIsCpUploading] = useState(false)
+    const [uploadProgress, setUploadProgress] = useState(0)
     const [isCropping, setIsCropping] = useState(false)
     const [isCPViewModal, setisCPViewModal] = useState(false)
     const [cpLoaded, setCpLoaded] = useState(false);
-    const [coverPicUrl, setCoverPicUrl] = useState(profileData.profilePic || '')
+    const [coverPicUrl, setCoverPicUrl] = useState(profileData.coverPic || '')
+    const [displayCoverPicUrl, setDisplayCoverPicUrl] = useState(profileData.coverPic || '')
     const [coverImage, setCoverImage] = useState(null)
     const [croppedImage, setCroppedImage] = useState(null)
     const [crop, setCrop] = useState({ x: 0, y: 0 });
     const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
     const [zoom, setZoom] = useState(1);
     const myProfileData = useSelector(state => state.profile)
+    const dispatch = useDispatch();
 
     const useMediaQuery = (query) => {
         const [matches, setMatches] = useState(window.matchMedia(query).matches);
@@ -37,6 +40,12 @@ const CoverPic = ({ profileData }) => {
         return matches;
     };
 
+    const getCacheBustedUrl = (url) => {
+        if (!url) return url;
+        const separator = url.includes('?') ? '&' : '?';
+        return `${url}${separator}cb=${Date.now()}`;
+    };
+
     const checkImageStatus = (url) => {
         const img = new Image();
         img.src = url;
@@ -46,28 +55,22 @@ const CoverPic = ({ profileData }) => {
     
 
     useEffect(() => {
-        setCoverPicUrl('')
-        setCpLoaded(false)
-
-    },[param])
-
-    useEffect(() => {
-        if(profileData) {
+        if (profileData) {
+            const url = profileData.coverPic || '';
             setCpLoaded(false)
-            checkImageStatus(profileData.coverPic)
-            
+            setCoverPicUrl(url)
+            setDisplayCoverPicUrl(getCacheBustedUrl(url))
+            checkImageStatus(url)
         }
-
-    }, [profileData, param])
+    }, [profileData])
 
     useEffect(() => {
-
-        if(cpLoaded == true) {
-            setCoverPicUrl(profileData.coverPic)
-
-        } 
-
-    }, [cpLoaded])
+        if (coverPicUrl) {
+            setCpLoaded(false);
+            setDisplayCoverPicUrl(getCacheBustedUrl(coverPicUrl));
+            checkImageStatus(coverPicUrl);
+        }
+    }, [coverPicUrl])
 
     const isMobile = useMediaQuery("(max-width: 768px)");
 
@@ -103,56 +106,74 @@ const CoverPic = ({ profileData }) => {
 
     const uploadCoverImage = async () => {
         setIsCropping(false)
+        setUploadProgress(0)
         setIsCpUploading(true)
         const coverPicFromData = new FormData();
         coverPicFromData.append('image', coverImage)
         const uploadCoverPicRes = await api.post('/upload', coverPicFromData, {
             headers: {
                 'content-type': 'multipart/form-data'
+            },
+            onUploadProgress: (progressEvent) => {
+                const percentCompleted = Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1));
+                setUploadProgress(percentCompleted)
             }
         })
 
+        setIsCpUploading(false)
+        setUploadProgress(0)
+
         if (uploadCoverPicRes.status === 200) {
             const coverPicUrl = uploadCoverPicRes.data.secure_url;
-            setIsCpUploading(false)
             setCoverPicUrl(coverPicUrl)
-            return true;
+            return coverPicUrl;
         }
+
+        return null;
     }
 
     // cover photo upload handler
     const cpUploadSubmit = async (e) => {
         e.preventDefault()
 
-        if(!croppedImage,!coverPicUrl) {
-            croppedImg() 
-            uploadCoverImage()
-            return true;
-        }
-
         try {
+            let uploadUrl = coverPicUrl;
 
-            if (coverPicUrl) {
-                setIsCpUploading(true)
-                const cpFormData = new FormData()
-                cpFormData.append('coverPicUrl', coverPicUrl)
-                cpFormData.append('profile', profileData._id)
-                const response = await api.post('/profile/update/coverPic', cpFormData, {
-                    headers: {
-                        'content-type': 'multipart/form-data'
-                    }
-                })
-                if (response.status === 200) {
-                    setCpModal(false)
-                    window.location.reload()
-
-                }
+            if (coverImage) {
+                uploadUrl = await uploadCoverImage();
             }
 
+            if (!uploadUrl) {
+                return;
+            }
+
+            setIsCpUploading(true)
+            const cpFormData = new FormData()
+            cpFormData.append('coverPicUrl', uploadUrl)
+            cpFormData.append('profile', profileData._id)
+            const response = await api.post('/profile/update/coverPic', cpFormData, {
+                headers: {
+                    'content-type': 'multipart/form-data'
+                }
+            })
+            if (response.status === 200) {
+                setCpModal(false)
+                setIsCpUploading(false)
+                setCoverPicUrl(uploadUrl)
+                setDisplayCoverPicUrl(getCacheBustedUrl(uploadUrl))
+                setUploadProgress(0)
+                const updatedProfile = response.data?.profile || response.data;
+                if (updatedProfile && updatedProfile._id) {
+                    dispatch(getProfileSuccess(updatedProfile));
+                } else if (myProfileData?._id === profileData._id) {
+                    dispatch(getProfileSuccess({ ...myProfileData, coverPic: uploadUrl }));
+                }
+            }
         } catch (error) {
             console.log(error)
+            setIsCpUploading(false)
+            setUploadProgress(0)
         }
-
     }
 
 
@@ -193,7 +214,7 @@ const CoverPic = ({ profileData }) => {
             {/* <CpSkleton count={1} /> */}
 
             {cpLoaded ? (
-                <img onClick={openCPViewModal} className="cover-photo" src={coverPicUrl} alt="cover" />
+                <img onClick={openCPViewModal} className="cover-photo" src={displayCoverPicUrl} alt="cover" />
             ) : (<CpSkleton count={1} />)}
 
                 
@@ -226,7 +247,7 @@ const CoverPic = ({ profileData }) => {
 
                     </div>
                     <div className="modal-body text-center">
-                        <img src={coverPicUrl} className="w-100" alt="Cover Pic View" />
+                        <img src={displayCoverPicUrl} className="w-100" alt="Cover Pic View" />
 
                     </div>
                 </ModalContainer>
@@ -264,8 +285,16 @@ const CoverPic = ({ profileData }) => {
                         <form onSubmit={cpUploadSubmit}>
 
                             <input name="cover_pic" onChange={handleCpChange.bind(this)} className="cp-upload-input" type="file"></input>
-                            <button type="submit" className="cp-upload-button">{isCpUploading ? 'Uploading...' : isCropping ? 'Crop' : 'Update Cover Picture'}</button>
+                            <button type="submit" className="cp-upload-button" disabled={isCpUploading}>{isCpUploading ? `Uploading ${uploadProgress}%` : isCropping ? 'Crop' : 'Update Cover Picture'}</button>
                         </form>
+                        {isCpUploading && (
+                            <div style={{ marginTop: '12px' }}>
+                                <div style={{ width: '100%', height: '6px', background: '#e5e7eb', borderRadius: '4px', overflow: 'hidden' }}>
+                                    <div style={{ width: `${uploadProgress}%`, height: '100%', background: '#3B82F6', transition: 'width 0.2s ease' }} />
+                                </div>
+                                <div style={{ marginTop: '6px', fontSize: '12px', color: '#374151' }}>{uploadProgress}%</div>
+                            </div>
+                        )}
 
                     </div>
 

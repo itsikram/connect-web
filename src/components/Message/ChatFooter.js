@@ -57,7 +57,7 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
         if (msgListRef?.current != null || msgListRef?.current != undefined) {
             const isLastMsg = setInterval(() => {
                 const lastMsg = document.querySelector('#chatMessageList .chat-message-container:last-child')
-                lastMsg?.scrollIntoView({ behavior: "smooth" });
+                lastMsg?.scrollIntoView({ behavior: "smooth", block: "end" });
             }, 500)
 
             msgListRef?.current.addEventListener('scroll', (event) => {
