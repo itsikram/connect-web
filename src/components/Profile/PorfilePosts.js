@@ -20,6 +20,8 @@ let PorfilePosts = () => {
     let postContainer = useRef(null)
 
     useEffect(() => {
+        if (!profile) return;
+
         api.get('/post/myPosts', {
             params: {
                 profile
@@ -28,33 +30,19 @@ let PorfilePosts = () => {
             if (res.status === 200) {
                 setPosts(res.data)
             }
-        })
-
+        }).catch(e => console.log(e))
 
         api.get('/profile', {
             params: {
                 profileId: profile
             }
         }).then((res) => {
-            setProfileData(res.data)
-
+            const profileResponse = res.data?.profile || res.data
+            setProfileData(profileResponse)
+            setBio(profileResponse.bio || myProfileData.bio || '')
         }).catch(e => console.log(e))
 
-    }, [profile])
-
-
-    useEffect(() => {
-
-        api.get('/profile', {
-            params: {
-                profileId: profile
-            }
-        }).then((res) => {
-            setProfileData(res.data)
-            setBio(res.data.bio)
-        }).catch(e => console.log(e))
-
-    }, [])
+    }, [profile, myProfileData.bio])
 
 
 

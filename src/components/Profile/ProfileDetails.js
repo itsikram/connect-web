@@ -1,9 +1,8 @@
 import React, { Fragment, useEffect, useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
+import { useSelector } from "react-redux";
 import Moment from "react-moment";
 import { useParams } from "react-router-dom";
 import api from "../../api/api";
-import { setLoading } from "../../services/actions/optionAction";
 
 let ProfileDetails = (props) => {
     let mySettings = useSelector(state => state.setting)
@@ -15,7 +14,6 @@ let ProfileDetails = (props) => {
     let [presentAddress, setPresentAddress] = useState('')
     let [permanentAddress, setPermanentAddress] = useState('')
     let params = useParams(); 
-    let dispatch= useDispatch
     let friendId = params.profile
 
 
@@ -32,43 +30,23 @@ let ProfileDetails = (props) => {
         if (friendProfile?.workPlaces) {
             setWorkPlaces(friendProfile.workPlaces)
         }
-
-
-        // api.get('setting/',{
-        //     params: {
-        //         profileId: friendId
-        //     }
-        // }).then(res => {
-        //     setSettings(res.data)
-        // })
     }, [friendProfile])
 
 
     useEffect(() => {
+        if (!friendId) return;
 
         api.get('/profile', {
             params: {
                 profileId: friendId
             }
         }).then((res) => {
-            setFriendProfile(res.data)
+            const profileResponse = res.data?.profile || res.data
+            setFriendProfile(profileResponse)
 
         }).catch(e => console.log(e))
 
-    }, [props])
-    
-    useEffect(() => {
-
-        api.get('/profile', {
-            params: {
-                profileId: friendId
-            }
-        }).then((res) => {
-            setFriendProfile(res.data)
-
-        }).catch(e => console.log(e))
-
-    }, [])
+    }, [friendId])
 
 
 

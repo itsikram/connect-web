@@ -162,7 +162,16 @@ const CoverPic = ({ profileData }) => {
                 setCoverPicUrl(uploadUrl)
                 setDisplayCoverPicUrl(getCacheBustedUrl(uploadUrl))
                 setUploadProgress(0)
-                const updatedProfile = response.data?.profile || response.data;
+                let updatedProfile = response.data?.profile || response.data;
+
+                // If the update endpoint does not return the full profile, re-fetch it.
+                if (!updatedProfile || !updatedProfile._id) {
+                    const profileRes = await api.post('/profile', { profile: profileData._id });
+                    if (profileRes.status === 200) {
+                        updatedProfile = profileRes.data;
+                    }
+                }
+
                 if (updatedProfile && updatedProfile._id) {
                     dispatch(getProfileSuccess(updatedProfile));
                 } else if (myProfileData?._id === profileData._id) {

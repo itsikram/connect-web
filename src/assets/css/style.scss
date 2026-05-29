@@ -442,7 +442,7 @@ select {
         z-index: 1000;
         overflow: visible;
         width: 90%;
-        max-width: 1400px;
+        max-width: 90%;
         margin: 0 auto;
         padding: 0 16px;
 
@@ -1499,7 +1499,7 @@ select {
 #right-sidebar {
     margin-top: 12px;
     margin-left: 30px;
-    right: auto;
+    right: 5%;
     min-width: 280px;
     width: 280px;
     margin-right: 20px;
@@ -1649,9 +1649,9 @@ select {
 
 #home {
     width: 90%;
-    max-width: 1400px;
+    max-width: 90%;
     margin: 0 auto;
-    padding: 0 16px;
+    // padding: 0 16px;
 
     .nf-create-post {
         width: 100%;

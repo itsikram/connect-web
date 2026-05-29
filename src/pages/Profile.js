@@ -2,71 +2,71 @@ import React, { Fragment, useEffect, useState } from "react";
 import { NavLink, Outlet, useParams, Link } from "react-router-dom";
 import $ from 'jquery'
 import api from "../api/api";
-import { useSelector, useDispatch } from "react-redux";
+import { useSelector } from "react-redux";
 import ProfileButtons from "../components/Profile/ProfileButtons";
 import CoverPic from "../components/Profile/CoverPic";
 import ProfilePic from "../components/Profile/ProfilePic";
-import { setLoading } from "../services/actions/optionAction";
 
 
 
 let Profile = (props) => {
     let params = useParams()
-    let dispatch = useDispatch()
     let myProfileData = useSelector(state => state.profile) || {}
     let myProfileId = myProfileData._id
-    let [isAuth, setIsAuth] = useState(false)
-    let [profileData, setProfileData] = useState({})
-    let [isFriend, setIsFriend] = useState(false)
+    let [profileData, setProfileData] = useState(null)
+    let [profileLoading, setProfileLoading] = useState(true)
+
+    const profileIdentifier = params.profile
+    const isAuth = profileData?._id === myProfileId || profileData?.username === myProfileData.username
+    const isFriend = Array.isArray(myProfileData.friends) && myProfileData.friends.some(friendData => friendData._id === profileIdentifier)
 
     useEffect(() => {
-        const profileIdentifier = params.profile;
-        const authProfile = profileIdentifier === myProfileId || profileIdentifier === myProfileData.username;
-        setIsAuth(authProfile);
-        setIsFriend(false);
+        let active = true
+        const fetchProfile = async () => {
+            setProfileData(null)
+            setProfileLoading(true)
 
-        if (authProfile) {
-            setProfileData({ ...myProfileData });
-        } else {
-            setProfileData({});
-        }
+            const hasMyProfileData = myProfileData && myProfileData._id
+            const authProfile = profileIdentifier === myProfileId || profileIdentifier === myProfileData.username
 
-        if (Array.isArray(myProfileData.friends)) {
-            const friendExists = myProfileData.friends.some(friendData => friendData._id === profileIdentifier);
-            setIsFriend(friendExists);
-        }
-    }, [params.profile, myProfileId, myProfileData.username, myProfileData, myProfileData.friends]);
-
-    // setting effects
-    useEffect(() => {
-        if (isAuth) return;
-        dispatch(setLoading(true));
-
-        let active = true;
-
-        api.post('/profile', { profile: params.profile })
-            .then(res => {
-                if (!active) return;
-                if (res.status === 200) {
-                    setProfileData(res.data);
-                }
-            })
-            .catch(e => {
-                console.error('Failed to load profile:', e);
-            })
-            .finally(() => {
+            if (authProfile && hasMyProfileData) {
                 if (active) {
-                    dispatch(setLoading(false));
+                    setProfileData({ ...myProfileData })
+                    setProfileLoading(false)
                 }
-            });
+                return
+            }
+
+            try {
+                const res = await api.post('/profile', { profile: profileIdentifier })
+                if (!active) return
+
+                if (res.status === 200) {
+                    const profileResponse = res.data?.profile || res.data
+                    setProfileData(profileResponse)
+                }
+            } catch (e) {
+                console.error('Failed to load profile:', e)
+            } finally {
+                if (active) {
+                    setProfileLoading(false)
+                }
+            }
+        }
+
+        if (profileIdentifier) {
+            fetchProfile()
+        } else {
+            setProfileLoading(false)
+        }
 
         return () => {
-            active = false;
-        };
-    }, [params.profile, isAuth, dispatch]);
+            active = false
+        }
+    }, [profileIdentifier, myProfileId, myProfileData._id, myProfileData.username, myProfileData])
 
 
-    let profilePath = "/" + profileData._id + "/"
+    let profilePath = profileData && profileData._id ? "/" + profileData._id + "/" : "/";
 
     const SkeletonLoader = () => (
         <div className="animate-pulse flex flex-col items-center space-y-4">
@@ -88,52 +88,52 @@ let Profile = (props) => {
         <Fragment>
 
             <div id="profile">
-
-                <div className="profile-header">
-                    {profileData ? (<CoverPic profileData={profileData}></CoverPic>
-                    ) :
-                        (<SkeletonLoader />)
-                    }
-                    <div className="profile-info-container">
-
-                        <ProfilePic profileData={profileData}></ProfilePic>
-                        <div className="profile-info">
-                            <div className="profile-name">
-                                <h3 className="full-name">{profileData.user && profileData.user.firstName} {profileData.user && profileData.user.surname} {profileData?.nickname && (<span className="nickname">({ profileData.nickname})</span>)}</h3>
-                                <div className="friends-count">
-                                    <Link className='text-decoration-none' to={`/${profileData._id}/friends`}>
-                                        {
-                                            profileData.friends && profileData.friends.length
-                                        } Friends
-                                    </Link>
-
+                {(profileLoading && !profileData) ? (
+                    <div className="profile-loading-placeholder">
+                        <SkeletonLoader />
+                    </div>
+                ) : !profileData ? (
+                    <div className="profile-loading-placeholder">
+                        <p className="text-center">Profile not found.</p>
+                    </div>
+                ) : (
+                    <>
+                        <div className="profile-header">
+                            <CoverPic profileData={profileData}></CoverPic>
+                            <div className="profile-info-container">
+                                <ProfilePic profileData={profileData}></ProfilePic>
+                                <div className="profile-info">
+                                    <div className="profile-name">
+                                        <h3 className="full-name">{profileData.user && profileData.user.firstName} {profileData.user && profileData.user.surname} {profileData?.nickname && (<span className="nickname">({ profileData.nickname})</span>)}</h3>
+                                        <div className="friends-count">
+                                            <Link className='text-decoration-none' to={`/${profileData._id}/friends`}>
+                                                {profileData.friends && profileData.friends.length} Friends
+                                            </Link>
+                                        </div>
+                                    </div>
+                                    <ProfileButtons profileData={profileData} isAuth={isAuth} isFriend={isFriend}></ProfileButtons>
                                 </div>
                             </div>
-                            <ProfileButtons profileData={profileData} isAuth={isAuth} isFriend={isFriend}></ProfileButtons>
-
-                        </div>
-                    </div>
-                    <div className="profile-info-tab-navigator">
-                        <div className="header-nav-menu">
-                            <div className="header-nav-menu-container">
-                                <NavLink to={profilePath} onClick={profileTabItemClick} className="header-nav-menu-item">Posts</NavLink>
-                                <NavLink to={profilePath + "about"} onClick={profileTabItemClick} className="header-nav-menu-item">About</NavLink>
-                                <NavLink to={profilePath + "friends"} onClick={profileTabItemClick} className="header-nav-menu-item"> Friends</NavLink>
-                                <NavLink to={profilePath + "images"} onClick={profileTabItemClick} className="header-nav-menu-item">Images</NavLink>
-                                <NavLink to={profilePath + "videos"} onClick={profileTabItemClick} className="header-nav-menu-item">Videos</NavLink>
-                                {/* <NavLink to="/profile/likes" onClick={profileTabItemClick} className="header-nav-menu-item">Likes</NavLink>
-                                <NavLink to="/profile/events" onClick={profileTabItemClick} className="header-nav-menu-item">Events</NavLink> */}
+                            <div className="profile-info-tab-navigator">
+                                <div className="header-nav-menu">
+                                    <div className="header-nav-menu-container">
+                                        <NavLink to={profilePath} onClick={profileTabItemClick} className="header-nav-menu-item">Posts</NavLink>
+                                        <NavLink to={profilePath + "about"} onClick={profileTabItemClick} className="header-nav-menu-item">About</NavLink>
+                                        <NavLink to={profilePath + "friends"} onClick={profileTabItemClick} className="header-nav-menu-item"> Friends</NavLink>
+                                        <NavLink to={profilePath + "images"} onClick={profileTabItemClick} className="header-nav-menu-item">Images</NavLink>
+                                        <NavLink to={profilePath + "videos"} onClick={profileTabItemClick} className="header-nav-menu-item">Videos</NavLink>
+                                    </div>
+                                </div>
+                                <div className="options-menu">
+                                    <i className="fa fa-ellipsis-h"></i>
+                                </div>
                             </div>
                         </div>
-                        <div className="options-menu">
-                            <i className="fa fa-ellipsis-h"></i>
+                        <div className="profile-content-container">
+                            <Outlet />
                         </div>
-                    </div>
-                </div>
-                <div className="profile-content-container">
-                    <Outlet />
-
-                </div>
+                    </>
+                )}
             </div>
 
 
