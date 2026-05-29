@@ -1671,6 +1671,8 @@ select {
     .sticky-header .header-container,
     #home {
         width: 100%;
+        max-width: 100%;
+
         // padding: 0 16px;
     }
 }

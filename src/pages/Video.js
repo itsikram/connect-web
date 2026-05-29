@@ -24,7 +24,7 @@ const Video = () => {
 
     return (
         <Fragment>
-            <div className="container mb-3" style={{ maxWidth: '90%', width: '90%' }}>
+            <div className="container mb-3" style={ isMobile ? { maxWidth: '100%', width: '100%' } : { maxWidth: '90%', width: '90%' } }>
                 <div className="row">
                     <div className="col-md-3">
                         { !isMobile && <Ls />}
