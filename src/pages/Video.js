@@ -24,21 +24,16 @@ const Video = () => {
 
     return (
         <Fragment>
-            <div className="container mb-3" style={{ maxWidth: "90%", width: "90%",  }}>
+            <div className="container mb-3" style={{ maxWidth: '90%', width: '90%' }}>
                 <div className="row">
                     <div className="col-md-3">
                         { !isMobile && <Ls />}
                     </div>
                     <div className="col-md-6">
-                        <CreateWatch setWatches={setWatches} />
+                        <CreateWatch />
                         {
                             watches.length > 0 ? watches.map((video, i) => (
-                                <Watch
-                                    key={video._id || i}
-                                    watch={video}
-                                    type="watch"
-                                    onDelete={(deletedId) => setWatches(state => state.filter(w => w._id !== deletedId))}
-                                />
+                                <Watch key={i} watch={video} type="watch" />
                             ))
                                 :
                                 <>

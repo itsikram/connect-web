@@ -5,7 +5,7 @@ import UserPP from "../UserPP";
 import $ from 'jquery'
 import api from "../../api/api";
 
-let CreateWatch = ({ setWatches = null }) => {
+let CreateWatch = () => {
     let profileData = useSelector(state => state.profile)
     let profileId = profileData._id
 
@@ -134,22 +134,6 @@ let CreateWatch = ({ setWatches = null }) => {
                 })
 
                 if (res.status === 200 || res.status === 201) {
-                    const createdWatch = res.data?.data;
-                    if (setWatches && createdWatch) {
-                        const normalizedWatch = {
-                            ...createdWatch,
-                            author: typeof createdWatch.author === 'object' ? createdWatch.author : {
-                                _id: profileData._id,
-                                user: profileData.user,
-                                profilePic: profileData.profilePic,
-                                isActive: profileData.isActive,
-                            },
-                            comments: createdWatch.comments || [],
-                            reacts: createdWatch.reacts || [],
-                            shares: createdWatch.shares || [],
-                        }
-                        setWatches(state => [normalizedWatch, ...state])
-                    }
                     setWatchModal(false)
                     setWatchData({ caption: '', video: null, videoUrl: null })
                 }
@@ -234,26 +218,12 @@ let CreateWatch = ({ setWatches = null }) => {
                                 <div className="cpm-submit-button">
                                     <button 
                                         onClick={handleWatchSubmit} 
-                                        className={`cpm-submit-btn ${isSubmitting ? 'disabled' : ''}`} 
+                                        className={`button ${isSubmitting ? 'disabled' : ''}`} 
                                         type="submit"
                                         disabled={isUploading || isSubmitting}
+                                        style={{ opacity: isSubmitting ? 0.6 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer' }}
                                     > 
-                                        {isUploading ? (
-                                            <>
-                                                <i className="fas fa-spinner fa-spin"></i>
-                                                <span>Uploading...</span>
-                                            </>
-                                        ) : isSubmitting ? (
-                                            <>
-                                                <i className="fas fa-spinner fa-spin"></i>
-                                                <span>Posting...</span>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <i className="fas fa-paper-plane"></i>
-                                                <span>Post to Watch</span>
-                                            </>
-                                        )} 
+                                        {isUploading ? 'Uploading...' : isSubmitting ? 'Posting...' : 'Post to Watch'} 
                                     </button>
                                 </div>
                             </form>

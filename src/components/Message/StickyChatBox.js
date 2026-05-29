@@ -68,12 +68,32 @@ const StickyChatBox = ({ friendProfile, onClose, onMinimize, isMinimized, zIndex
     const fetchMessages = async () => {
         try {
             const response = await api.get('/message/getChatHistory', {
-                params: { userId, friendId }
+                params: { profileId: userId, friendId }
             });
             return response.data.messages || [];
         } catch (error) {
             console.error('Error fetching messages:', error);
             return [];
+        }
+    };
+
+    const fetchOldMessages = async (beforeTimestamp) => {
+        if (!beforeTimestamp) {
+            return { messages: [], hasMore: false };
+        }
+        try {
+            const response = await api.get('/message/getOldMessages', {
+                params: {
+                    profileId: userId,
+                    friendId: friendId,
+                    beforeTimestamp,
+                    limit: 20
+                }
+            });
+            return response.data;
+        } catch (error) {
+            console.error('StickyChatBox: Error fetching old messages:', error);
+            return { messages: [], hasMore: false };
         }
     };
 
@@ -567,12 +587,24 @@ const StickyChatBox = ({ friendProfile, onClose, onMinimize, isMinimized, zIndex
             }
         };
 
+        const handleMessageSeen = (data) => {
+            if (!data?.messageId) return;
+            setMessages(prevMessages => prevMessages.map(msg => {
+                if (String(msg._id) === String(data.messageId)) {
+                    return { ...msg, isSeen: true };
+                }
+                return msg;
+            }));
+        };
+
         socket.on('newMessage', handleNewMessage);
         socket.on('newMessageToUser', handleNewMessageToUser);
+        socket.on('messageSeen', handleMessageSeen);
 
         return () => {
             socket.off('newMessage', handleNewMessage);
             socket.off('newMessageToUser', handleNewMessageToUser);
+            socket.off('messageSeen', handleMessageSeen);
             socket.emit('leaveRoom', roomId);
         };
     }, [friendId, userId, isLoading]);
@@ -800,18 +832,15 @@ const StickyChatBox = ({ friendProfile, onClose, onMinimize, isMinimized, zIndex
             const loadMoreMessages = async () => {
                 try {
                     setIsMsgLoading(true);
-                    const response = await api.get('/message/getChatHistory', {
-                        params: {
-                            profileId: userId,
-                            friendId: friendId,
-                            skip: messages.length,
-                            limit: 20
-                        }
-                    });
-                    
-                    if (response.data && response.data.messages) {
-                        setMessages(prev => [...response.data.messages, ...prev]);
-                        setHasMoreMessages(response.data.hasMore);
+                    const oldestMessage = messages[0];
+                    const beforeTimestamp = oldestMessage?.timestamp || oldestMessage?.createdAt;
+                    if (!beforeTimestamp) {
+                        return;
+                    }
+                    const response = await fetchOldMessages(beforeTimestamp);
+                    if (response && response.messages) {
+                        setMessages(prev => [...response.messages, ...prev]);
+                        setHasMoreMessages(response.hasMore);
                     }
                 } catch (error) {
                     console.error('Error loading more messages:', error);
@@ -822,7 +851,7 @@ const StickyChatBox = ({ friendProfile, onClose, onMinimize, isMinimized, zIndex
             
             loadMoreMessages();
         }
-    }, [scrollPercent, hasMoreMessages, messages.length, userId, friendId]);
+    }, [scrollPercent, hasMoreMessages, messages, userId, friendId]);
 
     const scrollToLastMessage = (forceInstant = false) => {
         if (!msgListRef.current || isMinimized) return;

@@ -124,10 +124,14 @@ function showNotification(msg, receiverId) {
     };
 }
 
-const speakText = (text) => {
-    if (!text) return;
+const speakText = (textOrMsg) => {
+    const text = typeof textOrMsg === 'string'
+        ? textOrMsg
+        : (typeof textOrMsg?.message === 'string' ? textOrMsg.message : '');
 
-    const speech = new SpeechSynthesisUtterance(text);
+    if (!text || !text.trim()) return;
+
+    const speech = new SpeechSynthesisUtterance(text.trim());
     speech.lang = "en-US"; // Change language if needed
     speech.rate = 1; // Speed (0.5 - 2)
     speech.pitch = 1; // Pitch (0 - 2)
@@ -684,45 +688,6 @@ const Main = () => {
     }, [profileId, fetchNotifications, dispatch]);
 
     useEffect(() => {
-        if (!profileId) return;
-
-        // Listen for notification events (toast notifications)
-        socket.on('notification', (msg, senderName, senderPP) => {
-            if (isTabActive == true) {
-                // Client-side deduplication
-                const messageId = msg._id?.toString() || msg._id || `${msg.senderId}_${msg.message?.substring(0, 50)}`;
-                const now = Date.now();
-                const lastToastTime = recentMessageToasts.get(messageId);
-                
-                if (lastToastTime && (now - lastToastTime) < TOAST_DEDUP_WINDOW) {
-                    return;
-                }
-                
-                recentMessageToasts.set(messageId, now);
-                
-                for (const [msgId, timestamp] of recentMessageToasts.entries()) {
-                    if (now - timestamp > TOAST_DEDUP_WINDOW) {
-                        recentMessageToasts.delete(msgId);
-                    }
-                }
-            }
-            
-            playSound();
-            notify(msg.message, senderName, senderPP, '/message/' + msg.senderId)
-        })
-
-        socket.on('speak_message', (msg) => {
-            speakText(msg)
-        });
-
-        return () => {
-            socket.off('notification')
-            socket.off('speak_message')
-        }
-    }, [socket, profileId, dispatch])
-
-
-    useEffect(() => {
         const handleVisibilityChange = () => {
             setIsTabActive(!document.hidden);
         };
@@ -735,7 +700,7 @@ const Main = () => {
     }, []);
 
     useEffect(() => {
-        socket.on('notification', (msg, senderName, senderPP) => {
+        const handleNotification = (msg, senderName, senderPP) => {
             if (isTabActive == true) {
                 // Client-side deduplication: Check if we've already shown a toast for this message
                 const messageId = msg._id?.toString() || msg._id || `${msg.senderId}_${msg.message?.substring(0, 50)}`;
@@ -757,6 +722,7 @@ const Main = () => {
                     }
                 }
                 
+                playSound();
                 notify(msg.message, senderName, senderPP, '/message/' + msg.senderId)
                 dispatch(newMessage(msg))
             } else {
@@ -770,17 +736,20 @@ const Main = () => {
                     });
                 }
             }
-        })
+        };
 
-        socket.on('speak_message', (msg) => {
+        const handleSpeakMessage = (msg) => {
             speakText(msg)
-        });
+        };
+
+        socket.on('notification', handleNotification);
+        socket.on('speak_message', handleSpeakMessage);
 
         return () => {
-            socket.off('notification');
-            socket.off('speak_message');
+            socket.off('notification', handleNotification);
+            socket.off('speak_message', handleSpeakMessage);
         };
-    }, [socket, isTabActive])
+    }, [socket, isTabActive, dispatch])
 
     // Global ludo game invitation handlers - work throughout the entire app
     useEffect(() => {

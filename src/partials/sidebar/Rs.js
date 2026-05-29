@@ -194,6 +194,8 @@ let RightSidebar = () => {
                         sortedFriendsData && sortedFriendsData.length > 0 ? sortedFriendsData.map((data, index) => {
 
                             let isFrndActive = activeFriends.includes(data._id);
+                            let displayName = data.fullName || [data.user?.firstName, data.user?.surname].filter(Boolean).join(' ');
+                            if (!displayName) displayName = 'Unknown User';
 
                             return <li key={data._id || index}>
                                 <div className='rs-nav-menu-item' data-profile={data._id} onClick={redirectToMessage.bind(this)}>
@@ -205,7 +207,7 @@ let RightSidebar = () => {
                                         </div>
                                     </div>
 
-                                    <div className='rs-text user-name'>{data.fullName ? data.fullName : data.user.firstName + ' ' + data.user.surname}</div>
+                                    <div className='rs-text user-name'>{displayName}</div>
                                 </div>
                             </li>
                         }) :

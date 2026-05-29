@@ -30,7 +30,9 @@ $error-color: #FF4444;
 .bl {
     border-left: 1px solid $bc;
 }
-
+.react-confirm-alert-overlay {
+    background-color: rgba(0, 0, 0, 0.9) !important;
+}
 .bb {
     border-bottom: 1px solid $bc;
 
@@ -452,8 +454,8 @@ select {
 
             >.col,
             >[class*="col-"] {
-                padding-top: 4px;
-                padding-bottom: 4px;
+                padding-top: 7px;
+                padding-bottom: 7px;
                 padding-left: 0;
                 padding-right: 0;
             }
@@ -900,7 +902,7 @@ select {
                     }
 
                     .header-nav-menu-icon {
-                        font-size: 22px;
+                        font-size: 26px;
                         transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
                         line-height: 1;
                         position: relative;
@@ -1658,7 +1660,7 @@ select {
     .nf-create-post {
         width: 100%;
         margin: auto;
-        margin-top: 20px;
+        margin-top: 12px;
         max-width: 100%;
     }
 
@@ -7555,7 +7557,103 @@ select {
                 .cpm-attachment-control {
                     display: block;
                 }
+
+                .cpm-thumbnail-control {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 12px;
+                    margin-bottom: 16px;
+
+                    .cpm-attachment-preview {
+                        display: block;
+                        min-height: 140px;
+                        border: 1px solid $bc;
+                        border-radius: 8px;
+                        overflow: hidden;
+                        position: relative;
+
+                        img,
+                        video {
+                            width: 100%;
+                            height: auto;
+                            display: block;
+                        }
+
+                        .attachment-placeholder {
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            min-height: 140px;
+                            color: lighten($tc, 25%);
+                            font-size: 14px;
+                            padding: 16px;
+                        }
+                    }
+
+                    .cpm-attachment-upload {
+                        background: $bc;
+                        position: relative;
+                        min-height: 140px;
+                        cursor: pointer;
+
+                        input {
+                            display: block;
+                            height: 100%;
+                            opacity: 0;
+                            width: 100%;
+                            cursor: pointer;
+                        }
+
+                        .cpm-attachment-upload-overlay {
+                            position: absolute;
+                            top: 50%;
+                            left: 50%;
+                            transform: translate(-50%, -50%);
+                            text-align: center;
+                        }
+                    }
+                }
             }
+        }
+    }
+}
+
+.watch-thumbnail-card {
+    position: relative;
+    overflow: hidden;
+    border-radius: 8px;
+
+    img {
+        display: block;
+        width: 100%;
+        height: auto;
+    }
+
+    .watch-play-button {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 56px;
+        height: 56px;
+        border: none;
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.55);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: transform 0.2s ease, background 0.2s ease;
+        z-index: 2;
+
+        i {
+            font-size: 18px;
+        }
+
+        &:hover {
+            transform: translate(-50%, -50%) scale(1.05);
+            background: rgba(0, 0, 0, 0.75);
         }
     }
 }

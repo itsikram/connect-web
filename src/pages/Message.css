@@ -119,19 +119,18 @@
 /* Main Container */
 .modern-message-container {
   width: 90%;
-  max-width: 1400px;
   min-width: 320px;
   margin: 0 auto 0;
   padding: 0 16px;
   box-sizing: border-box;
-  height: calc(100vh - 82px);
+  height: calc(100vh - 87px);
   background: linear-gradient(135deg, var(--msg-bg-primary) 0%, var(--msg-bg-secondary) 100%);
   position: relative;
   overflow: hidden;
   opacity: 0;
   transform: translateY(20px);
   transition: all var(--msg-transition-slow);
-  margin-top: 7px;
+  margin-top: 12px;
 }
 
 @media (max-width: 1200px) {

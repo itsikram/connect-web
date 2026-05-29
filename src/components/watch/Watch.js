@@ -375,44 +375,26 @@ const Watch = ({ watch, onDelete = null }) => {
                     <p className="caption">
                         {watch.caption}
                     </p>
-                    {
-                        (!watch?.thumbnail && watchUrl &&
+                    {watch?.thumbnail && thumbnailLoaded ? (
+                        playWatch ? (
                             <div className="attachment">
-                                <Link to={`/watch/${watch._id}`}>
-                                    <video id={`watch-${watch._id}`} ref={displayedWatch} className="w-100 watch-video" controls src={`${watchUrl}`}></video>
-                                    {/* <img src={watchPhoto} alt="watch" /> */}
-
-                                </Link>
+                                <video id={`watch-${watch._id}`} ref={displayedWatch} className="w-100 watch-video" controls autoPlay src={`${watchUrl}`}></video>
                             </div>
-
-                            ||
-
-                            <>
-                                {!watch?.thumbnail && !watchUrl && <ImageSkleton />}
-                            </>
-
+                        ) : (
+                            <div className="attachment watch-thumbnail-card">
+                                <img className="w-100" src={watch.thumbnail} alt="Watch thumbnail" />
+                                <button type="button" className="watch-play-button" onClick={() => setPlayWatch(true)}>
+                                    <i className="fas fa-play"></i>
+                                </button>
+                            </div>
                         )
-
-
-                    }
-                    {
-                        watch?.thumbnail && thumbnailLoaded && !playWatch ? <>
-
-                            <div className="attachment">
-                                <Link to={`/watch/${watch._id}`}>
-                                    <img className="w-100" onClick={() => {setPlayWatch(true)}} src={watch.thumbnail} alt="" />
-
-                                </Link>
-                            </div> </> : <>
-                            {!watch?.thumbnail && !watchUrl && <ImageSkleton />}
-
-                        </>
-
-
-
-
-
-                    }
+                    ) : watchUrl ? (
+                        <div className="attachment">
+                            <video id={`watch-${watch._id}`} ref={displayedWatch} className="w-100 watch-video" controls src={`${watchUrl}`}></video>
+                        </div>
+                    ) : (
+                        <ImageSkleton />
+                    )}
 
                 </div>
                 <div className="footer">

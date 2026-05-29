@@ -24,7 +24,7 @@ const Chat = ({ }) => {
     const settings = useSelector(state => state.setting)
     const userId = profile._id
     const [friendProfile, setFriendProfile] = useState({})
-    const [isBlockedMe, setIsBlockedMe] = useState(true)
+    const [isBlockedMe, setIsBlockedMe] = useState(false)
     const [lastSeen, setLastSeen] = useState(false);
 
     const isMobile = useIsMobile()
@@ -94,19 +94,38 @@ const Chat = ({ }) => {
     const params = useParams()
     const friendId = params.profile;
 
-    const fetchMessages = useCallback(async (profileId, friendIdArg, limit = 20, skip = 0) => {
+    const fetchChatHistory = useCallback(async (profileId, friendIdArg, limit = 20) => {
         try {
             const response = await api.get('/message/getChatHistory', {
                 params: {
                     profileId,
                     friendId: friendIdArg,
-                    limit,
-                    skip
+                    limit
                 }
             });
             return response.data;
         } catch (error) {
             console.error('Error fetching messages:', error);
+            return { messages: [], hasMore: false };
+        }
+    }, []);
+
+    const fetchOldMessages = useCallback(async (profileId, friendIdArg, beforeTimestamp, limit = 20) => {
+        if (!beforeTimestamp) {
+            return { messages: [], hasMore: false };
+        }
+        try {
+            const response = await api.get('/message/getOldMessages', {
+                params: {
+                    profileId,
+                    friendId: friendIdArg,
+                    beforeTimestamp,
+                    limit
+                }
+            });
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching old messages:', error);
             return { messages: [], hasMore: false };
         }
     }, []);
@@ -181,11 +200,15 @@ const Chat = ({ }) => {
         if (skip === 0) return;
         if (loadingOlderRef.current || isMsgLoading) return;
 
+        const oldestMessage = messagesRef.current[0];
+        const beforeTimestamp = oldestMessage?.timestamp || oldestMessage?.createdAt;
+        if (!beforeTimestamp) return;
+
         loadingOlderRef.current = true;
         (async () => {
             setIsMsgLoading(true);
             try {
-                const response = await fetchMessages(userId, friendId, 20, skip);
+                const response = await fetchOldMessages(userId, friendId, beforeTimestamp, 20);
                 setMessages(prev => [...(response.messages || []), ...prev]);
                 setHasMoreMessages(response.hasMore);
             } finally {
@@ -194,7 +217,7 @@ const Chat = ({ }) => {
             }
         })();
         // Intentionally omit isMsgLoading: when it flips false, deps would match again and load every page in one burst.
-    }, [scrollPercent, hasMoreMessages, userId, friendId, fetchMessages]);
+    }, [scrollPercent, hasMoreMessages, userId, friendId, fetchOldMessages]);
 
     // Get online status from contacts data (no separate API calls)
     const getOnlineStatusFromContacts = () => {
@@ -371,12 +394,24 @@ const Chat = ({ }) => {
             }
         };
 
+        const handleMessageSeen = (data) => {
+            if (!data?.messageId) return;
+            setMessages(prev => prev.map(msg => {
+                if (String(msg._id) === String(data.messageId)) {
+                    return { ...msg, isSeen: true };
+                }
+                return msg;
+            }));
+        };
+
         socket.on('newMessage', handleNewMessage);
         socket.on('newMessageToUser', handleNewMessageToUser);
+        socket.on('messageSeen', handleMessageSeen);
 
         return () => {
             socket.off('newMessage', handleNewMessage);
             socket.off('newMessageToUser', handleNewMessageToUser);
+            socket.off('messageSeen', handleMessageSeen);
             socket.emit('leaveRoom', roomId);
         };
     }, [friendId, userId]);
@@ -447,7 +482,7 @@ const Chat = ({ }) => {
         const fetchInitialMessages = async () => {
             setIsMsgLoading(true);
             try {
-                const response = await fetchMessages(userId, friendId, 20, 0);
+                const response = await fetchChatHistory(userId, friendId, 20);
 
                 if (response.messages) {
                     setMessages(response.messages);
@@ -469,7 +504,7 @@ const Chat = ({ }) => {
         fetchInitialMessages().then(() => {
             scrollToLastMessage();
         });
-    }, [friendId, userId, fetchMessages]);
+    }, [friendId, userId, fetchChatHistory]);
 
     useEffect(() => {
         setIsLoaded(true);
@@ -497,7 +532,7 @@ const Chat = ({ }) => {
 
     return (
         <div>
-            <div id="chatBox" style={{ minHeight: `${chatBoxHeight - 15}px` }}>
+            <div id="chatBox" style={{ minHeight: `${chatBoxHeight - 20}px` }}>
                 <div ref={chatHeader} className='chat-header'>
                     <ChatHeader friendProfile={friendProfile} friendProfilePic={friendProfile.profilePic} isActive={isActive} lastSeen={lastSeen} room={room} />
 
