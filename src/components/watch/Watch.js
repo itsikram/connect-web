@@ -25,7 +25,7 @@ const Watch = ({ watch, onDelete = null }) => {
 
     let myProfile = useSelector(state => state.profile)
     let myProfileId = myProfile._id;
-    let watchAuthorProfileId = ''
+    let watchAuthorProfileId = watch.author?._id || ''
     let [totalReacts, setTotalReacts] = useState(watch.reacts.length)
     let [totalShares, setTotalShares] = useState(watch.shares.length)
     let [totalComments, setTotalComments] = useState(watch.comments.length)
@@ -62,15 +62,14 @@ const Watch = ({ watch, onDelete = null }) => {
 
         return () => socket.off('is_active');
 
-    }, [myProfile])
+    }, [myProfile, watchAuthorProfileId])
 
     useEffect(() => {
-
         setWatchUrl(watch.videoUrl)
     }, [watch])
 
 
-    var isAuth = myProfileId === watchAuthorProfileId ? true : false;
+    var isAuth = myProfileId === watchAuthorProfileId;
     var pp_url = '';
     const checkImage = (url) => {
         const img = new Image();

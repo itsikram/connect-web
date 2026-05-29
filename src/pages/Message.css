@@ -123,7 +123,7 @@
   margin: 0 auto 0;
   padding: 0 16px;
   box-sizing: border-box;
-  height: calc(100vh - 87px);
+  height: calc(100vh - 100px);
   background: linear-gradient(135deg, var(--msg-bg-primary) 0%, var(--msg-bg-secondary) 100%);
   position: relative;
   overflow: hidden;
@@ -203,6 +203,7 @@
   border-radius: var(--msg-radius-lg) 0 0 var(--msg-radius-lg);
   display: flex;
   flex-direction: column;
+  height: 100%;
 }
 
 /* Right Sidebar (Media) */
@@ -213,6 +214,8 @@
   border-radius: 0 var(--msg-radius-lg) var(--msg-radius-lg) 0;
   display: flex;
   flex-direction: column;
+  height: 100%;
+
 }
 
 /* Main Content Area */
@@ -243,7 +246,7 @@
   flex-direction: column;
   overflow: hidden;
   padding: 10px;
-  max-height: 90vh;
+  max-height: 100%;
 }
 
 /* Mobile Navigation */

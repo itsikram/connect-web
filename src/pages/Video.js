@@ -30,10 +30,15 @@ const Video = () => {
                         { !isMobile && <Ls />}
                     </div>
                     <div className="col-md-6">
-                        <CreateWatch />
+                        <CreateWatch setWatches={setWatches} />
                         {
                             watches.length > 0 ? watches.map((video, i) => (
-                                <Watch key={i} watch={video} type="watch" />
+                                <Watch
+                                    key={video._id || i}
+                                    watch={video}
+                                    type="watch"
+                                    onDelete={(deletedId) => setWatches(prev => prev.filter(item => item._id !== deletedId))}
+                                />
                             ))
                                 :
                                 <>

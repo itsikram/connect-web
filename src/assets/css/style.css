@@ -5336,10 +5336,41 @@ body {
   text-transform: capitalize;
   color: #DFE1E6;
 }
-#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-attachment-preview {
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-thumbnail-control {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-thumbnail-control .cpm-attachment-preview {
+  display: block;
   width: 100%;
-  text-align: center;
-  display: none;
+  min-height: 140px;
+  border: 1px solid #3B3C3C;
+  border-radius: 12px;
+  overflow: hidden;
+  background-color: #2E2F30;
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-thumbnail-control .cpm-attachment-preview img,
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-thumbnail-control .cpm-attachment-preview video {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-thumbnail-control .cpm-attachment-preview .attachment-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 140px;
+  color: #DFE1E6;
+  font-size: 14px;
+  padding: 16px;
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-thumbnail-control .cpm-attachment-upload {
+  background: #3B3C3C;
+  position: relative;
+  min-height: 140px;
+  cursor: pointer;
 }
 #create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-attachment-control {
   border: 1px solid #3B3C3C;
