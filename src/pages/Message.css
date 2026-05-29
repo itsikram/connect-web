@@ -136,7 +136,7 @@
 @media (max-width: 1200px) {
   .modern-message-container {
     width: 100%;
-    padding: 0 12px;
+    padding: 0 5px;
   }
 }
 
@@ -405,7 +405,7 @@
   
   .message-main-content.mobile-full {
     margin: var(--msg-spacing-sm);
-    margin-top: 10px;
+    margin-top: 00px;
   }
 }
 
