@@ -454,6 +454,8 @@ select {
             >[class*="col-"] {
                 padding-top: 4px;
                 padding-bottom: 4px;
+                padding-left: 0;
+                padding-right: 0;
             }
         }
 
@@ -1674,10 +1676,10 @@ select {
 .nf-create-post {
     min-height: 100px;
     background: linear-gradient(135deg, $card-bg 0%, $profilebg 100%);
-    border-radius: 16px;
+    border-radius: 5px;
     margin-bottom: 20px;
     padding: 20px;
-    margin-top: 20px;
+    margin-top: 12px;
     border: 1px solid $card-border;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
     backdrop-filter: blur(20px);
@@ -7101,7 +7103,7 @@ select {
 
 }
 
-#create-post-modal {
+#create-post-modal, #create-watch-modal {
     .modal-body {
         .cp-modal-container {
             .cpm-header {
@@ -7544,6 +7546,18 @@ select {
         }
     }
 
+}
+
+#create-watch-modal {
+    .modal-body {
+        .cp-modal-container {
+            .cpm-form {
+                .cpm-attachment-control {
+                    display: block;
+                }
+            }
+        }
+    }
 }
 
 .share-post-container {

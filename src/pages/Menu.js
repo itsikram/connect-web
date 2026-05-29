@@ -23,7 +23,8 @@ const pageStyle = {
 }
 
 const containerStyle = {
-    maxWidth: 1200,
+    width: '90%',
+    maxWidth: '90%',
     margin: '0 auto'
 }
 

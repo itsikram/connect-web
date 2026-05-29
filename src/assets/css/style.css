@@ -5294,6 +5294,142 @@ body {
   box-shadow: 0 4px 12px rgba(41, 177, 169, 0.3);
 }
 
+#create-watch-modal .modal-body .cp-modal-container .cpm-header {
+  display: flex;
+  margin: 0;
+  align-items: center;
+  justify-content: start;
+  flex-direction: row;
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-header .cpm-profilePic {
+  transform: scale(0.7);
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-header .cpm-username h3 {
+  font-size: 14px;
+  margin: 0;
+  padding: 0;
+  text-transform: capitalize;
+  color: #DFE1E6;
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-form-text .cpm-form-text-input {
+  width: 100%;
+  padding: 16px;
+  background: #393a3a;
+  border: 1px solid #3B3C3C;
+  border-radius: 12px;
+  outline: 0;
+  color: #DFE1E6;
+  height: 80px;
+  font-size: 15px;
+  resize: vertical;
+  transition: all 0.2s ease;
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-form-text .cpm-form-text-input:focus {
+  border-color: #29B1A9;
+  background-color: #4E4F50;
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-form-text .cpm-form-text-input::-moz-placeholder {
+  text-transform: capitalize;
+  color: #DFE1E6;
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-form-text .cpm-form-text-input::placeholder {
+  text-transform: capitalize;
+  color: #DFE1E6;
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-attachment-preview {
+  width: 100%;
+  text-align: center;
+  display: none;
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-attachment-control {
+  border: 1px solid #3B3C3C;
+  border-radius: 12px;
+  padding: 16px;
+  display: none;
+  margin-top: 16px;
+  background-color: #393a3a;
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-attachment-control .cpm-attachment-upload {
+  background: #3B3C3C;
+  position: relative;
+  cursor: pointer;
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-attachment-control .cpm-attachment-upload input {
+  display: block;
+  height: 130px;
+  opacity: 0;
+  width: 100%;
+  cursor: pointer;
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-attachment-control .cpm-attachment-upload .cpm-attachment-upload-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-attachment-control .cpm-attachment-upload .cpm-attachment-upload-overlay .plus-icon {
+  background-image: url(/assets/images/icon3.png);
+  background-position: 0px -83px;
+  background-size: auto;
+  width: 20px;
+  height: 20px;
+  background-repeat: no-repeat;
+  display: block;
+  margin: auto;
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-attachment {
+  border: 1px solid #3B3C3C;
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #393a3a;
+  transition: all 0.2s ease;
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-attachment:hover {
+  border-color: #29B1A9;
+  background-color: #4E4F50;
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-attachment .cpm-button-text {
+  font-size: 12px;
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-attachment .post-meta-buttons .attachment-button-file {
+  background-image: url(/assets/images/new-icons.png);
+  margin-right: 5px;
+  background-position: 0px -181px;
+  background-size: 26px 302px;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-attachment .post-meta-buttons .attachment-button-file:hover {
+  filter: brightness(2);
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-submit-button {
+  display: block;
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-submit-button .button {
+  background-color: #29B1A9;
+  border: 0;
+  color: #DFE1E6;
+  border-radius: 24px;
+  padding: 14px 20px;
+  font-weight: 700;
+  font-size: 16px;
+  width: 100%;
+  margin-top: 16px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+#create-watch-modal .modal-body .cp-modal-container .cpm-form .cpm-submit-button .button:hover {
+  background-color: #1e8b85;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(41, 177, 169, 0.3);
+}
+
 .share-post-container textarea {
   background-color: #242526;
   color: #DFE1E6;

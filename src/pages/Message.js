@@ -38,7 +38,7 @@ const Message = (props) => {
         <Fragment>
             <div className={`modern-message-container ${isInitialLoad ? 'loading' : 'loaded'}`}>
                 <div className="message-backdrop"></div>
-                <Container fluid className="h-100">
+                <Container style={{ width: '90%', maxWidth: '90%', padding: 0 }} className="h-100">
                     <div className="modern-message-layout">
                         {/* Mobile Navigation Toggle */}
                         {isMobile && (

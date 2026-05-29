@@ -2,38 +2,34 @@ import React, { Fragment, useState, useEffect } from "react";
 import { useSelector } from "react-redux";
 import ModalContainer from '../modal/ModalContainer'
 import UserPP from "../UserPP";
-import $, { post } from 'jquery'
+import $ from 'jquery'
 import api from "../../api/api";
 
-let CreatePost = () => {
-
-
+let CreateWatch = ({ setWatches = null }) => {
     let profileData = useSelector(state => state.profile)
     let profileId = profileData._id
 
-
-    // setting visibilty state for post modal container
-    let [isPostModal, setPostModal] = useState(false)
+    let [isWatchModal, setWatchModal] = useState(false)
     let [isUploading, setIsUploading] = useState(false)
     let [isSubmitting, setIsSubmitting] = useState(false)
 
-    let handleCpFieldClick = (e) => {
-        setPostModal(true)
+    let handleWatchFieldClick = () => {
+        setWatchModal(true)
     }
-    let closeCreatePostModal = () => {
-        setPostModal(false)
+    let closeCreateWatchModal = () => {
+        setWatchModal(false)
     }
 
-
-    let [postData, setPostData] = useState({
+    let [watchData, setWatchData] = useState({
         caption: '',
-        photos: null,
-        urls: null
+        video: null,
+        videoUrl: null
     })
 
     const [hasStory, setHasStory] = useState(false);
 
     useEffect(() => {
+        if (!profileId) return;
         api.get('/profile/hasStory', {
             params: {
                 profileId
@@ -41,19 +37,10 @@ let CreatePost = () => {
         }).then(res => {
             if (res.status == 200) {
                 let storyStatus = res.data.hasStory
-
-                if (storyStatus == 'yes') {
-                    setHasStory(true)
-
-                }
-                if (storyStatus == 'no') {
-                    setHasStory(false)
-                }
-
+                setHasStory(storyStatus === 'yes')
             }
-        })
-
-    },[])
+        }).catch(console.log)
+    }, [profileId])
 
 
     const useMediaQuery = (query) => {
@@ -73,7 +60,7 @@ let CreatePost = () => {
 
 
     let profileName = profileData.user && profileData.user.firstName + ' ' + profileData.user.surname
-    let textInputPlaceHoder = "What's On Your Mind " + profileName + " ?"
+    let textInputPlaceHoder = "Share a caption for your Watch video, " + profileName + ""
 
 
     // handling attachment button toggle
@@ -89,34 +76,26 @@ let CreatePost = () => {
         let value = e.target.value
         let name = e.target.name
 
-        setPostData(state => {
-            return {
-                ...state,
-                [name]: value,
-            }
-        })
-
-
+        setWatchData(state => ({
+            ...state,
+            [name]: value,
+        }))
     }
 
-    // handle photo field update
-
-    let handlePhotosChange = (e) => {
+    let handleVideoChange = (e) => {
         let currentTarget = e.currentTarget
         $(currentTarget).parents('.cpm-attachment-upload').slideUp()
         $(currentTarget).parents('.cpm-attachment-upload').siblings('.cpm-attachment-preview').slideDown()
 
-        let name = e.target.name;
-        let photos = e.target.files;
-        var url = URL.createObjectURL(photos[0])
+        let file = e.target.files[0]
+        if (!file) return;
+        let url = URL.createObjectURL(file)
 
-        setPostData(state => {
-            return {
-                ...state,
-                [name]: photos[0],
-                urls: url
-            }
-        })
+        setWatchData(state => ({
+            ...state,
+            video: file,
+            videoUrl: url
+        }))
     }
 
     // handling post submit 
@@ -124,41 +103,57 @@ let CreatePost = () => {
     let preventDefault = (e) => {
         e.preventDefault()
     }
-    let handlePostSubmit = async (e) => {
+    let handleWatchSubmit = async (e) => {
         e.preventDefault()
         setIsSubmitting(true)
+        setIsUploading(true)
         try {
+            if (!watchData.video) {
+                console.warn('No video selected for Watch post')
+                return
+            }
 
-            let postFormData = new FormData()
-            postFormData.append('caption', postData.caption)
+            const videoFormData = new FormData();
+            videoFormData.append('attachment', watchData.video);
 
-            let imageFormData = new FormData();
-            imageFormData.append('image', postData.photos);
-
-            setIsUploading(true)
-            let uploadImageRes = await api.post('/upload/', imageFormData, {
+            const uploadResponse = await api.post('/upload/video', videoFormData, {
                 headers: {
                     'content-type': 'multipart/form-data'
                 }
             })
 
-            if (uploadImageRes.status == 200) {
-                var uploadedImageUrl = uploadImageRes.data.secure_url;
-                postFormData.append('photo_url', uploadedImageUrl)
-                setIsUploading(false)
+            if (uploadResponse.status === 200 && uploadResponse.data?.secure_url) {
+                const watchFormData = new FormData();
+                watchFormData.append('caption', watchData.caption)
+                watchFormData.append('videoUrl', uploadResponse.data.secure_url)
 
-                let res = await api.post('/post/create/', postFormData, {
+                const res = await api.post('/watch/create', watchFormData, {
                     headers: {
                         'content-type': 'multipart/form-data'
                     }
                 })
 
-                if (res.status === 200) {
-                    setPostModal(false)
+                if (res.status === 200 || res.status === 201) {
+                    const createdWatch = res.data?.data;
+                    if (setWatches && createdWatch) {
+                        const normalizedWatch = {
+                            ...createdWatch,
+                            author: typeof createdWatch.author === 'object' ? createdWatch.author : {
+                                _id: profileData._id,
+                                user: profileData.user,
+                                profilePic: profileData.profilePic,
+                                isActive: profileData.isActive,
+                            },
+                            comments: createdWatch.comments || [],
+                            reacts: createdWatch.reacts || [],
+                            shares: createdWatch.shares || [],
+                        }
+                        setWatches(state => [normalizedWatch, ...state])
+                    }
+                    setWatchModal(false)
+                    setWatchData({ caption: '', video: null, videoUrl: null })
                 }
-
             }
-
         } catch (error) {
             console.log(error)
         } finally {
@@ -175,36 +170,34 @@ let CreatePost = () => {
                     <div className="profile-pic">
                         <UserPP profilePic={profileData.profilePic} hasStory={hasStory} profile={profileData._id}></UserPP>
                     </div>
-                    <div onClick={handleCpFieldClick} className="cp-field">
+                    <div onClick={handleWatchFieldClick} className="cp-field">
                         <input readOnly placeholder={textInputPlaceHoder} className="cp-input" />
                     </div>
                 </div>
                 <div className="bottom">
-                    <ul onClick={handleCpFieldClick} className="button-container">
+                    <ul onClick={handleWatchFieldClick} className="button-container">
                         <li className="photo-button">
                             <div className="button-icon"></div>
-                            <div className="button-text">Photo/video</div>
-
+                            <div className="button-text">Upload Video</div>
                         </li>
                         <li className="live-button">
                             <div className="button-icon"></div>
-                            <div className="button-text">Live Video</div>
-
+                            <div className="button-text">Create Watch</div>
                         </li>
                     </ul>
                 </div>
                 <ModalContainer
-                    isOpen={isPostModal}
-                    id="create-post-modal"
-                    onRequestClose={closeCreatePostModal}
-                    title="Create A Post"
+                    isOpen={isWatchModal}
+                    id="create-watch-modal"
+                    onRequestClose={closeCreateWatchModal}
+                    title="Create A Watch"
                     style={{ width: isMobile ? '95%' : '600px' }}
                 >
                     <div className="modal-header">
                         <div className="modal-title">
-                            Create a Post
+                            Create a Watch
                         </div>
-                        <div onClick={closeCreatePostModal} className="modal-close-btn">
+                        <div onClick={closeCreateWatchModal} className="modal-close-btn">
                             <i className="far fa-times"></i>
                         </div>
                     </div>
@@ -220,45 +213,47 @@ let CreatePost = () => {
                             </div>
                             <form className="cpm-form" onSubmit={preventDefault}>
                                 <div className="cpm-form-text">
-                                    <textarea name="caption" onChange={handleCaptionField} placeholder={textInputPlaceHoder} className="cpm-form-text-input" value={postData.caption}>
-
-                                    </textarea>
+                                    <textarea name="caption" onChange={handleCaptionField} placeholder={textInputPlaceHoder} className="cpm-form-text-input" value={watchData.caption} rows="4"></textarea>
                                 </div>
                                 <div className="cpm-attachment-control">
                                     <div className="cpm-attachment-preview">
-                                        <img src={postData.urls && postData.urls} alt="attachment preview" />
+                                        {watchData.videoUrl ? (
+                                            <video controls className="w-100" src={watchData.videoUrl}></video>
+                                        ) : (
+                                            <div className="attachment-placeholder">Select a video to preview</div>
+                                        )}
                                     </div>
                                     <div className="cpm-attachment-upload">
                                         <div className="cpm-attachment-upload-overlay">
-                                            <span className="plus-icon">
-
-                                            </span>
-                                            <span className="overlay-text">
-                                                Add Photos/Videos
-                                            </span>
+                                            <span className="plus-icon"></span>
+                                            <span className="overlay-text">Add a video</span>
                                         </div>
-                                        <input onChange={handlePhotosChange} name="photos" type="file"></input>
+                                        <input onChange={handleVideoChange} name="video" type="file" accept="video/*"></input>
                                     </div>
-                                </div>
-                                <div className="cpm-attachment">
-                                    <span className="cpm-button-text">Add to your post</span>
-
-                                    <div className="post-meta-buttons">
-                                        <div onClick={cpmAttachmentControllerToggle} className="attachment-button-file">
-
-                                        </div>
-                                    </div>
-
                                 </div>
                                 <div className="cpm-submit-button">
                                     <button 
-                                        onClick={handlePostSubmit} 
-                                        className={`button ${isSubmitting ? 'disabled' : ''}`} 
+                                        onClick={handleWatchSubmit} 
+                                        className={`cpm-submit-btn ${isSubmitting ? 'disabled' : ''}`} 
                                         type="submit"
                                         disabled={isUploading || isSubmitting}
-                                        style={{ opacity: isSubmitting ? 0.6 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer' }}
                                     > 
-                                        {isUploading ? 'Uploading...' : isSubmitting ? 'Posting...' : 'Post'} 
+                                        {isUploading ? (
+                                            <>
+                                                <i className="fas fa-spinner fa-spin"></i>
+                                                <span>Uploading...</span>
+                                            </>
+                                        ) : isSubmitting ? (
+                                            <>
+                                                <i className="fas fa-spinner fa-spin"></i>
+                                                <span>Posting...</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <i className="fas fa-paper-plane"></i>
+                                                <span>Post to Watch</span>
+                                            </>
+                                        )} 
                                     </button>
                                 </div>
                             </form>
@@ -270,4 +265,4 @@ let CreatePost = () => {
     )
 }
 
-export default CreatePost;
+export default CreateWatch;

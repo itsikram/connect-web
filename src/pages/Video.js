@@ -1,5 +1,6 @@
 import React, { Fragment, useState, useEffect } from "react";
 import Watch from "../components/watch/Watch";
+import CreateWatch from "../components/watch/CreateWatch";
 import api from "../api/api";
 import { useSelector } from "react-redux";
 import WatchSkeleton from "../skletons/watch/WatchSkeleton";
@@ -23,15 +24,21 @@ const Video = () => {
 
     return (
         <Fragment>
-            <div className="container my-3">
+            <div className="container mb-3" style={{ maxWidth: "90%", width: "90%",  }}>
                 <div className="row">
                     <div className="col-md-3">
                         { !isMobile && <Ls />}
                     </div>
                     <div className="col-md-6">
+                        <CreateWatch setWatches={setWatches} />
                         {
                             watches.length > 0 ? watches.map((video, i) => (
-                                <Watch key={i} watch={video} type="watch" />
+                                <Watch
+                                    key={video._id || i}
+                                    watch={video}
+                                    type="watch"
+                                    onDelete={(deletedId) => setWatches(state => state.filter(w => w._id !== deletedId))}
+                                />
                             ))
                                 :
                                 <>

@@ -20,7 +20,7 @@ import Rhaha from "../../assets/images/reacts/reactHaha.svg";
 import config from "../../config/config.json";
 const default_pp_src = config?.defaultProfile;
 
-const Watch = ({ watch }) => {
+const Watch = ({ watch, onDelete = null }) => {
 
 
     let myProfile = useSelector(state => state.profile)
@@ -143,14 +143,23 @@ const Watch = ({ watch }) => {
                     {
                         label: "Yes",
                         onClick: async () => {
-                            let deleteRes = await api.watch('/watch/delete', { watchId: watch._id, authorId: watch.author._id })
-                            if (deleteRes.status === 200) {
-                                $(target).parents('.nf-watch').css({
-                                    'min-height': '0px',
-                                    'padding': '10px'
-                                });
-                                $(target).parents('.nf-watch').html('<p class="fs-6 mb-0 text-center text-danger">' + deleteRes.data.message + '</p>');
-                            } else {
+                            try {
+                                let deleteRes = await api.post('/watch/delete', { watchId: watch._id, authorId: watch.author?._id })
+                                if (deleteRes.status === 200) {
+                                    if (typeof onDelete === 'function') {
+                                        onDelete(watch._id)
+                                    } else {
+                                        $(target).parents('.nf-watch').css({
+                                            'min-height': '0px',
+                                            'padding': '10px'
+                                        });
+                                        $(target).parents('.nf-watch').html('<p class="fs-6 mb-0 text-center text-danger">' + deleteRes.data.message + '</p>');
+                                    }
+                                } else {
+                                    alert('Failed to delete watch')
+                                }
+                            } catch (err) {
+                                console.error('Delete watch failed:', err)
                                 alert('Failed to delete watch')
                             }
                         },

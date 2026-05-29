@@ -74,7 +74,12 @@ let ProfileVideos = () => {
                     }
                     
                     {watches.length > 0 ? watches.map((data,index) => {
-                        return <Watch key={index} myProfile={myProfileData} watch={data}></Watch>
+                        return <Watch
+                            key={data._id || index}
+                            myProfile={myProfileData}
+                            watch={data}
+                            onDelete={(deletedId) => setWatches(prev => prev.filter(item => item._id !== deletedId))}
+                        ></Watch>
                     })
                     :
                     <PostSkeleton  count={3}/>
