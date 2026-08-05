@@ -32,6 +32,26 @@ function App() {
       });
   }, []);
 
+  // Block pinch / multi-touch zoom on mobile (esp. iOS Safari / home-screen app)
+  useEffect(() => {
+    const preventGesture = (e) => e.preventDefault();
+    const preventMultiTouch = (e) => {
+      if (e.touches && e.touches.length > 1) e.preventDefault();
+    };
+
+    document.addEventListener('gesturestart', preventGesture, { passive: false });
+    document.addEventListener('gesturechange', preventGesture, { passive: false });
+    document.addEventListener('gestureend', preventGesture, { passive: false });
+    document.addEventListener('touchmove', preventMultiTouch, { passive: false });
+
+    return () => {
+      document.removeEventListener('gesturestart', preventGesture);
+      document.removeEventListener('gesturechange', preventGesture);
+      document.removeEventListener('gestureend', preventGesture);
+      document.removeEventListener('touchmove', preventMultiTouch);
+    };
+  }, []);
+
 
   useEffect(() => {
     try {

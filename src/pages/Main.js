@@ -1342,7 +1342,7 @@ const Main = () => {
                     toastClassName="custom-toast-item"
                 />
                 <MinimizedCallBar />
-            
+                <IosAddToHomeScreen />
 
         </Fragment>
 

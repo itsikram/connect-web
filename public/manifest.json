@@ -27,19 +27,17 @@
       "purpose": "any maskable"
     }
   ],
-  "start_url": ".",
+  "id": "/",
+  "start_url": "/",
   "display": "standalone",
+  "display_override": ["standalone", "browser"],
   "theme_color": "#000000",
-  "background_color": "#ffffff",
+  "background_color": "#000000",
   "orientation": "portrait-primary",
   "scope": "/",
   "lang": "en",
   "categories": ["social", "networking", "communication"],
   "gcm_sender_id": "103953800507",
-  "gcm_user_visible_only": true,
-  "permissions": [
-    "notifications"
-  ],
   "related_applications": [],
   "prefer_related_applications": false
 }
