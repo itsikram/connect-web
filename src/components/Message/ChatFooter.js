@@ -8,7 +8,7 @@ import EmojiPicker from 'emoji-picker-react';
 import { useParams } from 'react-router-dom';
 import LiveVoiceModal from './LiveVoiceModal';
 
-const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatNewAttachment, messageActionButtonContainer, setIsReplying, userId, messageInput, replyData,messages, setReplyData, isPreview, setIsPreview, msgListRef, friendProfile, sendMessage }) => {
+const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatNewAttachment, messageActionButtonContainer, setIsReplying, userId, messageInput, replyData,messages, setReplyData, isPreview, setIsPreview, msgListRef, friendProfile, sendMessage, scrollToLastMessage: scrollToLastMessageProp }) => {
 
     const dispatch = useDispatch()
     // Removed unused width state
@@ -54,25 +54,15 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
         setActionEmoji(settings.actionEmoji || '👍')
     }, [settings])
     const scrollToLastMessage = () => {
-        if (msgListRef?.current != null || msgListRef?.current != undefined) {
-            const isLastMsg = setInterval(() => {
-                const lastMsg = document.querySelector('#chatMessageList .chat-message-container:last-child')
-                lastMsg?.scrollIntoView({ behavior: "smooth", block: "end" });
-            }, 500)
-
-            msgListRef?.current.addEventListener('scroll', (event) => {
-                const scrollBottom = event.target.scrollHeight - event.target.scrollTop - event.target.clientHeight;
-
-                if (scrollBottom <= 5) {
-                    clearInterval(isLastMsg)
-
-                }
-
-            })
-
+        if (typeof scrollToLastMessageProp === 'function') {
+            scrollToLastMessageProp('smooth');
+            return;
         }
-
-
+        const el = msgListRef?.current || document.getElementById('chatMessageList');
+        if (!el) return;
+        requestAnimationFrame(() => {
+            el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+        });
     }
 
 

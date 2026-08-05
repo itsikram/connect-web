@@ -178,14 +178,6 @@ const Chat = ({ }) => {
         const beforeTimestamp = oldestMessage?.timestamp || oldestMessage?.createdAt;
         if (!beforeTimestamp) return;
 
-        const el = msgListRef.current;
-        if (el) {
-            pendingScrollRestoreRef.current = {
-                prevHeight: el.scrollHeight,
-                prevTop: el.scrollTop
-            };
-        }
-
         loadingOlderRef.current = true;
         (async () => {
             setIsMsgLoading(true);
@@ -193,7 +185,16 @@ const Chat = ({ }) => {
                 const response = await fetchOldMessages(userId, friendId, beforeTimestamp, 20);
                 const older = response.messages || [];
                 if (older.length === 0) {
-                    pendingScrollRestoreRef.current = null;
+                    setHasMoreMessages(false);
+                    return;
+                }
+                // Capture just before prepend so socket updates during fetch cannot corrupt restore.
+                const el = msgListRef.current;
+                if (el) {
+                    pendingScrollRestoreRef.current = {
+                        prevHeight: el.scrollHeight,
+                        prevTop: el.scrollTop
+                    };
                 }
                 setMessages(prev => [...older, ...prev]);
                 setHasMoreMessages(response.hasMore);
@@ -323,8 +324,9 @@ const Chat = ({ }) => {
         socket.emit('joinRoom', roomId);
 
         const appendIncomingMessage = (updatedMessage) => {
-            let didAppend = false;
-            let isOwnMessage = updatedMessage.senderId === userId;
+            const isOwnMessage = String(updatedMessage.senderId) === String(userId);
+            // Capture before state update — don't yank the user if they're reading history.
+            const shouldFollow = isOwnMessage || isNearBottomRef.current;
 
             setMessages(prev => {
                 const existingIds = new Set(prev.map(m => m._id?.toString()).filter(Boolean));
@@ -343,14 +345,12 @@ const Chat = ({ }) => {
                 }
 
                 if (!existingIds.has(updatedMessage._id?.toString())) {
-                    didAppend = true;
                     return [...prev, updatedMessage];
                 }
                 return prev;
             });
 
-            // Only auto-scroll if user is already near bottom, or the message is theirs.
-            if (didAppend && (isOwnMessage || isNearBottomRef.current)) {
+            if (shouldFollow) {
                 scrollToLastMessage('smooth');
             }
         };

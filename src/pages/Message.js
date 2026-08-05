@@ -1,5 +1,5 @@
 import React, { Fragment, useEffect, useState } from 'react'
-import { Container, Row, Col } from "react-bootstrap";
+import { Container } from "react-bootstrap";
 import MessageList from "../components/Message/MessageList";
 import MessageBody from '../components/Message/MessageBody';
 import MessageOptions from '../components/Message/MessageOptions.';
@@ -23,7 +23,6 @@ const Message = (props) => {
     };
     
     const isMobile = useMediaQuery("(max-width: 768px)");
-    const isTablet = useMediaQuery("(max-width: 1024px)");
 
     useEffect(() => {
         const timer = setTimeout(() => setIsInitialLoad(false), 300);
@@ -38,11 +37,25 @@ const Message = (props) => {
         <Fragment>
             <div className={`modern-message-container ${isInitialLoad ? 'loading' : 'loaded'}`}>
                 <div className="message-backdrop"></div>
-                <Container style={{ width: isMobile ? '100%' : '90%', maxWidth: isMobile ? '100%' : '90%', padding: 0 }} className="h-100">
+                <Container
+                    fluid={isMobile}
+                    style={{
+                        width: isMobile ? '100%' : '90%',
+                        maxWidth: isMobile ? '100%' : '90%',
+                        padding: 0,
+                        height: '100%'
+                    }}
+                    className="h-100"
+                >
                     <div className="modern-message-layout">
                         {/* Mobile Navigation Toggle */}
                         {isMobile && (
-                            <div className="mobile-nav-toggle" onClick={handleMobileNavToggle}>
+                            <button
+                                type="button"
+                                className="mobile-nav-toggle"
+                                onClick={handleMobileNavToggle}
+                                aria-label={showMobileNav ? 'Close conversations' : 'Open conversations'}
+                            >
                                 <div className="nav-toggle-btn">
                                     <div className={`hamburger ${showMobileNav ? 'active' : ''}`}>
                                         <span></span>
@@ -50,7 +63,7 @@ const Message = (props) => {
                                         <span></span>
                                     </div>
                                 </div>
-                            </div>
+                            </button>
                         )}
 
                         {/* Chat List Sidebar */}
