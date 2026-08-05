@@ -226,30 +226,39 @@ self.addEventListener('push', (event) => {
     }
   }
 
+  const payloadData = data.data || {};
+  const isCall = payloadData.type === 'incoming_call';
+
   const options = {
     body: data.body || 'You have a new notification',
-    icon: data.icon || '/apple-touch-icon.png',
+    icon: data.icon || payloadData.callerProfilePic || '/apple-touch-icon.png',
     badge: data.badge || '/apple-touch-icon.png',
     image: data.image,
-    tag: data.tag || 'default',
-    data: data.data || {},
+    tag: data.tag || (isCall ? `incoming-call-${payloadData.channelName || 'ring'}` : 'default'),
+    data: payloadData,
     actions: data.actions || [],
-    requireInteraction: data.requireInteraction || false,
+    requireInteraction: isCall ? true : (data.requireInteraction || false),
     silent: data.silent || false,
     timestamp: data.timestamp || Date.now(),
-    vibrate: data.vibrate || [200, 100, 200],
+    vibrate: isCall ? [300, 100, 300, 100, 300] : (data.vibrate || [200, 100, 200]),
     dir: 'ltr',
     lang: 'en',
     renotify: true,
     sticky: false
   };
 
-  event.waitUntil(
-    self.registration.showNotification(
-      data.title || 'Connect App',
-      options
-    )
-  );
+  event.waitUntil((async () => {
+    // Notify any open clients so they can show the in-app ringing UI
+    if (isCall) {
+      try {
+        const clientList = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+        clientList.forEach((client) => {
+          client.postMessage({ type: 'INCOMING_CALL_PUSH', data: payloadData });
+        });
+      } catch (_) {}
+    }
+    await self.registration.showNotification(data.title || 'Connect App', options);
+  })());
 });
 
 // Notification click event
@@ -259,23 +268,36 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   
   const data = event.notification.data || {};
-  const urlToOpen = data.url || data.link || '/';
+  const isCall = data.type === 'incoming_call';
+  const callerId = data.callerId;
+  let urlToOpen = data.url || data.link || '/';
+  if (isCall && callerId) {
+    const params = new URLSearchParams({
+      incoming_call: '1',
+      channelName: data.channelName || '',
+      isAudio: data.isAudio || 'false',
+      callerId: String(callerId),
+      callerName: data.callerName || '',
+    });
+    urlToOpen = `/message/${callerId}?${params.toString()}`;
+  }
   
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true })
-      .then((clientList) => {
-        // Check if app is already open
+      .then(async (clientList) => {
         for (const client of clientList) {
           if (client.url.includes(self.location.origin) && 'focus' in client) {
-            client.focus();
-            if (data.url || data.link) {
-              client.navigate(data.url || data.link);
+            await client.focus();
+            if (isCall) {
+              client.postMessage({ type: 'INCOMING_CALL_PUSH', data });
+            }
+            if (urlToOpen && client.navigate) {
+              try { await client.navigate(urlToOpen); } catch (_) {}
             }
             return;
           }
         }
         
-        // Open new window if app is not open
         if (clients.openWindow) {
           return clients.openWindow(urlToOpen);
         }

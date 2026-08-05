@@ -8,14 +8,23 @@
   position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
+  max-height: min(70vh, 640px);
   background: #0b0f17;
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  margin: 0 auto;
 }
 
 .video-call-container.mobile {
   aspect-ratio: 3 / 4;
+}
+
+/* Dynamic camera ratio is applied via inline style; keep contain for letterboxing */
+.video-call-container.fit-camera {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .friends-video,
@@ -24,7 +33,6 @@
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
   background: #0b0f17;
 }
 
@@ -33,20 +41,39 @@
   position: absolute;
   right: 12px;
   bottom: 12px;
-  width: 180px !important;
-  height: 112px;
+  width: 160px !important;
+  height: auto !important;
+  aspect-ratio: 3 / 4;
   border-radius: 10px;
-  object-fit: cover;
   background: #0b0f17;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+/* Agora injects <video>/<canvas> — never crop the camera */
+.friends-video video,
+.receive-friends-video video,
+.my-video video,
+.receive-my-video video,
+.friends-video canvas,
+.receive-friends-video canvas,
+.my-video canvas,
+.receive-my-video canvas,
+.friends-video > div,
+.receive-friends-video > div,
+.my-video > div,
+.receive-my-video > div {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  background: #0b0f17 !important;
 }
 
 @media (max-width: 768px) {
   .my-video,
   .receive-my-video {
-    width: 120px !important;
-    height: 80px;
+    width: 112px !important;
     right: 8px;
     bottom: 8px;
   }
@@ -135,12 +162,15 @@
 
 .fullscreen-content .video-call-container {
   position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  width: 100vw !important;
-  height: 100vh !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  width: min(100vw, calc(100vh * var(--call-ar, 1.777))) !important;
+  height: min(100vh, calc(100vw / var(--call-ar, 1.777))) !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
   border-radius: 0 !important;
-  aspect-ratio: unset !important;
+  aspect-ratio: var(--call-ar, 16 / 9) !important;
   background: #0b0f17;
 }
 
@@ -151,23 +181,34 @@
   left: 0;
   width: 100% !important;
   height: 100% !important;
-  object-fit: cover;
   background: #0b0f17;
 }
 
 .fullscreen-content .my-video,
 .fullscreen-content .receive-my-video {
   position: absolute !important;
-  width: 250px !important;
-  height: 180px !important;
+  width: 180px !important;
+  height: auto !important;
+  aspect-ratio: var(--local-ar, 3 / 4) !important;
   right: 30px !important;
   bottom: 120px !important;
   border-radius: 12px !important;
-  object-fit: cover;
   background: #0b0f17;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   border: 2px solid rgba(41, 177, 169, 0.8) !important;
   z-index: 50;
+  overflow: hidden;
+}
+
+.fullscreen-content .friends-video video,
+.fullscreen-content .receive-friends-video video,
+.fullscreen-content .my-video video,
+.fullscreen-content .receive-my-video video,
+.fullscreen-content .friends-video canvas,
+.fullscreen-content .receive-friends-video canvas,
+.fullscreen-content .my-video canvas,
+.fullscreen-content .receive-my-video canvas {
+  object-fit: contain !important;
 }
 
 .fullscreen-content .call-buttons {
@@ -206,8 +247,7 @@
 @media (max-width: 768px) {
   .fullscreen-content .my-video,
   .fullscreen-content .receive-my-video {
-    width: 160px !important;
-    height: 120px !important;
+    width: 120px !important;
     right: 20px !important;
     bottom: 100px !important;
   }
@@ -236,6 +276,5 @@
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
           mask-composite: exclude;
+  pointer-events: none;
 }
-
-

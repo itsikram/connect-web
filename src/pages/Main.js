@@ -7,6 +7,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import '../components/Toast/CustomToast.css';
 import webNotificationService from '../services/webNotificationService';
 import EnablePushBanner from '../components/EnablePushBanner';
+import { initIncomingCallPushBridge } from '../utils/incomingCallFromPush';
 import socket from '../common/socket';
 import Header from '../partials/header/Header';
 import ProtectedRoute from "../components/ProtectedRoute.js";
@@ -113,12 +114,19 @@ import Habits from "./Habits.js";
 
 
 function showNotification(msg, receiverId) {
+    // If Web Push is active, the service worker already shows the system notification.
+    // Showing another page Notification causes duplicates on iOS installed web apps.
+    if (webNotificationService.hasActivePushSubscription()) {
+        return;
+    }
+
     const titleText = (msg?.title && String(msg.title).trim()) || (msg?.senderName && String(msg.senderName).trim()) || 'New Message';
     const bodyText = (msg?.message && String(msg.message).trim()) || (msg?.text && String(msg.text).trim()) || 'You have a new message';
 
     const notification = new Notification(titleText, {
         body: bodyText,
         icon: config?.logo || undefined,
+        tag: `msg-${msg?._id || msg?.messageId || Date.now()}`,
     });
 
     notification.onclick = () => {
@@ -178,16 +186,15 @@ const Main = () => {
             title: 'Reset Password | Connect App',
             description: 'Reset your Connect password and get back to messaging, sharing, and calling your friends on the Connect social media app.',
         },
-        {
-            match: /^\/portfolio/, 
-            title: 'Connect App Portfolio | Connect by Ikramul',
-            description: 'Explore the Connect app portfolio by Ikramul and learn how the social media platform brings people together through chat, stories, and live media.',
-        }
+        // /portfolio/* SEO is owned by PortfolioSEO (name-focused Person schema)
     ];
 
     useEffect(() => {
-        const baseUrl = 'https://connect-zfgx.onrender.com';
         const pathname = location.pathname || '/';
+        // Portfolio routes manage their own meta tags for name-search SEO
+        if (pathname.startsWith('/portfolio')) return;
+
+        const baseUrl = 'https://connect-zfgx.onrender.com';
         const pageMeta = seoPages.find(page => page.match.test(pathname)) || seoPages[0];
 
         document.title = pageMeta.title;
@@ -279,6 +286,11 @@ const Main = () => {
         }
         // Do NOT unsubscribe on unmount — that kills iOS background push
     }, [profileId, token, isAuthenticated])
+
+    // Restore incoming call UI when user opens a Web Push call notification (iOS PWA)
+    useEffect(() => {
+        return initIncomingCallPushBridge();
+    }, [])
 
 
     const playSound = async () => {
@@ -489,11 +501,14 @@ const Main = () => {
                     if (notification.type !== 'message') {
                         notify(notification.text, false, notification.icon, notification.link);
                         
-                        // Show browser notification if permission is granted
-                        if (webNotificationService.isPermissionGranted) {
+                        // Skip page Notification when Web Push is subscribed (SW already shows it)
+                        if (
+                            webNotificationService.isPermissionGranted &&
+                            !webNotificationService.hasActivePushSubscription()
+                        ) {
                             const browserNotification = new Notification(notification.title || 'Connect', {
                                 body: notification.text,
-                                icon: notification.icon || '/logo192.png',
+                                icon: notification.icon || '/apple-touch-icon.png',
                                 tag: `notification_${notification._id || Date.now()}`,
                                 data: {
                                     url: notification.link || '/',

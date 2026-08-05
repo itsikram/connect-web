@@ -527,34 +527,47 @@ const AudioCall = ({ myId }) => {
             console.log('AudioCall - Socket disconnected');
         });
         
-        socket.on('incoming-audio-call', ({ from, channelName, isAudio, callerName, callerProfilePic }) => {
+        const applyIncomingAudioCall = ({ from, channelName, callerName, callerProfilePic }) => {
+            if (!from || !channelName) return;
             socket.emit('update-call-status', { to: from, status: "Ringing..." });
+            setIsAudioCall(true);
+            setReceivingCall(true);
+            setCaller(from);
+            setIncomingCall({ from, channelName, name: callerName || 'Unknown Caller', profilePic: callerProfilePic });
+            setCallerName(callerName || 'Unknown Caller');
+            setCallerProfilePic(callerProfilePic || config?.defaultProfile);
+            setCurrentChannel(channelName);
+            playRingtone();
+            showCallNotification({
+                callerName: callerName || 'Unknown Caller',
+                callerProfilePic: callerProfilePic || config?.defaultProfile,
+                callType: 'audio',
+                onClick: () => {
+                    window.focus();
+                }
+            });
+        };
 
-
+        socket.on('incoming-audio-call', ({ from, channelName, isAudio, callerName, callerProfilePic }) => {
             if (isAudio) {
-                setIsAudioCall(true);
-                setReceivingCall(true);
-                setCaller(from);
-                setIncomingCall({ from, channelName, name: callerName || 'Unknown Caller', profilePic: callerProfilePic });
-                setCallerName(callerName || 'Unknown Caller');
-                setCallerProfilePic(callerProfilePic || config?.defaultProfile);
-                setCurrentChannel(channelName);
-                playRingtone();
-                
-                // Show browser notification for incoming call
-                showCallNotification({
-                    callerName: callerName || 'Unknown Caller',
-                    callerProfilePic: callerProfilePic || config?.defaultProfile,
-                    callType: 'audio',
-                    onClick: () => {
-                        // Focus the window when notification is clicked
-                        window.focus();
-                    }
-                });
+                applyIncomingAudioCall({ from, channelName, callerName, callerProfilePic });
             } else {
                 console.log('AudioCall - Ignoring video call (isAudio: false)');
             }
         });
+
+        // Web Push → open app while backgrounded (iOS Home Screen)
+        const onPushIncoming = (event) => {
+            const detail = event.detail || {};
+            if (!detail.isAudio) return;
+            applyIncomingAudioCall({
+                from: detail.from,
+                channelName: detail.channelName,
+                callerName: detail.callerName,
+                callerProfilePic: detail.callerProfilePic,
+            });
+        };
+        window.addEventListener('incomingCallFromPush', onPushIncoming);
 
         // Listen for audio calls initiated by this user (outgoing calls)
         const handleOutgoingAudioCall = (event) => {
@@ -620,6 +633,7 @@ const AudioCall = ({ myId }) => {
 
         return () => {
             socket.off('incoming-audio-call');
+            window.removeEventListener('incomingCallFromPush', onPushIncoming);
             socket.off('call-accepted');
             socket.off('audio-call-ended');
             socket.off('audio-call-cancelled');

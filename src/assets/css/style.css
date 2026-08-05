@@ -4174,56 +4174,7 @@ body {
   border-right: 1px solid transparent !important;
 }
 
-.portfolio-page-container {
-  display: flex;
-  flex-direction: row;
-  align-items: stretch;
-  /* This is default */
-  justify-content: stretch;
-}
-.portfolio-page-container .left-sidebar {
-  background-color: #191D2B;
-  border-right: 1px solid #242526;
-  padding: 20px;
-  width: 25%;
-}
-.portfolio-page-container .left-sidebar .my-name {
-  text-align: center;
-  color: #29B1A9;
-}
-.portfolio-page-container .left-sidebar .image-container {
-  border-radius: 50%;
-  overflow: hidden;
-  margin: auto;
-  height: 250px;
-  width: 250px;
-  border: 1px solid #29B1A9;
-}
-.portfolio-page-container .left-sidebar .image-container .avatar-image {
-  width: 100%;
-}
-.portfolio-page-container .left-sidebar .portfolio-menu-container .portfolio-menu {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.portfolio-page-container .left-sidebar .portfolio-menu-container .portfolio-menu li {
-  padding: 5px 10px;
-  background-color: #18191A;
-  margin: 5px 0;
-  text-align: center;
-  transition: 0.3s;
-}
-.portfolio-page-container .left-sidebar .portfolio-menu-container .portfolio-menu li a {
-  color: #29B1A9;
-  text-decoration: none;
-}
-.portfolio-page-container .left-sidebar .portfolio-menu-container .portfolio-menu li:hover {
-  background-color: rgba(0, 0, 0, 0.3);
-}
-.portfolio-page-container .left-sidebar .content-container {
-  width: 75%;
-}
+/* Portfolio styles live in portfolio.scss */
 
 .header-quick-menu-item .hr-mega-menu {
   right: 50% !important;

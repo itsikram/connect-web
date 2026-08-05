@@ -5839,72 +5839,7 @@ select {
     }
 }
 
-.portfolio-page-container {
-    // padding: 50px 0;
-
-    display: flex;
-    flex-direction: row;
-    align-items: stretch;
-    /* This is default */
-    justify-content: stretch;
-
-    .left-sidebar {
-        background-color: #191D2B;
-        border-right: 1px solid $profilebg;
-        padding: 20px;
-        width: 25%;
-
-        .my-name {
-            text-align: center;
-            color: $pc;
-        }
-
-        .image-container {
-            border-radius: 50%;
-            overflow: hidden;
-            margin: auto;
-            height: 250px;
-            width: 250px;
-            border: 1px solid $pc;
-
-
-            .avatar-image {
-                width: 100%;
-            }
-        }
-
-        .portfolio-menu-container {
-            .portfolio-menu {
-                list-style: none;
-                margin: 0;
-                padding: 0;
-
-                li {
-                    padding: 5px 10px;
-                    background-color: $bbgc;
-                    margin: 5px 0;
-                    text-align: center;
-                    transition: 0.3s;
-
-                    a {
-                        color: $pc;
-                        text-decoration: none;
-                    }
-                }
-
-                li:hover {
-                    background-color: rgba(0, 0, 0, 0.3);
-                }
-            }
-        }
-
-
-        .content-container {
-            width: 75%;
-
-        }
-    }
-}
+/* Portfolio styles live in portfolio.scss */
 
 .header-quick-menu-item .hr-mega-menu {
     right: 50% !important;

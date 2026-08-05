@@ -1,30 +1,33 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 
-const PortfolioMenu = () => {
+const links = [
+    { to: '/portfolio', end: true, label: 'Home' },
+    { to: 'about', label: 'About' },
+    { to: 'resume', label: 'Resume' },
+    { to: 'blogs', label: 'Blogs' },
+    { to: 'contact', label: 'Contact' },
+];
 
+const PortfolioMenu = ({ onNavigate }) => {
     return (
-        <div className='portfolio-menu-container'>
-
+        <nav className='portfolio-menu-container' aria-label='Portfolio'>
             <ul className='portfolio-menu'>
-                <li className='portfolio-menu-item'>
-                    <NavLink to='/portfolio' end className={({ isActive }) => isActive ? 'active' : undefined}>Home</NavLink>
-                </li>
-                <li className='portfolio-menu-item'>
-                    <NavLink to='about' className={({ isActive }) => isActive ? 'active' : undefined}>About</NavLink>
-                </li>
-                <li className='portfolio-menu-item'>
-                    <NavLink to='resume' className={({ isActive }) => isActive ? 'active' : undefined}>Resume</NavLink>
-                </li>
-                <li className='portfolio-menu-item'>
-                    <NavLink to='blogs' className={({ isActive }) => isActive ? 'active' : undefined}>Blogs</NavLink>
-                </li>
-                <li className='portfolio-menu-item'>
-                    <NavLink to='contact' className={({ isActive }) => isActive ? 'active' : undefined}>Contact</NavLink>
-                </li>
+                {links.map(({ to, end, label }) => (
+                    <li className='portfolio-menu-item' key={label}>
+                        <NavLink
+                            to={to}
+                            end={end}
+                            className={({ isActive }) => (isActive ? 'active' : undefined)}
+                            onClick={onNavigate}
+                        >
+                            {label}
+                        </NavLink>
+                    </li>
+                ))}
             </ul>
-        </div>
+        </nav>
     );
-}
+};
 
 export default PortfolioMenu;

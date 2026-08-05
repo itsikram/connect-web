@@ -2,38 +2,59 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 
   <url>
-    <loc>https://connect-zfgx.onrender.com</loc>
-    <lastmod>2026-05-26</lastmod>
+    <loc>https://connect-zfgx.onrender.com/</loc>
+    <lastmod>2026-08-05</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
 
   <url>
+    <loc>https://connect-zfgx.onrender.com/portfolio</loc>
+    <lastmod>2026-08-05</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+
+  <url>
     <loc>https://connect-zfgx.onrender.com/portfolio/about</loc>
-    <lastmod>2026-05-26</lastmod>
+    <lastmod>2026-08-05</lastmod>
     <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <url>
+    <loc>https://connect-zfgx.onrender.com/portfolio/resume</loc>
+    <lastmod>2026-08-05</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <url>
+    <loc>https://connect-zfgx.onrender.com/portfolio/blogs</loc>
+    <lastmod>2026-08-05</lastmod>
+    <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
 
   <url>
-    <loc>https://connect-zfgx.onrender.com/portfolio</loc>
-    <lastmod>2026-05-26</lastmod>
+    <loc>https://connect-zfgx.onrender.com/portfolio/contact</loc>
+    <lastmod>2026-08-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
 
   <url>
     <loc>https://connect-zfgx.onrender.com/login</loc>
-    <lastmod>2026-05-26</lastmod>
+    <lastmod>2026-08-05</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
+    <priority>0.4</priority>
   </url>
 
   <url>
     <loc>https://connect-zfgx.onrender.com/signup</loc>
-    <lastmod>2026-05-26</lastmod>
+    <lastmod>2026-08-05</lastmod>
     <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
+    <priority>0.4</priority>
   </url>
 
 </urlset>

@@ -23,6 +23,11 @@ export const showCallNotification = async ({ callerName, callerProfilePic, callT
         return null;
     }
 
+    // Web Push already shows the system alert for installed iOS/PWA — avoid duplicates
+    if (webNotificationService.hasActivePushSubscription?.()) {
+        return null;
+    }
+
     // Check permission
     let permission = Notification.permission;
     

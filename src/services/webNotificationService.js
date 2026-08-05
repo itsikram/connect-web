@@ -380,6 +380,10 @@ class WebNotificationService {
     }
   }
 
+  hasActivePushSubscription() {
+    return !!this.subscription;
+  }
+
   getStatus() {
     return {
       isSupported: this.isSupported,

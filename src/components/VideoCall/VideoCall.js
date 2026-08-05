@@ -11,6 +11,33 @@ import config from '../../config/config.json';
 import audioPreloader from '../../utils/audioPreloader';
 import { unlockAudio, playAudioWithWebAudio, initializeAudioUnlock } from '../../utils/audioUnlock';
 import { showCallNotification, closeCallNotification } from '../../utils/callNotification';
+
+/** Keep full camera frame visible (no crop) */
+const VIDEO_FIT = { fit: 'contain' };
+
+const readTrackAspectRatio = (videoTrack) => {
+    try {
+        const settings = videoTrack?.getMediaStreamTrack?.()?.getSettings?.() || {};
+        if (settings.width > 0 && settings.height > 0) {
+            return settings.width / settings.height;
+        }
+    } catch (_) {}
+    return null;
+};
+
+const readElementAspectRatio = (containerEl) => {
+    try {
+        const media = containerEl?.querySelector?.('video, canvas');
+        if (media?.videoWidth > 0 && media?.videoHeight > 0) {
+            return media.videoWidth / media.videoHeight;
+        }
+        if (media?.width > 0 && media?.height > 0) {
+            return media.width / media.height;
+        }
+    } catch (_) {}
+    return null;
+};
+
 const VideoCall = ({ myId }) => {
     const mySettings = useSelector(state => state.setting);
     const [isVideoCall, setIsVideoCall] = useState(false);
@@ -32,6 +59,8 @@ const VideoCall = ({ myId }) => {
     const [isMinimized, setIsMinimized] = useState(false);
     const [callDuration, setCallDuration] = useState(0);
     const [outgoingCallStatus, setOutgoingCallStatus] = useState('');
+    const [remoteAspectRatio, setRemoteAspectRatio] = useState(null);
+    const [localAspectRatio, setLocalAspectRatio] = useState(null);
     const callStartTime = useRef(null);
 
     const myVideo = useRef();
@@ -465,9 +494,11 @@ const VideoCall = ({ myId }) => {
                 }
                 console.log('Created local tracks');
 
-                // Play local video in myVideo ref if exists
+                // Play local video in myVideo ref if exists (full frame, no crop)
                 if (myVideo.current && localTracks.current[1]) {
-                    localTracks.current[1].play(myVideo.current);
+                    localTracks.current[1].play(myVideo.current, VIDEO_FIT);
+                    const ar = readTrackAspectRatio(localTracks.current[1]);
+                    if (ar) setLocalAspectRatio(ar);
                     console.log('Playing local video');
                 }
             } else {
@@ -490,7 +521,16 @@ const VideoCall = ({ myId }) => {
                             if (userVideo.current && user.videoTrack) {
                                 // Clear any existing content first
                                 userVideo.current.innerHTML = '';
-                                user.videoTrack.play(userVideo.current);
+                                user.videoTrack.play(userVideo.current, VIDEO_FIT);
+                                const ar =
+                                    readTrackAspectRatio(user.videoTrack) ||
+                                    readElementAspectRatio(userVideo.current);
+                                if (ar) setRemoteAspectRatio(ar);
+                                // Retry aspect after decoder fills videoWidth/videoHeight
+                                setTimeout(() => {
+                                    const next = readElementAspectRatio(userVideo.current);
+                                    if (next) setRemoteAspectRatio(next);
+                                }, 400);
                                 console.log('Playing remote video from user:', user.uid);
                             } else {
                                 console.warn('Cannot play remote video - missing userVideo ref or videoTrack');
@@ -542,12 +582,16 @@ const VideoCall = ({ myId }) => {
                             console.log('Subscribing to existing user video:', user.uid);
                             await client.subscribe(user, "video");
                             if (userVideo.current && user.videoTrack) {
-                                user.videoTrack.play(userVideo.current);
+                                user.videoTrack.play(userVideo.current, VIDEO_FIT);
+                                const ar = readTrackAspectRatio(user.videoTrack);
+                                if (ar) setRemoteAspectRatio(ar);
                                 console.log('Playing existing remote user video');
                             }
                         } else if (user.hasVideo && user.videoTrack && userVideo.current) {
                             // Video track already exists, just play it
-                            user.videoTrack.play(userVideo.current);
+                            user.videoTrack.play(userVideo.current, VIDEO_FIT);
+                            const ar = readTrackAspectRatio(user.videoTrack);
+                            if (ar) setRemoteAspectRatio(ar);
                             console.log('Playing already subscribed remote video');
                         }
 
@@ -587,7 +631,9 @@ const VideoCall = ({ myId }) => {
                                 if (!videoElement || videoElement.paused || videoElement.readyState === 0) {
                                     console.log(`Periodic check ${checkCount}: Re-attempting to play remote video for user ${user.uid}`);
                                     userVideo.current.innerHTML = '';
-                                    user.videoTrack.play(userVideo.current);
+                                    user.videoTrack.play(userVideo.current, VIDEO_FIT);
+                                    const ar = readTrackAspectRatio(user.videoTrack);
+                                    if (ar) setRemoteAspectRatio(ar);
                                 }
                             }
                         }
@@ -716,7 +762,9 @@ const VideoCall = ({ myId }) => {
 
                 // Show local video immediately
                 if (myVideo.current && localTracks.current[1]) {
-                    localTracks.current[1].play(myVideo.current);
+                    localTracks.current[1].play(myVideo.current, VIDEO_FIT);
+                    const ar = readTrackAspectRatio(localTracks.current[1]);
+                    if (ar) setLocalAspectRatio(ar);
                     console.log('VideoCall - Local video started for outgoing call');
                 }
             } catch (error) {
@@ -726,54 +774,62 @@ const VideoCall = ({ myId }) => {
 
         window.addEventListener('startVideoCall', handleOutgoingVideoCall);
 
-        socket.on('incoming-video-call', async ({ from, channelName, isAudio, callerName, callerProfilePic }) => {
+        const applyIncomingVideoCall = async ({ from, channelName, callerName, callerProfilePic }) => {
+            if (!from || !channelName) return;
             socket.emit('update-call-status', { to: from, status: "Ringing..." });
+            console.log('Incoming Agora video call from', from, 'channel:', channelName);
+            setIsVideoCall(true);
+            setReceivingCall(true);
+            setCaller(from);
+            setIncomingCall({ from, channelName, name: callerName || 'Unknown Caller', profilePic: callerProfilePic });
+            setCallerName(callerName || 'Unknown Caller');
+            setCallerProfilePic(callerProfilePic || config?.defaultProfile);
+            setCurrentChannel(channelName);
 
+            playRingtone();
+            try { window.focus(); } catch (e) { }
+            startFlashingTitle(callerName || 'Unknown Caller');
+
+            try {
+                localTracks.current = await AgoraRTC.createMicrophoneAndCameraTracks();
+                if (myVideo.current && localTracks.current[1]) {
+                    localTracks.current[1].play(myVideo.current, VIDEO_FIT);
+                    const ar = readTrackAspectRatio(localTracks.current[1]);
+                    if (ar) setLocalAspectRatio(ar);
+                }
+            } catch (error) {
+                console.error('Failed to start local video preview:', error);
+            }
+
+            showCallNotification({
+                callerName: callerName || 'Unknown Caller',
+                callerProfilePic: callerProfilePic || config?.defaultProfile,
+                callType: 'video',
+                onClick: () => {
+                    window.focus();
+                }
+            });
+        };
+
+        socket.on('incoming-video-call', async ({ from, channelName, isAudio, callerName, callerProfilePic }) => {
             // Only handle video calls, ignore audio calls
             if (!isAudio) {
-                console.log('Incoming Agora video call from', from, 'channel:', channelName);
-                console.log('Caller info:', { callerName, callerProfilePic });
-                setIsVideoCall(true);
-                setReceivingCall(true);
-                setCaller(from);
-                setIncomingCall({ from, channelName, name: callerName || 'Unknown Caller', profilePic: callerProfilePic });
-                setCallerName(callerName || 'Unknown Caller');
-                setCallerProfilePic(callerProfilePic || config?.defaultProfile);
-                setCurrentChannel(channelName);
-                
-                playRingtone();
-
-                // Best-effort focus (will be ignored by most browsers unless user-initiated)
-                try { window.focus(); } catch (e) { }
-
-                // Flash title to attract attention while tab is in background
-                startFlashingTitle(callerName || 'Unknown Caller');
-
-                // Start local video immediately when receiving call
-                try {
-                    console.log('Starting local video for incoming call preview');
-                    localTracks.current = await AgoraRTC.createMicrophoneAndCameraTracks();
-
-                    // Show local video immediately
-                    if (myVideo.current && localTracks.current[1]) {
-                        localTracks.current[1].play(myVideo.current);
-                        console.log('Local video preview started for incoming call');
-                    }
-                } catch (error) {
-                    console.error('Failed to start local video preview:', error);
-                }
-                
-                // Show browser notification for incoming call (helps background alerting)
-                showCallNotification({
-                    callerName: callerName || 'Unknown Caller',
-                    callerProfilePic: callerProfilePic || config?.defaultProfile,
-                    callType: 'video',
-                    onClick: () => {
-                        window.focus();
-                    }
-                });
+                await applyIncomingVideoCall({ from, channelName, callerName, callerProfilePic });
             }
         });
+
+        // Web Push → open app while backgrounded (iOS Home Screen)
+        const onPushIncoming = (event) => {
+            const detail = event.detail || {};
+            if (detail.isAudio) return;
+            applyIncomingVideoCall({
+                from: detail.from,
+                channelName: detail.channelName,
+                callerName: detail.callerName,
+                callerProfilePic: detail.callerProfilePic,
+            });
+        };
+        window.addEventListener('incomingCallFromPush', onPushIncoming);
 
         socket.on('call-accepted', ({ channelName, isAudio }) => {
             // Only handle video call acceptance
@@ -837,6 +893,7 @@ const VideoCall = ({ myId }) => {
             socket.off('apply-video-filter');
             socket.off('updated-call-status', handleUpdatedCallStatus);
             window.removeEventListener('startVideoCall', handleOutgoingVideoCall);
+            window.removeEventListener('incomingCallFromPush', onPushIncoming);
             stopRingtone(); // Stop ringtone on cleanup
             stopFlashingTitle();
         };
@@ -1037,7 +1094,9 @@ const VideoCall = ({ myId }) => {
 
                 // Play new track in local video element
                 if (myVideo.current) {
-                    newVideoTrack.play(myVideo.current);
+                    newVideoTrack.play(myVideo.current, VIDEO_FIT);
+                    const ar = readTrackAspectRatio(newVideoTrack);
+                    if (ar) setLocalAspectRatio(ar);
                 }
 
                 setIsBackCamera(prev => !prev);
@@ -1144,7 +1203,18 @@ const VideoCall = ({ myId }) => {
                 id="videoCallModal"
                 isFullscreen={isFullscreen}
             >
-                <div className={`${callAccepted ? 'call-accepted' : ''} ${isFullscreen ? 'fullscreen-content' : ''}`} style={{ padding: 0 }}>
+                <div
+                    className={`${callAccepted ? 'call-accepted' : ''} ${isFullscreen ? 'fullscreen-content' : ''}`}
+                    style={{
+                        padding: 0,
+                        ['--call-ar']: String(
+                            (callAccepted && remoteAspectRatio) ||
+                            localAspectRatio ||
+                            (isMobile ? 0.75 : 1.777)
+                        ),
+                        ['--local-ar']: String(localAspectRatio || 0.75),
+                    }}
+                >
                     <h2 className='text-center vc-modal-heading'>
                         Video Call - {callerName}
                         {callAccepted ? ` • ${formatDuration(callDuration)}` : ''}
@@ -1206,41 +1276,50 @@ const VideoCall = ({ myId }) => {
                         </div>
                     )} */}
 
-                    <div className={`video-call-container ${isMobile ? 'mobile' : ''}`} style={{
-                        width: '100%',
-                        height: '400px',
-                        position: 'relative',
-                        overflow: 'hidden'
-                    }}>
+                    <div
+                        className={`video-call-container ${isMobile ? 'mobile' : ''} fit-camera`}
+                        style={{
+                            width: '100%',
+                            // Match the active camera ratio so the full frame is visible
+                            aspectRatio: String(
+                                (callAccepted && remoteAspectRatio) ||
+                                localAspectRatio ||
+                                (isMobile ? 3 / 4 : 16 / 9)
+                            ),
+                            maxHeight: isFullscreen ? '100vh' : 'min(70vh, 640px)',
+                            position: 'relative',
+                            overflow: 'hidden',
+                            background: '#0b0f17',
+                        }}
+                    >
                         <div
                             ref={userVideo}
-                            className={`receive-friends-video ${filterFriendVideo}`}
+                            className={`receive-friends-video ${filterFriendVideo || ''}`}
                             style={{
                                 width: '100%',
                                 height: '100%',
-                                minHeight: '400px',
                                 display: callAccepted ? 'block' : 'none',
-                                background: '#000',
-                                border: filterFriendVideo ? '3px solid #29B1A9' : 'none', // Green border when filter is active
-                                objectFit: 'contain'
+                                background: '#0b0f17',
+                                border: filterFriendVideo ? '3px solid #29B1A9' : 'none',
                             }}
                             data-video-type="friend-remote-video"
                         />
                         <div
                             ref={myVideo}
-                            className={`receive-my-video ${filterMyVideo}`}
+                            className={`receive-my-video ${filterMyVideo || ''}`}
                             style={{
-                                width: '150px',
-                                height: '100px',
+                                width: isMobile ? 112 : 160,
+                                aspectRatio: String(localAspectRatio || 3 / 4),
+                                height: 'auto',
                                 position: 'absolute',
-                                bottom: '10px',
-                                right: '10px',
+                                bottom: 10,
+                                right: 10,
                                 background: '#222',
                                 display: (isVideoCall || receivingCall) ? 'block' : 'none',
-                                borderRadius: '8px',
+                                borderRadius: 8,
                                 zIndex: 10,
-                                border: '2px solid gray', // Red border to identify local video
-                                objectFit: 'contain'
+                                border: '2px solid rgba(255,255,255,0.35)',
+                                overflow: 'hidden',
                             }}
                             data-video-type="my-local-video"
                         />
