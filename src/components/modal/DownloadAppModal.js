@@ -4,29 +4,44 @@ import axios from "axios";
 
 const IOS_PROFILE_URL = `${process.env.PUBLIC_URL || ""}/connect.mobileconfig`;
 
-const StoreButton = ({ href, label, icon, subtitle = "Get it on", download }) => (
+const StoreButton = ({
+  href,
+  label,
+  icon,
+  subtitle = "Get it on",
+  download,
+  primary = false,
+}) => (
   <a
     href={href}
     target="_blank"
     rel="noreferrer"
     download={download || undefined}
     style={{
-      display: "inline-flex",
+      display: "flex",
       alignItems: "center",
-      gap: "10px",
-      background: "linear-gradient(135deg, #111, #1b1b1b)",
+      gap: "12px",
+      width: "100%",
+      background: primary
+        ? "linear-gradient(135deg, #29b1a9 0%, #1a8f88 100%)"
+        : "linear-gradient(135deg, #111, #1b1b1b)",
       color: "#fff",
-      padding: "12px 16px",
+      padding: "14px 16px",
       borderRadius: "12px",
-      border: "1px solid rgba(255,255,255,0.08)",
+      border: primary
+        ? "1px solid rgba(255,255,255,0.18)"
+        : "1px solid rgba(255,255,255,0.08)",
       textDecoration: "none",
-      boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+      boxShadow: primary
+        ? "0 8px 24px rgba(41,177,169,0.35)"
+        : "0 8px 24px rgba(0,0,0,0.35)",
+      boxSizing: "border-box",
     }}
   >
-    <span className={icon} style={{ fontSize: 20 }} />
-    <div style={{ lineHeight: 1 }}>
-      <div style={{ fontSize: 11, opacity: 0.8 }}>{subtitle}</div>
-      <div style={{ fontWeight: 700, fontSize: 14 }}>{label}</div>
+    <span className={icon} style={{ fontSize: 22, width: 24, textAlign: "center" }} />
+    <div style={{ lineHeight: 1.2, textAlign: "left" }}>
+      <div style={{ fontSize: 11, opacity: 0.85 }}>{subtitle}</div>
+      <div style={{ fontWeight: 700, fontSize: 15 }}>{label}</div>
     </div>
   </a>
 );
@@ -34,28 +49,38 @@ const StoreButton = ({ href, label, icon, subtitle = "Get it on", download }) =>
 const DownloadAppModal = ({ isOpen, onClose }) => {
   const [connectData, setConnectData] = useState({
     apkUrl: "",
+    ipaUrl: "",
   });
 
   useEffect(() => {
     const fetchSettings = async () => {
-      let res = await axios.get(
-        process.env.REACT_APP_SERVER_ADDR + "/api/connect"
-      );
-      if (res.status === 200) {
-        setConnectData((prev) => ({
-          ...prev,
-          ...res.data,
-        }));
+      try {
+        const res = await axios.get(
+          process.env.REACT_APP_SERVER_ADDR + "/api/connect"
+        );
+        if (res.status === 200) {
+          setConnectData((prev) => ({
+            ...prev,
+            ...res.data,
+          }));
+        }
+      } catch (_) {
+        // Keep local iOS profile button even if API fails
       }
     };
-    fetchSettings();
-  }, []);
+    if (isOpen) fetchSettings();
+  }, [isOpen]);
 
   return (
     <ModalContainer
       isOpen={isOpen}
       onRequestClose={onClose}
-      style={{ borderRadius: "16px", padding: 0 }}
+      style={{
+        borderRadius: "16px",
+        padding: 0,
+        maxHeight: "90vh",
+        overflow: "auto",
+      }}
     >
       <div
         style={{
@@ -106,56 +131,63 @@ const DownloadAppModal = ({ isOpen, onClose }) => {
           </button>
         </div>
 
-        <div style={{ padding: 20, display: "grid", gap: 16 }}>
+        <div style={{ padding: 20, display: "grid", gap: 12 }}>
           <p style={{ margin: 0, color: "#b8c1cc" }}>
             Enjoy a faster, more native experience. Enable notifications,
             seamless calling, and offline access.
           </p>
 
-          <div
-            style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 4 }}
-          >
-            {connectData?.apkUrl && (
-              <StoreButton
-                href={connectData?.apkUrl || ""}
-                label="Google Play"
-                icon="fab fa-google-play"
-              />
-            )}
-            {connectData?.ipaUrl && (
-              <StoreButton
-                href={connectData?.ipaUrl || ""}
-                label="App Store"
-                icon="fab fa-apple"
-              />
-            )}
-            <StoreButton
-              href={IOS_PROFILE_URL}
-              label="iOS Profile"
-              subtitle="Install via Settings"
-              icon="fab fa-apple"
-              download="connect.mobileconfig"
-            />
-          </div>
+          {/* Always-visible iOS install */}
+          <StoreButton
+            href={IOS_PROFILE_URL}
+            label="Download iOS App"
+            subtitle="iPhone / iPad"
+            icon="fab fa-apple"
+            download="connect.mobileconfig"
+            primary
+          />
 
-          <p style={{ margin: 0, fontSize: 12, color: "#7c8a97", lineHeight: 1.45 }}>
-            <b style={{ color: "#b8c1cc" }}>iPhone / iPad:</b> Tap{" "}
-            <b style={{ color: "#b8c1cc" }}>iOS Profile</b>, then open{" "}
-            <b style={{ color: "#b8c1cc" }}>Settings → Profile Downloaded → Install</b>.
-            Allow the unsigned profile warning — this only adds Connect to your Home Screen.
+          {connectData?.apkUrl ? (
+            <StoreButton
+              href={connectData.apkUrl}
+              label="Google Play"
+              subtitle="Get it on"
+              icon="fab fa-google-play"
+            />
+          ) : null}
+
+          {connectData?.ipaUrl ? (
+            <StoreButton
+              href={connectData.ipaUrl}
+              label="App Store"
+              subtitle="Get it on"
+              icon="fab fa-apple"
+            />
+          ) : null}
+
+          <p
+            style={{
+              margin: "4px 0 0",
+              fontSize: 12,
+              color: "#7c8a97",
+              lineHeight: 1.45,
+            }}
+          >
+            After downloading the iOS profile, open{" "}
+            <b style={{ color: "#b8c1cc" }}>
+              Settings → Profile Downloaded → Install
+            </b>
+            .
           </p>
 
           <div
             style={{
               display: "flex",
-              justifyContent: "space-between",
+              justifyContent: "flex-end",
               alignItems: "center",
               marginTop: 6,
             }}
           >
-            <small style={{ color: "#7c8a97" }}>
-              You can find the link anytime in the footer.
-            </small>
             <button
               onClick={onClose}
               style={{
