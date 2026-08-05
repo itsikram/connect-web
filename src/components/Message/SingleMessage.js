@@ -456,7 +456,7 @@ const SingleMessage = ({ index, msg, friendProfile, messages, setMessages, setRe
                     </div>
 
                     {
-                        <div className={`chat-message-seen-status ${msg.isSeen ? 'message-seen' : 'message-unseen'}`} style={{ position: 'absolute', right: -18, bottom: 6 }}>
+                        <div className={`chat-message-seen-status ${msg.isSeen ? 'message-seen' : 'message-unseen'}`}>
                             <img src={friendProfile.profilePic} alt='Seen' />
                         </div>
                     }

@@ -52,7 +52,7 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
 
 
     useEffect(() => {
-        setActionEmoji(settings.actionEmoji || '👍')
+        setActionEmoji(settings?.actionEmoji || '👍')
     }, [settings])
     const scrollToLastMessage = () => {
         if (typeof scrollToLastMessageProp === 'function') {
@@ -688,7 +688,7 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
 
     return (
         <>
-            <div ref={chatFooter} className={`chat-footer modern-composer ${showAttachTray ? 'tray-open' : ''}`}>
+            <div ref={chatFooter} className={`chat-footer modern-composer ${showAttachTray ? 'tray-open' : ''}`} data-chat-footer="true">
 
                 {
                     isPreview && (<div className='new-message-preview-container'>
@@ -915,19 +915,20 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
                     <input type='file' name='uploaded_file' onChange={handleFileChange.bind(this)} ref={uploadFileInput} style={{ display: 'none' }} disabled={isUploadingFile} />
                     <input type='file' accept='image/*' style={{ display: 'none' }} ref={imageInput} onChange={handleMessageImageChange.bind(this)} disabled={isUploadingImage} />
                 </div>
-
             </div>
-            
-            <LiveVoiceModal
-                isOpen={isLiveVoiceModalOpen}
-                onClose={() => setIsLiveVoiceModalOpen(false)}
-                isActive={isLiveVoiceActive}
-                duration={liveVoiceDuration}
-                isConnecting={isLiveVoiceConnecting}
-                role="sender"
-                friendName={friendProfile?.fullName || friendProfile?.user?.firstName || 'Friend'}
-                onStop={handleLiveVoiceButtonClick}
-            />
+
+            <div className="chat-footer-portals" aria-hidden={!isLiveVoiceModalOpen}>
+                <LiveVoiceModal
+                    isOpen={isLiveVoiceModalOpen}
+                    onClose={() => setIsLiveVoiceModalOpen(false)}
+                    isActive={isLiveVoiceActive}
+                    duration={liveVoiceDuration}
+                    isConnecting={isLiveVoiceConnecting}
+                    role="sender"
+                    friendName={friendProfile?.fullName || friendProfile?.user?.firstName || 'Friend'}
+                    onStop={handleLiveVoiceButtonClick}
+                />
+            </div>
         </>
     );
 }

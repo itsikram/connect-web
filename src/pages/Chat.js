@@ -512,6 +512,33 @@ const Chat = ({ }) => {
 
 
     const footerProps = { chatFooter, room, friendId, setIsTyping, setIsReplying, isReplying, chatNewAttachment, messageActionButtonContainer, userId, messageInput, replyData, isPreview, setIsPreview, setReplyData, messages, friendProfile, sendMessage, msgListRef, scrollToLastMessage }
+    const footerSlotRef = useRef(null);
+
+    // Keep message list padded so the last bubble never sits under the pinned composer.
+    useLayoutEffect(() => {
+        const slot = footerSlotRef.current;
+        const box = slot?.closest('#chatBox') || document.getElementById('chatBox');
+        if (!slot || !box) return undefined;
+
+        const syncFooterHeight = () => {
+            const footerEl = slot.querySelector('[data-chat-footer="true"]') || slot;
+            const height = Math.max(56, Math.ceil(footerEl.getBoundingClientRect().height) || 72);
+            box.style.setProperty('--chat-footer-height', `${height}px`);
+        };
+
+        syncFooterHeight();
+        // Re-measure after fonts/layout settle.
+        const raf = requestAnimationFrame(syncFooterHeight);
+        const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(syncFooterHeight) : null;
+        if (ro) ro.observe(slot);
+        window.addEventListener('resize', syncFooterHeight);
+
+        return () => {
+            cancelAnimationFrame(raf);
+            window.removeEventListener('resize', syncFooterHeight);
+            if (ro) ro.disconnect();
+        };
+    }, [isBlockedMe, friendId]);
 
     return (
         <div className="message-chat-root">
@@ -566,16 +593,18 @@ const Chat = ({ }) => {
                     </div>
                 </div>
 
-                {
-                    !isBlockedMe ?
+                <div className="chat-footer-slot" ref={footerSlotRef} data-chat-footer-slot="true">
+                    {
+                        !isBlockedMe ?
 
-                        <ChatFooter  {...footerProps} />
-                        :
-                        <div ref={chatFooter} className="chat-footer">
-                            <p className='text-center text-danger fs-4 mb-0'>{friendProfile.fullName} Blocked You</p>
-                        </div>
+                            <ChatFooter  {...footerProps} />
+                            :
+                            <div ref={chatFooter} className="chat-footer modern-composer" data-chat-footer="true">
+                                <p className='text-center text-danger fs-6 mb-0 py-2'>{friendProfile.fullName} Blocked You</p>
+                            </div>
 
-                }
+                    }
+                </div>
             </div>
 
 

@@ -374,6 +374,20 @@
   text-decoration: none;
 }
 
+/* ===== REPLY THREAD ===== */
+
+.replies-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+  padding-left: 8px;
+  border-left: 2px solid rgba(255, 255, 255, 0.08);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
 /* ===== REPLY CONTAINER ===== */
 
 .footer .comments .reply-container,
@@ -381,12 +395,14 @@
   display: flex !important;
   align-items: flex-start !important;
   gap: 8px !important;
-  margin-top: var(--fb-spacing-md) !important;
-  margin-left: 40px !important;
+  margin-top: 0 !important;
+  margin-left: 0 !important;
   margin-bottom: 0 !important;
   position: relative !important;
   animation: fadeInComment 0.3s ease-out !important;
   width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
   justify-content: flex-start !important;
 }
 
@@ -437,12 +453,80 @@
 }
 
 .footer .new-reply,
-.nf-post .footer .new-reply {
-  margin-left: 40px !important;
+.nf-post .footer .new-reply,
+.comment-info > .new-reply {
+  margin-left: 0 !important;
   margin-top: var(--fb-spacing-sm) !important;
   padding: var(--fb-spacing-sm) 0 !important;
   width: 100% !important;
-  max-width: calc(100% - 40px) !important;
+  max-width: 100% !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+}
+
+.replying-to-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fb-secondary-text);
+  padding: 0 2px;
+  width: 100%;
+}
+
+.replying-to-label strong {
+  color: var(--fb-text);
+  font-weight: 600;
+}
+
+.cancel-reply-btn {
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--fb-secondary-text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  font-size: 11px;
+}
+
+.cancel-reply-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--fb-text);
+}
+
+.comment-mention {
+  color: #4dabf7;
+  font-weight: 600;
+}
+
+.comment-react .reply-count {
+  color: var(--fb-secondary-text);
+  font-weight: 500;
+  cursor: default;
+}
+
+.comment-react .reply-count:hover {
+  text-decoration: none;
+}
+
+.comment-editor-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.comment-editor-actions .btn {
+  margin-top: 0 !important;
+}
+
+.send-reply-btn .icon {
+  color: var(--fb-primary) !important;
 }
 
 .new-comment .user-pp,
@@ -560,10 +644,16 @@
 .new-comment .comment-attachment .icon,
 .new-reply .comment-attachment .icon {
   color: var(--fb-secondary-text);
-  font-size: 16px;
+  font-size: 15px;
+  line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.new-comment .comment-attachment .icon i,
+.new-reply .comment-attachment .icon i {
+  font-size: 15px !important;
 }
 
 /* ===== LOADING STATES ALIGNMENT ===== */
@@ -648,8 +738,10 @@
 /* ===== COMMENT ATTACHMENT PREVIEW ===== */
 
 .comment-attachment-preview {
-  margin: var(--fb-spacing-md) 0 var(--fb-spacing-md) 40px;
+  margin: var(--fb-spacing-sm) 0 var(--fb-spacing-md) 42px;
   max-width: 200px;
+  position: relative;
+  display: inline-block;
 }
 
 .comment-attachment-preview img {
@@ -657,6 +749,29 @@
   height: auto;
   border-radius: var(--fb-radius-sm);
   border: 1px solid var(--fb-border);
+  display: block;
+}
+
+.comment-attachment-preview .remove-attachment-btn {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: #3a3b3c;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+.comment-attachment-preview .remove-attachment-btn:hover {
+  background: #d93025;
 }
 
 /* ===== RESPONSIVE DESIGN ===== */
@@ -666,18 +781,14 @@
     width: 28px;
     height: 28px;
   }
-  
-  .reply-container {
-    margin-left: 28px;
+
+  .replies-thread {
+    padding-left: 6px;
   }
   
   .reply-container .author-pp img {
     width: 24px;
     height: 24px;
-  }
-  
-  .new-reply {
-    margin-left: 28px;
   }
   
   .more-comment-button {
@@ -875,23 +986,24 @@
 
 /* ===== REPLY INPUT WIDTH FIX ===== */
 
-/* Ensure reply input takes full width */
 .nf-post .footer .new-reply,
-.footer .new-reply {
-  width: 80% !important;
+.footer .new-reply,
+.comment-info > .new-reply {
+  width: 100% !important;
   max-width: 100% !important;
 }
 
 .nf-post .footer .new-reply .comment-field,
-.footer .new-reply .comment-field {
+.footer .new-reply .comment-field,
+.comment-info > .new-reply .comment-field {
   width: 100% !important;
   max-width: 100% !important;
   flex: 1 !important;
 }
 
-/* Override any existing width constraints */
 .nf-post .footer .new-reply .comment-field input,
-.footer .new-reply .comment-field input {
+.footer .new-reply .comment-field input,
+.comment-info > .new-reply .comment-field input {
   width: 100% !important;
   max-width: 100% !important;
 }
@@ -916,4 +1028,101 @@
 .footer .comments .comment-container .comment-box .name-comment {
   margin-bottom: 0 !important;
   padding-bottom: var(--fb-spacing-sm) !important;
+}
+
+/* ===== SINGLE POST + GENERIC COMMENT SHELL =====
+   Keep feed + /post/:id looking consistent. */
+
+.sp-comments-container .comments,
+.comments {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.sp-comments-container .comment-container,
+.sp-comments-container .reply-container,
+.comments .comment-container,
+.comments .reply-container {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 8px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.sp-comments-container .comment-info,
+.comments .comment-info {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+.sp-comments-container .name-comment,
+.comments .name-comment {
+  background-color: var(--fb-comment-bg) !important;
+  border-radius: var(--fb-radius-md) !important;
+  padding: 8px 12px !important;
+  display: inline-block !important;
+  max-width: 100% !important;
+  word-break: break-word !important;
+}
+
+.sp-comments-container .new-comment,
+.sp-comments-container .new-reply,
+.comments + .new-comment,
+.comment-info .new-reply {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 8px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.sp-comments-container .comment-field,
+.comments + .new-comment .comment-field,
+.comment-info .new-reply .comment-field {
+  flex: 1 !important;
+  display: flex !important;
+  align-items: center !important;
+  background-color: var(--fb-comment-bg) !important;
+  border-radius: 20px !important;
+  min-height: 36px !important;
+  padding: 2px 12px !important;
+  width: 100% !important;
+  position: relative !important;
+}
+
+.sp-comments-container .field-comment-text,
+.comment-info .new-reply .field-comment-text,
+.comments + .new-comment .field-comment-text {
+  flex: 1 !important;
+  border: 0 !important;
+  outline: 0 !important;
+  background: transparent !important;
+  color: var(--fb-text) !important;
+  font-size: 15px !important;
+}
+
+.sp-comments-container .options-container,
+.comments .options-container {
+  background: #2a2a2a !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
+}
+
+.sp-comments-container .comment-option,
+.comments .comment-option {
+  background: transparent !important;
+  color: var(--fb-text) !important;
+}
+
+.sp-comments-container .replies-thread,
+.comments .replies-thread {
+  margin-top: 10px;
+  padding-left: 8px;
+  border-left: 2px solid rgba(255, 255, 255, 0.08);
 }

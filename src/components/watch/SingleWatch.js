@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ImageSkleton from '../../skletons/post/ImageSkleton';
-import { useParams } from 'react-router-dom';
+import { useParams, useLocation } from 'react-router-dom';
 import api from '../../api/api';
 import $ from 'jquery'
 import { useSelector } from 'react-redux'
@@ -16,15 +16,20 @@ import Rlike from "../../assets/images/reacts/reactLike.svg";
 import Rlove from "../../assets/images/reacts/reactLove.svg";
 import Rhaha from "../../assets/images/reacts/reactHaha.svg";
 import config from "../../config/config.json";
+import { useWatchPipOptional } from "../../contexts/WatchPipContext";
+import { buildPipPayloadFromVideo, shouldAutoWatchPip } from "../../utils/watchPipHelpers";
 const default_pp_src = config?.defaultProfile;
 
 
 const SinglePost = (watch) => {
     let { postId } = useParams()
+    let location = useLocation()
     let [watchData, setWatchData] = useState(false)
     const [watchUrl, setWatchUrl] = useState(watch.videoUrl)
     let displayedWatch = useRef(null)
     let captionTextarea = useRef(null)
+    const skipPipOnUnmount = useRef(false)
+    const watchPip = useWatchPipOptional()
     const { watchId } = useParams()
     let loadData = async () => {
 
@@ -37,7 +42,71 @@ const SinglePost = (watch) => {
 
     useEffect(() => {
         loadData()
-    }, [postId])
+    }, [postId, watchId])
+
+    // Resume from picture-in-picture expand
+    useEffect(() => {
+        const resumeAt = location.state?.resumeAt;
+        if (resumeAt == null || !displayedWatch.current || !watchUrl) return;
+        const video = displayedWatch.current;
+        const apply = () => {
+            try {
+                video.currentTime = resumeAt;
+                if (location.state?.autoplay !== false) {
+                    video.play().catch(() => {});
+                }
+            } catch (_) {}
+        };
+        if (video.readyState >= 1) apply();
+        else video.addEventListener("loadedmetadata", apply, { once: true });
+        watchPip?.closePip?.();
+    }, [watchUrl, location.state, watchPip]);
+
+    const getPipMeta = useCallback(() => ({
+        watchId: watchData?._id || watchId,
+        videoUrl: watchUrl || watchData?.videoUrl,
+        title: watchData?.caption || "Watch",
+        thumbnail: watchData?.thumbnail || "",
+    }), [watchData, watchId, watchUrl]);
+
+    const minimizeToPip = useCallback(() => {
+        if (!watchPip?.startPip || !displayedWatch.current) return;
+        const payload = buildPipPayloadFromVideo(displayedWatch.current, getPipMeta());
+        if (!payload) return;
+        skipPipOnUnmount.current = true;
+        displayedWatch.current.pause();
+        watchPip.startPip({ ...payload, playing: true });
+    }, [watchPip, getPipMeta]);
+
+    useEffect(() => {
+        const tryAutoPip = () => {
+            if (!shouldAutoWatchPip() || !watchPip?.startPip) return;
+            if (skipPipOnUnmount.current) return;
+            const video = displayedWatch.current;
+            if (!video || video.paused || video.ended) return;
+            const payload = buildPipPayloadFromVideo(video, getPipMeta());
+            if (payload) {
+                watchPip.startPip(payload);
+                video.pause();
+            }
+        };
+        const onVisibility = () => {
+            if (document.visibilityState === "hidden") tryAutoPip();
+        };
+        window.addEventListener("pagehide", tryAutoPip);
+        document.addEventListener("visibilitychange", onVisibility);
+        return () => {
+            window.removeEventListener("pagehide", tryAutoPip);
+            document.removeEventListener("visibilitychange", onVisibility);
+            if (!skipPipOnUnmount.current && shouldAutoWatchPip() && watchPip?.startPip) {
+                const video = displayedWatch.current;
+                if (video && !video.paused && !video.ended) {
+                    const payload = buildPipPayloadFromVideo(video, getPipMeta());
+                    if (payload) watchPip.startPip(payload);
+                }
+            }
+        };
+    }, [watchPip, getPipMeta]);
 
 
 
@@ -390,12 +459,37 @@ const SinglePost = (watch) => {
                                             </div>
                                             {
                                                 (watchUrl &&
-                                                    <div className="attachment">
-                                                        <Link to={`/watch/${watch._id}`}>
-                                                            <video id={`watch-${watch._id}`} ref={displayedWatch} className="w-100 watch-video" controls src={`${watchUrl}`}></video>
-                                                            {/* <img src={watchPhoto} alt="watch" /> */}
-
-                                                        </Link>
+                                                    <div className="attachment watch-video-wrap">
+                                                        {watchPip?.pip?.watchId === (watchData?._id || watchId) ? (
+                                                            <div className="watch-pip-inline-placeholder">
+                                                                <span>Playing in picture-in-picture</span>
+                                                                <button type="button" onClick={() => watchPip?.closePip?.()}>
+                                                                    Restore here
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <>
+                                                                <video
+                                                                    id={`watch-${watchData?._id || watchId}`}
+                                                                    ref={displayedWatch}
+                                                                    className="w-100 watch-video"
+                                                                    controls
+                                                                    playsInline
+                                                                    webkit-playsinline="true"
+                                                                    src={`${watchUrl}`}
+                                                                />
+                                                                {watchPip && (
+                                                                    <button
+                                                                        type="button"
+                                                                        className="watch-pip-trigger"
+                                                                        title="Picture in picture"
+                                                                        onClick={minimizeToPip}
+                                                                    >
+                                                                        <i className="fas fa-external-link-alt" />
+                                                                    </button>
+                                                                )}
+                                                            </>
+                                                        )}
                                                     </div>
 
                                                     ||

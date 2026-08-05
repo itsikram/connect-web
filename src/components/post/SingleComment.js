@@ -1,156 +1,127 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Moment from 'react-moment';
 import { Link } from 'react-router-dom';
 import SingleReply from "./SingleReply";
 import UserPP from "../UserPP";
-import $ from 'jquery'
 import api from '../../api/api';
 import { ReplySkeleton } from "../loading/CommentSkeleton";
 import LoadingSpinner, { TypingIndicator } from "../loading/LoadingSpinner";
+import { getProfileDisplayName, splitMentionBody } from './commentUtils';
 import './CommentStyles.css';
 
-
 const SingleComment = ({ comment, postData, myProfile, isEditMode }) => {
+    const myId = myProfile?._id;
+    const authorName = getProfileDisplayName(comment?.author);
+    const [totalComment, setTotalComment] = useState(Array.isArray(comment?.reacts) ? comment.reacts.length : 0);
+    const [isReacted, setIsReacted] = useState(
+        Array.isArray(comment?.reacts) && comment.reacts.some((r) => String(r) === String(myId) || String(r?._id) === String(myId))
+    );
+    const [isReply, setIsReply] = useState(false);
+    const [replies, setReplies] = useState(Array.isArray(comment?.replies) ? comment.replies : []);
+    const [isEdit, setIsEdit] = useState(false);
+    const [optionsOpen, setOptionsOpen] = useState(false);
+    const [updatedComment, setUpdatedComment] = useState(comment?.body || '');
+    const [replyData, setReplyData] = useState({ body: '', attachment: null });
+    const [isLiking, setIsLiking] = useState(false);
+    const [isSubmittingReply, setIsSubmittingReply] = useState(false);
+    const [isUpdating, setIsUpdating] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [isLoadingReplies] = useState(false);
+    const [removed, setRemoved] = useState(false);
 
-    // Move all hooks to the top level before any conditional returns
-    let myId = myProfile._id
-    let [totalComment, setTotalComment] = useState(0)
-    let [isReacted, setIsReacted] = useState(false);
-    let [isReply, setIsReply] = useState(false)
-    let [replies, setReplies] = useState(comment?.replies)
-    let [isEdit, setIsEdit] = useState(false)
-    let [updatedComment, setUpdatedComment] = useState(comment.body)
-    let [replyData, setReplyData] = useState({
-        body: null,
-        attachment: null
-    })
-    
-    // Loading states
-    let [isLiking, setIsLiking] = useState(false);
-    let [isSubmittingReply, setIsSubmittingReply] = useState(false);
-    let [isUpdating, setIsUpdating] = useState(false);
-    let [isDeleting, setIsDeleting] = useState(false);
-    let [isLoadingReplies, setIsLoadingReplies] = useState(false);
-    
-    const post = postData // useMemo((postData) => postData,[])
+    const post = postData;
 
-    // All hooks must be called before any conditional returns
     useEffect(() => {
-        setTotalComment(comment.reacts.length || 0)
-        setIsReacted(comment.reacts.includes(myId))
-    }, [comment])
+        const reacts = Array.isArray(comment?.reacts) ? comment.reacts : [];
+        setTotalComment(reacts.length);
+        setIsReacted(reacts.some((r) => String(r) === String(myId) || String(r?._id) === String(myId)));
+        setUpdatedComment(comment?.body || '');
+        setReplies(Array.isArray(comment?.replies) ? comment.replies : []);
+    }, [comment, myId]);
 
-    let handleCommentReplyBtnClick = async (e) => {
-        setIsReply(!isReply)
-    }
+    useEffect(() => {
+        if (!optionsOpen) return undefined;
+        const close = (e) => {
+            if (!e.target.closest?.(`.comment-id-${comment?._id} .options-icon`)) {
+                setOptionsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', close);
+        return () => document.removeEventListener('mousedown', close);
+    }, [optionsOpen, comment?._id]);
 
-    let deleteComment = async (e) => {
-        if (isDeleting) return; // Prevent multiple clicks
+    const deleteComment = async (e) => {
+        e?.stopPropagation?.();
+        if (isDeleting || !comment?._id) return;
         setIsDeleting(true);
-        
         try {
-            let commentId = $(e.currentTarget).attr('dataid');
-            let postId = post._id;
-
-            let dltRes = await api.post('/comment/deleteComment', { commentId, postId })
+            const dltRes = await api.post('/comment/deleteComment', {
+                commentId: comment._id,
+                postId: post?._id,
+            });
             if (dltRes.status === 200) {
-                $(e.currentTarget).parents('.comment-container').remove();
-                // let data = dltRes.data
-                // data.author = myProfile
-                // return commentState(state => state - 1)
+                setRemoved(true);
             }
         } catch (error) {
-            console.log(error)
+            console.log(error);
         } finally {
             setIsDeleting(false);
         }
-    }
+    };
 
-    let handleReplyBodyChange = async (e) => {
-        setReplyData(state => {
-            return {
-                ...state,
-                body: e.target.value
-            }
-        })
-    }
+    const submitReply = useCallback(async () => {
+        if (isSubmittingReply) return;
+        const body = (replyData.body || '').trim();
+        if (!body || !comment?._id) return;
 
-    let handleReplyKeyUp = async (e) => {
-        e.preventDefault()
-        if (e.keyCode === 13 && !isSubmittingReply) {
-            setIsSubmittingReply(true);
-            
-            let commentId = e.currentTarget.dataset.comment
-            try {
-                if (replyData?.body?.trim()) {
-                    let uploadReplyRes = await api.post('/comment/addReply', { replyMsg: replyData.body, authorId: myProfile._id, commentId })
-                    if (uploadReplyRes.status == 200) {
-                        setIsReply(false)
-                        setReplyData({ body: null, attachment: null })
-                        e.target.value = ''; // Clear input
-                        let newReplyData = uploadReplyRes.data;
-                        setReplies(replies => [...replies, newReplyData])
-                    }
-                }
-            } catch (error) {
-                console.error('Error submitting reply:', error);
-            } finally {
-                setIsSubmittingReply(false);
-            }
-        }
-    }
-
-    let clickReplySendBtn = async (e) => {
-        if (isSubmittingReply) return; // Prevent multiple clicks
         setIsSubmittingReply(true);
-        
-        let commentId = e.currentTarget.dataset.comment
         try {
-            if (replyData?.body?.trim()) {
-                let uploadReplyRes = await api.post('/comment/addReply', { replyMsg: replyData.body, authorId: myProfile._id, commentId })
-                if (uploadReplyRes.status == 200) {
-                    setIsReply(false)
-                    setReplyData({ body: null, attachment: null })
-                    let newReplyData = uploadReplyRes.data;
-                    setReplies(replies => [...replies, newReplyData])
-                }
+            const uploadReplyRes = await api.post('/comment/addReply', {
+                replyMsg: body,
+                authorId: myProfile._id,
+                commentId: comment._id,
+            });
+            if (uploadReplyRes.status === 200 && uploadReplyRes.data) {
+                const newReplyData = uploadReplyRes.data;
+                if (!newReplyData.author) newReplyData.author = myProfile;
+                if (!Array.isArray(newReplyData.reacts)) newReplyData.reacts = [];
+                setIsReply(false);
+                setReplyData({ body: '', attachment: null });
+                setReplies((prev) => {
+                    const list = Array.isArray(prev) ? prev : [];
+                    if (list.some((r) => r?._id === newReplyData._id)) return list;
+                    return [...list, newReplyData];
+                });
             }
         } catch (error) {
             console.error('Error submitting reply:', error);
         } finally {
             setIsSubmittingReply(false);
         }
-    }
+    }, [isSubmittingReply, replyData.body, comment?._id, myProfile]);
 
-    // handle add attachmenent to comment on click
-    let clickCommentOption = (e) => {
-        if ($(e.currentTarget).children('.options-container').hasClass('open')) {
-            $(e.currentTarget).children('.options-container').removeClass('open');
-        } else {
-            $(e.currentTarget).children('.options-container').addClass('open');
+    const handleReplyKeyUp = async (e) => {
+        if (e.key === 'Enter' || e.keyCode === 13) {
+            e.preventDefault();
+            await submitReply();
         }
-    }
-    // handle comment attachment change
+    };
 
-
-    let handleCommentLikeBtnClick = async (e) => {
-        if (isLiking) return; // Prevent multiple clicks while loading
-        
+    const handleCommentLikeBtnClick = async () => {
+        if (isLiking || !comment?._id) return;
         setIsLiking(true);
-        let commentId = e.currentTarget.dataset.id
-        
         try {
-            if ($(e.currentTarget).hasClass('reacted')) {
-                let updatedComment = await api.post('/comment/removeReact', { commentId, reactorId: myId })
-                if (updatedComment.status == 200) {
-                    $(e.target).removeClass('reacted')
-                    setTotalComment(comment => comment - 1)
+            if (isReacted) {
+                const updated = await api.post('/comment/removeReact', { commentId: comment._id, reactorId: myId });
+                if (updated.status === 200) {
+                    setTotalComment((n) => Math.max(0, n - 1));
+                    setIsReacted(false);
                 }
             } else {
-                let updatedComment = await api.post('/comment/addReact', { commentId, reactorId: myId })
-                if (updatedComment.status == 200) {
-                    setTotalComment(comment => comment + 1)
-                    $(e.target).addClass('reacted')
+                const updated = await api.post('/comment/addReact', { commentId: comment._id, reactorId: myId });
+                if (updated.status === 200) {
+                    setTotalComment((n) => n + 1);
+                    setIsReacted(true);
                 }
             }
         } catch (error) {
@@ -158,233 +129,248 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode }) => {
         } finally {
             setIsLiking(false);
         }
-    }
+    };
 
-    let handleCommentChange = useCallback((e) => {
-        setUpdatedComment(e.target.value)
-    },[])
-
-    let handleUpdateComment = useCallback(async (e) => {
-        if (isUpdating) return; // Prevent multiple clicks
+    const handleUpdateComment = useCallback(async () => {
+        if (isUpdating || !comment?._id) return;
         setIsUpdating(true);
-        
         try {
-            let res = await api.post('comment/updateComment', { commentId: comment._id, body: updatedComment })
-            if(res.status == 200) {
-                setUpdatedComment(res.data.body)
-                setIsEdit(false)
+            const res = await api.post('comment/updateComment', {
+                commentId: comment._id,
+                body: updatedComment,
+            });
+            if (res.status === 200) {
+                setUpdatedComment(res.data.body);
+                setIsEdit(false);
             }
         } catch (error) {
             console.error('Error updating comment:', error);
         } finally {
             setIsUpdating(false);
         }
-    }, [isUpdating, comment._id, updatedComment])
+    }, [isUpdating, comment?._id, updatedComment]);
 
-    let editCommentClick = useCallback(e => {
-        setIsEdit(!isEdit)
-    },[])
+    if (removed || !comment?.author) return null;
 
-    // Early return after all hooks are declared
-    if(comment.author == null) return(<></>);
-
+    const { mention, rest } = splitMentionBody(updatedComment);
+    const visibleReplies = Array.isArray(replies) ? replies.filter(Boolean) : [];
 
     return (
-        <>
-            <div className={`comment-container comment-id-${comment._id}`}>
-                <div className="author-pp">
-                    <UserPP profilePic={comment.author.profilePic} profile={comment.author._id}></UserPP>
-                </div>
-                <div className="comment-info">
-                    <div className="comment-box">
-                        <div className="name-comment">
-                            <div className="author-name">
-                                <Link to={`/${comment.author._id}`}>
-                                    {comment.author.user ? (comment.author.user.firstName + ' ' + comment.author.user.surname) : comment.author.user?.displayName || comment.author.user.fullName || 'Unknown User'}
-                                </Link>
-                            </div>
-                            <p className="comment-text">
-
-                            {isEdit ? <>
-                                            <div className="comment-editor">
-                                                <textarea 
-                                                    onChange={handleCommentChange.bind(this)} 
-                                                    className="form-control w-100" 
-                                                    value={updatedComment}
-                                                    disabled={isUpdating}
-                                                    style={{ opacity: isUpdating ? 0.7 : 1 }}
-                                                />
-                                                <button 
-                                                    onClick={handleUpdateComment.bind(this)} 
-                                                    className={`btn btn-primary mt-2 ${isUpdating ? 'loading-button' : ''}`}
-                                                    disabled={isUpdating}
-                                                    style={{ opacity: isUpdating ? 0.8 : 1 }}
-                                                >
-                                                    {isUpdating ? (
-                                                        <>
-                                                            <LoadingSpinner size="small" inline={true} />
-                                                            <span style={{ marginLeft: '4px' }}>Updating...</span>
-                                                        </>
-                                                    ) : (
-                                                        'Update'
-                                                    )}
-                                                </button>
-                                            </div>
-                                        </>
-                                        : 
-
-                                        <>{updatedComment}</>
-                                        
-                                    
-                                    
-                                    }
-                            </p>
-                            {
-                                comment.attachment &&
-                                <div className='comment-attachment-container'>
-                                    <img src={comment.attachment} alt='attachment' />
-                                </div>
-
-                            }
-
+        <div className={`comment-container comment-id-${comment._id}`}>
+            <div className="author-pp">
+                <UserPP profilePic={comment.author.profilePic} profile={comment.author._id} />
+            </div>
+            <div className="comment-info">
+                <div className="comment-box">
+                    <div className="name-comment">
+                        <div className="author-name">
+                            <Link to={`/${comment.author._id}`}>{authorName}</Link>
                         </div>
-
-                        {
-
-                            comment.author._id == myProfile._id || isEditMode ?
-                                <div onClick={clickCommentOption} className="options-icon">
-                                    <i className="far fa-ellipsis-h"></i>
-                                    <div className='options-container'>
-                                        <button dataid={comment._id} onClick={editCommentClick.bind(this)} className="comment-option text-primary">
-                                            Edit Comment
-                                        </button>
-                                        
-                                        <button 
-                                            dataid={comment._id} 
-                                            onClick={deleteComment.bind(this)} 
-                                            className={`comment-option text-danger ${isDeleting ? 'loading-button' : ''}`}
-                                            disabled={isDeleting}
-                                            style={{ opacity: isDeleting ? 0.7 : 1 }}
+                        <div className="comment-text">
+                            {isEdit ? (
+                                <div className="comment-editor">
+                                    <textarea
+                                        onChange={(e) => setUpdatedComment(e.target.value)}
+                                        className="form-control w-100"
+                                        value={updatedComment}
+                                        disabled={isUpdating}
+                                    />
+                                    <div className="comment-editor-actions">
+                                        <button
+                                            type="button"
+                                            onClick={() => { setIsEdit(false); setUpdatedComment(comment.body || ''); }}
+                                            className="btn btn-secondary"
+                                            disabled={isUpdating}
                                         >
-                                            {isDeleting ? (
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleUpdateComment}
+                                            className={`btn btn-primary ${isUpdating ? 'loading-button' : ''}`}
+                                            disabled={isUpdating}
+                                        >
+                                            {isUpdating ? (
                                                 <>
                                                     <LoadingSpinner size="small" inline={true} />
-                                                    <span style={{ marginLeft: '4px' }}>Deleting...</span>
+                                                    <span style={{ marginLeft: '4px' }}>Updating...</span>
                                                 </>
                                             ) : (
-                                                'Delete Comment'
+                                                'Update'
                                             )}
                                         </button>
-
                                     </div>
                                 </div>
-                                : ''
-                        }
-
-                    </div>
-
-                    <div className="comment-react">
-                        <div 
-                            className={`like button ${isReacted ? 'reacted' : ''} ${isLiking ? 'loading-button' : ''}`} 
-                            onClick={handleCommentLikeBtnClick.bind(this)} 
-                            data-id={comment._id}
-                            style={{ pointerEvents: isLiking ? 'none' : 'auto', opacity: isLiking ? 0.7 : 1 }}
-                        >
-                            {isLiking ? (
-                                <>
-                                    <LoadingSpinner size="small" inline={true} />
-                                    <span style={{ marginLeft: '4px' }}>Liking...</span>
-                                </>
                             ) : (
-                                <>Like {`${totalComment > 0 ? '(' + totalComment + ')' : ''}`}</>
+                                <p className="comment-text-body mb-0">
+                                    {mention && <span className="comment-mention">{mention}</span>}
+                                    {mention ? ` ${rest}` : rest}
+                                </p>
                             )}
                         </div>
-                        <div 
-                            className="reply button" 
-                            data-id={comment._id} 
-                            onClick={handleCommentReplyBtnClick.bind(this)}
-                            style={{ opacity: isSubmittingReply ? 0.7 : 1 }}
-                        >
-                            Reply
-                        </div>
-
-                        <div className="comment-time"><Moment fromNow>{comment.createdAt}</Moment></div>
-                    </div>
-                    {isReply &&
-                        (
-                            <div className="new-reply">
-                                <div className={`comment-field ${isSubmittingReply ? 'loading-input' : ''}`}>
-                                    <input 
-                                        onKeyUp={handleReplyKeyUp} 
-                                        onChange={handleReplyBodyChange.bind(this)} 
-                                        className="field-comment-text" 
-                                        type="text" 
-                                        data-comment={comment._id} 
-                                        placeholder={
-                                            isSubmittingReply 
-                                                ? "Posting reply..." 
-                                                : `Reply to ${comment.author.displayName || comment.author.user.surname}`
-                                        }
-                                        disabled={isSubmittingReply}
-                                        style={{ opacity: isSubmittingReply ? 0.7 : 1 }}
-                                    />
-                                    
-                                    {/* Show typing indicator when submitting */}
-                                    {isSubmittingReply && (
-                                        <div className="reply-loading-overlay">
-                                            <TypingIndicator text="Posting..." />
-                                        </div>
-                                    )}
-                                    
-                                    <div 
-                                        onClick={isSubmittingReply ? null : clickReplySendBtn.bind(this)} 
-                                        data-comment={comment._id} 
-                                        className={`comment-attachment ${isSubmittingReply ? 'loading-button' : ''}`}
-                                        style={{ 
-                                            cursor: isSubmittingReply ? 'not-allowed' : 'pointer',
-                                            opacity: isSubmittingReply ? 0.7 : 1 
-                                        }}
-                                        title={isSubmittingReply ? "Posting..." : "Send reply"}
-                                    >
-                                        <span className="icon">
-                                            {isSubmittingReply ? (
-                                                <LoadingSpinner size="small" variant="primary" />
-                                            ) : (
-                                                <i className="far fa-paper-plane"></i>
-                                            )}
-                                        </span>
-                                    </div>
-
-                                </div>
+                        {comment.attachment && (
+                            <div className="comment-attachment-container">
+                                <img src={comment.attachment} alt="attachment" />
                             </div>
                         )}
+                    </div>
 
-                    {/* Loading skeleton for replies */}
-                    {isLoadingReplies && (
-                        <ReplySkeleton count={2} />
+                    {(String(comment.author._id) === String(myId) || isEditMode) && (
+                        <div
+                            onClick={(e) => { e.stopPropagation(); setOptionsOpen((v) => !v); }}
+                            className="options-icon"
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    setOptionsOpen((v) => !v);
+                                }
+                            }}
+                            aria-label="Comment options"
+                        >
+                            <i className="far fa-ellipsis-h"></i>
+                            <div className={`options-container ${optionsOpen ? 'open' : ''}`}>
+                                <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); setIsEdit(true); setOptionsOpen(false); }}
+                                    className="comment-option text-primary"
+                                >
+                                    Edit Comment
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={deleteComment}
+                                    className={`comment-option text-danger ${isDeleting ? 'loading-button' : ''}`}
+                                    disabled={isDeleting}
+                                >
+                                    {isDeleting ? (
+                                        <>
+                                            <LoadingSpinner size="small" inline={true} />
+                                            <span style={{ marginLeft: '4px' }}>Deleting...</span>
+                                        </>
+                                    ) : (
+                                        'Delete Comment'
+                                    )}
+                                </button>
+                            </div>
+                        </div>
                     )}
+                </div>
 
-                    {/* Display actual replies */}
-                    {!isLoadingReplies && replies.map((item, index) => {
-                        return (
-                            <SingleReply 
-                                isEditMode={isEditMode} 
-                                setReplies={setReplies} 
-                                replies={replies} 
-                                comment={comment} 
-                                item={item} 
-                                key={index} 
+                <div className="comment-react">
+                    <div
+                        className={`like button ${isReacted ? 'reacted' : ''} ${isLiking ? 'loading-button' : ''}`}
+                        onClick={handleCommentLikeBtnClick}
+                        data-id={comment._id}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleCommentLikeBtnClick(); } }}
+                    >
+                        {isLiking ? (
+                            <>
+                                <LoadingSpinner size="small" inline={true} />
+                                <span style={{ marginLeft: '4px' }}>Liking...</span>
+                            </>
+                        ) : (
+                            <>Like{totalComment > 0 ? ` (${totalComment})` : ''}</>
+                        )}
+                    </div>
+                    <div
+                        className="reply button"
+                        data-id={comment._id}
+                        onClick={() => setIsReply((v) => !v)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsReply((v) => !v); } }}
+                    >
+                        Reply
+                    </div>
+                    {visibleReplies.length > 0 && (
+                        <div className="reply-count">
+                            {visibleReplies.length} {visibleReplies.length === 1 ? 'reply' : 'replies'}
+                        </div>
+                    )}
+                    <div className="comment-time">
+                        <Moment fromNow>{comment.createdAt}</Moment>
+                    </div>
+                </div>
+
+                {isReply && (
+                    <div className="new-reply">
+                        <div className="replying-to-label">
+                            Replying to <strong>{authorName}</strong>
+                            <button
+                                type="button"
+                                className="cancel-reply-btn"
+                                onClick={() => { setIsReply(false); setReplyData({ body: '', attachment: null }); }}
+                                aria-label="Cancel reply"
+                            >
+                                <i className="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div className={`comment-field ${isSubmittingReply ? 'loading-input' : ''}`}>
+                            <input
+                                onKeyDown={handleReplyKeyUp}
+                                onChange={(e) => setReplyData((s) => ({ ...s, body: e.target.value }))}
+                                className="field-comment-text"
+                                type="text"
+                                value={replyData.body || ''}
+                                data-comment={comment._id}
+                                placeholder={isSubmittingReply ? 'Posting reply...' : `Reply to ${authorName}`}
+                                disabled={isSubmittingReply}
+                            />
+                            {isSubmittingReply && (
+                                <div className="reply-loading-overlay">
+                                    <TypingIndicator text="Posting..." />
+                                </div>
+                            )}
+                            <div
+                                onClick={isSubmittingReply ? null : submitReply}
+                                data-comment={comment._id}
+                                className={`comment-attachment send-reply-btn ${isSubmittingReply ? 'loading-button' : ''}`}
+                                role="button"
+                                tabIndex={isSubmittingReply ? -1 : 0}
+                                onKeyDown={(e) => {
+                                    if (!isSubmittingReply && (e.key === 'Enter' || e.key === ' ')) {
+                                        e.preventDefault();
+                                        submitReply();
+                                    }
+                                }}
+                                title={isSubmittingReply ? 'Posting...' : 'Send reply'}
+                            >
+                                <span className="icon">
+                                    {isSubmittingReply ? (
+                                        <LoadingSpinner size="small" variant="primary" />
+                                    ) : (
+                                        <i className="far fa-paper-plane"></i>
+                                    )}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {isLoadingReplies && <ReplySkeleton count={2} />}
+
+                {!isLoadingReplies && visibleReplies.length > 0 && (
+                    <div className="replies-thread">
+                        {visibleReplies.map((item) => (
+                            <SingleReply
+                                isEditMode={isEditMode}
+                                setReplies={setReplies}
+                                replies={visibleReplies}
+                                comment={comment}
+                                item={item}
+                                key={item._id || item.createdAt}
                                 myProfile={myProfile}
                             />
-                        )
-                    })}
-
-
-                </div>
+                        ))}
+                    </div>
+                )}
             </div>
-        </>
-    )
+        </div>
+    );
+};
 
-}
-
-export default React.memo(SingleComment)
+export default React.memo(SingleComment);

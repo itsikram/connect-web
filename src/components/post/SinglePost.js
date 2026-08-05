@@ -22,6 +22,7 @@ import Rlike from "../../assets/images/reacts/reactLike.svg";
 import Rlove from "../../assets/images/reacts/reactLove.svg";
 import Rhaha from "../../assets/images/reacts/reactHaha.svg";
 import config from "../../config/config.json";
+import "./PostCard.css";
 const default_pp_src = config?.defaultProfile;
 
 
@@ -56,6 +57,7 @@ const SinglePost = () => {
     let [totalReacts, setTotalReacts] = useState(postData && postData.reacts.length)
     let [totalShares, setTotalShares] = useState(postData && postData.shares.length)
     let [totalComments, setTotalComments] = useState(postData && postData.comments.length)
+    let [allComments, setAllComments] = useState(postData?.comments || [])
     let [reactType, setReactType] = useState(false);
     let [placedReacts, setPlacedReacts] = useState([]);
 
@@ -63,6 +65,7 @@ const SinglePost = () => {
         setTotalReacts(postData && postData.reacts.length)
         setTotalShares(postData && postData.shares.length)
         setTotalComments(postData && postData.comments.length)
+        setAllComments(postData?.comments || [])
     }, [postData])
 
 
@@ -355,7 +358,7 @@ const SinglePost = () => {
                                             </h4>
 
                                             {
-                                                postData.feelings && <span className="post-feelings"> <small className="text-lowercase text-secondary">is felling</small> {postData.feelings || ''}</span>
+                                                postData.feelings && <span className="post-feelings"> <small className="feelings-label">is feeling</small> <strong className="feelings-value">{postData.feelings}</strong></span>
 
                                             }
 
@@ -389,7 +392,7 @@ const SinglePost = () => {
                                         </span>
 
                                         <span>
-                                            Updated Profile Picture
+                                            <span className="reason-badge"><i className="fas fa-camera" aria-hidden="true"></i> Updated profile picture</span>
                                         </span>
                                     </div>
                                 }
@@ -404,7 +407,7 @@ const SinglePost = () => {
                                                     {postData.parentPost?.author?.fullName}
                                                 </h4>
                                                 {
-                                                postData.feelings && <span className="post-feelings"> <small className="text-lowercase text-secondary">is felling</small> {postData.feelings || ''}</span>
+                                                postData.feelings && <span className="post-feelings"> <small className="feelings-label">is feeling</small> <strong className="feelings-value">{postData.feelings}</strong></span>
 
                                             }
 
@@ -612,7 +615,7 @@ const SinglePost = () => {
                                     </span>
 
                                     <span>
-                                        Updated Profile Picture
+                                        <span className="reason-badge"><i className="fas fa-camera" aria-hidden="true"></i> Updated profile picture</span>
                                     </span>
                                 </div>
                             }
@@ -630,7 +633,7 @@ const SinglePost = () => {
 
 
                                             {
-                                                postData.fellings && <span className="post-feelings"> <small className="text-lowercase text-secondary">is felling</small> {postData.fellings || ''}</span>
+                                                (postData.feelings || postData.fellings) && <span className="post-feelings"> <small className="feelings-label">is feeling</small> <strong className="feelings-value">{postData.feelings || postData.fellings}</strong></span>
 
                                             }
 
@@ -889,7 +892,18 @@ const SinglePost = () => {
                     <Col md="3">
                         <div className='sp-comments-container'>
                             <h4 className='section-title'>Comments {postData?.comments && `(${postData?.comments.length})`}</h4>
-                            {postData?.comments && (<PostComment post={postData} commentState={setTotalComments} allComments={postData.comments || []} myProfile={myProfile} authProfile={authProfileId} isEditMode={isEditMode} authProfilePicture={authProfilePicture}></PostComment>)}
+                            {postData && (
+                                <PostComment
+                                    post={postData}
+                                    commentState={setTotalComments}
+                                    allComments={allComments}
+                                    setAllComments={setAllComments}
+                                    myProfile={myProfile}
+                                    authProfile={authProfileId}
+                                    isEditMode={isEditMode}
+                                    authProfilePicture={authProfilePicture}
+                                />
+                            )}
                         </div>
 
 

@@ -11,6 +11,7 @@ import './assets/css/portfolio.scss';
 import process from 'process';
 import { AuthProvider } from './contexts/AuthContext';
 import { CallMinimizeProvider } from './contexts/CallMinimizeContext';
+import { WatchPipProvider } from './contexts/WatchPipContext';
 import DownloadAppModal from './components/modal/DownloadAppModal';
 import ErrorBoundary from './components/ErrorBoundary';
 import StickyChatBoxContainer from './components/Message/StickyChatBoxContainer';
@@ -78,12 +79,14 @@ function App() {
     <ErrorBoundary>
       <AuthProvider>
         <CallMinimizeProvider>
-          <Fragment>
-            {/* <SimpleEmotionTest /> */}
-            <Main />
-            <DownloadAppModal isOpen={showDownloadModal} onClose={handleCloseDownloadModal} />
-            <StickyChatBoxContainer />
-          </Fragment>
+          <WatchPipProvider>
+            <Fragment>
+              {/* <SimpleEmotionTest /> */}
+              <Main />
+              <DownloadAppModal isOpen={showDownloadModal} onClose={handleCloseDownloadModal} />
+              <StickyChatBoxContainer />
+            </Fragment>
+          </WatchPipProvider>
         </CallMinimizeProvider>
       </AuthProvider>
     </ErrorBoundary>

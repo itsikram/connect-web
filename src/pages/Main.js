@@ -6,6 +6,7 @@ import { showMessageToast, showLudoInviteToast, dismissToast } from '../utils/to
 import 'react-toastify/dist/ReactToastify.css';
 import '../components/Toast/CustomToast.css';
 import webNotificationService from '../services/webNotificationService';
+import EnablePushBanner from '../components/EnablePushBanner';
 import socket from '../common/socket';
 import Header from '../partials/header/Header';
 import ProtectedRoute from "../components/ProtectedRoute.js";
@@ -44,6 +45,7 @@ import StickyChatBoxContainer from "../components/Message/StickyChatBoxContainer
 import config from "../config/config.json";
 import audioPreloader from "../utils/audioPreloader";
 import IosAddToHomeScreen from "../components/IosAddToHomeScreen";
+import WatchPipPlayer from "../components/watch/WatchPipPlayer";
 
 // portoflio
 import PortfolioContainer from "./portfolio/PortfolioContainer.js";
@@ -259,7 +261,7 @@ const Main = () => {
         };
     }, [token, profileId, isAuthenticated, dispatch])
 
-    // Initialize web notifications
+    // Initialize web notifications (keep push subscription across remounts)
     useEffect(() => {
         if (profileId && token && isAuthenticated) {
             const initializeNotifications = async () => {
@@ -267,8 +269,6 @@ const Main = () => {
                     const success = await webNotificationService.initialize(profileId, api);
                     if (success) {
                         console.log('Web notifications initialized successfully');
-                        
-
                     }
                 } catch (error) {
                     console.error('Failed to initialize web notifications:', error);
@@ -277,15 +277,7 @@ const Main = () => {
 
             initializeNotifications();
         }
-
-        // Cleanup on unmount
-        return () => {
-            if (profileId && isAuthenticated) {
-                webNotificationService.cleanup(profileId, api).catch(err => 
-                    console.error('Failed to cleanup web notifications:', err)
-                );
-            }
-        };
+        // Do NOT unsubscribe on unmount — that kills iOS background push
     }, [profileId, token, isAuthenticated])
 
 
@@ -1342,7 +1334,11 @@ const Main = () => {
                     toastClassName="custom-toast-item"
                 />
                 <MinimizedCallBar />
+                <WatchPipPlayer />
                 <IosAddToHomeScreen />
+                {isAuthenticated && profileId ? (
+                    <EnablePushBanner profileId={profileId} api={api} />
+                ) : null}
 
         </Fragment>
 

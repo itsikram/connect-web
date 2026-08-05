@@ -309,6 +309,18 @@ export const AuthProvider = ({ children }) => {
     // Handle logout
     const handleLogout = useCallback(() => {
         console.log('🚪 Logging out user...');
+
+        // Remove web push + browser registration so this device stops getting alerts
+        try {
+            const profileId = user?.profile || user?.profileId;
+            if (profileId) {
+                const api = require('../api/api').default;
+                const webNotificationService = require('../services/webNotificationService').default;
+                webNotificationService.cleanup(profileId, api, { removePush: true }).catch(() => {});
+            }
+        } catch (error) {
+            console.warn('Warning: Could not cleanup web notifications:', error);
+        }
         
         // Disconnect socket connection (lazy import to avoid circular dependency)
         try {
@@ -348,7 +360,7 @@ export const AuthProvider = ({ children }) => {
         }
         
         console.log('✅ User logged out successfully - All data cleared from Redux store');
-    }, [dispatch]);
+    }, [dispatch, user]);
 
     // Update user data (for profile updates, etc.)
     const updateUser = useCallback((userData) => {

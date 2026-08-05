@@ -17,6 +17,7 @@ import isValidUrl from "../../utils/isValiUrl";
 import { addPost } from "../../services/actions/postActions";
 import config from "../../config/config.json";
 import "./CommentStyles.css";
+import "./PostCard.css";
 import Rlike from "../../assets/images/reacts/reactLike.svg";
 import Rlove from "../../assets/images/reacts/reactLove.svg";
 import Rhaha from "../../assets/images/reacts/reactHaha.svg";
@@ -44,6 +45,11 @@ const Post = React.memo(({ data, postContainer, index }) => {
 
     let [totalComments, setTotalComments] = useState(post.comments.length)
     let [allComments, setAllComments] = useState(post.comments)
+
+    useEffect(() => {
+        setTotalComments(post?.comments?.length || 0)
+        setAllComments(Array.isArray(post?.comments) ? post.comments : [])
+    }, [post?._id, post?.comments])
 
     let [isActive, setIsActive] = useState(false)
     let [reactType, setReactType] = useState(false);
@@ -531,12 +537,12 @@ const Post = React.memo(({ data, postContainer, index }) => {
                                                         {post?.parentPost?.author?.fullName}
                                                     </h4>
                                                     {
-                                                        post.feelings && <span className="post-feelings"> <small className="text-lowercase text-secondary">is felling</small> {post.feelings || ''}</span>
+                                                        post.feelings && <span className="post-feelings"> <small className="feelings-label">is feeling</small> <strong className="feelings-value">{post.feelings}</strong></span>
 
                                                     }
 
                                                     {
-                                                        post.location && <span className="post-location"> <small className="text-lowercase text-secondary"> at</small> {post.location || ''}</span>
+                                                        post.location && <span className="post-location"> <small className="feelings-label">at</small> <strong className="feelings-value">{post.location}</strong></span>
                                                     }
                                                 </Link>
                                                 <span className="post-time">
@@ -758,12 +764,9 @@ const Post = React.memo(({ data, postContainer, index }) => {
                             {
                                 type === 'profilePic' &&
                                 <div className="reason">
-                                    <span className="d-none">
-                                        <b>A bitch</b> commented.
-                                    </span>
-
-                                    <span>
-                                        Updated Profile Picture
+                                    <span className="reason-badge">
+                                        <i className="fas fa-camera" aria-hidden="true"></i>
+                                        Updated profile picture
                                     </span>
                                 </div>
                             }
@@ -777,15 +780,11 @@ const Post = React.memo(({ data, postContainer, index }) => {
                                             <Link to={'/' + post.author._id}>
                                                 {post.author.fullName}
                                             </Link>
-
-
                                             {
-                                                post.feelings && <span className="post-feelings"> <small className="text-lowercase text-secondary">is felling</small> {post.feelings || ''}</span>
-
+                                                post.feelings && <span className="post-feelings"> <small className="feelings-label">is feeling</small> <strong className="feelings-value">{post.feelings}</strong></span>
                                             }
-
                                             {
-                                                post.location && <span className="post-location"> <small className="text-lowercase text-secondary"> at</small> {post.location || ''}</span>
+                                                post.location && <span className="post-location"> <small className="feelings-label">at</small> <strong className="feelings-value">{post.location}</strong></span>
                                             }
                                         </h4>
                                         <span className="post-time">
@@ -795,7 +794,7 @@ const Post = React.memo(({ data, postContainer, index }) => {
 
                                 </div>
                                 <div className="right">
-                                    <button onClick={postOptionClick} className="post-three-dot"><i className="far fa-ellipsis-h"></i></button>
+                                    <button type="button" onClick={postOptionClick} className="post-three-dot" aria-label="Post options"><i className="far fa-ellipsis-h"></i></button>
                                     {isPostOption && (
                                         <div className="post-option-menu" ref={postOptionMenu} >
                                             <ul>
@@ -805,15 +804,13 @@ const Post = React.memo(({ data, postContainer, index }) => {
                                         </div>
                                     )}
 
-                                    <button onClick={hideThisPost} className="post-close"> <i className="far fa-times"></i></button>
+                                    <button type="button" onClick={hideThisPost} className="post-close" aria-label="Hide post"> <i className="far fa-times"></i></button>
                                 </div>
                             </div>
 
                         </div>
                         <div ref={displayedPost} data-id={post._id} className="body">
-                            <p className="caption">
-                                {post.caption}
-                            </p>
+                            {post.caption ? <p className="caption">{post.caption}</p> : null}
                             {
                                 isLoaded && isValidUrl(postPhoto) ? <> <div className="attachment">
                                     <Link to={`/post/${post._id}`}>
@@ -834,48 +831,33 @@ const Post = React.memo(({ data, postContainer, index }) => {
                         <div className="footer">
                             <div className="react-count">
                                 <div className="reacts">
-
-
                                     {
-                                        placedReacts.includes('like') ? <div className="react"> <img src={Rlike} alt="like" />  </div> : <span></span>
-
+                                        placedReacts.includes('like') ? <div className="react"> <img src={Rlike} alt="like" />  </div> : null
                                     }
                                     {
-                                        placedReacts.includes('love') ? <div className="react"> <img src={Rlove} alt="love" /> </div> : <span></span>
-
+                                        placedReacts.includes('love') ? <div className="react"> <img src={Rlove} alt="love" /> </div> : null
                                     }
                                     {
-                                        placedReacts.includes('haha') ? <div className="react"> <img src={Rhaha} alt="love" /> </div> : <span></span>
-
+                                        placedReacts.includes('haha') ? <div className="react"> <img src={Rhaha} alt="haha" /> </div> : null
                                     }
-
-
                                     <span className="text">
-                                        {post.reacts && totalReacts} {totalReacts > 1 ? 'Reacts' : 'React'}
+                                        {totalReacts > 0 ? `${totalReacts} ${totalReacts > 1 ? 'Reacts' : 'React'}` : 'Be the first to react'}
                                     </span>
                                 </div>
                                 <div className="comment-share">
                                     <div className="comment">
-                                        <div className="text">{post.comments && totalComments}
-
-                                        </div>
                                         <div className="icon">
                                             <i className="far fa-comment-alt"></i>
                                         </div>
-
+                                        <div className="text">{totalComments || 0}</div>
                                     </div>
                                     <div className="shares">
-                                        <div className="text">
-                                            {post.shares && totalShares}
-                                        </div>
                                         <div className="icon">
                                             <i className="fa fa-share"></i>
                                         </div>
-
+                                        <div className="text">{totalShares || 0}</div>
                                     </div>
                                 </div>
-
-
                             </div>
                             <div className="like-comment-share">
                                 <div className="buttons-container">

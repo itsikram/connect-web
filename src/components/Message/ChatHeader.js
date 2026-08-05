@@ -1978,203 +1978,167 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
         return data?.profilePic || friendPP || '';
     }, [userInfoData, friendProfile, friendPP]);
 
+    const displayName = friendProfile === true
+        ? (friendProfile?.fullName || '')
+        : (friendProfile?.user ? `${friendProfile.user.firstName} ${friendProfile.user.surname}` : (friendProfile?.fullName || ''));
+
     return (
         <>
-
-            <div className={`chat-header-user ${'skleton-card'}`}>
-                <div className='chat-header-profilePic'>
+            <div className="chat-header-main">
+                <div className={`chat-header-user ${'skleton-card'}`}>
+                    <div className='chat-header-profilePic'>
+                        {
+                            !isLoaded ? <div className="skeleton-header">
+                                <div className="skeleton-avatar" />
+                            </div>
+                                : <UserPP profilePic={`${friendPP}`} hasStory={false} profile={friendProfile._id} active={friendProfile.isActive}></UserPP>
+                        }
+                    </div>
 
                     {
-
-                        !isLoaded ? <div className="skeleton-header">
-                            <div className="skeleton-avatar" />
-
-                        </div>
-                            : <UserPP profilePic={`${friendPP}`} hasStory={false} profile={friendProfile._id} active={friendProfile.isActive}></UserPP>
-                    }
-                </div>
-
-                {
-                    isLoaded === true ?
-                        <>
+                        isLoaded === true ?
                             <div className='chat-header-user-info'>
-                                <h4 className='chat-header-username'> {`${friendProfile === true ? (friendProfile?.fullName || '') : friendProfile.user && friendProfile.user.firstName + ' ' + friendProfile.user.surname}`}</h4>
-
+                                <h4 className='chat-header-username' title={displayName}>{displayName}</h4>
                                 {
-
-                                    isMobile ?
-                                        <>
-
-                                            {
-                                                emotion ? (
-                                                    <span className='chat-header-active-status text-capitalized'>
-                                                        {emotion}
-                                                        {expression && expression !== 'none' && ` • ${expression}`}
-                                                    </span>
-                                                ) : (
-                                                    (<>
-                                                        {lastSeen && <span className='chat-header-active-status text-capitalized'>Last Seen: {lastSeen}</span>}
-                                                    </>)
-                                                )
-                                            }
-
-
-                                        </>
-
-
-                                        : (
-                                            <>
-
-                                                {
-                                                    emotion && (
-                                                        <span className='chat-header-active-status text-capitalized'>
-                                                            {emotion}
-                                                            {expression && expression !== 'none' && ` • ${expression}`} |
-                                                        </span>
-                                                    )
-
-                                                }{lastSeen && <span className='chat-header-active-status text-capitalized'> Last Seen: {lastSeen}</span>}
-
-
-                                            </>
+                                    isMobile ? (
+                                        emotion ? (
+                                            <span className='chat-header-active-status text-capitalized'>
+                                                {emotion}
+                                                {expression && expression !== 'none' && ` • ${expression}`}
+                                            </span>
+                                        ) : (
+                                            lastSeen ? <span className='chat-header-active-status text-capitalized'>Last Seen: {lastSeen}</span> : null
                                         )
-
-                                } </div>
-                        </>
-                        :
-                        <>
+                                    ) : (
+                                        <>
+                                            {emotion && (
+                                                <span className='chat-header-active-status text-capitalized'>
+                                                    {emotion}
+                                                    {expression && expression !== 'none' && ` • ${expression}`}
+                                                    {lastSeen ? ' |' : ''}
+                                                </span>
+                                            )}
+                                            {lastSeen && <span className='chat-header-active-status text-capitalized'> Last Seen: {lastSeen}</span>}
+                                        </>
+                                    )
+                                }
+                            </div>
+                            :
                             <div className='chat-header-user-info'>
                                 <div className="skeleton-lines">
                                     <div className="skeleton-line short" />
                                     <div className="skeleton-line medium" />
                                 </div>
-
                             </div>
-                        </>
-                }
-
-            </div>
-
-            <div className='chat-header-action'>
-                <div className='chat-header-action-btn-container'>
-                    {/* Primary actions — always visible */}
-                    <div
-                        onClick={handleAudioCallBtn}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleAudioCallBtn(e); } }}
-                        role='button'
-                        tabIndex={0}
-                        data-id={friendId}
-                        className='call-button action-button'
-                        title='Audio call'
-                        aria-label='Audio call'
-                    >
-                        <i className="fas fa-phone-alt"></i>
-                    </div>
-                    <div
-                        onClick={handleVideoCallBtn}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleVideoCallBtn(e); } }}
-                        role='button'
-                        tabIndex={0}
-                        data-id={friendId}
-                        className='video-call-button action-button'
-                        title='Video call'
-                        aria-label='Video call'
-                    >
-                        <i className="fas fa-video"></i>
-                    </div>
-
-                    {/* Secondary actions — desktop toolbar only */}
-                    <div
-                        onClick={handleBumpBtnClick}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleBumpBtnClick(); } }}
-                        role='button'
-                        tabIndex={0}
-                        className='bump-button action-button chat-action-desktop'
-                        title='Bump'
-                        aria-label='Bump'
-                    >
-                        <i className="fas fa-record-vinyl"></i>
-                    </div>
-                    <div
-                        onClick={handleChatInfoClick.bind(this)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleChatInfoClick(); } }}
-                        role='button'
-                        tabIndex={0}
-                        className='info-button action-button chat-action-desktop'
-                        title='User Info'
-                        aria-label='User info'
-                    >
-                        <i className="fas fa-info-circle"></i>
-                    </div>
-                    <div
-                        onClick={handleOpenStickyChat}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpenStickyChat(); } }}
-                        role='button'
-                        tabIndex={0}
-                        className='sticky-chat-button action-button chat-action-desktop'
-                        title='Open Sticky Chat'
-                        aria-label='Open sticky chat'
-                    >
-                        <i className="fas fa-comment-dots"></i>
-                    </div>
-
-                    <div
-                        onClick={handleChatOptionClick.bind(this)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleChatOptionClick(); } }}
-                        role='button'
-                        tabIndex={0}
-                        className='more-button action-button'
-                        title='More options'
-                        aria-label='More options'
-                        aria-expanded={isChatOptionMenu}
-                    >
-                        <i className="fas fa-ellipsis-v"></i>
-                    </div>
-
-                    {isChatOptionMenu && (
-                        <div className="chat-option-menu" ref={chatOptionMenu} >
-                            <ul>
-                                <li
-                                    onClick={handleViewProfile.bind(this)}
-                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleViewProfile(); } }}
-                                    tabIndex={0}
-                                >View Profile</li>
-                                <li
-                                    className="chat-action-mobile-item"
-                                    onClick={() => { setIsChatOptionMenu(false); handleChatInfoClick(); }}
-                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsChatOptionMenu(false); handleChatInfoClick(); } }}
-                                    tabIndex={0}
-                                >User Info</li>
-                                <li
-                                    className="chat-action-mobile-item"
-                                    onClick={() => { setIsChatOptionMenu(false); handleBumpBtnClick(); }}
-                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsChatOptionMenu(false); handleBumpBtnClick(); } }}
-                                    tabIndex={0}
-                                >Bump</li>
-                                {
-                                    profile?.blockedUsers.includes(friendId) ?
-                                        <li
-                                            onClick={handleUnBlockUser.bind(this)}
-                                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleUnBlockUser(); } }}
-                                            tabIndex={0}
-                                        >Unblock {friendProfile.user.firstName}</li>
-                                        :
-                                        <li
-                                            onClick={handleBlockUser.bind(this)}
-                                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleBlockUser(); } }}
-                                            tabIndex={0}
-                                        >Block {friendProfile.user.firstName}</li>
-                                }
-
-                                <li
-                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); } }}
-                                    tabIndex={0}
-                                >Report {friendProfile.user.firstName}</li>
-                            </ul>
-                        </div>
-                    )}
+                    }
                 </div>
 
+                <div className='chat-header-action'>
+                    <div className='chat-header-action-btn-container'>
+                        <div
+                            onClick={handleBumpBtnClick}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleBumpBtnClick(); } }}
+                            role='button'
+                            tabIndex={0}
+                            className='bump-button action-button'
+                            title='Bump'
+                            aria-label='Bump'
+                        >
+                            <i className="fas fa-record-vinyl"></i>
+                        </div>
+                        <div
+                            onClick={handleAudioCallBtn}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleAudioCallBtn(e); } }}
+                            role='button'
+                            tabIndex={0}
+                            data-id={friendId}
+                            className='call-button action-button'
+                            title='Audio call'
+                            aria-label='Audio call'
+                        >
+                            <i className="fas fa-phone-alt"></i>
+                        </div>
+                        <div
+                            onClick={handleVideoCallBtn}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleVideoCallBtn(e); } }}
+                            role='button'
+                            tabIndex={0}
+                            data-id={friendId}
+                            className='video-call-button action-button'
+                            title='Video call'
+                            aria-label='Video call'
+                        >
+                            <i className="fas fa-video"></i>
+                        </div>
+                        <div
+                            onClick={handleChatOptionClick.bind(this)}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleChatOptionClick(); } }}
+                            role='button'
+                            tabIndex={0}
+                            className='more-button action-button'
+                            title='More options'
+                            aria-label='More options'
+                            aria-expanded={isChatOptionMenu}
+                        >
+                            <i className="fas fa-ellipsis-v"></i>
+                        </div>
+                        <div
+                            onClick={handleChatInfoClick.bind(this)}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleChatInfoClick(); } }}
+                            role='button'
+                            tabIndex={0}
+                            className='info-button action-button'
+                            title='User Info'
+                            aria-label='User info'
+                        >
+                            <i className="fas fa-info-circle"></i>
+                        </div>
+                        <div
+                            onClick={handleOpenStickyChat}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpenStickyChat(); } }}
+                            role='button'
+                            tabIndex={0}
+                            className='sticky-chat-button action-button'
+                            title='Open Sticky Chat'
+                            aria-label='Open sticky chat'
+                        >
+                            <i className="fas fa-comment-dots"></i>
+                        </div>
+
+                        {isChatOptionMenu && (
+                            <div className="chat-option-menu" ref={chatOptionMenu} >
+                                <ul>
+                                    <li
+                                        onClick={handleViewProfile.bind(this)}
+                                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleViewProfile(); } }}
+                                        tabIndex={0}
+                                    >View Profile</li>
+                                    {
+                                        profile?.blockedUsers.includes(friendId) ?
+                                            <li
+                                                onClick={handleUnBlockUser.bind(this)}
+                                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleUnBlockUser(); } }}
+                                                tabIndex={0}
+                                            >Unblock {friendProfile.user.firstName}</li>
+                                            :
+                                            <li
+                                                onClick={handleBlockUser.bind(this)}
+                                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleBlockUser(); } }}
+                                                tabIndex={0}
+                                            >Block {friendProfile.user.firstName}</li>
+                                    }
+                                    <li
+                                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); } }}
+                                        tabIndex={0}
+                                    >Report {friendProfile.user.firstName}</li>
+                                </ul>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            <div className="chat-header-modals">
                 <ModalContainer
                     title="Video Call"
                     style={isFullscreen ? {} : { width: isMobile ? '95%' : '600px', top: '50%', height: 'auto' }}
@@ -2305,10 +2269,8 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                         </div>
 
                     </div>
-                </ModalContainer >
+                </ModalContainer>
 
-
-            </div >
             {
                 settings.isShareEmotion === true && (
                     <video style={{ display: 'none' }} ref={cameraVideoRef} autoPlay muted playsInline width="600" height="400" />
@@ -2499,6 +2461,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                 role="receiver"
                 friendName={friendProfile?.fullName || friendProfile?.user?.firstName || 'Friend'}
             />
+            </div>
         </>
     );
 }

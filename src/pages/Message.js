@@ -29,19 +29,20 @@ const Message = (props) => {
         return () => clearTimeout(timer);
     }, []);
 
-    // Fit message UI exactly under the site header on phones (iPhone 12 mini / Android).
+    // Fit message UI exactly under the measured site header (desktop + mobile).
     useEffect(() => {
-        if (!isMobile) return undefined;
-
         const root = document.documentElement;
         const body = document.body;
         const prevOverflow = body.style.overflow;
-        body.classList.add('message-page-mobile');
-        body.style.overflow = 'hidden';
+
+        if (isMobile) {
+            body.classList.add('message-page-mobile');
+            body.style.overflow = 'hidden';
+        }
 
         const syncHeaderHeight = () => {
             const header = document.getElementById('header');
-            const headerHeight = header ? Math.ceil(header.getBoundingClientRect().height) : 56;
+            const headerHeight = header ? Math.ceil(header.getBoundingClientRect().height) : (isMobile ? 56 : 70);
             root.style.setProperty('--site-header-height', `${headerHeight}px`);
 
             // Prefer visualViewport on iOS when the browser chrome changes.

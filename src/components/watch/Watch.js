@@ -18,6 +18,8 @@ import Rlike from "../../assets/images/reacts/reactLike.svg";
 import Rlove from "../../assets/images/reacts/reactLove.svg";
 import Rhaha from "../../assets/images/reacts/reactHaha.svg";
 import config from "../../config/config.json";
+import { useWatchPipOptional } from "../../contexts/WatchPipContext";
+import { buildPipPayloadFromVideo, shouldAutoWatchPip } from "../../utils/watchPipHelpers";
 const default_pp_src = config?.defaultProfile;
 
 const Watch = ({ watch, onDelete = null }) => {
@@ -38,6 +40,8 @@ const Watch = ({ watch, onDelete = null }) => {
     const [watchUrl, setWatchUrl] = useState(watch.videoUrl)
     const displayedWatch = useRef(null) // document.getElementById(`watch-${watch._id}`)
     const nfwatch = useRef(null) // document.getElementById(`watch-${watch._id}`)
+    const watchPip = useWatchPipOptional();
+    const skipPipOnUnmount = useRef(false);
 
     useEffect(() => {
 
@@ -320,11 +324,64 @@ const Watch = ({ watch, onDelete = null }) => {
         });
     }, [])
 
+    const getPipMeta = useCallback(() => ({
+        watchId: watch._id,
+        videoUrl: watchUrl || watch.videoUrl,
+        title: watch.caption || `${watch?.author?.user?.firstName || "Watch"}`,
+        thumbnail: watch.thumbnail || "",
+    }), [watch, watchUrl]);
+
+    const minimizeToPip = useCallback(() => {
+        if (!watchPip?.startPip || !displayedWatch.current) return;
+        const payload = buildPipPayloadFromVideo(displayedWatch.current, getPipMeta());
+        if (!payload) return;
+        skipPipOnUnmount.current = true;
+        displayedWatch.current.pause();
+        watchPip.startPip({ ...payload, playing: true });
+    }, [watchPip, getPipMeta]);
+
+    // Auto PiP when leaving the page / backgrounding the installed app
+    useEffect(() => {
+        const tryAutoPip = () => {
+            if (!shouldAutoWatchPip() || !watchPip?.startPip) return;
+            if (skipPipOnUnmount.current) return;
+            const video = displayedWatch.current;
+            if (!video || video.paused || video.ended) return;
+            const payload = buildPipPayloadFromVideo(video, getPipMeta());
+            if (payload) {
+                watchPip.startPip(payload);
+                video.pause();
+            }
+        };
+
+        const onVisibility = () => {
+            if (document.visibilityState === "hidden") tryAutoPip();
+        };
+
+        window.addEventListener("pagehide", tryAutoPip);
+        document.addEventListener("visibilitychange", onVisibility);
+
+        return () => {
+            window.removeEventListener("pagehide", tryAutoPip);
+            document.removeEventListener("visibilitychange", onVisibility);
+            // Route change unmount — keep playing in floating player
+            if (!skipPipOnUnmount.current && shouldAutoWatchPip() && watchPip?.startPip) {
+                const video = displayedWatch.current;
+                if (video && !video.paused && !video.ended) {
+                    const payload = buildPipPayloadFromVideo(video, getPipMeta());
+                    if (payload) watchPip.startPip(payload);
+                }
+            }
+        };
+    }, [watchPip, getPipMeta]);
+
     let handleDownloadVideoClick = useCallback((e) => {
 
         if (!watch?.videoUrl) return;
         saveVideoFromUrl(watch._id, watch.videoUrl, watch)
     }, [watch])
+
+    const isThisPip = watchPip?.pip?.watchId === watch._id;
 
     return (
         <>
@@ -376,8 +433,38 @@ const Watch = ({ watch, onDelete = null }) => {
                     </p>
                     {watch?.thumbnail && thumbnailLoaded ? (
                         playWatch ? (
-                            <div className="attachment">
-                                <video id={`watch-${watch._id}`} ref={displayedWatch} className="w-100 watch-video" controls autoPlay src={`${watchUrl}`}></video>
+                            <div className="attachment watch-video-wrap">
+                                {isThisPip ? (
+                                    <div className="watch-pip-inline-placeholder">
+                                        <span>Playing in picture-in-picture</span>
+                                        <button type="button" onClick={() => watchPip?.closePip?.()}>
+                                            Restore here
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <video
+                                            id={`watch-${watch._id}`}
+                                            ref={displayedWatch}
+                                            className="w-100 watch-video"
+                                            controls
+                                            autoPlay
+                                            playsInline
+                                            webkit-playsinline="true"
+                                            src={`${watchUrl}`}
+                                        />
+                                        {watchPip && (
+                                            <button
+                                                type="button"
+                                                className="watch-pip-trigger"
+                                                title="Picture in picture"
+                                                onClick={minimizeToPip}
+                                            >
+                                                <i className="fas fa-external-link-alt" />
+                                            </button>
+                                        )}
+                                    </>
+                                )}
                             </div>
                         ) : (
                             <div className="attachment watch-thumbnail-card">
@@ -388,8 +475,37 @@ const Watch = ({ watch, onDelete = null }) => {
                             </div>
                         )
                     ) : watchUrl ? (
-                        <div className="attachment">
-                            <video id={`watch-${watch._id}`} ref={displayedWatch} className="w-100 watch-video" controls src={`${watchUrl}`}></video>
+                        <div className="attachment watch-video-wrap">
+                            {isThisPip ? (
+                                <div className="watch-pip-inline-placeholder">
+                                    <span>Playing in picture-in-picture</span>
+                                    <button type="button" onClick={() => watchPip?.closePip?.()}>
+                                        Restore here
+                                    </button>
+                                </div>
+                            ) : (
+                                <>
+                                    <video
+                                        id={`watch-${watch._id}`}
+                                        ref={displayedWatch}
+                                        className="w-100 watch-video"
+                                        controls
+                                        playsInline
+                                        webkit-playsinline="true"
+                                        src={`${watchUrl}`}
+                                    />
+                                    {watchPip && (
+                                        <button
+                                            type="button"
+                                            className="watch-pip-trigger"
+                                            title="Picture in picture"
+                                            onClick={minimizeToPip}
+                                        >
+                                            <i className="fas fa-external-link-alt" />
+                                        </button>
+                                    )}
+                                </>
+                            )}
                         </div>
                     ) : (
                         <ImageSkleton />

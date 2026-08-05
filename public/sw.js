@@ -228,8 +228,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: data.body || 'You have a new notification',
-    icon: data.icon || '/logo192.png',
-    badge: '/logo192.png',
+    icon: data.icon || '/apple-touch-icon.png',
+    badge: data.badge || '/apple-touch-icon.png',
     image: data.image,
     tag: data.tag || 'default',
     data: data.data || {},
