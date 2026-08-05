@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import "./iosA2hs.css";
 
 const DISMISS_KEY = "ios_a2hs_dismissed";
+const IOS_PROFILE_URL = `${process.env.PUBLIC_URL || ""}/connect.mobileconfig`;
 
 const isIosDevice = () => {
   const ua = window.navigator.userAgent.toLowerCase();
@@ -13,7 +14,6 @@ const isIosDevice = () => {
 
 const isSafariBrowser = () => {
   const ua = window.navigator.userAgent.toLowerCase();
-  // iOS Chrome/Firefox/Edge still include "safari" in the UA
   return (
     /safari/.test(ua) &&
     !/crios|fxios|edgios|opt\/|opios|edg\//.test(ua)
@@ -72,7 +72,7 @@ const IosAddToHomeScreen = () => {
         />
         <div className="ios-a2hs-copy">
           <strong>Install Connect</strong>
-          <span>Add to your Home Screen for an app-like experience</span>
+          <span>Download profile, then install from Settings</span>
         </div>
         <button
           type="button"
@@ -103,37 +103,38 @@ const IosAddToHomeScreen = () => {
               width="64"
               height="64"
             />
-            <h3 id="ios-a2hs-title">Install Connect like an app</h3>
+            <h3 id="ios-a2hs-title">Install Connect via Settings</h3>
             <ol className="ios-a2hs-steps">
               <li>
-                Tap the <b>Share</b> button{" "}
-                <svg
-                  className="ios-a2hs-share-icon"
-                  viewBox="0 0 24 24"
-                  width="18"
-                  height="18"
-                  aria-hidden="true"
-                >
-                  <path
-                    fill="currentColor"
-                    d="M12 3l4 4h-3v8h-2V7H8l4-4zm-7 10v6a2 2 0 002 2h10a2 2 0 002-2v-6h-2v6H7v-6H5z"
-                  />
-                </svg>{" "}
-                at the bottom of Safari
+                Tap <b>Download Profile</b> below
               </li>
               <li>
-                Scroll and tap <b>Add to Home Screen</b>
+                Open <b>Settings</b> → <b>Profile Downloaded</b>
               </li>
               <li>
-                Tap <b>Add</b> — Connect opens full-screen like an app
+                Tap <b>Install</b> (allow the unsigned profile warning)
+              </li>
+              <li>
+                Open <b>Connect</b> from your Home Screen
               </li>
             </ol>
+            <a
+              className="ios-a2hs-gotit"
+              href={IOS_PROFILE_URL}
+              download="connect.mobileconfig"
+              style={{ display: "block", textDecoration: "none", marginTop: 16 }}
+            >
+              Download Profile
+            </a>
             <p className="ios-a2hs-note">
-              Must use Safari. Open this site at{" "}
-              <b>connect-zfgx.onrender.com</b> (not localhost).
+              Or use Safari Share → <b>Add to Home Screen</b> instead.
             </p>
-            <button type="button" className="ios-a2hs-gotit" onClick={() => setShowModal(false)}>
-              Got it
+            <button
+              type="button"
+              className="ios-a2hs-secondary"
+              onClick={() => setShowModal(false)}
+            >
+              Close
             </button>
           </div>
         </div>

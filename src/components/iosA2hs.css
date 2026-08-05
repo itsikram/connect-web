@@ -133,9 +133,23 @@
   margin-top: 16px;
   width: 100%;
   border: none;
-  background: #111;
+  background: #29b1a9;
   color: #fff;
   padding: 12px 16px;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.ios-a2hs-secondary {
+  margin-top: 10px;
+  width: 100%;
+  border: none;
+  background: #eee;
+  color: #333;
+  padding: 10px 16px;
   border-radius: 12px;
   font-weight: 600;
   cursor: pointer;

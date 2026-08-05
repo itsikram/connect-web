@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useState, useRef } from "react";
 import { setLoading } from '../services/actions/optionAction';
 import { useDispatch, useSelector } from 'react-redux';
 import { useParams } from 'react-router-dom';
@@ -11,23 +11,17 @@ import $ from 'jquery'
 import { seenMessage } from "../services/actions/messageActions";
 import ChatHeader from '../components/Message/ChatHeader';
 import ChatFooter from '../components/Message/ChatFooter';
-import useIsMobile from '../utils/useIsMobile';
 import SingleMsgSkleton from '../skletons/message/SingleMsgSkleton';
 
-
+const NEAR_BOTTOM_PX = 100;
 
 const Chat = ({ }) => {
     const dispatch = useDispatch();
     const profile = useSelector(state => state.profile)
-    const headerHeight = useSelector(state => state.option.headerHeight)
-    const bodyHeight = useSelector(state => state.option.bodyHeight)
-    const settings = useSelector(state => state.setting)
     const userId = profile._id
     const [friendProfile, setFriendProfile] = useState({})
     const [isBlockedMe, setIsBlockedMe] = useState(false)
     const [lastSeen, setLastSeen] = useState(false);
-
-    const isMobile = useIsMobile()
 
     const [room, setRoom] = useState('');
     const [isActive, setIsActive] = useState(false);
@@ -38,7 +32,6 @@ const Chat = ({ }) => {
     const [isMsgLoading, setIsMsgLoading] = useState(false);
     const [typeMessage, setTypeMessage] = useState('');
     const [hasMoreMessages, setHasMoreMessages] = useState(true);
-    const [isLoaded, setIsLoaded] = useState(false)
     // Default as "at bottom" so load-older logic does not run until the user scrolls (real % from handler).
     const [scrollPercent, setScrollPercent] = useState(100);
     const [replyData, setReplyData] = useState({ messageId: null, body: null });
@@ -46,50 +39,46 @@ const Chat = ({ }) => {
     const messageInput = useRef(null);
     const chatHeader = useRef(null);
     const chatFooter = useRef(null);
-
+    const isNearBottomRef = useRef(true);
+    const pendingScrollRestoreRef = useRef(null);
+    const hasInitialScrolledRef = useRef(false);
 
     const chatNewAttachment = useRef(null);
     const messageActionButtonContainer = useRef(null);
 
-    const chatHeaderHeight = chatHeader.current?.offsetHeight || 0;
-    const chatFooterHeight = chatFooter.current?.offsetHeight || 0;
-    const chatFooterWidth = chatFooter.current?.offsetWidth || 0;
-    const newAttachmentWidth = chatNewAttachment.current?.offsetWidth || 0;
-    const messageActionButtonContainerWidth = messageActionButtonContainer.current?.offsetWidth || 0;
-    const messageInputWidth = chatFooterWidth - newAttachmentWidth - messageActionButtonContainerWidth
+    const getDistanceFromBottom = (el) => {
+        if (!el) return 0;
+        return el.scrollHeight - el.scrollTop - el.clientHeight;
+    };
 
-    const safeBodyHeight = bodyHeight ?? (typeof window !== 'undefined' ? window.innerHeight : 0);
-    const safeHeaderHeight = headerHeight ?? 0;
-    const chatBoxHeight = safeBodyHeight - safeHeaderHeight;
+    const checkIsNearBottom = (el, threshold = NEAR_BOTTOM_PX) => {
+        if (!el) return true;
+        return getDistanceFromBottom(el) <= threshold;
+    };
 
-    const scrollToLastMessage = () => {
-        if (msgListRef.current != null) {
-            const isLastMsg = setInterval(() => {
-                const lastMsg = document.querySelector('#chatMessageList .chat-message-container:last-child')
-                lastMsg?.scrollIntoView({ behavior: "smooth", block: "end" });
-            }, 500)
+    const scrollToLastMessage = useCallback((behavior = 'smooth') => {
+        const el = msgListRef.current;
+        if (!el) return;
 
-            msgListRef.current.addEventListener('scroll', (e) => {
-                const scrollBottom = e.target.scrollHeight - e.target.scrollTop - e.target.clientHeight;
-                console.log('scrl', e.target.scrollHeight, e.target.scrollTop, scrollBottom)
+        const doScroll = () => {
+            const list = msgListRef.current;
+            if (!list) return;
+            list.scrollTo({
+                top: list.scrollHeight,
+                behavior
+            });
+            isNearBottomRef.current = true;
+            setScrollPercent(100);
+        };
 
-                if (scrollBottom <= 5) {
-                    clearInterval(isLastMsg)
-
-                }
-
-            })
-
-        }
-
-
-    }
-
-
-
-    if (messageInput.current !== null) {
-        messageInput.current.style.width = messageInputWidth + 'px'
-    }
+        // Wait a frame so newly rendered messages are measured.
+        requestAnimationFrame(() => {
+            doScroll();
+            if (behavior === 'auto') {
+                requestAnimationFrame(doScroll);
+            }
+        });
+    }, []);
 
     const params = useParams()
     const friendId = params.profile;
@@ -134,49 +123,24 @@ const Chat = ({ }) => {
         if (friendId) dispatch(seenMessage(friendId))
     }, [friendId, dispatch])
 
-    const [listContainerHeight, setListContainerHeight] = useState(Math.max(0, chatBoxHeight - chatHeaderHeight - chatFooterHeight));
-    const [cmlStyles, setCmlStyles] = useState({
-        height: `${isMobile
-            ? safeBodyHeight - safeHeaderHeight - chatFooterHeight - chatHeaderHeight + 50
-            : Math.max(0, chatBoxHeight - chatHeaderHeight - chatFooterHeight)}px`,
-        maxHeight: `${isMobile
-            ? Math.max(0, safeBodyHeight - safeHeaderHeight - chatHeaderHeight - chatFooterHeight) + safeHeaderHeight + 50
-            : Math.max(0, chatBoxHeight - chatHeaderHeight - chatFooterHeight)}px`,
-        overflowY: 'scroll'
-    });
-
-
-
-    useEffect(() => {
-        const newListHeaderHeight = Math.max(0, safeBodyHeight - safeHeaderHeight - chatHeaderHeight - chatFooterHeight);
-        setListContainerHeight(newListHeaderHeight);
-
-        setCmlStyles({
-            height: `${isMobile
-                ? safeBodyHeight - safeHeaderHeight - chatFooterHeight - chatHeaderHeight + 50
-                : newListHeaderHeight}px`,
-            maxHeight: `${isMobile
-                ? newListHeaderHeight + safeHeaderHeight + 50
-                : newListHeaderHeight}px`,
-            overflowY: 'scroll'
-        });
-    }, [safeBodyHeight, safeHeaderHeight, chatHeaderHeight, chatFooterHeight, isMobile, isReplying, isLoaded]);
-
-
     useEffect(() => {
         const handleScroll = () => {
             const el = msgListRef.current;
             if (!el) return;
             const scrollTop = el.scrollTop;
-            const scrollHeight = el.scrollHeight - el.clientHeight;
-            if (scrollHeight <= 0) return;
-            const percent = (scrollTop / scrollHeight) * 100;
-            setScrollPercent(percent);
+            const maxScroll = el.scrollHeight - el.clientHeight;
+            isNearBottomRef.current = checkIsNearBottom(el);
+            if (maxScroll <= 0) {
+                setScrollPercent(100);
+                return;
+            }
+            setScrollPercent((scrollTop / maxScroll) * 100);
         };
 
         const el = msgListRef.current;
         if (el) {
-            el.addEventListener("scroll", handleScroll);
+            el.addEventListener("scroll", handleScroll, { passive: true });
+            handleScroll();
         }
 
         return () => {
@@ -184,7 +148,7 @@ const Chat = ({ }) => {
                 el.removeEventListener("scroll", handleScroll);
             }
         };
-    }, []);
+    }, [friendId]);
 
     const messagesRef = useRef(messages);
     useEffect(() => {
@@ -192,6 +156,16 @@ const Chat = ({ }) => {
     }, [messages]);
 
     const loadingOlderRef = useRef(false);
+
+    // Keep viewport anchored when older messages are prepended.
+    useLayoutEffect(() => {
+        const restore = pendingScrollRestoreRef.current;
+        const el = msgListRef.current;
+        if (!restore || !el) return;
+        el.scrollTop = restore.prevTop + (el.scrollHeight - restore.prevHeight);
+        pendingScrollRestoreRef.current = null;
+        isNearBottomRef.current = checkIsNearBottom(el);
+    }, [messages]);
 
     useEffect(() => {
         if (!friendId || !userId || !hasMoreMessages) return;
@@ -204,13 +178,28 @@ const Chat = ({ }) => {
         const beforeTimestamp = oldestMessage?.timestamp || oldestMessage?.createdAt;
         if (!beforeTimestamp) return;
 
+        const el = msgListRef.current;
+        if (el) {
+            pendingScrollRestoreRef.current = {
+                prevHeight: el.scrollHeight,
+                prevTop: el.scrollTop
+            };
+        }
+
         loadingOlderRef.current = true;
         (async () => {
             setIsMsgLoading(true);
             try {
                 const response = await fetchOldMessages(userId, friendId, beforeTimestamp, 20);
-                setMessages(prev => [...(response.messages || []), ...prev]);
+                const older = response.messages || [];
+                if (older.length === 0) {
+                    pendingScrollRestoreRef.current = null;
+                }
+                setMessages(prev => [...older, ...prev]);
                 setHasMoreMessages(response.hasMore);
+            } catch (error) {
+                pendingScrollRestoreRef.current = null;
+                console.error('Error loading older messages:', error);
             } finally {
                 setIsMsgLoading(false);
                 loadingOlderRef.current = false;
@@ -264,8 +253,9 @@ const Chat = ({ }) => {
             console.log('New messages count with optimistic:', newMessages.length);
             return newMessages;
         });
-        
-        scrollToLastMessage();
+
+        // Always follow own outgoing messages.
+        scrollToLastMessage('smooth');
 
         try {
             // Send via WebSocket instead of HTTP
@@ -332,65 +322,54 @@ const Chat = ({ }) => {
         const roomId = [userId, friendId].sort().join('_');
         socket.emit('joinRoom', roomId);
 
+        const appendIncomingMessage = (updatedMessage) => {
+            let didAppend = false;
+            let isOwnMessage = updatedMessage.senderId === userId;
+
+            setMessages(prev => {
+                const existingIds = new Set(prev.map(m => m._id?.toString()).filter(Boolean));
+
+                const optimisticIndex = prev.findIndex(msg =>
+                    msg.isOptimistic &&
+                    msg.senderId === updatedMessage.senderId &&
+                    msg.message === updatedMessage.message &&
+                    Math.abs(new Date(msg.timestamp) - new Date(updatedMessage.timestamp)) < 5000
+                );
+
+                if (optimisticIndex !== -1) {
+                    const newMessages = [...prev];
+                    newMessages[optimisticIndex] = updatedMessage;
+                    return newMessages;
+                }
+
+                if (!existingIds.has(updatedMessage._id?.toString())) {
+                    didAppend = true;
+                    return [...prev, updatedMessage];
+                }
+                return prev;
+            });
+
+            // Only auto-scroll if user is already near bottom, or the message is theirs.
+            if (didAppend && (isOwnMessage || isNearBottomRef.current)) {
+                scrollToLastMessage('smooth');
+            }
+        };
+
         // Listen for new messages in this room
         const handleNewMessage = (data) => {
             console.log('Received new message via socket:', data);
-            if (data.updatedMessage && 
+            if (data.updatedMessage &&
                 (data.updatedMessage.senderId === friendId || data.updatedMessage.receiverId === friendId)) {
-                setMessages(prev => {
-                    const existingIds = new Set(prev.map(m => m._id?.toString()).filter(Boolean));
-                    
-                    // Check if this is a confirmation of an optimistic message
-                    const optimisticIndex = prev.findIndex(msg => 
-                        msg.isOptimistic && 
-                        msg.senderId === data.updatedMessage.senderId &&
-                        msg.message === data.updatedMessage.message &&
-                        Math.abs(new Date(msg.timestamp) - new Date(data.updatedMessage.timestamp)) < 5000 // Within 5 seconds
-                    );
-                    
-                    if (optimisticIndex !== -1) {
-                        // Replace optimistic message with real message
-                        const newMessages = [...prev];
-                        newMessages[optimisticIndex] = data.updatedMessage;
-                        return newMessages;
-                    } else if (!existingIds.has(data.updatedMessage._id?.toString())) {
-                        // Add new message from other user
-                        return [...prev, data.updatedMessage];
-                    }
-                    return prev;
-                });
-                scrollToLastMessage();
+                appendIncomingMessage(data.updatedMessage);
             }
         };
 
         // Listen for messages sent to this user specifically
         const handleNewMessageToUser = (data) => {
             console.log('Received new message to user via socket:', data);
-            if (data.updatedMessage && 
+            if (data.updatedMessage &&
                 (data.updatedMessage.senderId === friendId || data.updatedMessage.receiverId === friendId)) {
-                setMessages(prev => {
-                    const existingIds = new Set(prev.map(m => m._id?.toString()).filter(Boolean));
-                    
-                    // Check if this is a confirmation of an optimistic message
-                    const optimisticIndex = prev.findIndex(msg => 
-                        msg.isOptimistic && 
-                        msg.senderId === data.updatedMessage.senderId &&
-                        msg.message === data.updatedMessage.message &&
-                        Math.abs(new Date(msg.timestamp) - new Date(data.updatedMessage.timestamp)) < 5000 // Within 5 seconds
-                    );
-                    
-                    if (optimisticIndex !== -1) {
-                        // Replace optimistic message with real message
-                        const newMessages = [...prev];
-                        newMessages[optimisticIndex] = data.updatedMessage;
-                        return newMessages;
-                    } else if (!existingIds.has(data.updatedMessage._id?.toString())) {
-                        // Add new message from other user
-                        return [...prev, data.updatedMessage];
-                    }
-                    return prev;
-                });
-                scrollToLastMessage();
+                appendIncomingMessage(data.updatedMessage);
             }
         };
 
@@ -414,7 +393,7 @@ const Chat = ({ }) => {
             socket.off('messageSeen', handleMessageSeen);
             socket.emit('leaveRoom', roomId);
         };
-    }, [friendId, userId]);
+    }, [friendId, userId, scrollToLastMessage]);
 
     useEffect(() => {
         if (!friendId || !userId) return;
@@ -478,6 +457,9 @@ const Chat = ({ }) => {
         setHasMoreMessages(true);
         setScrollPercent(100);
         loadingOlderRef.current = false;
+        hasInitialScrolledRef.current = false;
+        pendingScrollRestoreRef.current = null;
+        isNearBottomRef.current = true;
 
         const fetchInitialMessages = async () => {
             setIsMsgLoading(true);
@@ -497,18 +479,19 @@ const Chat = ({ }) => {
                 setHasMoreMessages(false);
             } finally {
                 setIsMsgLoading(false);
-                setIsLoaded(true);
             }
         };
 
-        fetchInitialMessages().then(() => {
-            scrollToLastMessage();
-        });
+        fetchInitialMessages();
     }, [friendId, userId, fetchChatHistory]);
 
-    useEffect(() => {
-        setIsLoaded(true);
-    }, []);
+    // Scroll once after the first batch of messages for a chat is rendered.
+    useLayoutEffect(() => {
+        if (hasInitialScrolledRef.current) return;
+        if (!friendId || messages.length === 0 || isMsgLoading) return;
+        hasInitialScrolledRef.current = true;
+        scrollToLastMessage('auto');
+    }, [friendId, messages.length, isMsgLoading, scrollToLastMessage]);
 
     useEffect(() => {
         if (messages.length > 0 && friendId && friendProfile?._id) {
@@ -528,23 +511,23 @@ const Chat = ({ }) => {
 
 
 
-    const footerProps = { chatFooter, room, friendId, setIsTyping, setIsReplying, isReplying, chatNewAttachment, messageActionButtonContainer, userId, messageInput, replyData, isPreview, setIsPreview, setReplyData, messages, friendProfile, sendMessage }
+    const footerProps = { chatFooter, room, friendId, setIsTyping, setIsReplying, isReplying, chatNewAttachment, messageActionButtonContainer, userId, messageInput, replyData, isPreview, setIsPreview, setReplyData, messages, friendProfile, sendMessage, msgListRef, scrollToLastMessage }
 
     return (
-        <div>
-            <div id="chatBox" style={{ minHeight: `${chatBoxHeight - 20}px` }}>
+        <div className="message-chat-root">
+            <div id="chatBox" className="message-chat-box">
                 <div ref={chatHeader} className='chat-header'>
                     <ChatHeader friendProfile={friendProfile} friendProfilePic={friendProfile.profilePic} isActive={isActive} lastSeen={lastSeen} room={room} />
 
                 </div>
                 <div className='chat-body'>
-                    <div className='chat-message-list' style={cmlStyles} id='chatMessageList' ref={msgListRef} >
+                    <div className='chat-message-list' id='chatMessageList' ref={msgListRef} >
 
                         {
                             messages.length > 0 ? messages.map((msg, index) => {
 
                                 return (
-                                    <SingleMessage key={index} msg={msg} friendProfile={friendProfile} messages={messages} setMessages={setMessages} isActive={isActive} setIsReplying={setIsReplying} setReplyData={setReplyData} isPreview={isPreview} setIsPreview={setIsPreview} msgListRef={msgListRef} isMsgLoading={isMsgLoading} />
+                                    <SingleMessage key={msg._id || `msg-${index}`} msg={msg} friendProfile={friendProfile} messages={messages} setMessages={setMessages} isActive={isActive} setIsReplying={setIsReplying} setReplyData={setReplyData} isPreview={isPreview} setIsPreview={setIsPreview} msgListRef={msgListRef} isMsgLoading={isMsgLoading} />
                                 )
                             }) : <>
                                 {<SingleMsgSkleton count={10} />}
