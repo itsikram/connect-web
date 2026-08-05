@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
+import { usePortfolio } from '../../contexts/PortfolioContext';
 import {
   PORTFOLIO_BASE_URL,
-  PERSON,
+  personFromPortfolio,
   getPortfolioSeo,
   buildPortfolioJsonLd,
 } from '../../pages/portfolio/portfolioSeo';
@@ -30,17 +31,24 @@ function upsertLink(rel, href) {
   el.setAttribute('href', href);
 }
 
-/**
- * Portfolio-specific SEO: name-focused titles, Open Graph, Person schema.
- * Renders nothing — updates document head only.
- */
+function absImage(pathOrUrl = '') {
+  if (!pathOrUrl) return `${PORTFOLIO_BASE_URL}/assets/images/portfolio-pp.png`;
+  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+  return `${PORTFOLIO_BASE_URL}${pathOrUrl.startsWith('/') ? '' : '/'}${pathOrUrl}`;
+}
+
 const PortfolioSEO = () => {
   const { pathname } = useLocation();
+  const { data } = usePortfolio();
 
   useEffect(() => {
-    const seo = getPortfolioSeo(pathname);
+    const person = personFromPortfolio(data);
+    const seo = getPortfolioSeo(pathname, data);
     const pageUrl = `${PORTFOLIO_BASE_URL}${seo.path}`;
-    const imageUrl = `${PORTFOLIO_BASE_URL}${PERSON.imagePath}`;
+    const imageUrl = absImage(person.imagePath);
+    const nameParts = String(person.name || '').trim().split(/\s+/);
+    const firstName = nameParts[0] || 'Md';
+    const lastName = nameParts.slice(1).join(' ') || 'Ikram';
 
     document.title = seo.title;
     document.documentElement.lang = 'en';
@@ -48,32 +56,31 @@ const PortfolioSEO = () => {
     upsertMeta('name', 'title', seo.title);
     upsertMeta('name', 'description', seo.description);
     upsertMeta('name', 'keywords', seo.keywords);
-    upsertMeta('name', 'author', `${PERSON.name}, ${PERSON.alternateNames[1]}`);
+    upsertMeta('name', 'author', [person.name, ...(person.alternateNames || [])].filter(Boolean).join(', '));
     upsertMeta('name', 'robots', 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1');
     upsertMeta('name', 'googlebot', 'index, follow');
 
     upsertLink('canonical', pageUrl);
 
     upsertMeta('property', 'og:type', 'profile');
-    upsertMeta('property', 'og:site_name', 'Md Ikram Portfolio');
+    upsertMeta('property', 'og:site_name', `${person.name} Portfolio`);
     upsertMeta('property', 'og:locale', 'en_US');
     upsertMeta('property', 'og:url', pageUrl);
     upsertMeta('property', 'og:title', seo.title);
     upsertMeta('property', 'og:description', seo.description);
     upsertMeta('property', 'og:image', imageUrl);
-    upsertMeta('property', 'og:image:alt', `${PERSON.name} — ${PERSON.jobTitle}`);
-    upsertMeta('property', 'profile:first_name', 'Md');
-    upsertMeta('property', 'profile:last_name', 'Ikram');
-    upsertMeta('property', 'profile:username', 'programmerikram');
+    upsertMeta('property', 'og:image:alt', `${person.name} — ${person.jobTitle}`);
+    upsertMeta('property', 'profile:first_name', firstName);
+    upsertMeta('property', 'profile:last_name', lastName);
 
     upsertMeta('name', 'twitter:card', 'summary_large_image');
     upsertMeta('name', 'twitter:url', pageUrl);
     upsertMeta('name', 'twitter:title', seo.title);
     upsertMeta('name', 'twitter:description', seo.description);
     upsertMeta('name', 'twitter:image', imageUrl);
-    upsertMeta('name', 'twitter:image:alt', `${PERSON.name} portfolio`);
+    upsertMeta('name', 'twitter:image:alt', `${person.name} portfolio`);
 
-    const jsonLd = buildPortfolioJsonLd(pathname);
+    const jsonLd = buildPortfolioJsonLd(pathname, data);
     let script = document.getElementById(SCRIPT_ID);
     if (!script) {
       script = document.createElement('script');
@@ -87,7 +94,7 @@ const PortfolioSEO = () => {
       const existing = document.getElementById(SCRIPT_ID);
       if (existing) existing.remove();
     };
-  }, [pathname]);
+  }, [pathname, data]);
 
   return null;
 };
