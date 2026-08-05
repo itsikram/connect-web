@@ -27,10 +27,8 @@ body.portfolio-menu-open {
   --pf-mobile-bar: 60px;
 
   position: relative;
-  display: grid;
-  grid-template-columns: var(--pf-sidebar) 1fr;
-  gap: 24px;
-  padding: 24px;
+  display: flex;
+  flex-direction: column;
   height: 100vh;
   overflow: hidden;
   color: var(--pf-text);
@@ -52,15 +50,32 @@ body.portfolio-menu-open {
     display: none;
   }
 
+  /* Sidebar + main only — keeps decorative nodes out of the grid */
+  .portfolio-layout {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: var(--pf-sidebar) minmax(0, 1fr);
+    gap: 24px;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    max-width: 100%;
+    padding: 24px;
+    box-sizing: border-box;
+  }
+
   /* —— Sidebar —— */
   .left-sidebar {
     position: relative;
-    z-index: 980;
+    z-index: 3;
     display: flex;
     flex-direction: column;
     gap: 12px;
     width: 100%;
-    height: calc(100vh - 48px);
+    max-width: var(--pf-sidebar);
+    height: 100%;
+    max-height: 100%;
     padding: 22px 18px;
     overflow-x: hidden;
     overflow-y: auto;
@@ -68,6 +83,8 @@ body.portfolio-menu-open {
     background: var(--pf-surface);
     border: 1px solid var(--pf-border);
     border-radius: var(--pf-radius);
+    grid-column: 1;
+    align-self: stretch;
 
     &::-webkit-scrollbar {
       width: 6px;
@@ -241,12 +258,18 @@ body.portfolio-menu-open {
   /* —— Main content —— */
   .content-container {
     position: relative;
-    z-index: 980;
-    height: calc(100vh - 48px);
+    z-index: 1;
+    grid-column: 2;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
     overflow-x: hidden;
     overflow-y: auto;
     padding-bottom: 32px;
     scroll-behavior: smooth;
+    box-sizing: border-box;
 
     &::-webkit-scrollbar {
       width: 8px;
@@ -272,10 +295,12 @@ body.portfolio-menu-open {
     position: relative;
     overflow: hidden;
     min-height: 420px;
+    max-width: 100%;
     display: flex;
     align-items: center;
     border-radius: var(--pf-radius);
     border: 1px solid var(--pf-border);
+    box-sizing: border-box;
     background:
       radial-gradient(900px 480px at 8% -20%, rgba(106, 119, 255, 0.28) 0%, transparent 55%),
       radial-gradient(700px 400px at 100% 100%, rgba(26, 31, 65, 0.9) 0%, transparent 50%),
@@ -383,10 +408,12 @@ body.portfolio-menu-open {
   .portfolio-section {
     margin-top: 20px;
     padding: clamp(20px, 3vw, 32px);
+    max-width: 100%;
     color: var(--pf-text);
     background: var(--pf-surface);
     border: 1px solid var(--pf-border);
     border-radius: var(--pf-radius);
+    box-sizing: border-box;
   }
 
   .portfolio-section:first-child {
@@ -859,17 +886,12 @@ body.portfolio-menu-open {
 
 @media (max-width: 1100px) {
   .portfolio-page-container {
-    grid-template-columns: 240px 1fr;
+    --pf-sidebar: 240px;
+  }
+
+  .portfolio-page-container .portfolio-layout {
     gap: 18px;
     padding: 18px;
-  }
-
-  .portfolio-page-container .left-sidebar {
-    height: calc(100vh - 36px);
-  }
-
-  .portfolio-page-container .content-container {
-    height: calc(100vh - 36px);
   }
 }
 
@@ -881,11 +903,19 @@ body.portfolio-menu-open {
   }
 
   .portfolio-page-container {
-    display: block;
+    display: flex;
+    flex-direction: column;
     height: auto;
     min-height: 100vh;
     padding: 0;
     overflow: visible;
+  }
+
+  .portfolio-page-container .portfolio-layout {
+    display: block;
+    padding: 0;
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
   .portfolio-page-container .portfolio-mobile-bar {
@@ -979,8 +1009,10 @@ body.portfolio-menu-open {
     left: 0;
     z-index: 1300;
     width: min(300px, 86vw);
+    max-width: min(300px, 86vw);
     height: 100vh;
     height: 100dvh;
+    max-height: 100dvh;
     margin: 0;
     border-radius: 0;
     border: 0;
@@ -988,6 +1020,7 @@ body.portfolio-menu-open {
     transform: translateX(-105%);
     transition: transform 0.28s ease;
     box-shadow: none;
+    grid-column: auto;
   }
 
   .portfolio-page-container.menu-open .left-sidebar {
@@ -996,7 +1029,10 @@ body.portfolio-menu-open {
   }
 
   .portfolio-page-container .content-container {
+    grid-column: auto;
+    width: 100%;
     height: auto;
+    max-height: none;
     min-height: calc(100vh - var(--pf-mobile-bar));
     padding: 16px;
     padding-bottom: 40px;
@@ -1017,6 +1053,10 @@ body.portfolio-menu-open {
 }
 
 @media (max-width: 640px) {
+  .portfolio-page-container .portfolio-layout {
+    padding: 0;
+  }
+
   .portfolio-page-container .content-container {
     padding: 12px;
     padding-bottom: 36px;

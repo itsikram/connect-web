@@ -1,6 +1,47 @@
 // Service Worker for Web Push Notifications and Offline Support
-const CACHE_NAME = 'connect-app-v3';
-const STATIC_CACHE_NAME = 'connect-static-v3';
+const CACHE_NAME = 'connect-app-v4';
+const STATIC_CACHE_NAME = 'connect-static-v4';
+
+const CALL_ACTIONS = [
+  { action: 'accept_call', title: 'Accept' },
+  { action: 'reject_call', title: 'Reject' },
+];
+
+const DEFAULT_CALL_RINGTONE = '/assets/audio/default-ringtone.mp3';
+
+function buildCallOpenUrl(data = {}, callAction = '') {
+  const callerId = data.callerId || data.from || '';
+  if (!callerId) return data.url || data.link || '/';
+  const params = new URLSearchParams({
+    incoming_call: '1',
+    channelName: data.channelName || '',
+    isAudio: data.isAudio || 'false',
+    callerId: String(callerId),
+    callerName: data.callerName || '',
+  });
+  if (callAction) params.set('call_action', callAction);
+  return `/message/${callerId}?${params.toString()}`;
+}
+
+async function focusOrOpenCallClient(urlToOpen, message) {
+  const clientList = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+  for (const client of clientList) {
+    if (client.url.includes(self.location.origin) && 'focus' in client) {
+      await client.focus();
+      if (message) {
+        try { client.postMessage(message); } catch (_) {}
+      }
+      if (urlToOpen && client.navigate) {
+        try { await client.navigate(urlToOpen); } catch (_) {}
+      }
+      return client;
+    }
+  }
+  if (clients.openWindow) {
+    return clients.openWindow(urlToOpen);
+  }
+  return null;
+}
 
 // Resources to cache during installation (only essential ones)
 // Other resources will be cached on-demand as they're loaded
@@ -229,6 +270,9 @@ self.addEventListener('push', (event) => {
   const payloadData = data.data || {};
   const isCall = payloadData.type === 'incoming_call';
 
+  const callActions =
+    Array.isArray(data.actions) && data.actions.length > 0 ? data.actions : CALL_ACTIONS;
+
   const options = {
     body: data.body || 'You have a new notification',
     icon: data.icon || payloadData.callerProfilePic || '/apple-touch-icon.png',
@@ -236,9 +280,11 @@ self.addEventListener('push', (event) => {
     image: data.image,
     tag: data.tag || (isCall ? `incoming-call-${payloadData.channelName || 'ring'}` : 'default'),
     data: payloadData,
-    actions: data.actions || [],
+    actions: isCall ? callActions : (data.actions || []),
     requireInteraction: isCall ? true : (data.requireInteraction || false),
-    silent: data.silent || false,
+    // Play ringtone where the platform allows a custom notification sound
+    silent: isCall ? false : (data.silent || false),
+    sound: isCall ? (data.sound || DEFAULT_CALL_RINGTONE) : data.sound,
     timestamp: data.timestamp || Date.now(),
     vibrate: isCall ? [300, 100, 300, 100, 300] : (data.vibrate || [200, 100, 200]),
     dir: 'ltr',
@@ -261,47 +307,65 @@ self.addEventListener('push', (event) => {
   })());
 });
 
-// Notification click event
+// Notification click event (body tap or Accept / Reject actions)
 self.addEventListener('notificationclick', (event) => {
   console.log('Notification click received:', event);
-  
+
   event.notification.close();
-  
+
   const data = event.notification.data || {};
   const isCall = data.type === 'incoming_call';
-  const callerId = data.callerId;
-  let urlToOpen = data.url || data.link || '/';
-  if (isCall && callerId) {
-    const params = new URLSearchParams({
-      incoming_call: '1',
-      channelName: data.channelName || '',
-      isAudio: data.isAudio || 'false',
-      callerId: String(callerId),
-      callerName: data.callerName || '',
-    });
-    urlToOpen = `/message/${callerId}?${params.toString()}`;
+  const action = event.action || '';
+
+  if (!isCall) {
+    const urlToOpen = data.url || data.link || '/';
+    event.waitUntil(focusOrOpenCallClient(urlToOpen, null));
+    return;
   }
-  
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true })
-      .then(async (clientList) => {
-        for (const client of clientList) {
-          if (client.url.includes(self.location.origin) && 'focus' in client) {
-            await client.focus();
-            if (isCall) {
-              client.postMessage({ type: 'INCOMING_CALL_PUSH', data });
-            }
-            if (urlToOpen && client.navigate) {
-              try { await client.navigate(urlToOpen); } catch (_) {}
-            }
-            return;
+
+  // Reject from notification action — notify open clients + open with reject if needed
+  if (action === 'reject_call') {
+    const urlToOpen = buildCallOpenUrl(data, 'reject');
+    event.waitUntil(
+      (async () => {
+        const clientList = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+        if (clientList.length) {
+          for (const client of clientList) {
+            try {
+              client.postMessage({ type: 'INCOMING_CALL_ACTION', action: 'reject', data });
+            } catch (_) {}
           }
+          const focused = clientList.find((c) => 'focus' in c);
+          if (focused) await focused.focus();
+          return;
         }
-        
-        if (clients.openWindow) {
-          return clients.openWindow(urlToOpen);
-        }
+        await focusOrOpenCallClient(urlToOpen, {
+          type: 'INCOMING_CALL_ACTION',
+          action: 'reject',
+          data,
+        });
+      })()
+    );
+    return;
+  }
+
+  // Accept from notification action — open app and auto-answer
+  if (action === 'accept_call') {
+    const urlToOpen = buildCallOpenUrl(data, 'accept');
+    event.waitUntil(
+      focusOrOpenCallClient(urlToOpen, {
+        type: 'INCOMING_CALL_ACTION',
+        action: 'accept',
+        data,
       })
+    );
+    return;
+  }
+
+  // Body tap — open incoming call UI (ringtone continues in-app)
+  const urlToOpen = buildCallOpenUrl(data);
+  event.waitUntil(
+    focusOrOpenCallClient(urlToOpen, { type: 'INCOMING_CALL_PUSH', data })
   );
 });
 

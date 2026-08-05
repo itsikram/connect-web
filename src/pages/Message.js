@@ -29,47 +29,99 @@ const Message = (props) => {
         return () => clearTimeout(timer);
     }, []);
 
-    // Fit message UI exactly under the measured site header (desktop + mobile).
+    // Fit message UI to the visual viewport (critical on iPhone when the keyboard opens).
     useEffect(() => {
         const root = document.documentElement;
         const body = document.body;
-        const prevOverflow = body.style.overflow;
+        const html = document.documentElement;
+        const prev = {
+            bodyOverflow: body.style.overflow,
+            bodyPosition: body.style.position,
+            bodyWidth: body.style.width,
+            bodyTop: body.style.top,
+            bodyHeight: body.style.height,
+            htmlOverflow: html.style.overflow,
+        };
 
         if (isMobile) {
             body.classList.add('message-page-mobile');
+            // Lock the document so iOS keyboard focus cannot scroll to a black void.
             body.style.overflow = 'hidden';
+            html.style.overflow = 'hidden';
+            body.style.position = 'fixed';
+            body.style.width = '100%';
+            body.style.top = '0';
+            body.style.height = '100%';
         }
 
-        const syncHeaderHeight = () => {
-            const header = document.getElementById('header');
-            const headerHeight = header ? Math.ceil(header.getBoundingClientRect().height) : (isMobile ? 56 : 70);
-            root.style.setProperty('--site-header-height', `${headerHeight}px`);
-
-            // Prefer visualViewport on iOS when the browser chrome changes.
-            const viewportHeight = window.visualViewport?.height || window.innerHeight;
-            const available = Math.max(240, Math.floor(viewportHeight - headerHeight));
-            root.style.setProperty('--message-mobile-height', `${available}px`);
+        const lockScrollTop = () => {
+            if (window.scrollY || window.pageYOffset || html.scrollTop || body.scrollTop) {
+                window.scrollTo(0, 0);
+                html.scrollTop = 0;
+                body.scrollTop = 0;
+            }
         };
 
-        syncHeaderHeight();
-        window.addEventListener('resize', syncHeaderHeight);
-        window.addEventListener('orientationchange', syncHeaderHeight);
-        window.visualViewport?.addEventListener('resize', syncHeaderHeight);
-        window.visualViewport?.addEventListener('scroll', syncHeaderHeight);
+        const syncViewport = () => {
+            const header = document.getElementById('header');
+            const headerHeight = header
+                ? Math.ceil(header.getBoundingClientRect().height)
+                : (isMobile ? 56 : 70);
+            root.style.setProperty('--site-header-height', `${headerHeight}px`);
+
+            const vv = window.visualViewport;
+            const vvHeight = vv?.height || window.innerHeight;
+            const vvOffsetTop = vv?.offsetTop || 0;
+            const keyboardOpen = isMobile && (window.innerHeight - vvHeight > 100);
+
+            if (keyboardOpen) {
+                // Fill the visible viewport while the keyboard is open.
+                // Using vv.offsetTop keeps the shell aligned when iOS shifts the visual viewport.
+                body.classList.add('message-keyboard-open');
+                root.style.setProperty('--message-vv-top', `${Math.round(vvOffsetTop)}px`);
+                root.style.setProperty('--message-mobile-height', `${Math.max(200, Math.floor(vvHeight))}px`);
+            } else {
+                body.classList.remove('message-keyboard-open');
+                root.style.setProperty('--message-vv-top', `${Math.round(vvOffsetTop + headerHeight)}px`);
+                root.style.setProperty(
+                    '--message-mobile-height',
+                    `${Math.max(240, Math.floor(vvHeight - headerHeight))}px`
+                );
+            }
+
+            if (isMobile) lockScrollTop();
+        };
+
+        syncViewport();
+        window.addEventListener('resize', syncViewport);
+        window.addEventListener('orientationchange', syncViewport);
+        window.addEventListener('focusin', syncViewport);
+        window.addEventListener('focusout', syncViewport);
+        window.visualViewport?.addEventListener('resize', syncViewport);
+        window.visualViewport?.addEventListener('scroll', syncViewport);
 
         const header = document.getElementById('header');
         const ro = typeof ResizeObserver !== 'undefined' && header
-            ? new ResizeObserver(syncHeaderHeight)
+            ? new ResizeObserver(syncViewport)
             : null;
         if (header && ro) ro.observe(header);
 
         return () => {
             body.classList.remove('message-page-mobile');
-            body.style.overflow = prevOverflow;
-            window.removeEventListener('resize', syncHeaderHeight);
-            window.removeEventListener('orientationchange', syncHeaderHeight);
-            window.visualViewport?.removeEventListener('resize', syncHeaderHeight);
-            window.visualViewport?.removeEventListener('scroll', syncHeaderHeight);
+            body.classList.remove('message-keyboard-open');
+            body.style.overflow = prev.bodyOverflow;
+            body.style.position = prev.bodyPosition;
+            body.style.width = prev.bodyWidth;
+            body.style.top = prev.bodyTop;
+            body.style.height = prev.bodyHeight;
+            html.style.overflow = prev.htmlOverflow;
+            root.style.removeProperty('--message-vv-top');
+            window.removeEventListener('resize', syncViewport);
+            window.removeEventListener('orientationchange', syncViewport);
+            window.removeEventListener('focusin', syncViewport);
+            window.removeEventListener('focusout', syncViewport);
+            window.visualViewport?.removeEventListener('resize', syncViewport);
+            window.visualViewport?.removeEventListener('scroll', syncViewport);
             if (ro) ro.disconnect();
         };
     }, [isMobile]);

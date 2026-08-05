@@ -69,6 +69,8 @@ const VideoCall = ({ myId }) => {
     const ringtoneAudio = useRef();
     const originalTitleRef = useRef(document?.title || '');
     const titleFlashIntervalRef = useRef(null);
+    const pendingAutoAcceptRef = useRef(false);
+    const answerCallRef = useRef(null);
 
     // Keep minimized bar duration in sync while minimized
     const minimizedDurationInterval = useRef(null);
@@ -805,6 +807,7 @@ const VideoCall = ({ myId }) => {
                 callerName: callerName || 'Unknown Caller',
                 callerProfilePic: callerProfilePic || config?.defaultProfile,
                 callType: 'video',
+                callData: { from, channelName },
                 onClick: () => {
                     window.focus();
                 }
@@ -822,6 +825,7 @@ const VideoCall = ({ myId }) => {
         const onPushIncoming = (event) => {
             const detail = event.detail || {};
             if (detail.isAudio) return;
+            if (detail.autoAccept) pendingAutoAcceptRef.current = true;
             applyIncomingVideoCall({
                 from: detail.from,
                 channelName: detail.channelName,
@@ -830,6 +834,20 @@ const VideoCall = ({ myId }) => {
             });
         };
         window.addEventListener('incomingCallFromPush', onPushIncoming);
+
+        const onRejectFromPush = (event) => {
+            const detail = event.detail || {};
+            if (detail.isAudio) return;
+            stopRingtone();
+            stopFlashingTitle();
+            const to = detail.from;
+            const channelName = detail.channelName;
+            if (to && channelName) {
+                socket.emit('video-call-reject', { to, friendId: myId, channelName });
+            }
+            cleanupVideoCall();
+        };
+        window.addEventListener('rejectCallFromPush', onRejectFromPush);
 
         socket.on('call-accepted', ({ channelName, isAudio }) => {
             // Only handle video call acceptance
@@ -894,10 +912,27 @@ const VideoCall = ({ myId }) => {
             socket.off('updated-call-status', handleUpdatedCallStatus);
             window.removeEventListener('startVideoCall', handleOutgoingVideoCall);
             window.removeEventListener('incomingCallFromPush', onPushIncoming);
+            window.removeEventListener('rejectCallFromPush', onRejectFromPush);
             stopRingtone(); // Stop ringtone on cleanup
             stopFlashingTitle();
         };
     }, [startCall, cleanupVideoCall, endCall, myId, callAccepted, receivingCall, caller, mySettings]);
+
+    // Auto-answer when user pressed Accept on the system notification
+    useEffect(() => {
+        if (
+            pendingAutoAcceptRef.current &&
+            receivingCall &&
+            incomingCall &&
+            !callAccepted
+        ) {
+            pendingAutoAcceptRef.current = false;
+            const t = setTimeout(() => {
+                answerCallRef.current?.();
+            }, 250);
+            return () => clearTimeout(t);
+        }
+    }, [receivingCall, incomingCall, callAccepted]);
 
     // Resume ringtone playback when tab becomes visible
     useEffect(() => {
@@ -986,6 +1021,10 @@ const VideoCall = ({ myId }) => {
         socket.emit('answer-call', { to: incomingCall.from, channelName: incomingCall.channelName });
         await startCall(incomingCall.channelName);
     }, [incomingCall, startCall]);
+
+    useEffect(() => {
+        answerCallRef.current = answerCall;
+    }, [answerCall]);
 
     const handleMicrophoneClick = useCallback(async () => {
         // Find the audio track specifically using 'kind' property

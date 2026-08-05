@@ -27,7 +27,6 @@ const PortfolioShell = () => {
     return () => document.body.classList.remove('portfolio-menu-open');
   }, [menuOpen]);
 
-  // First visit with no cache: wait for API — don't flash defaults
   if (loading && !data) {
     return (
       <div className="portfolio-page-container portfolio-boot">
@@ -88,39 +87,42 @@ const PortfolioShell = () => {
         />
       )}
 
-      <aside id="portfolio-sidebar" className="left-sidebar">
-        <div className="sidebar-brand">
-          <p className="my-name">{name}</p>
-          <p className="sidebar-role">
-            {jobTitle}
-            {altName ? ` · ${altName}` : ''}
-          </p>
-        </div>
-        <div className="image-container">
-          <img
-            className="avatar-image"
-            src={avatar}
-            alt={`${name}${jobTitle ? `, ${jobTitle}` : ''}`}
-            width={160}
-            height={160}
-          />
-        </div>
-        <div className="sidebar-divider" />
-        <PortfolioMenu onNavigate={() => setMenuOpen(false)} />
-        <a className="sidebar-cta btn btn-primary" href={cvUrl} download>
-          Download CV
-        </a>
-      </aside>
+      {/* Only sidebar + main participate in the layout grid */}
+      <div className="portfolio-layout">
+        <aside id="portfolio-sidebar" className="left-sidebar">
+          <div className="sidebar-brand">
+            <p className="my-name">{name}</p>
+            <p className="sidebar-role">
+              {jobTitle}
+              {altName ? ` · ${altName}` : ''}
+            </p>
+          </div>
+          <div className="image-container">
+            <img
+              className="avatar-image"
+              src={avatar}
+              alt={`${name}${jobTitle ? `, ${jobTitle}` : ''}`}
+              width={160}
+              height={160}
+            />
+          </div>
+          <div className="sidebar-divider" />
+          <PortfolioMenu onNavigate={() => setMenuOpen(false)} />
+          <a className="sidebar-cta btn btn-primary" href={cvUrl} download>
+            Download CV
+          </a>
+        </aside>
 
-      <main className="content-container" id="portfolio-main">
-        <Outlet />
-        <footer className="portfolio-seo-footer">
-          <p>
-            © {year} <strong>{name}</strong>
-            {footer ? ` — ${footer}` : ''}
-          </p>
-        </footer>
-      </main>
+        <main className="content-container" id="portfolio-main">
+          <Outlet />
+          <footer className="portfolio-seo-footer">
+            <p>
+              © {year} <strong>{name}</strong>
+              {footer ? ` — ${footer}` : ''}
+            </p>
+          </footer>
+        </main>
+      </div>
     </div>
   );
 };

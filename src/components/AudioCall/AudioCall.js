@@ -43,6 +43,8 @@ const AudioCall = ({ myId }) => {
     const ringtoneAudio = useRef();
     const isTerminating = useRef(false);
     const receivingCallRef = useRef(receivingCall);
+    const pendingAutoAcceptRef = useRef(false);
+    const answerCallRef = useRef(null);
     
     // Agora RTC refs for audio (fresh client per call)
     const clientRef = useRef(null);
@@ -542,6 +544,7 @@ const AudioCall = ({ myId }) => {
                 callerName: callerName || 'Unknown Caller',
                 callerProfilePic: callerProfilePic || config?.defaultProfile,
                 callType: 'audio',
+                callData: { from, channelName },
                 onClick: () => {
                     window.focus();
                 }
@@ -560,6 +563,7 @@ const AudioCall = ({ myId }) => {
         const onPushIncoming = (event) => {
             const detail = event.detail || {};
             if (!detail.isAudio) return;
+            if (detail.autoAccept) pendingAutoAcceptRef.current = true;
             applyIncomingAudioCall({
                 from: detail.from,
                 channelName: detail.channelName,
@@ -568,6 +572,19 @@ const AudioCall = ({ myId }) => {
             });
         };
         window.addEventListener('incomingCallFromPush', onPushIncoming);
+
+        const onRejectFromPush = (event) => {
+            const detail = event.detail || {};
+            if (!detail.isAudio) return;
+            stopRingtone();
+            const to = detail.from;
+            const channelName = detail.channelName;
+            if (to && channelName) {
+                socket.emit('audio-call-reject', { to, channelName });
+            }
+            cleanupAudioCall();
+        };
+        window.addEventListener('rejectCallFromPush', onRejectFromPush);
 
         // Listen for audio calls initiated by this user (outgoing calls)
         const handleOutgoingAudioCall = (event) => {
@@ -634,6 +651,7 @@ const AudioCall = ({ myId }) => {
         return () => {
             socket.off('incoming-audio-call');
             window.removeEventListener('incomingCallFromPush', onPushIncoming);
+            window.removeEventListener('rejectCallFromPush', onRejectFromPush);
             socket.off('call-accepted');
             socket.off('audio-call-ended');
             socket.off('audio-call-cancelled');
@@ -645,6 +663,22 @@ const AudioCall = ({ myId }) => {
             socket.off('updated-call-status', handleUpdatedCallStatus);
         };
     }, [startCall, cleanupAudioCall, caller, receivingCall, callAccepted]); // Include deps
+
+    // Auto-answer when user pressed Accept on the system notification
+    useEffect(() => {
+        if (
+            pendingAutoAcceptRef.current &&
+            receivingCall &&
+            incomingCall &&
+            !callAccepted
+        ) {
+            pendingAutoAcceptRef.current = false;
+            const t = setTimeout(() => {
+                answerCallRef.current?.();
+            }, 250);
+            return () => clearTimeout(t);
+        }
+    }, [receivingCall, incomingCall, callAccepted]);
 
     // Resume ringtone playback when tab becomes visible
     useEffect(() => {
@@ -724,6 +758,10 @@ const AudioCall = ({ myId }) => {
         socket.emit('answer-call', { to: incomingCall.from, channelName: incomingCall.channelName, isAudio: true });
         await startCall(incomingCall.channelName);
     }, [incomingCall, startCall]);
+
+    useEffect(() => {
+        answerCallRef.current = answerCall;
+    }, [answerCall]);
 
     // End call - called when user clicks end button
     const endCall = useCallback(async () => {

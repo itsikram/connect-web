@@ -774,10 +774,28 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
                                 placeholder='Message' 
                                 id='newMessageInput' 
                                 className='new-message-input' 
-                                onFocus={() => { addTyping(); setShowAttachTray(false); }} 
+                                onFocus={() => {
+                                    addTyping();
+                                    setShowAttachTray(false);
+                                    // iPhone Safari/PWA: focusing the composer scrolls the page and can
+                                    // leave a black void behind the fixed message shell. Re-lock to top.
+                                    const lock = () => {
+                                        window.scrollTo(0, 0);
+                                        document.documentElement.scrollTop = 0;
+                                        document.body.scrollTop = 0;
+                                    };
+                                    lock();
+                                    requestAnimationFrame(lock);
+                                    setTimeout(lock, 50);
+                                    setTimeout(lock, 300);
+                                    window.dispatchEvent(new Event('resize'));
+                                }}
                                 onBlur={removeTyping} 
                                 disabled={isRecording || isUploadingAudio}
                                 style={{ fontSize: '16px' }}
+                                enterKeyHint="send"
+                                autoComplete="off"
+                                autoCorrect="on"
                             />
                             <div
                                 onClick={handleEmojiBtnClick.bind(this)}
