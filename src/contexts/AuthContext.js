@@ -271,9 +271,10 @@ export const AuthProvider = ({ children }) => {
     const handleForgotPassword = useCallback(async (email) => {
         setAuthError(null);
         try {
+            const serverBase = String(process.env.REACT_APP_SERVER_ADDR || '').trim().replace(/\/+$/, '');
             const response = await axios.post(
-                `${process.env.REACT_APP_SERVER_ADDR}/api/auth/forgot-password`,
-                { email }
+                `${serverBase}/api/auth/forgot-password`,
+                { email: String(email || '').trim().toLowerCase() }
             );
 
             return {
@@ -290,8 +291,9 @@ export const AuthProvider = ({ children }) => {
     const handleResetPassword = useCallback(async (token, password, confirmPassword) => {
         setAuthError(null);
         try {
+            const serverBase = String(process.env.REACT_APP_SERVER_ADDR || '').trim().replace(/\/+$/, '');
             const response = await axios.post(
-                `${process.env.REACT_APP_SERVER_ADDR}/api/auth/reset-password/${token}`,
+                `${serverBase}/api/auth/reset-password/${token}`,
                 { password, confirmPassword }
             );
 

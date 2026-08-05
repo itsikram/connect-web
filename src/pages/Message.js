@@ -30,6 +30,7 @@ const Message = (props) => {
     }, []);
 
     // Fit message UI to the visual viewport (critical on iPhone when the keyboard opens).
+    // Avoid chasing every visualViewport scroll tick — that causes a shake loop with iOS.
     useEffect(() => {
         const root = document.documentElement;
         const body = document.body;
@@ -52,17 +53,15 @@ const Message = (props) => {
             body.style.width = '100%';
             body.style.top = '0';
             body.style.height = '100%';
+            window.scrollTo(0, 0);
         }
 
-        const lockScrollTop = () => {
-            if (window.scrollY || window.pageYOffset || html.scrollTop || body.scrollTop) {
-                window.scrollTo(0, 0);
-                html.scrollTop = 0;
-                body.scrollTop = 0;
-            }
-        };
+        let lastHeight = -1;
+        let lastTop = -1;
+        let wasKeyboardOpen = false;
+        let rafId = 0;
 
-        const syncViewport = () => {
+        const applyViewport = () => {
             const header = document.getElementById('header');
             const headerHeight = header
                 ? Math.ceil(header.getBoundingClientRect().height)
@@ -70,35 +69,50 @@ const Message = (props) => {
             root.style.setProperty('--site-header-height', `${headerHeight}px`);
 
             const vv = window.visualViewport;
-            const vvHeight = vv?.height || window.innerHeight;
-            const vvOffsetTop = vv?.offsetTop || 0;
-            const keyboardOpen = isMobile && (window.innerHeight - vvHeight > 100);
+            const vvHeight = Math.round(vv?.height || window.innerHeight);
+            // Prefer layout viewport for keyboard detection — more stable than innerHeight alone
+            const layoutHeight = Math.round(window.innerHeight || vvHeight);
+            const keyboardOpen = isMobile && (layoutHeight - vvHeight > 120);
+
+            let nextTop;
+            let nextHeight;
 
             if (keyboardOpen) {
-                // Fill the visible viewport while the keyboard is open.
-                // Using vv.offsetTop keeps the shell aligned when iOS shifts the visual viewport.
                 body.classList.add('message-keyboard-open');
-                root.style.setProperty('--message-vv-top', `${Math.round(vvOffsetTop)}px`);
-                root.style.setProperty('--message-mobile-height', `${Math.max(200, Math.floor(vvHeight))}px`);
+                // Pin to the visible area from the top; do not chase offsetTop (causes shake).
+                nextTop = 0;
+                nextHeight = Math.max(200, vvHeight);
             } else {
                 body.classList.remove('message-keyboard-open');
-                root.style.setProperty('--message-vv-top', `${Math.round(vvOffsetTop + headerHeight)}px`);
-                root.style.setProperty(
-                    '--message-mobile-height',
-                    `${Math.max(240, Math.floor(vvHeight - headerHeight))}px`
-                );
+                nextTop = headerHeight;
+                nextHeight = Math.max(240, vvHeight - headerHeight);
             }
 
-            if (isMobile) lockScrollTop();
+            const heightDelta = Math.abs(nextHeight - lastHeight);
+            const topDelta = Math.abs(nextTop - lastTop);
+            const stateChanged = keyboardOpen !== wasKeyboardOpen;
+
+            // Only rewrite CSS vars when the change is meaningful — skips animation jitter.
+            if (stateChanged || heightDelta >= 16 || topDelta >= 16 || lastHeight < 0) {
+                root.style.setProperty('--message-vv-top', `${nextTop}px`);
+                root.style.setProperty('--message-mobile-height', `${nextHeight}px`);
+                lastHeight = nextHeight;
+                lastTop = nextTop;
+            }
+
+            wasKeyboardOpen = keyboardOpen;
         };
 
-        syncViewport();
+        const syncViewport = () => {
+            if (rafId) cancelAnimationFrame(rafId);
+            rafId = requestAnimationFrame(applyViewport);
+        };
+
+        applyViewport();
         window.addEventListener('resize', syncViewport);
         window.addEventListener('orientationchange', syncViewport);
-        window.addEventListener('focusin', syncViewport);
-        window.addEventListener('focusout', syncViewport);
+        // visualViewport.resize is enough for keyboard; scroll chasing causes shake
         window.visualViewport?.addEventListener('resize', syncViewport);
-        window.visualViewport?.addEventListener('scroll', syncViewport);
 
         const header = document.getElementById('header');
         const ro = typeof ResizeObserver !== 'undefined' && header
@@ -107,6 +121,7 @@ const Message = (props) => {
         if (header && ro) ro.observe(header);
 
         return () => {
+            if (rafId) cancelAnimationFrame(rafId);
             body.classList.remove('message-page-mobile');
             body.classList.remove('message-keyboard-open');
             body.style.overflow = prev.bodyOverflow;
@@ -116,12 +131,10 @@ const Message = (props) => {
             body.style.height = prev.bodyHeight;
             html.style.overflow = prev.htmlOverflow;
             root.style.removeProperty('--message-vv-top');
+            root.style.removeProperty('--message-mobile-height');
             window.removeEventListener('resize', syncViewport);
             window.removeEventListener('orientationchange', syncViewport);
-            window.removeEventListener('focusin', syncViewport);
-            window.removeEventListener('focusout', syncViewport);
             window.visualViewport?.removeEventListener('resize', syncViewport);
-            window.visualViewport?.removeEventListener('scroll', syncViewport);
             if (ro) ro.disconnect();
         };
     }, [isMobile]);

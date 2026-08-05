@@ -4,6 +4,7 @@ body:has(.portfolio-page-container) #main-container {
   padding: 0;
   margin: 0;
   height: 100vh;
+  height: 100svh;
   overflow: hidden;
 }
 
@@ -30,6 +31,7 @@ body.portfolio-menu-open {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100svh;
   overflow: hidden;
   color: var(--pf-text);
   background: var(--pf-bg);
@@ -899,6 +901,7 @@ body.portfolio-menu-open {
   body:has(.portfolio-page-container) #main-container {
     height: auto;
     min-height: 100vh;
+    min-height: 100svh;
     overflow: auto;
   }
 
@@ -907,6 +910,7 @@ body.portfolio-menu-open {
     flex-direction: column;
     height: auto;
     min-height: 100vh;
+    min-height: 100svh;
     padding: 0;
     overflow: visible;
   }

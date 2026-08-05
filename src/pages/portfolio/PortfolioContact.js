@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
-import config from '../../config/config.json';
 import { usePortfolio } from '../../contexts/PortfolioContext';
+
+function getServerBase() {
+  const raw = process.env.REACT_APP_SERVER_ADDR || '';
+  return String(raw).trim().replace(/\/+$/, '') || 'https://connect-server-7h7d.onrender.com';
+}
 
 const PortfolioContact = () => {
   const { data, loading } = usePortfolio();
@@ -24,12 +28,12 @@ const PortfolioContact = () => {
 
     try {
       const response = await axios.post(
-        config?.mailApiUrl,
+        `${getServerBase()}/api/portfolio/contact`,
         {
-          name: form.name,
-          email: form.email,
-          message: form.message,
-          subject: `${contactPage.mailSubjectPrefix || 'New message from Connect Portfolio'} — ${form.name}`,
+          name: form.name.trim(),
+          email: form.email.trim(),
+          message: form.message.trim(),
+          subject: `${contactPage.mailSubjectPrefix || 'New message from Connect Portfolio'} — ${form.name.trim()}`,
         },
         {
           headers: {
@@ -38,19 +42,24 @@ const PortfolioContact = () => {
         }
       );
 
-      if (response.status === 200) {
+      if (response.status === 200 && response.data?.success !== false) {
         toast.success('Email sent successfully. Thank you for reaching out.', {
           position: 'top-right',
           autoClose: 5000,
         });
         setForm({ name: '', email: '', message: '' });
+      } else {
+        throw new Error(response.data?.message || 'Failed to send');
       }
     } catch (err) {
       console.error('Error sending mail:', err.response?.data || err.message);
-      toast.error('Failed to send email. Please try again or email me directly.', {
-        position: 'top-right',
-        autoClose: 5000,
-      });
+      toast.error(
+        err.response?.data?.message || 'Failed to send email. Please try again or email me directly.',
+        {
+          position: 'top-right',
+          autoClose: 5000,
+        }
+      );
     } finally {
       setSending(false);
     }

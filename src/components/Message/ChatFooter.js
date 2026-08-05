@@ -777,18 +777,11 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
                                 onFocus={() => {
                                     addTyping();
                                     setShowAttachTray(false);
-                                    // iPhone Safari/PWA: focusing the composer scrolls the page and can
-                                    // leave a black void behind the fixed message shell. Re-lock to top.
-                                    const lock = () => {
+                                    // Body is already position:fixed on mobile message page.
+                                    // Avoid repeated scrollTo/resize — that fights iOS and shakes the UI.
+                                    if (document.body.classList.contains('message-page-mobile')) {
                                         window.scrollTo(0, 0);
-                                        document.documentElement.scrollTop = 0;
-                                        document.body.scrollTop = 0;
-                                    };
-                                    lock();
-                                    requestAnimationFrame(lock);
-                                    setTimeout(lock, 50);
-                                    setTimeout(lock, 300);
-                                    window.dispatchEvent(new Event('resize'));
+                                    }
                                 }}
                                 onBlur={removeTyping} 
                                 disabled={isRecording || isUploadingAudio}

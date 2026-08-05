@@ -77,7 +77,8 @@ const ParticlesBackground: React.FC<ParticleBackgroundProps> = ({ id = 'tspartic
             onClick: {
               enable: false,
             },
-            resize: true,
+            // Keyboard open/close fires resize and reflows the canvas → visible shake on mobile
+            resize: typeof window !== 'undefined' ? window.innerWidth > 992 : true,
           },
         },
         detectRetina: true,
