@@ -1645,16 +1645,21 @@
   order: 0;
 }
 
-.modern-message-container #chatBox .chat-body .chat-message-list .chat-message-container.message-sent .chat-message-seen-status {
-  position: relative !important;
-  right: auto !important;
-  bottom: auto !important;
-  margin: 0 0 2px 0 !important;
-  flex: 0 0 16px !important;
-  width: 16px !important;
-  height: 16px !important;
-  visibility: visible;
-  align-self: flex-end !important;
+.modern-message-container #chatBox .chat-body .chat-message-list .chat-message-container.message-sent .chat-message-profilePic {
+  order: 1;
+}
+
+.message-seen-check {
+  margin-left: 6px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.7rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+
+.message-sent .message-seen-check {
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .chat-message-profilePic {

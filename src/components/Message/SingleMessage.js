@@ -451,15 +451,22 @@ const SingleMessage = ({ index, msg, friendProfile, messages, setMessages, setRe
                         <div className='message-meta'>
                             <span className='message-time'>{getMessageTime(msg.timestamp)}</span>
                             <span className='message-react'><i>👍</i></span>
+                            {msg.isSeen ? (
+                                <span className='message-seen-check' title='Seen' aria-label='Seen'>
+                                    <i className="fas fa-check-double"></i>
+                                </span>
+                            ) : null}
                         </div>
 
                     </div>
 
-                    {
-                        <div className={`chat-message-seen-status ${msg.isSeen ? 'message-seen' : 'message-unseen'}`}>
-                            <img src={friendProfile.profilePic} alt='Seen' />
-                        </div>
-                    }
+                    <div className='chat-message-profilePic'>
+                        <UserPP
+                            profilePic={`${myProfile.profilePic || ''}`}
+                            profile={myId}
+                            active={false}
+                        />
+                    </div>
                 </div>
             )
         }
