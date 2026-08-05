@@ -45,7 +45,8 @@ const MessageSetting = () => {
         <>
             <div className='message-setting'>
                 <div className='setting-field-container'>
-                    <h3 className='text-center'>Message Settings</h3>
+                    <h3>Message Settings</h3>
+                    <p className="setting-section-desc">Control messaging delivery and chat preferences.</p>
                     <form>
                         {/* <div className="form-group mb-2">
                             <label for="username">First Name</label>

@@ -81,7 +81,8 @@ const PrivacySetting = () => {
         <>
             <div className='profile-setting'>
                 <div className='setting-field-container'>
-                    <h3 className='text-center'>Privacy Settings</h3>
+                    <h3>Privacy Settings</h3>
+                    <p className="setting-section-desc">Control who can see your posts, timeline, and location.</p>
                     <form onSubmit={handleSave}>
 
                         <div className="form-group mb-2">

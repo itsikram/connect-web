@@ -23,7 +23,8 @@ const NotificationSetting = () => {
         <>
             <div className='message-setting'>
                 <div className='setting-field-container'>
-                    <h3 className='text-center'>Notification Settings</h3>
+                    <h3>Notification Settings</h3>
+                    <p className="setting-section-desc">Choose which alerts you get on Connect and by email.</p>
                     <form>
                         <div className="form-check form-switch my-3">
                             <input type="checkbox" className="form-check-input" id="friendRewReceived" />

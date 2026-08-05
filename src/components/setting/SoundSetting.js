@@ -51,7 +51,8 @@ const SoundSetting = () => {
         <>
             <div className='profile-setting'>
                 <div className='setting-field-container'>
-                    <h3 className='text-center'>Sound Settings</h3>
+                    <h3>Sound Settings</h3>
+                    <p className="setting-section-desc">Choose which sounds play for calls, messages, and alerts.</p>
                     <form>
                         <div className="form-group mb-2">
                             <label for="ringTone">Calling Ringtones</label>

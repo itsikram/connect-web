@@ -6,7 +6,7 @@ import $ from 'jquery'
 import { useSelector } from 'react-redux'
 import UserPP from "../UserPP";
 import { Link } from "react-router-dom";
-import { Container, Row, Col } from 'react-bootstrap';
+import { Container } from 'react-bootstrap';
 import ImageSkleton from '../../skletons/post/ImageSkleton';
 import ModalContainer from '../modal/ModalContainer';
 import useIsMobile from '../../utils/useIsMobile';
@@ -23,6 +23,9 @@ import Rlove from "../../assets/images/reacts/reactLove.svg";
 import Rhaha from "../../assets/images/reacts/reactHaha.svg";
 import config from "../../config/config.json";
 import "./PostCard.css";
+import "./SharePostModal.css";
+import "./CommentStyles.css";
+import "./SinglePost.css";
 const default_pp_src = config?.defaultProfile;
 
 
@@ -559,32 +562,24 @@ const SinglePost = () => {
                                         <div className='modal-body'>
                                             <div className="share-post-container">
                                                 <div className="share-post-header">
-                                                    <div className="row">
-                                                        <div className="col-1">
-                                                            <UserPP profilePic={myProfile.profilePic}></UserPP>
-
+                                                    <div className="share-post-user">
+                                                        <div className="share-post-avatar">
+                                                            <UserPP profilePic={myProfile.profilePic} profile={myProfile._id} />
                                                         </div>
-                                                        <div className="col-3">
-                                                            <h3>{myProfile.fullName}</h3>
-                                                        </div>
-                                                    </div>
-                                                    <div className="row">
-                                                        <div className="col">
-                                                            Your Sharing {postData.author.fullName || 'Someone'}'s Post
+                                                        <div className="share-post-user-meta">
+                                                            <h3 className="share-post-name" title={myProfile.fullName}>{myProfile.fullName}</h3>
+                                                            <p className="share-post-context">
+                                                                You're sharing {postData.author.fullName || 'Someone'}'s post
+                                                            </p>
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div className="share-post-body my-3">
-                                                    <textarea className="form-control" rows="3" onChange={handleShareCapChange.bind(this)} placeholder="What's On Your Mind?"></textarea>
-                                                    <div className="share-post-button text-end mt-2">
+                                                <div className="share-post-body">
+                                                    <textarea className="form-control" rows="3" onChange={handleShareCapChange.bind(this)} placeholder="What's on your mind?"></textarea>
+                                                    <div className="share-post-button">
                                                         <button className="btn btn-primary" onClick={onClickShareNow}>Share Now</button>
                                                     </div>
                                                 </div>
-
-                                                <div className="share-post-footer">
-                                                    {/* <button className="btn btn-primary">Share Now</button> */}
-                                                </div>
-
                                             </div>
                                         </div>
 
@@ -807,32 +802,30 @@ const SinglePost = () => {
                                             <div className='modal-body'>
                                                 <div className="share-post-container">
                                                     <div className="share-post-header">
-                                                        <div className="row">
-                                                            <div className="col-1">
-                                                                <UserPP profilePic={myProfile.profilePic}></UserPP>
-
+                                                        <div className="share-post-user">
+                                                            <div className="share-post-avatar">
+                                                                <UserPP profilePic={myProfile.profilePic} profile={myProfile._id} />
                                                             </div>
-                                                            <div className="col-3">
-                                                                <h3>{myProfile.fullName}</h3>
-                                                            </div>
-                                                        </div>
-                                                        <div className="row">
-                                                            <div className="col">
-                                                                Your Sharing {postData.author.fullName || 'Someone'}'s Post
+                                                            <div className="share-post-user-meta">
+                                                                <h3 className="share-post-name" title={myProfile.fullName}>{myProfile.fullName}</h3>
+                                                                <p className="share-post-context">
+                                                                    You're sharing {postData.author.fullName || 'Someone'}'s post
+                                                                </p>
                                                             </div>
                                                         </div>
                                                     </div>
-                                                    <div className="share-post-body my-3">
-                                                        <textarea className="form-control" onChange={(e) => setShareCap(e.target.value)} value={shareCap} ></textarea>
-                                                        <div className="share-post-button text-end mt-2">
+                                                    <div className="share-post-body">
+                                                        <textarea
+                                                            className="form-control"
+                                                            rows="3"
+                                                            onChange={(e) => setShareCap(e.target.value)}
+                                                            value={shareCap}
+                                                            placeholder="What's on your mind?"
+                                                        ></textarea>
+                                                        <div className="share-post-button">
                                                             <button className="btn btn-primary" onClick={onClickShareNow}>Share Now</button>
                                                         </div>
                                                     </div>
-
-                                                    <div className="share-post-footer">
-                                                        {/* <button className="btn btn-primary">Share Now</button> */}
-                                                    </div>
-
                                                 </div>
                                             </div>
 
@@ -853,67 +846,83 @@ const SinglePost = () => {
 
 
 
+    const viewers = Array.isArray(postData?.viewers) ? postData.viewers : [];
+    const commentCount = typeof totalComments === 'number' ? totalComments : (postData?.comments?.length || 0);
+
     return (
-        <div>
+        <div className="sp-page">
+            <Container className="single-post-container" fluid="lg">
+                <div className="sp-topbar">
+                    <button
+                        type="button"
+                        className="sp-back-btn"
+                        onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}
+                        aria-label="Go back"
+                    >
+                        <i className="fas fa-arrow-left" aria-hidden="true"></i>
+                        Back
+                    </button>
+                    <h1 className="sp-topbar-title">
+                        {isEditMode ? 'Edit post' : 'Post'}
+                    </h1>
+                </div>
 
-            <Container className='single-post-container' >
-                <Row>
-                    <Col md="6" className='br'>
-                        <div id="post-container">
-                            <div>
-                                {postData && (<PostContent />)}
-
-                            </div>
-
+                {!postData ? (
+                    <div className="sp-loading" role="status" aria-live="polite">
+                        <div className="sp-loading-spinner" />
+                        <span>Loading post…</span>
+                    </div>
+                ) : (
+                    <div className="sp-layout">
+                        <div className="sp-main-col">
+                            <section className="sp-panel sp-post-panel" id="post-container">
+                                <PostContent />
+                            </section>
                         </div>
 
-                    </Col>
+                        <aside className="sp-side-col">
+                            <section className="sp-panel sp-comments-panel" aria-label="Comments">
+                                <div className="sp-panel-head">
+                                    <h2 className="section-title">Comments</h2>
+                                    <span className="sp-panel-count">{commentCount}</span>
+                                </div>
+                                <div className="sp-comments-container">
+                                    <PostComment
+                                        post={postData}
+                                        commentState={setTotalComments}
+                                        allComments={allComments}
+                                        setAllComments={setAllComments}
+                                        myProfile={myProfile}
+                                        authProfile={authProfileId}
+                                        isEditMode={isEditMode}
+                                        authProfilePicture={authProfilePicture}
+                                    />
+                                </div>
+                            </section>
 
-                    <Col md="3" className='br'>
-                        <div className='sp-reacts-container'>
-                            <h4 className='section-title'>Views {postData.viewers && `(${postData.viewers.length})`}</h4>
-
-                            <ul className='sp-reacts'>
-
-                                {postData.viewers && postData.viewers.map((item, index) => {
-
-                                    return (
-
-                                        <SingleReactor key={index} reacts={postData.reacts} viewer={item._id} />
-
-                                    )
-
-                                })}
-
-
-                            </ul>
-                        </div>
-                    </Col>
-                    <Col md="3">
-                        <div className='sp-comments-container'>
-                            <h4 className='section-title'>Comments {postData?.comments && `(${postData?.comments.length})`}</h4>
-                            {postData && (
-                                <PostComment
-                                    post={postData}
-                                    commentState={setTotalComments}
-                                    allComments={allComments}
-                                    setAllComments={setAllComments}
-                                    myProfile={myProfile}
-                                    authProfile={authProfileId}
-                                    isEditMode={isEditMode}
-                                    authProfilePicture={authProfilePicture}
-                                />
-                            )}
-                        </div>
-
-
-                    </Col>
-
-                </Row>
-
+                            <section className="sp-panel sp-views-panel" aria-label="People who viewed this post">
+                                <div className="sp-panel-head">
+                                    <h2 className="section-title">Views</h2>
+                                    <span className="sp-panel-count">{viewers.length}</span>
+                                </div>
+                                {viewers.length > 0 ? (
+                                    <ul className="sp-reacts">
+                                        {viewers.map((item) => (
+                                            <SingleReactor
+                                                key={item._id || item}
+                                                reacts={postData.reacts}
+                                                viewer={item._id || item}
+                                            />
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <div className="sp-empty-state">No views yet</div>
+                                )}
+                            </section>
+                        </aside>
+                    </div>
+                )}
             </Container>
-
-
         </div>
     );
 }

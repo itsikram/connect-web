@@ -18,6 +18,7 @@ import { addPost } from "../../services/actions/postActions";
 import config from "../../config/config.json";
 import "./CommentStyles.css";
 import "./PostCard.css";
+import "./SharePostModal.css";
 import Rlike from "../../assets/images/reacts/reactLike.svg";
 import Rlove from "../../assets/images/reacts/reactLove.svg";
 import Rhaha from "../../assets/images/reacts/reactHaha.svg";
@@ -689,32 +690,29 @@ const Post = React.memo(({ data, postContainer, index }) => {
                                                 <div className="modal-body">
                                                     <div className="share-post-container">
                                                         <div className="share-post-header">
-                                                            <div className="row">
-                                                                <div className="col-1">
-                                                                    <UserPP profilePic={myProfile.profilePic}></UserPP>
-
+                                                            <div className="share-post-user">
+                                                                <div className="share-post-avatar">
+                                                                    <UserPP profilePic={myProfile.profilePic} profile={myProfile._id} />
                                                                 </div>
-                                                                <div className="col-6">
-                                                                    <h3>{myProfile.fullName}</h3>
-                                                                </div>
-                                                            </div>
-                                                            <div className="row">
-                                                                <div className="col">
-                                                                    You're Sharing {post.author.fullName || 'Someone'}'s Post
+                                                                <div className="share-post-user-meta">
+                                                                    <h3 className="share-post-name" title={myProfile.fullName}>{myProfile.fullName}</h3>
+                                                                    <p className="share-post-context">
+                                                                        You're sharing {post.author.fullName || 'Someone'}'s post
+                                                                    </p>
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                        <div className="share-post-body my-3">
+                                                        <div className="share-post-body">
                                                             <textarea 
                                                                 className="form-control" 
                                                                 rows="3" 
-                                                                placeholder={isSharing ? "Sharing..." : "What's On Your Mind?"} 
+                                                                placeholder={isSharing ? "Sharing..." : "What's on your mind?"} 
                                                                 onChange={(e) => setShareCap(e.target.value)} 
                                                                 value={shareCap}
                                                                 disabled={isSharing}
                                                                 style={{ opacity: isSharing ? 0.7 : 1 }}
                                                             ></textarea>
-                                                            <div className="share-post-button text-end mt-2">
+                                                            <div className="share-post-button">
                                                                 <button 
                                                                     className="btn btn-primary" 
                                                                     onClick={onClickShareNow}
@@ -731,11 +729,6 @@ const Post = React.memo(({ data, postContainer, index }) => {
                                                                 </button>
                                                             </div>
                                                         </div>
-
-                                                        <div className="share-post-footer">
-                                                            {/* <button className="btn btn-primary">Share Now</button> */}
-                                                        </div>
-
                                                     </div>
                                                 </div>
 
@@ -917,32 +910,29 @@ const Post = React.memo(({ data, postContainer, index }) => {
 
                                         <div className="share-post-container">
                                             <div className="share-post-header">
-                                                <div className="row">
-                                                    <div className="col-1">
-                                                        <UserPP profilePic={myProfile.profilePic}></UserPP>
-
+                                                <div className="share-post-user">
+                                                    <div className="share-post-avatar">
+                                                        <UserPP profilePic={myProfile.profilePic} profile={myProfile._id} />
                                                     </div>
-                                                    <div className="col-6">
-                                                        <h3>{myProfile.fullName}</h3>
-                                                    </div>
-                                                </div>
-                                                <div className="row">
-                                                    <div className="col">
-                                                        Your Sharing {post.author.fullName || 'Someone'}'s Post
+                                                    <div className="share-post-user-meta">
+                                                        <h3 className="share-post-name" title={myProfile.fullName}>{myProfile.fullName}</h3>
+                                                        <p className="share-post-context">
+                                                            You're sharing {post.author.fullName || 'Someone'}'s post
+                                                        </p>
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div className="share-post-body my-3">
+                                            <div className="share-post-body">
                                                 <textarea 
                                                     className="form-control" 
-                                                    placeholder={isSharing ? "Sharing..." : "What's On Your Mind?"}
+                                                    placeholder={isSharing ? "Sharing..." : "What's on your mind?"}
                                                     onChange={(e) => setShareCap(e.target.value)} 
                                                     value={shareCap}
                                                     disabled={isSharing}
                                                     style={{ opacity: isSharing ? 0.7 : 1 }}
                                                     rows="3"
                                                 ></textarea>
-                                                <div className="share-post-button text-end mt-2">
+                                                <div className="share-post-button">
                                                     <button 
                                                         className="btn btn-primary" 
                                                         onClick={onClickShareNow}
@@ -959,11 +949,6 @@ const Post = React.memo(({ data, postContainer, index }) => {
                                                     </button>
                                                 </div>
                                             </div>
-
-                                            <div className="share-post-footer">
-                                                {/* <button className="btn btn-primary">Share Now</button> */}
-                                            </div>
-
                                         </div>
 
                                     </ModalContainer>

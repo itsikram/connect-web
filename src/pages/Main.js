@@ -1292,9 +1292,7 @@ const Main = () => {
                             <Route path="/flashcards" element={<ProtectedRoute><Flashcards /></ProtectedRoute>}> </Route>
                             <Route path="/calendar" element={<ProtectedRoute><Calendar /></ProtectedRoute>}> </Route>
                             <Route path="/habits" element={<ProtectedRoute><Habits /></ProtectedRoute>}> </Route>
-                            <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>}></Route>
-
-                            <Route path="/settings/" element={<ProtectedRoute><Settings /></ProtectedRoute>}>
+                            <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>}>
                                 <Route index element={<ProfileSetting />} />
                                 <Route path="account" element={<AccountSetting />} />
                                 <Route path="privacy" element={<PrivacySetting />} />

@@ -190,14 +190,7 @@ const SingleReply = ({ item, myProfile, setReplies, comment, isEditMode }) => {
                         tabIndex={0}
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleReplyLikeBtnClick(); } }}
                     >
-                        {isLiking ? (
-                            <>
-                                <LoadingSpinner size="small" inline={true} />
-                                <span style={{ marginLeft: '4px' }}>Liking...</span>
-                            </>
-                        ) : (
-                            <>Like{totalReacts > 0 ? ` (${totalReacts})` : ''}</>
-                        )}
+                        {isLiking ? '…' : <>Like{totalReacts > 0 ? ` · ${totalReacts}` : ''}</>}
                     </div>
                     <div
                         className="reply button"
@@ -209,9 +202,9 @@ const SingleReply = ({ item, myProfile, setReplies, comment, isEditMode }) => {
                     >
                         Reply
                     </div>
-                    <div className="comment-time">
+                    <time className="comment-time" dateTime={item.createdAt} title={item.createdAt ? new Date(item.createdAt).toLocaleString() : undefined}>
                         <Moment fromNow>{item.createdAt}</Moment>
-                    </div>
+                    </time>
                 </div>
 
                 {isReply && (

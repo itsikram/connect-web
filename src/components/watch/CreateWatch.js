@@ -1,158 +1,258 @@
-import React, { Fragment, useState, useEffect } from "react";
+import React, { Fragment, useState, useEffect, useCallback, useRef } from "react";
 import { useSelector } from "react-redux";
 import ModalContainer from '../modal/ModalContainer'
 import UserPP from "../UserPP";
 import $ from 'jquery'
 import api from "../../api/api";
+import { showSuccessToast } from "../../utils/toastUtils";
 
-let CreateWatch = () => {
-    let profileData = useSelector(state => state.profile)
-    let profileId = profileData._id
+const CreateWatch = ({ setWatches = null }) => {
+    const profileData = useSelector(state => state.profile)
+    const profileId = profileData._id
+    const fileInputRef = useRef(null)
+    const localPreviewRef = useRef(null)
 
-    let [isWatchModal, setWatchModal] = useState(false)
-    let [isUploading, setIsUploading] = useState(false)
-    let [isSubmitting, setIsSubmitting] = useState(false)
+    const [isWatchModal, setWatchModal] = useState(false)
+    const [isUploading, setIsUploading] = useState(false)
+    const [isSubmitting, setIsSubmitting] = useState(false)
+    const [uploadError, setUploadError] = useState('')
+    const [hasStory, setHasStory] = useState(false)
+    const [localPreview, setLocalPreview] = useState(null)
+    const [showAudienceMenu, setShowAudienceMenu] = useState(false)
 
-    let handleWatchFieldClick = () => {
-        setWatchModal(true)
-    }
-    let closeCreateWatchModal = () => {
-        setWatchModal(false)
-    }
-
-    let [watchData, setWatchData] = useState({
+    const watchDataInit = {
         caption: '',
-        video: null,
-        videoUrl: null
-    })
-
-    const [hasStory, setHasStory] = useState(false);
-
-    useEffect(() => {
-        if (!profileId) return;
-        api.get('/profile/hasStory', {
-            params: {
-                profileId
-            }
-        }).then(res => {
-            if (res.status == 200) {
-                let storyStatus = res.data.hasStory
-                setHasStory(storyStatus === 'yes')
-            }
-        }).catch(console.log)
-    }, [profileId])
-
+        videoUrl: null,
+        feeling: '',
+        audience: 1,
+    }
+    const [watchData, setWatchData] = useState(watchDataInit)
 
     const useMediaQuery = (query) => {
         const [matches, setMatches] = useState(window.matchMedia(query).matches);
-
         useEffect(() => {
             const media = window.matchMedia(query);
             const listener = (e) => setMatches(e.matches);
             media.addEventListener("change", listener);
             return () => media.removeEventListener("change", listener);
         }, [query]);
-
         return matches;
     };
+    const isMobile = useMediaQuery("(max-width: 768px)");
 
-    var isMobile = useMediaQuery("(max-width: 768px)");
-
-
-    let profileName = profileData.user && profileData.user.firstName + ' ' + profileData.user.surname
-    let textInputPlaceHoder = "Share a caption for your Watch video, " + profileName + ""
-
-
-    // handling attachment button toggle
-
-    let cpmAttachmentControllerToggle = (e) => {
-        let thisButton = e.currentTarget
-        $(thisButton).parents('.cpm-attachment').siblings('.cpm-attachment-control').slideToggle()
-
-    }
-
-    // handle caption field change 
-    let handleCaptionField = (e) => {
-        let value = e.target.value
-        let name = e.target.name
-
-        setWatchData(state => ({
-            ...state,
-            [name]: value,
-        }))
-    }
-
-    let handleVideoChange = (e) => {
-        let currentTarget = e.currentTarget
-        $(currentTarget).parents('.cpm-attachment-upload').slideUp()
-        $(currentTarget).parents('.cpm-attachment-upload').siblings('.cpm-attachment-preview').slideDown()
-
-        let file = e.target.files[0]
-        if (!file) return;
-        let url = URL.createObjectURL(file)
-
-        setWatchData(state => ({
-            ...state,
-            video: file,
-            videoUrl: url
-        }))
-    }
-
-    // handling post submit 
-
-    let preventDefault = (e) => {
-        e.preventDefault()
-    }
-    let handleWatchSubmit = async (e) => {
-        e.preventDefault()
-        setIsSubmitting(true)
-        setIsUploading(true)
-        try {
-            if (!watchData.video) {
-                console.warn('No video selected for Watch post')
-                return
-            }
-
-            const videoFormData = new FormData();
-            videoFormData.append('attachment', watchData.video);
-
-            const uploadResponse = await api.post('/upload/video', videoFormData, {
-                headers: {
-                    'content-type': 'multipart/form-data'
-                }
+    useEffect(() => {
+        if (!profileId) return;
+        api.get('/profile/hasStory', { params: { profileId } })
+            .then(res => {
+                if (res.status === 200) setHasStory(res.data.hasStory === 'yes')
             })
+            .catch(console.log)
+    }, [profileId])
 
-            if (uploadResponse.status === 200 && uploadResponse.data?.secure_url) {
-                const watchFormData = new FormData();
-                watchFormData.append('caption', watchData.caption)
-                watchFormData.append('videoUrl', uploadResponse.data.secure_url)
-
-                const res = await api.post('/watch/create', watchFormData, {
-                    headers: {
-                        'content-type': 'multipart/form-data'
-                    }
-                })
-
-                if (res.status === 200 || res.status === 201) {
-                    setWatchModal(false)
-                    setWatchData({ caption: '', video: null, videoUrl: null })
-                }
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (showAudienceMenu && !event.target.closest('.cpm-audience-selector-wrapper')) {
+                setShowAudienceMenu(false)
             }
-        } catch (error) {
-            console.log(error)
-        } finally {
-            setIsSubmitting(false)
-            setIsUploading(false)
+        }
+        if (showAudienceMenu) document.addEventListener('mousedown', handleClickOutside)
+        return () => document.removeEventListener('mousedown', handleClickOutside)
+    }, [showAudienceMenu])
+
+    useEffect(() => {
+        localPreviewRef.current = localPreview
+    }, [localPreview])
+
+    useEffect(() => {
+        return () => {
+            if (localPreviewRef.current) URL.revokeObjectURL(localPreviewRef.current)
+        }
+    }, [])
+
+    const profileName = profileData.user
+        ? `${profileData.user.firstName || ''} ${profileData.user.surname || ''}`.trim()
+        : (profileData.fullName || 'Friend')
+    const textInputPlaceHoder = `Share a Watch video, ${profileName}`
+
+    const getAudienceLabel = (audience) => {
+        switch (audience) {
+            case 1: return 'Public'
+            case 2: return 'Friends'
+            case 3: return 'Only Me'
+            default: return 'Public'
         }
     }
 
+    const getAudienceIcon = (audience) => {
+        switch (audience) {
+            case 1: return 'fas fa-globe'
+            case 2: return 'fas fa-users'
+            case 3: return 'fas fa-lock'
+            default: return 'fas fa-globe'
+        }
+    }
+
+    const revokePreview = () => {
+        if (localPreviewRef.current) {
+            URL.revokeObjectURL(localPreviewRef.current)
+            localPreviewRef.current = null
+        }
+        setLocalPreview(null)
+    }
+
+    const resetForm = () => {
+        revokePreview()
+        setWatchData(watchDataInit)
+        setUploadError('')
+        setIsUploading(false)
+        setIsSubmitting(false)
+        setShowAudienceMenu(false)
+        if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+
+    const closeCreateWatchModal = () => {
+        setWatchModal(false)
+        resetForm()
+    }
+
+    const handleWatchFieldClick = () => setWatchModal(true)
+
+    const cpmAttachmentControllerToggle = (e) => {
+        const thisButton = e.currentTarget
+        $(thisButton).parents('.cpm-attachment').siblings('.cpm-attachment-control').slideToggle()
+    }
+
+    const handleCaptionField = (e) => {
+        const { name, value } = e.target
+        setWatchData(state => ({
+            ...state,
+            [name]: name === 'audience' ? parseInt(value, 10) : value,
+        }))
+    }
+
+    const clearVideo = () => {
+        revokePreview()
+        setWatchData(state => ({ ...state, videoUrl: null }))
+        setUploadError('')
+        if (fileInputRef.current) fileInputRef.current.value = ''
+        $('.cpm-attachment-preview').removeClass('show')
+        $('.cpm-attachment-upload').show()
+    }
+
+    const handleVideoChange = useCallback(async (e) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+
+        if (!file.type.startsWith('video/')) {
+            setUploadError('Please select a valid video file.')
+            return
+        }
+
+        if (file.size > 200 * 1024 * 1024) {
+            setUploadError('Video is too large. Please choose a file under 200MB.')
+            return
+        }
+
+        setUploadError('')
+        const previewUrl = URL.createObjectURL(file)
+        if (localPreviewRef.current) URL.revokeObjectURL(localPreviewRef.current)
+        localPreviewRef.current = previewUrl
+        setLocalPreview(previewUrl)
+
+        $(e.currentTarget).parents('.cpm-attachment-upload').slideUp()
+        $(e.currentTarget).parents('.cpm-attachment-upload').siblings('.cpm-attachment-preview').addClass('show').slideDown()
+
+        setIsUploading(true)
+        try {
+            const videoFormData = new FormData()
+            videoFormData.append('attachment', file)
+            videoFormData.append('type', file.type || 'video/mp4')
+
+            const uploadResponse = await api.post('/upload/video', videoFormData, {
+                headers: { 'content-type': 'multipart/form-data' },
+            })
+
+            if (uploadResponse.status === 200 && uploadResponse.data?.secure_url) {
+                setWatchData(state => ({
+                    ...state,
+                    videoUrl: uploadResponse.data.secure_url,
+                }))
+            } else {
+                setUploadError('Video upload failed. Please try again.')
+                if (localPreviewRef.current) {
+                    URL.revokeObjectURL(localPreviewRef.current)
+                    localPreviewRef.current = null
+                }
+                setLocalPreview(null)
+                setWatchData(state => ({ ...state, videoUrl: null }))
+                $('.cpm-attachment-preview').removeClass('show')
+                $('.cpm-attachment-upload').show()
+                if (fileInputRef.current) fileInputRef.current.value = ''
+            }
+        } catch (error) {
+            console.error('Watch video upload error:', error)
+            setUploadError(error?.response?.data?.error || 'Video upload failed. Please try again.')
+            if (localPreviewRef.current) {
+                URL.revokeObjectURL(localPreviewRef.current)
+                localPreviewRef.current = null
+            }
+            setLocalPreview(null)
+            setWatchData(state => ({ ...state, videoUrl: null }))
+            $('.cpm-attachment-preview').removeClass('show')
+            $('.cpm-attachment-upload').show()
+            if (fileInputRef.current) fileInputRef.current.value = ''
+        } finally {
+            setIsUploading(false)
+        }
+    }, [])
+
+    const handleWatchSubmit = async (e) => {
+        e.preventDefault()
+        if (isUploading || isSubmitting) return
+
+        if (!watchData.videoUrl) {
+            setUploadError('Please upload a video before posting.')
+            return
+        }
+
+        setIsSubmitting(true)
+        setUploadError('')
+        try {
+            const res = await api.post('/watch/create', {
+                caption: watchData.caption || '',
+                videoUrl: watchData.videoUrl,
+                feeling: watchData.feeling || '',
+                audience: watchData.audience || 1,
+            })
+
+            if (res.status === 200 || res.status === 201) {
+                const created = res.data?.data
+                if (typeof setWatches === 'function' && created) {
+                    setWatches(prev => [created, ...(Array.isArray(prev) ? prev : [])])
+                }
+                showSuccessToast('Your Watch was posted successfully')
+                setWatchModal(false)
+                resetForm()
+            } else {
+                setUploadError('Could not create Watch. Please try again.')
+            }
+        } catch (error) {
+            console.error('Create watch error:', error)
+            setUploadError(error?.response?.data?.message || 'Could not create Watch. Please try again.')
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
+    const previewSrc = localPreview || watchData.videoUrl
+    const canSubmit = Boolean(watchData.videoUrl) && !isUploading && !isSubmitting
 
     return (
         <Fragment>
             <div className="nf-create-post">
                 <div className="top">
                     <div className="profile-pic">
-                        <UserPP profilePic={profileData.profilePic} hasStory={hasStory} profile={profileData._id}></UserPP>
+                        <UserPP profilePic={profileData.profilePic} hasStory={hasStory} profile={profileData._id} />
                     </div>
                     <div onClick={handleWatchFieldClick} className="cp-field">
                         <input readOnly placeholder={textInputPlaceHoder} className="cp-input" />
@@ -170,18 +270,18 @@ let CreateWatch = () => {
                         </li>
                     </ul>
                 </div>
+
+                {/* Reuse create-post-modal styles so Watch matches Create Post */}
                 <ModalContainer
                     isOpen={isWatchModal}
-                    id="create-watch-modal"
+                    id="create-post-modal"
                     onRequestClose={closeCreateWatchModal}
                     title="Create A Watch"
                     style={{ width: isMobile ? '95%' : '600px' }}
                 >
                     <div className="modal-header">
-                        <div className="modal-title">
-                            Create a Watch
-                        </div>
-                        <div onClick={closeCreateWatchModal} className="modal-close-btn">
+                        <div className="modal-title">Create a Watch</div>
+                        <div onClick={closeCreateWatchModal} className="modal-close-btn" role="button" tabIndex={0}>
                             <i className="far fa-times"></i>
                         </div>
                     </div>
@@ -189,42 +289,161 @@ let CreateWatch = () => {
                         <div className="cp-modal-container">
                             <div className="cpm-header">
                                 <div className="cpm-profilePic">
-                                    <UserPP profilePic={profileData.profilePic} hasStory={hasStory} profile={profileData._id}></UserPP>
+                                    <UserPP profilePic={profileData.profilePic} hasStory={hasStory} profile={profileData._id} />
                                 </div>
                                 <div className="cpm-username">
                                     <h3>{profileName}</h3>
                                 </div>
-                            </div>
-                            <form className="cpm-form" onSubmit={preventDefault}>
-                                <div className="cpm-form-text">
-                                    <textarea name="caption" onChange={handleCaptionField} placeholder={textInputPlaceHoder} className="cpm-form-text-input" value={watchData.caption} rows="4"></textarea>
+                                <div className="cpm-audience-selector-wrapper">
+                                    <button
+                                        type="button"
+                                        className="cpm-audience-button"
+                                        onClick={() => setShowAudienceMenu(!showAudienceMenu)}
+                                    >
+                                        <i className={getAudienceIcon(watchData.audience || 1)}></i>
+                                        <span>{getAudienceLabel(watchData.audience || 1)}</span>
+                                        <i className="fas fa-chevron-down"></i>
+                                    </button>
+                                    {showAudienceMenu && (
+                                        <div className="cpm-audience-menu">
+                                            {[
+                                                { id: 1, icon: 'fas fa-globe', title: 'Public', desc: 'Anyone can see this Watch' },
+                                                { id: 2, icon: 'fas fa-users', title: 'Friends', desc: 'Only your friends can see this' },
+                                                { id: 3, icon: 'fas fa-lock', title: 'Only Me', desc: 'Only you can see this Watch' },
+                                            ].map(opt => (
+                                                <div
+                                                    key={opt.id}
+                                                    className={`cpm-audience-option ${watchData.audience === opt.id ? 'active' : ''}`}
+                                                    onClick={() => {
+                                                        setWatchData(s => ({ ...s, audience: opt.id }))
+                                                        setShowAudienceMenu(false)
+                                                    }}
+                                                >
+                                                    <i className={opt.icon}></i>
+                                                    <div className="audience-option-content">
+                                                        <span className="audience-option-title">{opt.title}</span>
+                                                        <span className="audience-option-desc">{opt.desc}</span>
+                                                    </div>
+                                                    {watchData.audience === opt.id && <i className="fas fa-check"></i>}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
+                            </div>
+
+                            <div className="cpm-meta-options">
+                                <div className="cpm-feelings-container">
+                                    <select
+                                        name="feeling"
+                                        onChange={handleCaptionField}
+                                        className="form-control cpm-meta-select"
+                                        value={watchData.feeling || ''}
+                                    >
+                                        <option value="">Select Feelings</option>
+                                        <option value="funny">Funny</option>
+                                        <option value="lovely">Lovely</option>
+                                        <option value="sad">Sad</option>
+                                        <option value="excited">Excited</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <form className="cpm-form" onSubmit={handleWatchSubmit}>
+                                <div className="cpm-form-text">
+                                    <textarea
+                                        name="caption"
+                                        onChange={handleCaptionField}
+                                        placeholder={textInputPlaceHoder}
+                                        className="cpm-form-text-input"
+                                        value={watchData.caption}
+                                        rows="4"
+                                    />
+                                </div>
+
                                 <div className="cpm-attachment-control">
-                                    <div className="cpm-attachment-preview">
-                                        {watchData.videoUrl ? (
-                                            <video controls className="w-100" src={watchData.videoUrl}></video>
-                                        ) : (
-                                            <div className="attachment-placeholder">Select a video to preview</div>
+                                    <div className={`cpm-attachment-preview ${previewSrc || isUploading ? 'show' : ''}`}>
+                                        {isUploading && (
+                                            <div className="upload-progress">
+                                                <div className="upload-spinner"></div>
+                                                <span>Uploading video…</span>
+                                            </div>
+                                        )}
+                                        {!isUploading && previewSrc && (
+                                            <div className="attachment-preview-wrapper">
+                                                <video
+                                                    style={{ width: '100%', maxHeight: '400px', borderRadius: '8px' }}
+                                                    src={previewSrc}
+                                                    controls
+                                                />
+                                                <button
+                                                    type="button"
+                                                    className="remove-attachment-btn"
+                                                    onClick={clearVideo}
+                                                    aria-label="Remove video"
+                                                >
+                                                    <i className="fas fa-times"></i>
+                                                </button>
+                                            </div>
                                         )}
                                     </div>
-                                    <div className="cpm-attachment-upload">
+                                    <div className="cpm-attachment-upload" style={{ display: previewSrc || isUploading ? 'none' : undefined }}>
                                         <div className="cpm-attachment-upload-overlay">
                                             <span className="plus-icon"></span>
                                             <span className="overlay-text">Add a video</span>
                                         </div>
-                                        <input onChange={handleVideoChange} name="video" type="file" accept="video/*"></input>
+                                        <input
+                                            ref={fileInputRef}
+                                            onChange={handleVideoChange}
+                                            name="video"
+                                            type="file"
+                                            accept="video/*"
+                                        />
                                     </div>
                                 </div>
-                                <div className="cpm-submit-button">
-                                    <button 
-                                        onClick={handleWatchSubmit} 
-                                        className={`button ${isSubmitting ? 'disabled' : ''}`} 
-                                        type="submit"
-                                        disabled={isUploading || isSubmitting}
-                                        style={{ opacity: isSubmitting ? 0.6 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer' }}
-                                    > 
-                                        {isUploading ? 'Uploading...' : isSubmitting ? 'Posting...' : 'Post to Watch'} 
-                                    </button>
+
+                                {uploadError && (
+                                    <p className="text-danger small mb-2" role="alert">{uploadError}</p>
+                                )}
+
+                                <div className="cpm-attachment">
+                                    <span className="cpm-button-text">Add to your Watch</span>
+                                    <div className="post-meta-buttons">
+                                        <div
+                                            onClick={cpmAttachmentControllerToggle}
+                                            className="attachment-button-file"
+                                            role="button"
+                                            tabIndex={0}
+                                            aria-label="Add video"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="cpm-submit-section">
+                                    <div className="cpm-submit-button">
+                                        <button
+                                            className={`cpm-submit-btn ${!canSubmit ? 'disabled' : ''}`}
+                                            disabled={!canSubmit}
+                                            type="submit"
+                                        >
+                                            {isUploading ? (
+                                                <>
+                                                    <i className="fas fa-spinner fa-spin"></i>
+                                                    <span>Uploading Video…</span>
+                                                </>
+                                            ) : isSubmitting ? (
+                                                <>
+                                                    <i className="fas fa-spinner fa-spin"></i>
+                                                    <span>Posting…</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <i className="fas fa-paper-plane"></i>
+                                                    <span>Post to Watch</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
                                 </div>
                             </form>
                         </div>

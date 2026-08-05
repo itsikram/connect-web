@@ -169,18 +169,19 @@ const ProfileSetting = () => {
         <>
             <div className='profile-setting'>
                 <div className='setting-field-container'>
-                    <h3 className='text-center'>Profile Settings</h3>
+                    <h3>Profile Settings</h3>
+                    <p className="setting-section-desc">Update how your name and details appear on Connect.</p>
                     <form>
                         <div className="form-group mb-2">
                             <label htmlFor="firstName">First Name</label>
-                            <input type="text" onChange={handleInputChange.bind(this)} className="form-control" id="firstName" value={settings.firstName || ''} name='firstName' placeholder="Enter Frist Name" />
+                            <input type="text" onChange={handleInputChange.bind(this)} className="form-control" id="firstName" value={settings.firstName || ''} name='firstName' placeholder="Enter first name" />
                         </div>
                         <div className="form-group mb-2">
                             <label htmlFor="surname">Surname</label>
                             <input type="text" onChange={handleInputChange.bind(this)} className="form-control" value={settings.surname || ''} id="surname" name='surname' placeholder="Enter Last Name" />
                         </div>
                         <div className="form-group mb-2">
-                            <label htmlFor="username">Userame</label>
+                            <label htmlFor="username">Username</label>
 
                             <div className='input-group'>
                                 <div className='input-group-prepend'>

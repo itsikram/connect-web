@@ -1,0 +1,166 @@
+/* Share Post modal — mobile-first layout */
+
+.share-post-container {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 4px 2px 8px;
+}
+
+.share-post-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.share-post-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+.share-post-user .share-post-avatar {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+}
+
+.share-post-user .share-post-avatar .user-profile-img,
+.share-post-user .share-post-avatar .user-profile-img-container,
+.share-post-user .share-post-avatar img {
+  width: 40px !important;
+  height: 40px !important;
+  margin: 0 !important;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.share-post-user-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.share-post-user-meta .share-post-name {
+  margin: 0;
+  padding: 0;
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.25;
+  color: #e8eaed;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.share-post-context {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.35;
+  color: #a8b0bd;
+  word-break: break-word;
+}
+
+.share-post-body {
+  margin: 14px 0 0 !important;
+  width: 100%;
+}
+
+.share-post-body textarea.form-control,
+.share-post-container textarea.form-control {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  border-radius: 14px !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #e8eaed !important;
+  padding: 12px 14px !important;
+  font-size: 0.95rem !important;
+  line-height: 1.4;
+  box-shadow: none !important;
+}
+
+.share-post-body textarea.form-control::placeholder {
+  color: #8b93a1;
+}
+
+.share-post-body textarea.form-control:focus {
+  border-color: rgba(41, 177, 169, 0.55) !important;
+  background: rgba(255, 255, 255, 0.07) !important;
+  box-shadow: 0 0 0 3px rgba(41, 177, 169, 0.15) !important;
+}
+
+.share-post-button {
+  margin-top: 12px !important;
+  text-align: right;
+}
+
+.share-post-button .btn {
+  min-width: 120px;
+  border-radius: 12px;
+  font-weight: 600;
+  padding: 10px 18px;
+}
+
+/* Modal chrome on small screens */
+.ReactModal__Content #cp-view-modal,
+.ReactModal__Content:has(.share-post-container) {
+  max-width: min(95vw, 560px);
+}
+
+.ReactModal__Content:has(.share-post-container) .modal-header {
+  padding: 4px 0 10px !important;
+  margin-bottom: 4px;
+}
+
+.ReactModal__Content:has(.share-post-container) .modal-body {
+  padding: 8px 0 4px !important;
+}
+
+@media (max-width: 768px) {
+  .share-post-container {
+    padding: 2px 0 4px;
+  }
+
+  .share-post-user {
+    gap: 10px;
+  }
+
+  .share-post-user .share-post-avatar,
+  .share-post-user .share-post-avatar .user-profile-img,
+  .share-post-user .share-post-avatar .user-profile-img-container,
+  .share-post-user .share-post-avatar img {
+    width: 36px !important;
+    height: 36px !important;
+    flex-basis: 36px;
+  }
+
+  .share-post-user-meta .share-post-name {
+    font-size: 0.95rem;
+  }
+
+  .share-post-context {
+    font-size: 0.8rem;
+  }
+
+  .share-post-body textarea.form-control {
+    font-size: 16px !important; /* avoid iOS zoom */
+    min-height: 88px;
+  }
+
+  .share-post-button {
+    text-align: stretch;
+  }
+
+  .share-post-button .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+}

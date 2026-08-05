@@ -76,7 +76,8 @@ const AccountSetting = () => {
         <>
             <div className='profile-setting'>
                 <div className='setting-field-container'>
-                    <h3 className='text-center'>Account Settings</h3>
+                    <h3>Account Settings</h3>
+                    <p className="setting-section-desc">Manage your email and password.</p>
 
                     <form>
                         <h3 className='fs-4'>Change Password</h3>

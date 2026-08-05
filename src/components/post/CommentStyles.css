@@ -325,53 +325,126 @@
   cursor: not-allowed;
 }
 
-/* Comment React (Actions) */
+/* Comment / Reply action row */
 .footer .comments .comment-container .comment-react,
-.nf-post .footer .comments .comment-container .comment-react {
+.nf-post .footer .comments .comment-container .comment-react,
+.footer .comments .reply-container .comment-react,
+.nf-post .footer .comments .reply-container .comment-react,
+.comments .comment-container .comment-react,
+.comments .reply-container .comment-react,
+.sp-comments-container .comment-react {
   display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
   align-items: center !important;
-  gap: var(--fb-spacing-md) !important;
-  margin-top: 2px !important;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+  margin-top: 4px !important;
   margin-left: 0 !important;
+  padding: 0 2px !important;
   font-size: 12px !important;
   font-weight: 600 !important;
-  width: 100% !important;
+  width: auto !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
 }
 
-.comment-container .comment-react div {
+.comment-container .comment-react > .like,
+.comment-container .comment-react > .reply,
+.reply-container .comment-react > .like,
+.reply-container .comment-react > .reply,
+.comments .comment-react > .like,
+.comments .comment-react > .reply {
   cursor: pointer;
   color: var(--fb-secondary-text);
   transition: var(--fb-transition);
-  padding: 2px var(--fb-spacing-xs);
-  border-radius: var(--fb-spacing-xs);
-  display: inline-flex;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 0;
+  display: inline-flex !important;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
+  flex: 0 0 auto !important;
+  white-space: nowrap !important;
+  line-height: 1.2;
 }
 
-.comment-container .comment-react div:hover {
+.comment-container .comment-react > .like:hover,
+.comment-container .comment-react > .reply:hover,
+.reply-container .comment-react > .like:hover,
+.reply-container .comment-react > .reply:hover {
   text-decoration: underline;
 }
 
 .comment-container .comment-react .like:hover,
-.comment-container .comment-react .reply:hover {
+.comment-container .comment-react .reply:hover,
+.reply-container .comment-react .like:hover,
+.reply-container .comment-react .reply:hover {
   color: var(--fb-text);
 }
 
-.comment-container .comment-react .reacted {
+.comment-container .comment-react .reacted,
+.reply-container .comment-react .reacted {
   color: var(--fb-primary);
   font-weight: 700;
 }
 
-.comment-container .comment-react .comment-time {
-  color: var(--fb-secondary-text);
-  font-weight: 400;
-  cursor: default;
-  font-size: 12px;
+.comment-container .comment-react .comment-time,
+.reply-container .comment-react .comment-time,
+.comments .comment-react .comment-time,
+.comment-container .comment-react time.comment-time,
+.reply-container .comment-react time.comment-time {
+  color: #8b93a1 !important;
+  font-weight: 400 !important;
+  cursor: default !important;
+  font-size: 11px !important;
+  white-space: nowrap !important;
+  flex: 0 0 auto !important;
+  display: inline-flex !important;
+  align-items: center;
+  text-decoration: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1.2;
 }
 
-.comment-container .comment-react .comment-time:hover {
-  text-decoration: none;
+.comment-container .comment-react .comment-time:hover,
+.reply-container .comment-react .comment-time:hover {
+  text-decoration: none !important;
+}
+
+.comment-react .reply-count,
+.comment-react span.reply-count {
+  color: #8b93a1 !important;
+  font-weight: 500 !important;
+  cursor: default !important;
+  white-space: nowrap !important;
+  font-size: 11px !important;
+  text-decoration: none !important;
+  flex: 0 0 auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.comment-react .reply-count:hover {
+  text-decoration: none !important;
+}
+
+@media (max-width: 480px) {
+  .footer .comments .comment-container .comment-react,
+  .nf-post .footer .comments .comment-container .comment-react,
+  .footer .comments .reply-container .comment-react,
+  .nf-post .footer .comments .reply-container .comment-react,
+  .comments .reply-container .comment-react {
+    gap: 8px !important;
+    font-size: 11px !important;
+  }
+
+  .comment-container .comment-react .comment-time,
+  .reply-container .comment-react .comment-time {
+    font-size: 10px !important;
+  }
 }
 
 /* ===== REPLY THREAD ===== */
@@ -379,10 +452,10 @@
 .replies-thread {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 10px;
-  padding-left: 8px;
-  border-left: 2px solid rgba(255, 255, 255, 0.08);
+  gap: 8px;
+  margin-top: 8px;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid rgba(255, 255, 255, 0.1);
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
@@ -391,19 +464,39 @@
 /* ===== REPLY CONTAINER ===== */
 
 .footer .comments .reply-container,
-.nf-post .footer .comments .reply-container {
+.nf-post .footer .comments .reply-container,
+.comments .reply-container,
+.sp-comments-container .reply-container {
   display: flex !important;
   align-items: flex-start !important;
   gap: 8px !important;
-  margin-top: 0 !important;
-  margin-left: 0 !important;
-  margin-bottom: 0 !important;
+  margin: 0 !important;
   position: relative !important;
   animation: fadeInComment 0.3s ease-out !important;
   width: 100% !important;
   max-width: 100% !important;
   box-sizing: border-box !important;
   justify-content: flex-start !important;
+}
+
+.footer .comments .reply-container .comment-info,
+.nf-post .footer .comments .reply-container .comment-info,
+.comments .reply-container .comment-info,
+.sp-comments-container .reply-container .comment-info {
+  width: auto !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  max-width: calc(100% - 36px) !important;
+}
+
+.footer .comments .reply-container .comment-box .name-comment,
+.nf-post .footer .comments .reply-container .comment-box .name-comment,
+.comments .reply-container .comment-box .name-comment {
+  width: auto !important;
+  max-width: 100% !important;
+  float: none !important;
+  margin-right: 0 !important;
+  padding: 6px 10px !important;
 }
 
 /* Reply Profile Picture (Smaller) */
@@ -503,16 +596,6 @@
 .comment-mention {
   color: #4dabf7;
   font-weight: 600;
-}
-
-.comment-react .reply-count {
-  color: var(--fb-secondary-text);
-  font-weight: 500;
-  cursor: default;
-}
-
-.comment-react .reply-count:hover {
-  text-decoration: none;
 }
 
 .comment-editor-actions {
@@ -979,9 +1062,13 @@
 
 /* Fix action buttons alignment */
 .nf-post .footer .comments .comment-container .comment-react,
-.nf-post .footer .comments .reply-container .comment-react {
+.nf-post .footer .comments .reply-container .comment-react,
+.footer .comments .reply-container .comment-react {
   margin-left: 0 !important;
   align-self: flex-start !important;
+  width: auto !important;
+  max-width: 100% !important;
+  flex-wrap: nowrap !important;
 }
 
 /* ===== REPLY INPUT WIDTH FIX ===== */

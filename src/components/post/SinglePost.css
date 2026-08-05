@@ -1,0 +1,299 @@
+/* ===== Single Post Page ===== */
+
+.sp-page {
+  --sp-bg: #0b0d11;
+  --sp-panel: rgba(22, 24, 28, 0.96);
+  --sp-border: rgba(255, 255, 255, 0.08);
+  --sp-text: #f2f4f7;
+  --sp-muted: #a8b0bb;
+  --sp-accent: #00d4ff;
+  --sp-radius: 16px;
+  min-height: calc(100dvh - 70px);
+  padding: 16px 0 32px;
+  background:
+    radial-gradient(ellipse 80% 50% at 10% 0%, rgba(0, 212, 255, 0.08), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 90% 10%, rgba(255, 255, 255, 0.03), transparent 50%),
+    var(--sp-bg);
+}
+
+.sp-page .single-post-container {
+  max-width: 1180px;
+  padding: 0 12px;
+}
+
+.sp-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 0 2px;
+}
+
+.sp-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--sp-border);
+  background: var(--sp-panel);
+  color: var(--sp-text);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.sp-back-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.sp-back-btn i {
+  font-size: 0.85rem;
+  color: var(--sp-accent);
+}
+
+.sp-topbar-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--sp-text);
+  letter-spacing: -0.01em;
+}
+
+.sp-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.sp-main-col,
+.sp-side-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.sp-panel {
+  background: var(--sp-panel);
+  border: 1px solid var(--sp-border);
+  border-radius: var(--sp-radius);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+.sp-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--sp-border);
+}
+
+.sp-panel-head .section-title {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--sp-text);
+  text-align: left;
+}
+
+.sp-panel-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(0, 212, 255, 0.12);
+  color: var(--sp-accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+/* Post card inside single page */
+.sp-post-panel {
+  padding: 0;
+}
+
+.sp-post-panel .nf-post {
+  margin-bottom: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.sp-post-panel .nf-post .attachment img {
+  max-height: min(70vh, 720px);
+  width: 100%;
+  object-fit: contain;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+/* Comments */
+.sp-comments-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 140px);
+  position: sticky;
+  top: 72px;
+}
+
+.sp-comments-panel .sp-comments-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.sp-comments-panel .comments {
+  flex: 1 1 auto;
+  min-height: 180px;
+  max-height: none !important;
+  height: auto !important;
+  overflow-y: auto !important;
+  padding: 10px 12px !important;
+  overscroll-behavior: contain;
+}
+
+.sp-comments-panel .new-comment {
+  padding: 10px 12px 12px !important;
+  border-top: 1px solid var(--sp-border);
+  background: rgba(0, 0, 0, 0.18);
+  margin: 0 !important;
+  position: sticky;
+  bottom: 0;
+}
+
+.sp-comments-panel .comment-attachment-preview {
+  margin: 0 12px 10px 52px;
+}
+
+/* Views / reactors */
+.sp-views-panel .sp-reacts {
+  list-style: none;
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 280px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.sp-views-panel .sp-reacts-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 6px;
+  border-radius: 10px;
+  transition: background 0.15s ease;
+}
+
+.sp-views-panel .sp-reacts-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.sp-views-panel .reactor-pp {
+  margin-right: 0;
+  flex-shrink: 0;
+}
+
+.sp-views-panel .react-details {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.sp-views-panel .react-details a {
+  color: var(--sp-text);
+  text-decoration: none;
+}
+
+.sp-views-panel .reactor-name {
+  font-size: 0.9rem !important;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sp-views-panel .reactor-react img {
+  width: 26px !important;
+  height: 26px !important;
+}
+
+.sp-empty-state {
+  padding: 18px 14px;
+  text-align: center;
+  color: var(--sp-muted);
+  font-size: 0.9rem;
+}
+
+.sp-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 40vh;
+  color: var(--sp-muted);
+}
+
+.sp-loading-spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top-color: var(--sp-accent);
+  animation: spSpin 0.8s linear infinite;
+}
+
+@keyframes spSpin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 991px) {
+  .sp-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .sp-comments-panel {
+    max-height: none;
+    position: relative;
+    top: auto;
+  }
+
+  .sp-comments-panel .comments {
+    max-height: 55vh !important;
+  }
+}
+
+@media (max-width: 576px) {
+  .sp-page {
+    padding: 10px 0 24px;
+  }
+
+  .sp-page .single-post-container {
+    padding: 0 8px;
+  }
+
+  .sp-topbar-title {
+    font-size: 0.98rem;
+  }
+
+  .sp-panel-head {
+    padding: 10px 12px;
+  }
+
+  .sp-views-panel .sp-reacts {
+    max-height: 220px;
+  }
+}

@@ -50,7 +50,8 @@ const CacheSetting = () => {
         <>
             <div className='profile-setting'>
                 <div className='setting-field-container'>
-                    <h3 className='text-center'>Browser Cache Settings</h3>
+                    <h3>Browser Cache</h3>
+                    <p className="setting-section-desc">Clear stored data if pages look outdated or something feels stuck.</p>
                     <div className="form-group mb-4">
                         <p className="mb-3">
                             Clear your browser cache to free up space and potentially resolve loading issues. 

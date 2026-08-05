@@ -1441,20 +1441,24 @@ body {
   border-radius: 50%;
 }
 .nf-post .footer .comments .reply-container .comment-info {
-  width: 85%;
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: calc(100% - 36px);
 }
 .nf-post .footer .comments .reply-container .comment-info .comment-box {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   width: 100%;
 }
 .nf-post .footer .comments .reply-container .comment-info .comment-box .name-comment {
   background-color: #3B3C3C;
-  padding: 3px 10px;
-  border-radius: 10px;
-  width: 85%;
-  float: left;
-  margin-right: 10px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  width: auto;
+  max-width: 100%;
+  float: none;
+  margin-right: 0;
 }
 .nf-post .footer .comments .reply-container .comment-info .comment-box .name-comment .author-name {
   margin-bottom: -5px;
@@ -1523,12 +1527,18 @@ body {
 }
 .nf-post .footer .comments .reply-container .comment-info .comment-react {
   display: flex;
-  margin-left: 5px;
-  width: 100%;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 10px;
+  margin-left: 0;
+  margin-top: 4px;
+  width: auto;
+  max-width: 100%;
 }
 .nf-post .footer .comments .reply-container .comment-info .comment-react div {
-  margin-right: 10px;
-  font-size: 13px;
+  margin-right: 0;
+  font-size: 12px;
+  white-space: nowrap;
 }
 .nf-post .footer .comments .reply-container .comment-info .comment-react .button {
   font-weight: 600;

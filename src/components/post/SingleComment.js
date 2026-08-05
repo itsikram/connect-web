@@ -267,14 +267,7 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode }) => {
                         tabIndex={0}
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleCommentLikeBtnClick(); } }}
                     >
-                        {isLiking ? (
-                            <>
-                                <LoadingSpinner size="small" inline={true} />
-                                <span style={{ marginLeft: '4px' }}>Liking...</span>
-                            </>
-                        ) : (
-                            <>Like{totalComment > 0 ? ` (${totalComment})` : ''}</>
-                        )}
+                        {isLiking ? '…' : <>Like{totalComment > 0 ? ` · ${totalComment}` : ''}</>}
                     </div>
                     <div
                         className="reply button"
@@ -286,14 +279,14 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode }) => {
                     >
                         Reply
                     </div>
-                    {visibleReplies.length > 0 && (
-                        <div className="reply-count">
-                            {visibleReplies.length} {visibleReplies.length === 1 ? 'reply' : 'replies'}
-                        </div>
-                    )}
-                    <div className="comment-time">
+                    <time className="comment-time" dateTime={comment.createdAt} title={comment.createdAt ? new Date(comment.createdAt).toLocaleString() : undefined}>
                         <Moment fromNow>{comment.createdAt}</Moment>
-                    </div>
+                    </time>
+                    {visibleReplies.length > 0 && (
+                        <span className="reply-count">
+                            · {visibleReplies.length} {visibleReplies.length === 1 ? 'reply' : 'replies'}
+                        </span>
+                    )}
                 </div>
 
                 {isReply && (

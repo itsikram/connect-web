@@ -50,7 +50,8 @@ const PreferenceSetting = () => {
         <>
             <div className='profile-setting'>
                 <div className='setting-field-container'>
-                    <h3 className='text-center'>Preference Settings</h3>
+                    <h3>Preference Settings</h3>
+                    <p className="setting-section-desc">Customize how Connect looks and feels for you.</p>
                     <form>
                         <div className="form-group mb-2">
                             <label for="themeMode">Theme Mode</label>
