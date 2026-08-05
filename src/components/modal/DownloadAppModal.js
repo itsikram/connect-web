@@ -1,50 +1,67 @@
 import React, { useEffect, useState } from "react";
 import ModalContainer from "./ModalContainer";
 import axios from "axios";
-
-const IOS_PROFILE_URL = `${process.env.PUBLIC_URL || ""}/connect.mobileconfig`;
+import { openIosProfile } from "../../utils/iosProfile";
 
 const StoreButton = ({
   href,
   label,
   icon,
   subtitle = "Get it on",
-  download,
+  onClick,
   primary = false,
-}) => (
-  <a
-    href={href}
-    target="_blank"
-    rel="noreferrer"
-    download={download || undefined}
-    style={{
-      display: "flex",
-      alignItems: "center",
-      gap: "12px",
-      width: "100%",
-      background: primary
-        ? "linear-gradient(135deg, #29b1a9 0%, #1a8f88 100%)"
-        : "linear-gradient(135deg, #111, #1b1b1b)",
-      color: "#fff",
-      padding: "14px 16px",
-      borderRadius: "12px",
-      border: primary
-        ? "1px solid rgba(255,255,255,0.18)"
-        : "1px solid rgba(255,255,255,0.08)",
-      textDecoration: "none",
-      boxShadow: primary
-        ? "0 8px 24px rgba(41,177,169,0.35)"
-        : "0 8px 24px rgba(0,0,0,0.35)",
-      boxSizing: "border-box",
-    }}
-  >
-    <span className={icon} style={{ fontSize: 22, width: 24, textAlign: "center" }} />
-    <div style={{ lineHeight: 1.2, textAlign: "left" }}>
-      <div style={{ fontSize: 11, opacity: 0.85 }}>{subtitle}</div>
-      <div style={{ fontWeight: 700, fontSize: 15 }}>{label}</div>
-    </div>
-  </a>
-);
+}) => {
+  const sharedStyle = {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    width: "100%",
+    background: primary
+      ? "linear-gradient(135deg, #29b1a9 0%, #1a8f88 100%)"
+      : "linear-gradient(135deg, #111, #1b1b1b)",
+    color: "#fff",
+    padding: "14px 16px",
+    borderRadius: "12px",
+    border: primary
+      ? "1px solid rgba(255,255,255,0.18)"
+      : "1px solid rgba(255,255,255,0.08)",
+    textDecoration: "none",
+    boxShadow: primary
+      ? "0 8px 24px rgba(41,177,169,0.35)"
+      : "0 8px 24px rgba(0,0,0,0.35)",
+    boxSizing: "border-box",
+    cursor: "pointer",
+    font: "inherit",
+    textAlign: "left",
+  };
+
+  const content = (
+    <>
+      <span
+        className={icon}
+        style={{ fontSize: 22, width: 24, textAlign: "center" }}
+      />
+      <div style={{ lineHeight: 1.2, textAlign: "left" }}>
+        <div style={{ fontSize: 11, opacity: 0.85 }}>{subtitle}</div>
+        <div style={{ fontWeight: 700, fontSize: 15 }}>{label}</div>
+      </div>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} style={sharedStyle}>
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <a href={href} target="_blank" rel="noreferrer" style={sharedStyle}>
+      {content}
+    </a>
+  );
+};
 
 const DownloadAppModal = ({ isOpen, onClose }) => {
   const [connectData, setConnectData] = useState({
@@ -70,6 +87,11 @@ const DownloadAppModal = ({ isOpen, onClose }) => {
     };
     if (isOpen) fetchSettings();
   }, [isOpen]);
+
+  const handleIosInstall = () => {
+    // Do not use <a download> — Safari then saves to Files and skips Profile Downloaded
+    openIosProfile();
+  };
 
   return (
     <ModalContainer
@@ -137,13 +159,11 @@ const DownloadAppModal = ({ isOpen, onClose }) => {
             seamless calling, and offline access.
           </p>
 
-          {/* Always-visible iOS install */}
           <StoreButton
-            href={IOS_PROFILE_URL}
-            label="Download iOS App"
-            subtitle="iPhone / iPad"
+            onClick={handleIosInstall}
+            label="Install iOS App"
+            subtitle="Safari only — opens Settings profile"
             icon="fab fa-apple"
-            download="connect.mobileconfig"
             primary
           />
 
@@ -173,9 +193,13 @@ const DownloadAppModal = ({ isOpen, onClose }) => {
               lineHeight: 1.45,
             }}
           >
-            After downloading the iOS profile, open{" "}
+            In Safari, tap <b style={{ color: "#b8c1cc" }}>Allow</b> when asked
+            to download a configuration profile, then open{" "}
+            <b style={{ color: "#b8c1cc" }}>Settings</b> —{" "}
+            <b style={{ color: "#b8c1cc" }}>Profile Downloaded</b> appears at
+            the top. On newer iOS:{" "}
             <b style={{ color: "#b8c1cc" }}>
-              Settings → Profile Downloaded → Install
+              Settings → General → VPN &amp; Device Management
             </b>
             .
           </p>

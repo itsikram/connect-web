@@ -29,13 +29,57 @@ const Message = (props) => {
         return () => clearTimeout(timer);
     }, []);
 
+    // Fit message UI exactly under the site header on phones (iPhone 12 mini / Android).
+    useEffect(() => {
+        if (!isMobile) return undefined;
+
+        const root = document.documentElement;
+        const body = document.body;
+        const prevOverflow = body.style.overflow;
+        body.classList.add('message-page-mobile');
+        body.style.overflow = 'hidden';
+
+        const syncHeaderHeight = () => {
+            const header = document.getElementById('header');
+            const headerHeight = header ? Math.ceil(header.getBoundingClientRect().height) : 56;
+            root.style.setProperty('--site-header-height', `${headerHeight}px`);
+
+            // Prefer visualViewport on iOS when the browser chrome changes.
+            const viewportHeight = window.visualViewport?.height || window.innerHeight;
+            const available = Math.max(240, Math.floor(viewportHeight - headerHeight));
+            root.style.setProperty('--message-mobile-height', `${available}px`);
+        };
+
+        syncHeaderHeight();
+        window.addEventListener('resize', syncHeaderHeight);
+        window.addEventListener('orientationchange', syncHeaderHeight);
+        window.visualViewport?.addEventListener('resize', syncHeaderHeight);
+        window.visualViewport?.addEventListener('scroll', syncHeaderHeight);
+
+        const header = document.getElementById('header');
+        const ro = typeof ResizeObserver !== 'undefined' && header
+            ? new ResizeObserver(syncHeaderHeight)
+            : null;
+        if (header && ro) ro.observe(header);
+
+        return () => {
+            body.classList.remove('message-page-mobile');
+            body.style.overflow = prevOverflow;
+            window.removeEventListener('resize', syncHeaderHeight);
+            window.removeEventListener('orientationchange', syncHeaderHeight);
+            window.visualViewport?.removeEventListener('resize', syncHeaderHeight);
+            window.visualViewport?.removeEventListener('scroll', syncHeaderHeight);
+            if (ro) ro.disconnect();
+        };
+    }, [isMobile]);
+
     const handleMobileNavToggle = () => {
         setShowMobileNav(!showMobileNav);
     };
 
     return (
         <Fragment>
-            <div className={`modern-message-container ${isInitialLoad ? 'loading' : 'loaded'}`}>
+            <div className={`modern-message-container ${isInitialLoad ? 'loading' : 'loaded'}${isMobile ? ' is-mobile' : ''}`}>
                 <div className="message-backdrop"></div>
                 <Container
                     fluid={isMobile}

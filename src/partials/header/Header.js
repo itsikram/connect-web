@@ -23,7 +23,9 @@ const Header = () => {
 
     useEffect(() => {
         dispatch(setHeaderHeight(height))
-
+        if (height != null) {
+            document.documentElement.style.setProperty('--site-header-height', `${Math.ceil(height)}px`);
+        }
     }, [height, dispatch])
 
     let [match, setMatch] = useState(window.matchMedia('(max-width: 768px)').matches)

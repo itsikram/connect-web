@@ -70,6 +70,37 @@ html {
     -ms-touch-action: pan-x pan-y;
 }
 
+/* iOS Home Screen / PWA: keep UI clear of notch & status bar */
+:root {
+    --sat: env(safe-area-inset-top, 0px);
+    --sab: env(safe-area-inset-bottom, 0px);
+    --sal: env(safe-area-inset-left, 0px);
+    --sar: env(safe-area-inset-right, 0px);
+}
+
+html.standalone-ios,
+html.standalone-pwa {
+    #header,
+    .sticky-header,
+    #header.sticky-header {
+        padding-top: var(--sat) !important;
+        box-sizing: border-box;
+    }
+
+    #header.sticky-header {
+        top: 0 !important;
+    }
+
+    #main-container {
+        padding-left: var(--sal);
+        padding-right: var(--sar);
+    }
+
+    body {
+        padding-bottom: var(--sab);
+    }
+}
+
 /* Prevent iOS double-tap / pinch zoom in the mobile app shell */
 @media (max-width: 1024px) {
     html,
@@ -84,6 +115,12 @@ html {
     textarea,
     select {
         font-size: 16px !important; // stops iOS Safari auto-zoom on focus
+    }
+
+    /* Always honor top inset on mobile when installed / fullscreen */
+    #header,
+    .sticky-header {
+        padding-top: max(0px, env(safe-area-inset-top, 0px));
     }
 }
 
@@ -459,7 +496,7 @@ select {
     transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
     overflow: visible;
-    padding: 0px 0;
+    padding: env(safe-area-inset-top, 0px) 0 0;
 
     .header-container {
         position: relative;

@@ -22,6 +22,7 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
     const isSendingRef = useRef(false) // Ref to track sending state synchronously
     const [isUploadingFile, setIsUploadingFile] = useState(false)
     const [isUploadingImage, setIsUploadingImage] = useState(false)
+    const [showAttachTray, setShowAttachTray] = useState(false)
     const [isLiveVoiceConnecting, setIsLiveVoiceConnecting] = useState(false)
     const [isLiveVoiceActive, setIsLiveVoiceActive] = useState(false)
     const [isLiveVoiceModalOpen, setIsLiveVoiceModalOpen] = useState(false)
@@ -678,9 +679,16 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
     },[settings])
 
 
+    const hasComposableContent = Boolean(inputValue.trim() || attachmentUrl);
+    const toggleAttachTray = () => {
+        setShowAttachTray((prev) => !prev);
+        setIsEmojiContainer(false);
+        setIsEmojiChangeContainer(false);
+    };
+
     return (
         <>
-            <div ref={chatFooter} className="chat-footer">
+            <div ref={chatFooter} className={`chat-footer modern-composer ${showAttachTray ? 'tray-open' : ''}`}>
 
                 {
                     isPreview && (<div className='new-message-preview-container'>
@@ -713,195 +721,199 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
                     </div>)
                 }
 
-
-                <div className="new-message-container">
-                    <div ref={chatNewAttachment} className='chat-new-attachment'>
-                        <div className='chat-atachment-button-container'>
-
-                            <div 
-                                className={`chat-attachment-button ${isUploadingFile ? 'disabled' : ''}`} 
-                                onClick={isUploadingFile ? null : handleAttachmentButtonClick.bind(this)}
-                                onKeyDown={isUploadingFile ? null : (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleAttachmentButtonClick(); } }}
-                                role='button'
-                                tabIndex={isUploadingFile ? -1 : 0}
-                                style={{ opacity: isUploadingFile ? 0.6 : 1, cursor: isUploadingFile ? 'not-allowed' : 'pointer' }}
-                            >
-                                <i className={isUploadingFile ? "fas fa-spinner fa-spin" : "fas fa-plus-circle"}></i>
-                                <input type='file' name='uploaded_file' onChange={handleFileChange.bind(this)} ref={uploadFileInput} style={{ display: 'none' }} disabled={isUploadingFile} />
-                            </div>
-
-                            <div 
-                                className={`chat-attachment-button ${isUploadingImage ? 'disabled' : ''}`} 
-                                onClick={isUploadingImage ? null : handleMessageImageButtonClick.bind(this)}
-                                onKeyDown={isUploadingImage ? null : (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleMessageImageButtonClick(); } }}
-                                role='button'
-                                tabIndex={isUploadingImage ? -1 : 0}
-                                aria-label={isUploadingImage ? 'Uploading image, please wait' : 'Upload image'}
-                                aria-disabled={isUploadingImage}
-                                style={{ opacity: isUploadingImage ? 0.6 : 1, cursor: isUploadingImage ? 'not-allowed' : 'pointer' }}
-                            >
-                                <i className={isUploadingImage ? "fas fa-spinner fa-spin" : "fas fa-images"}></i>
-                                <input type='file' style={{ display: 'none' }} ref={imageInput} onChange={handleMessageImageChange.bind(this)} disabled={isUploadingImage} />
-                            </div>
-
-
-
-                            <div 
-                                className={`chat-attachment-button ${isUploadingAudio ? 'disabled' : ''}`} 
-                                onClick={isUploadingAudio ? null : (isRecording ? (() => stopRecording(true)) : startRecording)}
-                                onKeyDown={isUploadingAudio ? null : (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); isRecording ? stopRecording(true) : startRecording(); } }}
-                                role='button'
-                                tabIndex={isUploadingAudio ? -1 : 0}
-                                aria-label={isUploadingAudio ? 'Uploading voice message' : (isRecording ? 'Stop and send voice message' : 'Record voice message')}
-                                aria-disabled={isUploadingAudio}
-                                style={{ opacity: isUploadingAudio ? 0.6 : 1, cursor: isUploadingAudio ? 'not-allowed' : 'pointer' }}
-                            >
-                                <i className={isUploadingAudio ? "fas fa-spinner fa-spin" : (isRecording ? "fas fa-stop-circle" : "fas fa-microphone-alt")}></i>
-                            </div>
-
-                            <div 
-                                className={`chat-attachment-button ${isLiveVoiceConnecting || isRecording || isUploadingAudio ? 'disabled' : ''}`} 
-                                onClick={(isLiveVoiceConnecting || isRecording || isUploadingAudio) ? null : handleLiveVoiceButtonClick}
-                                onKeyDown={(isLiveVoiceConnecting || isRecording || isUploadingAudio) ? null : (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleLiveVoiceButtonClick(); } }}
-                                role='button'
-                                tabIndex={(isLiveVoiceConnecting || isRecording || isUploadingAudio) ? -1 : 0}
-                                aria-label={isLiveVoiceConnecting ? 'Connecting live voice' : (isLiveVoiceActive ? 'Stop live voice' : 'Start live voice transfer')}
-                                aria-disabled={isLiveVoiceConnecting || isRecording || isUploadingAudio}
-                                style={{ 
-                                    opacity: (isLiveVoiceConnecting || isRecording || isUploadingAudio) ? 0.6 : 1, 
-                                    cursor: (isLiveVoiceConnecting || isRecording || isUploadingAudio) ? 'not-allowed' : 'pointer',
-                                    color: isLiveVoiceActive ? '#ff4d4f' : 'inherit'
-                                }}
-                            >
-                                <i className={
-                                    isLiveVoiceConnecting 
-                                        ? "fas fa-spinner fa-spin" 
-                                        : (isLiveVoiceActive 
-                                            ? "fas fa-phone-slash" 
-                                            : "fas fa-phone")
-                                }></i>
-                            </div>
-
-                            <div 
-                                onClick={handleEmojiBtnClick.bind(this)} 
-                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleEmojiBtnClick(); } }}
+                {isRecording && (
+                    <div className='composer-recording-bar' aria-live='polite'>
+                        <span className='composer-recording-dot'><i className="fas fa-circle"></i></span>
+                        <span className='composer-recording-time'>{msToClock(recordingMs)}</span>
+                        <canvas ref={waveformCanvasRef} width={140} height={22} className='composer-recording-wave' />
+                        <div className='composer-recording-actions'>
+                            <div
+                                className='composer-icon-btn send'
+                                onClick={() => stopRecording(true)}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); stopRecording(true) } }}
                                 role='button'
                                 tabIndex={0}
-                                className='message-action-emoji-container chat-attachment-button'
+                                aria-label='Stop and send voice message'
                             >
-                                <i style={{ color: '#F4D52F' }} className="fas fa-smile-beam"></i>
-
-                                {
-                                    isImojiContainer && <>
-                                        <div ref={emogiListContainer} className='emoji-container'>
-                                            <EmojiPicker theme='dark' onEmojiClick={handleEmojiClick} />
-
-                                        </div>
-                                    </>
-                                }
-
+                                <i className="fas fa-paper-plane"></i>
+                            </div>
+                            <div
+                                className='composer-icon-btn danger'
+                                onClick={cancelRecording}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cancelRecording() } }}
+                                role='button'
+                                tabIndex={0}
+                                aria-label='Cancel recording'
+                            >
+                                <i className="fas fa-trash"></i>
                             </div>
                         </div>
                     </div>
-                    <div className='new-message-form'>
-                        {isRecording && (
-                            <div className='voice-recording-bar' aria-live='polite' style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: '#1a1a1a', borderRadius: 8, marginBottom: 6 }}>
-                                <span style={{ color: '#ff4d4f' }}><i className="fas fa-circle"></i></span>
-                                <span style={{ color: '#ddd', minWidth: 48, textAlign: 'center' }}>{msToClock(recordingMs)}</span>
-                                <canvas ref={waveformCanvasRef} width={160} height={24} style={{ borderRadius: 4 }} />
-                                <div style={{ display: 'flex', marginLeft: 'auto', gap: 8 }}>
-                                    <div
-                                        className='message-action-button'
-                                        onClick={() => stopRecording(true)}
-                                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); stopRecording(true) } }}
-                                        role='button'
-                                        tabIndex={0}
-                                        aria-label='Stop and send voice message'
-                                        style={{ color: '#1DB954' }}
-                                    >
-                                        <i className="fas fa-paper-plane"></i>
-                                    </div>
-                                    <div
-                                        className='message-action-button'
-                                        onClick={cancelRecording}
-                                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cancelRecording() } }}
-                                        role='button'
-                                        tabIndex={0}
-                                        aria-label='Cancel recording'
-                                        style={{ color: '#ff4d4f' }}
-                                    >
-                                        <i className="fas fa-trash"></i>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                        <div className='new-message-input-container'>
+                )}
+
+                <div className="new-message-container composer-main">
+                    <div
+                        className={`composer-icon-btn attach-toggle ${showAttachTray ? 'active' : ''} ${isUploadingFile || isUploadingImage ? 'disabled' : ''}`}
+                        onClick={(isUploadingFile || isUploadingImage) ? null : toggleAttachTray}
+                        onKeyDown={(isUploadingFile || isUploadingImage) ? null : (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleAttachTray(); } }}
+                        role='button'
+                        tabIndex={(isUploadingFile || isUploadingImage) ? -1 : 0}
+                        aria-label={showAttachTray ? 'Close attachments' : 'Open attachments'}
+                        aria-expanded={showAttachTray}
+                    >
+                        <i className={showAttachTray ? 'fas fa-times' : 'fas fa-plus'}></i>
+                    </div>
+
+                    <div className='new-message-form composer-field-wrap'>
+                        <div className='new-message-input-container composer-field'>
                             <input 
                                 ref={messageInput} 
                                 onChange={handleInputChange} 
                                 value={inputValue} 
                                 onKeyDown={handleKeyPress} 
-                                placeholder='Send Message....' 
+                                placeholder='Message' 
                                 id='newMessageInput' 
                                 className='new-message-input' 
-                                onFocus={addTyping} 
+                                onFocus={() => { addTyping(); setShowAttachTray(false); }} 
                                 onBlur={removeTyping} 
                                 disabled={isRecording || isUploadingAudio}
-                                // Prevent iOS Safari from zooming on focus by ensuring font-size >= 16px
                                 style={{ fontSize: '16px' }}
                             />
-                        </div>
-                        <div ref={messageActionButtonContainer} className='message-action-button-container'>
-
-                            {
-                                inputValue.length > 0 || attachmentUrl ? <div 
-                                    onClick={isSendingMessage ? null : handleSendMessage} 
-                                    onKeyDown={isSendingMessage ? null : (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSendMessage(e); } }}
-                                    role='button'
-                                    tabIndex={isSendingMessage ? -1 : 0}
-                                    className={`message-action-button send-message ${attachmentUrl == 'https://res.cloudinary.com/dz88yjerw/image/upload/v1743092084/i5lcu63atrbkpcy6oqam.gif' && 'button-disabled'} ${isSendingMessage ? 'disabled' : ''}`}
-                                    style={{ opacity: isSendingMessage ? 0.6 : 1, cursor: isSendingMessage ? 'not-allowed' : 'pointer' }}
-                                >
-                                    <i className={isSendingMessage ? "fas fa-spinner fa-spin" : "fas fa-paper-plane"}></i>
-                                </div>
-
-                                    : <>
-                                        <div 
-                                            onClick={likeButtonClick} 
-                                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); likeButtonClick(); } }}
-                                            role='button'
-                                            tabIndex={0}
-                                            className='message-action-button send-like'
-                                        >
-                                            <span className="">{actionEmoji}</span>
-                                        </div>
-
-
-                                        <div 
-                                            onClick={emojiChangeClick.bind(this)} 
-                                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); emojiChangeClick(); } }}
-                                            role='button'
-                                            tabIndex={0}
-                                            className='message-action-emoji-container chat-attachment-button'
-                                        >
-                                            <i className="fas fa-chevron-up"></i>
-
-                                            {
-                                                isImojiChangeContainer && <>
-                                                    <div ref={emogiChangeContainer} className='emoji-container'>
-                                                        <EmojiPicker theme='dark' onEmojiClick={handleEmojiChangeClick} />
-
-                                                    </div>
-                                                </>
-                                            }
-
-                                        </div>
-                                    </>
-                            }
-
+                            <div
+                                onClick={handleEmojiBtnClick.bind(this)}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleEmojiBtnClick(); } }}
+                                role='button'
+                                tabIndex={0}
+                                className='composer-emoji-btn message-action-emoji-container'
+                                aria-label='Emoji'
+                            >
+                                <i className="far fa-smile"></i>
+                                {isImojiContainer && (
+                                    <div ref={emogiListContainer} className='emoji-container'>
+                                        <EmojiPicker theme='dark' onEmojiClick={handleEmojiClick} />
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
 
+                    <div ref={messageActionButtonContainer} className='message-action-button-container composer-end-actions'>
+                        {hasComposableContent ? (
+                            <div
+                                onClick={isSendingMessage ? null : (e) => { setShowAttachTray(false); handleSendMessage(e); }}
+                                onKeyDown={isSendingMessage ? null : (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowAttachTray(false); handleSendMessage(e); } }}
+                                role='button'
+                                tabIndex={isSendingMessage ? -1 : 0}
+                                className={`composer-icon-btn send message-action-button send-message ${attachmentUrl == 'https://res.cloudinary.com/dz88yjerw/image/upload/v1743092084/i5lcu63atrbkpcy6oqam.gif' && 'button-disabled'} ${isSendingMessage ? 'disabled' : ''}`}
+                                aria-label='Send message'
+                                style={{ opacity: isSendingMessage ? 0.6 : 1, cursor: isSendingMessage ? 'not-allowed' : 'pointer' }}
+                            >
+                                <i className={isSendingMessage ? "fas fa-spinner fa-spin" : "fas fa-paper-plane"}></i>
+                            </div>
+                        ) : (
+                            <>
+                                <div
+                                    className={`composer-icon-btn mic ${isUploadingAudio || isRecording ? 'disabled' : ''}`}
+                                    onClick={isUploadingAudio ? null : (isRecording ? (() => stopRecording(true)) : () => { setShowAttachTray(false); startRecording(); })}
+                                    onKeyDown={isUploadingAudio ? null : (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); isRecording ? stopRecording(true) : startRecording(); } }}
+                                    role='button'
+                                    tabIndex={isUploadingAudio ? -1 : 0}
+                                    aria-label={isUploadingAudio ? 'Uploading voice message' : 'Record voice message'}
+                                >
+                                    <i className={isUploadingAudio ? "fas fa-spinner fa-spin" : (isRecording ? "fas fa-stop-circle" : "fas fa-microphone")}></i>
+                                </div>
+                                <div
+                                    onClick={likeButtonClick}
+                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); likeButtonClick(); } }}
+                                    role='button'
+                                    tabIndex={0}
+                                    className='composer-icon-btn send-like message-action-button composer-like-desktop'
+                                    aria-label='Send reaction'
+                                    title='Quick reaction'
+                                >
+                                    <span>{actionEmoji}</span>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                {showAttachTray && (
+                    <div className='composer-attach-tray' role='toolbar' aria-label='Attachments'>
+                        <div className='composer-attach-grid'>
+                            <div
+                                className={`composer-attach-item ${isUploadingImage ? 'disabled' : ''}`}
+                                onClick={isUploadingImage ? null : () => { handleMessageImageButtonClick(); }}
+                                onKeyDown={isUploadingImage ? null : (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleMessageImageButtonClick(); } }}
+                                role='button'
+                                tabIndex={isUploadingImage ? -1 : 0}
+                                aria-label='Upload photo'
+                            >
+                                <span className='composer-attach-icon photo'><i className={isUploadingImage ? "fas fa-spinner fa-spin" : "fas fa-image"}></i></span>
+                                <span className='composer-attach-label'>Photo</span>
+                            </div>
+
+                            <div
+                                className={`composer-attach-item ${isUploadingFile ? 'disabled' : ''}`}
+                                onClick={isUploadingFile ? null : () => { handleAttachmentButtonClick(); }}
+                                onKeyDown={isUploadingFile ? null : (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleAttachmentButtonClick(); } }}
+                                role='button'
+                                tabIndex={isUploadingFile ? -1 : 0}
+                                aria-label='Upload file'
+                            >
+                                <span className='composer-attach-icon file'><i className={isUploadingFile ? "fas fa-spinner fa-spin" : "fas fa-paperclip"}></i></span>
+                                <span className='composer-attach-label'>File</span>
+                            </div>
+
+                            <div
+                                className={`composer-attach-item ${isLiveVoiceConnecting || isRecording || isUploadingAudio ? 'disabled' : ''}`}
+                                onClick={(isLiveVoiceConnecting || isRecording || isUploadingAudio) ? null : () => { setShowAttachTray(false); handleLiveVoiceButtonClick(); }}
+                                onKeyDown={(isLiveVoiceConnecting || isRecording || isUploadingAudio) ? null : (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowAttachTray(false); handleLiveVoiceButtonClick(); } }}
+                                role='button'
+                                tabIndex={(isLiveVoiceConnecting || isRecording || isUploadingAudio) ? -1 : 0}
+                                aria-label={isLiveVoiceActive ? 'Stop live voice' : 'Live voice'}
+                            >
+                                <span className={`composer-attach-icon live ${isLiveVoiceActive ? 'active' : ''}`}>
+                                    <i className={isLiveVoiceConnecting ? "fas fa-spinner fa-spin" : (isLiveVoiceActive ? "fas fa-phone-slash" : "fas fa-headset")}></i>
+                                </span>
+                                <span className='composer-attach-label'>{isLiveVoiceActive ? 'Stop' : 'Live'}</span>
+                            </div>
+
+                            <div
+                                className='composer-attach-item'
+                                onClick={likeButtonClick}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); likeButtonClick(); } }}
+                                role='button'
+                                tabIndex={0}
+                                aria-label='Send quick reaction'
+                            >
+                                <span className='composer-attach-icon react'><span className='composer-attach-emoji'>{actionEmoji}</span></span>
+                                <span className='composer-attach-label'>React</span>
+                            </div>
+
+                            <div
+                                className='composer-attach-item message-action-emoji-container'
+                                onClick={emojiChangeClick.bind(this)}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); emojiChangeClick(); } }}
+                                role='button'
+                                tabIndex={0}
+                                aria-label='Change quick reaction'
+                            >
+                                <span className='composer-attach-icon react-edit'><i className="fas fa-pen"></i></span>
+                                <span className='composer-attach-label'>Edit</span>
+                                {isImojiChangeContainer && (
+                                    <div ref={emogiChangeContainer} className='emoji-container'>
+                                        <EmojiPicker theme='dark' onEmojiClick={handleEmojiChangeClick} />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                <div ref={chatNewAttachment} className='chat-new-attachment composer-attach-hidden' aria-hidden='true'>
+                    <input type='file' name='uploaded_file' onChange={handleFileChange.bind(this)} ref={uploadFileInput} style={{ display: 'none' }} disabled={isUploadingFile} />
+                    <input type='file' accept='image/*' style={{ display: 'none' }} ref={imageInput} onChange={handleMessageImageChange.bind(this)} disabled={isUploadingImage} />
                 </div>
 
             </div>

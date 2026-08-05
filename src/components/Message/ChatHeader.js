@@ -2057,16 +2057,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
 
             <div className='chat-header-action'>
                 <div className='chat-header-action-btn-container'>
-                    <div
-                        onClick={handleBumpBtnClick}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleBumpBtnClick(); } }}
-                        role='button'
-                        tabIndex={0}
-                        className='bump-button action-button'
-                        title='bump'
-                    >
-                        <i className="fas fa-record-vinyl"></i>
-                    </div>
+                    {/* Primary actions — always visible */}
                     <div
                         onClick={handleAudioCallBtn}
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleAudioCallBtn(e); } }}
@@ -2074,6 +2065,8 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                         tabIndex={0}
                         data-id={friendId}
                         className='call-button action-button'
+                        title='Audio call'
+                        aria-label='Audio call'
                     >
                         <i className="fas fa-phone-alt"></i>
                     </div>
@@ -2084,25 +2077,32 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                         tabIndex={0}
                         data-id={friendId}
                         className='video-call-button action-button'
+                        title='Video call'
+                        aria-label='Video call'
                     >
                         <i className="fas fa-video"></i>
                     </div>
+
+                    {/* Secondary actions — desktop toolbar only */}
                     <div
-                        onClick={handleChatOptionClick.bind(this)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleChatOptionClick(); } }}
+                        onClick={handleBumpBtnClick}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleBumpBtnClick(); } }}
                         role='button'
                         tabIndex={0}
-                        className='info-button action-button'
+                        className='bump-button action-button chat-action-desktop'
+                        title='Bump'
+                        aria-label='Bump'
                     >
-                        <i className="fas fa-ellipsis-v"></i>
+                        <i className="fas fa-record-vinyl"></i>
                     </div>
                     <div
                         onClick={handleChatInfoClick.bind(this)}
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleChatInfoClick(); } }}
                         role='button'
                         tabIndex={0}
-                        className='info-button action-button'
+                        className='info-button action-button chat-action-desktop'
                         title='User Info'
+                        aria-label='User info'
                     >
                         <i className="fas fa-info-circle"></i>
                     </div>
@@ -2111,10 +2111,24 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpenStickyChat(); } }}
                         role='button'
                         tabIndex={0}
-                        className='sticky-chat-button action-button'
+                        className='sticky-chat-button action-button chat-action-desktop'
                         title='Open Sticky Chat'
+                        aria-label='Open sticky chat'
                     >
                         <i className="fas fa-comment-dots"></i>
+                    </div>
+
+                    <div
+                        onClick={handleChatOptionClick.bind(this)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleChatOptionClick(); } }}
+                        role='button'
+                        tabIndex={0}
+                        className='more-button action-button'
+                        title='More options'
+                        aria-label='More options'
+                        aria-expanded={isChatOptionMenu}
+                    >
+                        <i className="fas fa-ellipsis-v"></i>
                     </div>
 
                     {isChatOptionMenu && (
@@ -2125,6 +2139,18 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleViewProfile(); } }}
                                     tabIndex={0}
                                 >View Profile</li>
+                                <li
+                                    className="chat-action-mobile-item"
+                                    onClick={() => { setIsChatOptionMenu(false); handleChatInfoClick(); }}
+                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsChatOptionMenu(false); handleChatInfoClick(); } }}
+                                    tabIndex={0}
+                                >User Info</li>
+                                <li
+                                    className="chat-action-mobile-item"
+                                    onClick={() => { setIsChatOptionMenu(false); handleBumpBtnClick(); }}
+                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsChatOptionMenu(false); handleBumpBtnClick(); } }}
+                                    tabIndex={0}
+                                >Bump</li>
                                 {
                                     profile?.blockedUsers.includes(friendId) ?
                                         <li
