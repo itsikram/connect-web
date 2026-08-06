@@ -18,7 +18,9 @@ const ProfileSetting = () => {
         username: '',
         workPlaces: [{}],
         schools: [{}],
-        displayName: ''
+        displayName: '',
+        presentAddress: '',
+        permanentAddress: ''
     })
     let [isSaving, setIsSaving] = useState(false)
 
@@ -30,7 +32,9 @@ const ProfileSetting = () => {
             surname: myProfile.user.surname || '',
             nickname: myProfile.nickname || '',
             username: myProfile.username || '',
-            displayName: myProfile.displayName || ''
+            displayName: myProfile.displayName || '',
+            presentAddress: myProfile.presentAddress || '',
+            permanentAddress: myProfile.permanentAddress || ''
         })
 
     }, [myProfile])
@@ -212,7 +216,7 @@ const ProfileSetting = () => {
                                 <div className='input-group-prepend'>
                                     <span className='input-group-text py-3'><i className='fas fa-home'></i></span>
                                 </div>
-                                <input type="text" value={myProfile?.presentAddress || ''} onChange={handleInputChange.bind(this)} className="form-control" id="presentAddress" name='presentAddress' placeholder="Enter Present Address" />
+                                <input type="text" value={settings.presentAddress || ''} onChange={handleInputChange.bind(this)} className="form-control" id="presentAddress" name='presentAddress' placeholder="Enter Present Address" />
 
 
                             </div>
@@ -226,7 +230,7 @@ const ProfileSetting = () => {
                                 <div className='input-group-prepend'>
                                     <span className='input-group-text py-3'> <i className='fa fa-globe'></i></span>
                                 </div>
-                                <input value={myProfile?.permanentAddress || ''} type="text" onChange={handleInputChange.bind(this)} className="form-control" id="permanentAddress" name='permanentAddress' placeholder="Enter Permanent Address" />
+                                <input value={settings.permanentAddress || ''} type="text" onChange={handleInputChange.bind(this)} className="form-control" id="permanentAddress" name='permanentAddress' placeholder="Enter Permanent Address" />
 
                             </div>
 
