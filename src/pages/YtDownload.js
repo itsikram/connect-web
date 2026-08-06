@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { showSuccessToast, showErrorToast, showInfoToast } from '../utils/toastUtils';
 import axios from 'axios';
-import { getYtDownloadApiUrl, isOffline } from '../utils/offlineUtils';
+import { getYtDownloadApiUrl, isOffline, normalizeServerUrl } from '../utils/offlineUtils';
 import { useAuth } from '../hooks/useAuth';
 import VideoDownloadModal from '../components/modal/VideoDownloadModal';
 import './YtDownload.css';
 
-const getYTDownloadAPI = () => getYtDownloadApiUrl().replace(/\/+$/, '');
+const getYTDownloadAPI = () => normalizeServerUrl(getYtDownloadApiUrl());
+
+const toSecureProgressUrl = (url) => normalizeServerUrl(String(url || '').split('?')[0]);
 
 const resolveProgressUrl = (json) => {
     const apiBase = getYTDownloadAPI();
@@ -14,15 +16,7 @@ const resolveProgressUrl = (json) => {
         return `${apiBase}/progress/${json.progress_id}`;
     }
     if (typeof json?.progress_url === 'string' && json.progress_url.length > 0) {
-        try {
-            const u = new URL(json.progress_url, `${apiBase}/`);
-            if (window.location.protocol === 'https:' && u.protocol === 'http:') {
-                u.protocol = 'https:';
-            }
-            return u.toString();
-        } catch (_) {
-            return json.progress_url;
-        }
+        return toSecureProgressUrl(json.progress_url);
     }
     return null;
 };
@@ -163,18 +157,26 @@ const YtDownload = () => {
             clearInterval(progressPollIntervalRef.current);
         }
 
+        const secureProgressUrl = toSecureProgressUrl(progressUrl);
         let pollFailures = 0;
 
         const fetchProgressOnce = async () => {
             try {
-                const response = await axios.get(progressUrl, {
+                const response = await fetch(`${secureProgressUrl}?_ts=${Date.now()}`, {
+                    method: 'GET',
                     headers: getAuthHeaders(),
-                    params: { _ts: Date.now() },
+                    cache: 'no-store',
+                    mode: 'cors',
+                    credentials: 'omit',
                 });
+
+                if (!response.ok) {
+                    throw new Error(`Progress HTTP ${response.status}`);
+                }
 
                 pollFailures = 0;
 
-                const data = response.data;
+                const data = await response.json();
                 const status = data?.status;
                 const stage = data?.stage || '';
                 const pct = Number(data?.pct) || 0;
@@ -215,7 +217,8 @@ const YtDownload = () => {
                 }
             } catch (err) {
                 pollFailures += 1;
-                console.error('Progress poll error:', err?.response?.status || err?.message || err);
+                const errLabel = err?.message || String(err);
+                console.error('Progress poll error:', errLabel);
 
                 if (pollFailures === 8) {
                     showInfoToast('Still preparing your video on the server…', {

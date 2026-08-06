@@ -14,13 +14,50 @@ export const isOffline = () => {
 };
 
 /**
+ * Normalize API/server base URLs for production (Render always uses HTTPS).
+ */
+export const normalizeServerUrl = (url) => {
+  if (!url) return url;
+
+  let normalized = String(url).trim().replace(/\/+$/, '');
+  if (!normalized) return normalized;
+
+  if (!/^https?:\/\//i.test(normalized)) {
+    normalized = `https://${normalized}`;
+  }
+
+  try {
+    const parsed = new URL(normalized);
+    const isLocal =
+      parsed.hostname === 'localhost' ||
+      parsed.hostname === '127.0.0.1' ||
+      parsed.hostname === '[::1]';
+
+    if (!isLocal && /\.onrender\.com$/i.test(parsed.hostname)) {
+      parsed.protocol = 'https:';
+    } else if (
+      typeof window !== 'undefined' &&
+      window.location.protocol === 'https:' &&
+      parsed.protocol === 'http:' &&
+      !isLocal
+    ) {
+      parsed.protocol = 'https:';
+    }
+
+    return parsed.toString().replace(/\/$/, '');
+  } catch (_) {
+    return normalized.replace(/^http:\/\//i, 'https://');
+  }
+};
+
+/**
  * Get the server address with fallback for offline/local development
  * Priority: Environment variable > Online detection > Localhost fallback
  */
 export const getServerAddress = () => {
   // PRIORITY 1: Always use environment variable if available (even when offline)
   if (process.env.REACT_APP_SERVER_ADDR) {
-    return process.env.REACT_APP_SERVER_ADDR;
+    return normalizeServerUrl(process.env.REACT_APP_SERVER_ADDR);
   }
   
   // PRIORITY 2: If offline and no env var, use localhost
@@ -63,7 +100,7 @@ export const getSocketUrl = () => {
 export const getYtDownloadApiUrl = () => {
   // PRIORITY 1: Always use environment variable if available
   if (process.env.REACT_APP_YT_DL_API_URL) {
-    return process.env.REACT_APP_YT_DL_API_URL;
+    return normalizeServerUrl(process.env.REACT_APP_YT_DL_API_URL);
   }
   
   // PRIORITY 2: Use the main Connect server (Node.js ytdl-core service)
