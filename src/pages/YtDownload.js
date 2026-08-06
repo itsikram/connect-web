@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { showSuccessToast, showErrorToast, showInfoToast } from '../utils/toastUtils';
 import axios from 'axios';
 import { getYtDownloadApiUrl, isOffline, normalizeServerUrl } from '../utils/offlineUtils';
+import { saveVideoFromUrl } from '../utils/useSavedVideos';
 import { useAuth } from '../hooks/useAuth';
 import VideoDownloadModal from '../components/modal/VideoDownloadModal';
 import './YtDownload.css';
@@ -114,9 +115,28 @@ const YtDownload = () => {
         }
     };
 
-    const handleDownloadComplete = (fileUrl, title, watchPosted) => {
+    const extractYouTubeVideoId = (url) => {
+        try {
+            const normalized = String(url || '').replace('m.youtube.com', 'www.youtube.com');
+            const u = new URL(normalized);
+            if (u.hostname.includes('youtu.be')) {
+                return u.pathname.replace(/^\//, '').split('/')[0] || null;
+            }
+            const fromQuery = u.searchParams.get('v');
+            if (fromQuery) return fromQuery;
+            const shortsMatch = u.pathname.match(/\/shorts\/([^/?]+)/);
+            return shortsMatch ? shortsMatch[1] : null;
+        } catch (_) {
+            return null;
+        }
+    };
+
+    const handleDownloadComplete = (fileUrl, title, watchPosted, watchId) => {
         const finalTitle = title || extractFileNameFromUrl(fileUrl) || 'video';
         const fileName = `${sanitizeFileName(finalTitle)}.mp4`;
+        const sourceUrl = currentDownload?.url || youtubeUrl;
+        const ytVideoId = extractYouTubeVideoId(sourceUrl);
+        const saveId = watchId || (ytVideoId ? `yt-${ytVideoId}` : `yt-${Date.now()}`);
 
         const downloadItem = {
             id: Date.now(),
@@ -140,10 +160,17 @@ const YtDownload = () => {
         setDownloadStatus('completed');
         setCurrentDownload(null);
 
-        const successMessage = watchPosted
-            ? 'Video ready! Posted to Watch and available for download.'
-            : 'Video ready! Use the download link in the modal.';
-        showSuccessToast(successMessage, { title: 'Download Complete' });
+        const savedMetadata = {
+            _id: saveId,
+            caption: finalTitle,
+            thumbnail: ytVideoId ? `https://i.ytimg.com/vi/${ytVideoId}/hqdefault.jpg` : '',
+            source: 'youtube',
+            youtubeUrl: sourceUrl,
+        };
+
+        saveVideoFromUrl(saveId, fileUrl, savedMetadata).catch((err) => {
+            console.error('Failed to save to Saved Videos:', err);
+        });
 
         setTimeout(() => {
             setDownloadProgress(0);
@@ -183,6 +210,7 @@ const YtDownload = () => {
                 const fileUrl = data?.file_url;
                 const title = data?.title || data?.download_title || videoTitle;
                 const watchPosted = data?.watch_posted;
+                const watchId = data?.watch_id;
 
                 if (title && title !== videoTitle) {
                     setVideoTitle(title);
@@ -197,7 +225,7 @@ const YtDownload = () => {
                         clearInterval(progressPollIntervalRef.current);
                         progressPollIntervalRef.current = null;
                     }
-                    handleDownloadComplete(fileUrl, title, watchPosted);
+                    handleDownloadComplete(fileUrl, title, watchPosted, watchId);
                     return true;
                 }
 
@@ -275,7 +303,7 @@ const YtDownload = () => {
 
             if (json && json.status === 'completed' && json.file_url) {
                 const finalTitle = title || extractFileNameFromUrl(json.file_url) || 'video';
-                handleDownloadComplete(json.file_url, finalTitle, json.watch_posted);
+                handleDownloadComplete(json.file_url, finalTitle, json.watch_posted, json.watch_id);
                 return;
             }
 

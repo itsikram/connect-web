@@ -101,7 +101,7 @@ const SavedVideos = () => {
                     {videos.length === 0 && downloading.length === 0 ? (
                         <div className='col-12'>
                             <p className='text-muted text-center py-5 mb-0'>
-                                No saved videos yet. Tap the download icon on a Watch video to save one here.
+                                No saved videos yet. Download from YouTube or tap the download icon on a Watch video to save one here.
                             </p>
                         </div>
                     ) : (
