@@ -6,7 +6,26 @@ import { useAuth } from '../hooks/useAuth';
 import VideoDownloadModal from '../components/modal/VideoDownloadModal';
 import './YtDownload.css';
 
-const getYTDownloadAPI = () => getYtDownloadApiUrl();
+const getYTDownloadAPI = () => getYtDownloadApiUrl().replace(/\/+$/, '');
+
+const resolveProgressUrl = (json) => {
+    const apiBase = getYTDownloadAPI();
+    if (json?.progress_id) {
+        return `${apiBase}/progress/${json.progress_id}`;
+    }
+    if (typeof json?.progress_url === 'string' && json.progress_url.length > 0) {
+        try {
+            const u = new URL(json.progress_url, `${apiBase}/`);
+            if (window.location.protocol === 'https:' && u.protocol === 'http:') {
+                u.protocol = 'https:';
+            }
+            return u.toString();
+        } catch (_) {
+            return json.progress_url;
+        }
+    }
+    return null;
+};
 
 const QUALITY_OPTIONS = [
     { label: 'Best Quality', value: 1080 },
@@ -144,6 +163,8 @@ const YtDownload = () => {
             clearInterval(progressPollIntervalRef.current);
         }
 
+        let pollFailures = 0;
+
         const fetchProgressOnce = async () => {
             try {
                 const response = await axios.get(progressUrl, {
@@ -151,10 +172,12 @@ const YtDownload = () => {
                     params: { _ts: Date.now() },
                 });
 
+                pollFailures = 0;
+
                 const data = response.data;
                 const status = data?.status;
                 const stage = data?.stage || '';
-                const pct = data?.pct || 0;
+                const pct = Number(data?.pct) || 0;
                 const fileUrl = data?.file_url;
                 const title = data?.title || data?.download_title || videoTitle;
                 const watchPosted = data?.watch_posted;
@@ -163,7 +186,7 @@ const YtDownload = () => {
                     setVideoTitle(title);
                 }
 
-                setDownloadProgress(Math.round(pct));
+                setDownloadProgress((prev) => Math.max(prev, Math.round(pct)));
                 setDownloadStage(stage || 'downloading');
                 setDownloadStatus(status);
 
@@ -191,7 +214,29 @@ const YtDownload = () => {
                     return true;
                 }
             } catch (err) {
-                console.error('Progress poll error:', err);
+                pollFailures += 1;
+                console.error('Progress poll error:', err?.response?.status || err?.message || err);
+
+                if (pollFailures === 8) {
+                    showInfoToast('Still preparing your video on the server…', {
+                        title: 'Download in progress',
+                        autoClose: 4000,
+                    });
+                }
+
+                if (pollFailures >= 120) {
+                    if (progressPollIntervalRef.current) {
+                        clearInterval(progressPollIntervalRef.current);
+                        progressPollIntervalRef.current = null;
+                    }
+                    setIsDownloading(false);
+                    setDownloadStatus('failed');
+                    showErrorToast(
+                        'Lost connection to download progress. The video may still finish — check Watch or try again.',
+                        { title: 'Progress unavailable' }
+                    );
+                    return true;
+                }
             }
             return false;
         };
@@ -215,11 +260,14 @@ const YtDownload = () => {
                 setVideoTitle(title);
             }
 
-            if (json && json.status === 'accepted' && typeof json.progress_url === 'string' && json.progress_url.length > 0) {
-                setDownloadProgress(5);
-                setDownloadStage('starting');
-                pollProgress(json.progress_url);
-                return;
+            if (json && json.status === 'accepted') {
+                const progressUrl = resolveProgressUrl(json);
+                if (progressUrl) {
+                    setDownloadProgress(5);
+                    setDownloadStage('starting');
+                    pollProgress(progressUrl);
+                    return;
+                }
             }
 
             if (json && json.status === 'completed' && json.file_url) {
