@@ -188,56 +188,39 @@ const YtDownload = () => {
         }, 2000);
     };
 
-    const pollInitialStatus = async (requestUrl) => {
-        if (statusPollIntervalRef.current) {
-            clearInterval(statusPollIntervalRef.current);
-        }
+    const startDownloadJob = async (requestUrl) => {
+        try {
+            const response = await axios.get(requestUrl, {
+                headers: getAuthHeaders(),
+                params: { _ts: Date.now() },
+            });
 
-        let attempts = 0;
-        const maxAttempts = 10;
+            const json = response.data;
+            const title = json?.title || json?.download_title;
 
-        statusPollIntervalRef.current = setInterval(async () => {
-            attempts++;
-            try {
-                const response = await axios.get(requestUrl, {
-                    headers: getAuthHeaders(),
-                    params: { _ts: Date.now() },
-                });
-
-                const json = response.data;
-                const title = json?.title || json?.download_title;
-
-                if (title) {
-                    setVideoTitle(title);
-                }
-
-                if (json && json.status === 'accepted' && typeof json.progress_url === 'string' && json.progress_url.length > 0) {
-                    if (statusPollIntervalRef.current) {
-                        clearInterval(statusPollIntervalRef.current);
-                        statusPollIntervalRef.current = null;
-                    }
-                    pollProgress(json.progress_url);
-                } else if (json && json.status === 'completed' && json.file_url) {
-                    if (statusPollIntervalRef.current) {
-                        clearInterval(statusPollIntervalRef.current);
-                        statusPollIntervalRef.current = null;
-                    }
-                    const finalTitle = title || extractFileNameFromUrl(json.file_url) || 'video';
-                    handleDownloadComplete(json.file_url, finalTitle, json.watch_posted);
-                }
-            } catch (err) {
-                console.error('Status poll error:', err);
-                if (attempts >= maxAttempts) {
-                    if (statusPollIntervalRef.current) {
-                        clearInterval(statusPollIntervalRef.current);
-                        statusPollIntervalRef.current = null;
-                    }
-                    setIsDownloading(false);
-                    const errMsg = err.response?.data?.error || err.response?.data?.message || 'Failed to start download. Please try again.';
-                    showErrorToast(errMsg, { title: 'Download Error' });
-                }
+            if (title) {
+                setVideoTitle(title);
             }
-        }, 800);
+
+            if (json && json.status === 'accepted' && typeof json.progress_url === 'string' && json.progress_url.length > 0) {
+                pollProgress(json.progress_url);
+                return;
+            }
+
+            if (json && json.status === 'completed' && json.file_url) {
+                const finalTitle = title || extractFileNameFromUrl(json.file_url) || 'video';
+                handleDownloadComplete(json.file_url, finalTitle, json.watch_posted);
+                return;
+            }
+
+            setIsDownloading(false);
+            showErrorToast('Unexpected response from download server', { title: 'Download Error' });
+        } catch (err) {
+            console.error('Start download error:', err);
+            setIsDownloading(false);
+            const errMsg = err.response?.data?.error || err.response?.data?.message || 'Failed to start download. Please try again.';
+            showErrorToast(errMsg, { title: 'Download Error' });
+        }
     };
 
     const validateYouTubeUrl = (url) => {
@@ -286,7 +269,7 @@ const YtDownload = () => {
             return;
         }
 
-        pollInitialStatus(requestUrl);
+        startDownloadJob(requestUrl);
     };
 
     const handleCancel = () => {

@@ -1,61 +1,57 @@
 import React, { Fragment, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import FGI from "./FGI";
 import api from "../../api/api";
 import FgiSkleton from "../../skletons/friend/FgiSkleton";
 
 let FriendRequests = () => {
+    const location = useLocation();
+    const isRequestsPage = location.pathname.includes("/friends/requests");
 
     let [reqData, setReqData] = useState([])
-    let [hasFriends, setHasFriends] = useState(true)
+    let [isLoading, setIsLoading] = useState(true)
 
     useEffect(() => {
+        setIsLoading(true)
         api.get('/friend/getRequest/').then((res) => {
-            setReqData(res.data)
-            setHasFriends(res.data.length > 0 ? true : false)
+            setReqData(Array.isArray(res.data) ? res.data : [])
         }).catch(e => {
             console.log(e)
+            setReqData([])
+        }).finally(() => {
+            setIsLoading(false)
         })
     }, [])
 
     return (
         <Fragment>
-            <div id="friends-container" >
+            <div id="friends-container">
                 <div className="heading">
                     <h4 className="heading-title">Friend Requests</h4>
-                    <Link to="/friends/requests" className="view-more-btn">See All</Link>
+                    {!isRequestsPage && (
+                        <Link to="/friends/requests" className="view-more-btn">See All</Link>
+                    )}
                 </div>
 
-                {
-                    reqData.length > 0 ?
-                        <>
-                            <div className="friend-grid-container">
-
-                                {
-
-                                    reqData.map((req, index) => {
-                                        return <FGI key={index} id={req._id} profilePic={req.profilePic} fullName={req.user.firstName + ' ' + req.user.surname} type="req"></FGI>
-                                    })
-
-                                }
-
-                                {
-                                    reqData.length === 0 && <h4 className="data-not-found text-center">You don't have any Friend Request to show</h4>
-                                }
-
-
-
-                            </div>
-                        </>
-                        :
-                        <>
-                            <div className="friend-grid-container">
-
-                                {hasFriends ? <FgiSkleton count={4} /> : <h4 className="data-not-found text-center">You don't have any Friend Request to show</h4>}
-                            </div>
-                        </>
-                }
-
+                <div className="friend-grid-container">
+                    {isLoading ? (
+                        <FgiSkleton count={4} />
+                    ) : reqData.length > 0 ? (
+                        reqData.map((req) => (
+                            <FGI
+                                key={req._id}
+                                id={req._id}
+                                profilePic={req.profilePic}
+                                fullName={`${req.user?.firstName || ""} ${req.user?.surname || ""}`.trim() || "User"}
+                                type="req"
+                            />
+                        ))
+                    ) : (
+                        <h4 className="data-not-found text-center">
+                            You don&apos;t have any friend requests right now
+                        </h4>
+                    )}
+                </div>
             </div>
         </Fragment>
     )
