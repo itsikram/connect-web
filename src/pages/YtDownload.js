@@ -183,7 +183,11 @@ const YtDownload = () => {
                     }
                     setIsDownloading(false);
                     setDownloadStatus('failed');
-                    showErrorToast(data?.error || 'Download failed. Please try again.', { title: 'Download Error' });
+                    const raw = data?.error || 'Download failed. Please try again.';
+                    const friendly = /format is not available|no video formats/i.test(raw)
+                        ? 'Download failed. Please try again in a moment.'
+                        : raw;
+                    showErrorToast(friendly, { title: 'Download Error' });
                     return true;
                 }
             } catch (err) {
@@ -212,6 +216,8 @@ const YtDownload = () => {
             }
 
             if (json && json.status === 'accepted' && typeof json.progress_url === 'string' && json.progress_url.length > 0) {
+                setDownloadProgress(5);
+                setDownloadStage('starting');
                 pollProgress(json.progress_url);
                 return;
             }
@@ -305,6 +311,7 @@ const YtDownload = () => {
     const getStageLabel = (stage) => {
         const labels = {
             starting: 'Starting...',
+            preparing: 'Preparing video on home server...',
             downloading: 'Downloading on server...',
             uploading: 'Uploading to Cloudinary...',
             uploading_watch: 'Posting to Watch...',
