@@ -777,11 +777,6 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
                                 onFocus={() => {
                                     addTyping();
                                     setShowAttachTray(false);
-                                    // Body is already position:fixed on mobile message page.
-                                    // Avoid repeated scrollTo/resize — that fights iOS and shakes the UI.
-                                    if (document.body.classList.contains('message-page-mobile')) {
-                                        window.scrollTo(0, 0);
-                                    }
                                 }}
                                 onBlur={removeTyping} 
                                 disabled={isRecording || isUploadingAudio}

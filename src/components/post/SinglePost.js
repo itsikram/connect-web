@@ -44,7 +44,10 @@ const SinglePost = () => {
 
         let res = await api.get('post/single', { params: { postId } })
         if (res.status == 200) {
+            const comments = Array.isArray(res.data?.comments) ? res.data.comments : [];
             setPostData(res.data)
+            setAllComments(comments)
+            setTotalComments(comments.length)
         }
     }
 

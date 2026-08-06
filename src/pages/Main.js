@@ -3,6 +3,7 @@ import { ToastContainer } from 'react-toastify';
 import { Routes, Route, useParams, useLocation, useNavigate } from 'react-router-dom'
 import NProgress from 'nprogress';
 import { showMessageToast, showLudoInviteToast, dismissToast } from '../utils/toastUtils';
+import { getNotificationLink } from '../utils/notificationUtils';
 import 'react-toastify/dist/ReactToastify.css';
 import '../components/Toast/CustomToast.css';
 import webNotificationService from '../services/webNotificationService';
@@ -499,7 +500,8 @@ const Main = () => {
                     
                     // Skip toast and browser notification for message types
                     if (notification.type !== 'message') {
-                        notify(notification.text, false, notification.icon, notification.link);
+                        const notificationLink = getNotificationLink(notification);
+                        notify(notification.text, false, notification.icon, notificationLink);
                         
                         // Skip page Notification when Web Push is subscribed (SW already shows it)
                         if (
@@ -511,13 +513,13 @@ const Main = () => {
                                 icon: notification.icon || '/apple-touch-icon.png',
                                 tag: `notification_${notification._id || Date.now()}`,
                                 data: {
-                                    url: notification.link || '/',
+                                    url: notificationLink,
                                     notificationId: notification._id
                                 }
                             });
 
                             browserNotification.onclick = () => {
-                                window.open(notification.link || '/', '_self');
+                                window.open(notificationLink, '_self');
                                 browserNotification.close();
                             };
 

@@ -1,4 +1,4 @@
-import React, { Fragment, useEffect, useState, useRef, useCallback } from "react";
+import React, { Fragment, useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import moment from "moment";
 import MegaMC from "../../components/MegaMC";
@@ -7,6 +7,7 @@ import MessageList from "../../components/Message/MessageList";
 import api from "../../api/api";
 import { useAuth } from "../../hooks/useAuth";
 import { addNotifications, viewNotification, viewNotifications } from "../../services/actions/notificationActions";
+import { getNotificationDisplayParts, getNotificationLink } from "../../utils/notificationUtils";
 import config from '../../config/config.json';
 import '../../pages/Message.css';
 
@@ -61,6 +62,11 @@ let HeaderRight = ({ dispatch, useSelector }) => {
     let notificationMenuHeight = optionData.bodyHeight - optionData.headerHeight - 100
     let notificationMenuStyle = { maxHeight: notificationMenuHeight + 'px' }
 
+    const headerNotifications = useMemo(
+        () => notificaitonData.filter(n => n.type !== 'message'),
+        [notificaitonData]
+    )
+
 
     useEffect(() => {
         // Reset to default profile pic when profile data is cleared (after logout)
@@ -78,9 +84,9 @@ let HeaderRight = ({ dispatch, useSelector }) => {
     }, [location])
 
     useEffect(() => {
-        let unseenNotifications = notificaitonData.filter(data => data.isSeen === false)
+        let unseenNotifications = headerNotifications.filter(data => data.isSeen === false)
         setTotalNotifications(unseenNotifications.length)
-    }, [notificaitonData])
+    }, [headerNotifications])
     useEffect(() => {
         if (!messageData || !profileData._id) return;
         
@@ -311,7 +317,7 @@ let HeaderRight = ({ dispatch, useSelector }) => {
                         <MegaMC style={{ right: '50%', zIndex: 1002, transform: 'translateX(50%)', top: '101%', width: '300px', backgroundColor: '#242526', borderRadius: '5px', display: 'block', boxShadow: '0px 0px 2px 0px rgba(255,255,255,0.3)' }} className="hr-mega-menu">
                             <div className="hr-mm-container">
                                 {
-                                    notificaitonData.length > 0 ? (
+                                    headerNotifications.length > 0 ? (
                                         <div className="hr-notification-menu-container">
                                             <div className={"notification-leftside-header"}>
                                                 <h2 className={"notification-leftside-title"}>
@@ -330,10 +336,9 @@ let HeaderRight = ({ dispatch, useSelector }) => {
                                                         className="modern-chat-list"
                                                         style={{ ...notificationMenuStyle, overflowY: 'auto', overflowX: 'hidden' }}
                                                     >
-                                                        {notificaitonData.map((notification) => {
-                                                            const text = notification.text || '';
-                                                            const titleLine = truncateNotificationTitle(text, 52);
-                                                            const showPreview = text.length > 52;
+                                                        {headerNotifications.map((notification) => {
+                                                            const { title, description } = getNotificationDisplayParts(notification);
+                                                            const titleLine = truncateNotificationTitle(title, 52);
                                                             return (
                                                                 <li
                                                                     key={notification._id}
@@ -341,7 +346,7 @@ let HeaderRight = ({ dispatch, useSelector }) => {
                                                                     data-id={notification._id}
                                                                     onClick={handleNotificationClick}
                                                                 >
-                                                                    <Link to={notification.link || ''}>
+                                                                    <Link to={getNotificationLink(notification)}>
                                                                         <div className="chat-item-content chat-card">
                                                                             <div className="avatar-section">
                                                                                 <div className="avatar-container">
@@ -360,10 +365,10 @@ let HeaderRight = ({ dispatch, useSelector }) => {
                                                                                         </span>
                                                                                     </div>
                                                                                 </div>
-                                                                                {showPreview && (
+                                                                                {description ? (
                                                                                     <div className="last-message-preview">
                                                                                         <span
-                                                                                            className="message-text"
+                                                                                            className="message-text notification-description"
                                                                                             style={{
                                                                                                 display: '-webkit-box',
                                                                                                 WebkitLineClamp: 2,
@@ -371,10 +376,10 @@ let HeaderRight = ({ dispatch, useSelector }) => {
                                                                                                 overflow: 'hidden',
                                                                                             }}
                                                                                         >
-                                                                                            {text}
+                                                                                            {description}
                                                                                         </span>
                                                                                     </div>
-                                                                                )}
+                                                                                ) : null}
                                                                             </div>
                                                                         </div>
                                                                     </Link>

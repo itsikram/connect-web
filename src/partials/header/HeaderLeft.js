@@ -3,33 +3,39 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import $ from 'jquery';
 import api from "../../api/api";
 import UserPP from "../../components/UserPP";
-import Ls from "../sidebar/Ls";
 import useIsMobile from "../../utils/useIsMobile";
-import MegaMC from "../../components/MegaMC";
+import AppMenuModal from "./AppMenuModal";
 import config from "../../config/config.json";
 
 let HeaderLeft = () => {
   let [searchedData, setSearchedData] = useState([])
   let [hasSearchResult, setHasSearchResult] = useState(false)
   let [mobileSearchMenu, setMobileSearchMenu] = useState(false)
-  let [isMegaMenu, setIsMegaMenu] = useState(false);
+  let [isAppMenuOpen, setIsAppMenuOpen] = useState(false);
   let [searchQuery, setSearchQuery] = useState('')
   let location = useLocation();
   let isMobile = useIsMobile();
   let navigate = useNavigate();
   useEffect(() => {
-    setIsMegaMenu(false)
+    setIsAppMenuOpen(false)
   }, [location])
 
-  let headerMMClick = (e) => {
-    setIsMegaMenu(!isMegaMenu)
+  let headerMMClick = () => {
+    setIsAppMenuOpen((open) => !open)
   }
   let MenuButton = () => {
     return (
       <Fragment>
-        <div onClick={headerMMClick} className="header-mm-button" style={{ lineHeight: 1 }}>
-          <i className="fa fa-bars"></i>
-        </div>
+        <button
+          type="button"
+          onClick={headerMMClick}
+          className={`header-mm-button ${isAppMenuOpen ? 'active' : ''}`}
+          aria-label={isAppMenuOpen ? 'Close apps menu' : 'Open apps menu'}
+          aria-expanded={isAppMenuOpen}
+          style={{ lineHeight: 1, border: 'none', background: 'transparent', padding: 0 }}
+        >
+          <i className="fas fa-th" aria-hidden="true" />
+        </button>
       </Fragment>
     )
   }
@@ -146,13 +152,10 @@ let HeaderLeft = () => {
 
         <div className="header-mobile-menu-button-container">
           {isMobile && <MenuButton />}
-          {
-            isMegaMenu && (
-              <MegaMC className="header-mm-dropdown" style={{ top: '100%', left: 0, width: '300px', zIndex: '1002', display: 'block' }}>
-                <Ls />
-              </MegaMC>)
-          }
-
+          <AppMenuModal
+            isOpen={isAppMenuOpen}
+            onRequestClose={() => setIsAppMenuOpen(false)}
+          />
         </div>
         <div className="header-search-back-container">
           <i onClick={handleBackButtonClick} className="fal fa-arrow-left header-search-back-icon"></i>

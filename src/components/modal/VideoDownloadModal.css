@@ -1,0 +1,125 @@
+.video-download-modal {
+    padding: 8px 4px 4px;
+    color: #e8eaed;
+}
+
+.video-download-modal-header {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.video-download-icon {
+    font-size: 48px;
+    color: #29b1a9;
+    margin-bottom: 12px;
+}
+
+.video-download-modal-title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin: 0 0 8px;
+    color: #fff;
+}
+
+.video-download-modal-subtitle {
+    font-size: 0.95rem;
+    color: #b0b3b8;
+    margin: 0;
+    word-break: break-word;
+}
+
+.video-download-watch-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.35);
+    color: #93c5fd;
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.video-download-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.video-download-btn-primary,
+.video-download-btn-secondary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 14px 16px;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    text-decoration: none;
+    box-sizing: border-box;
+    transition: opacity 0.2s ease;
+}
+
+.video-download-btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+}
+
+.video-download-btn-primary:hover {
+    opacity: 0.92;
+    color: #fff;
+    text-decoration: none;
+}
+
+.video-download-btn-secondary {
+    background: rgba(255, 255, 255, 0.08);
+    color: #e8eaed;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.video-download-btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.video-download-link-box {
+    margin-bottom: 16px;
+}
+
+.video-download-link-label {
+    display: block;
+    font-size: 0.8rem;
+    color: #b0b3b8;
+    margin-bottom: 6px;
+    font-weight: 500;
+}
+
+.video-download-link-input {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(0, 0, 0, 0.25);
+    color: #e8eaed;
+    font-size: 0.85rem;
+    box-sizing: border-box;
+}
+
+.video-download-close-btn {
+    width: 100%;
+    padding: 10px;
+    background: transparent;
+    border: none;
+    color: #b0b3b8;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.video-download-close-btn:hover {
+    color: #e8eaed;
+}

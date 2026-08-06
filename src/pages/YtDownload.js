@@ -1,12 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { showSuccessToast, showErrorToast, showInfoToast } from '../utils/toastUtils';
 import axios from 'axios';
-import api from '../api/api';
 import { getYtDownloadApiUrl, isOffline } from '../utils/offlineUtils';
 import { useAuth } from '../hooks/useAuth';
+import VideoDownloadModal from '../components/modal/VideoDownloadModal';
 import './YtDownload.css';
 
-// Get YouTube download API URL with offline fallback
 const getYTDownloadAPI = () => getYtDownloadApiUrl();
 
 const QUALITY_OPTIONS = [
@@ -29,12 +28,12 @@ const YtDownload = () => {
     const [downloadHistory, setDownloadHistory] = useState([]);
     const [videoTitle, setVideoTitle] = useState('');
     const [postAsWatch, setPostAsWatch] = useState(false);
-    const [isPostingWatch, setIsPostingWatch] = useState(false);
-    
+    const [showDownloadModal, setShowDownloadModal] = useState(false);
+    const [completedDownload, setCompletedDownload] = useState(null);
+
     const progressPollIntervalRef = useRef(null);
     const statusPollIntervalRef = useRef(null);
 
-    // Cleanup intervals on unmount
     useEffect(() => {
         return () => {
             if (progressPollIntervalRef.current) {
@@ -46,25 +45,98 @@ const YtDownload = () => {
         };
     }, []);
 
-    const buildDownloadUrl = (url, height) => {
+    const getAuthHeaders = () => {
+        const headers = { Accept: 'application/json' };
+        if (token) {
+            headers.Authorization = token;
+        }
+        return headers;
+    };
+
+    const buildDownloadUrl = (url, height, shouldPostAsWatch) => {
         try {
-            // Check if offline and show appropriate message
             if (isOffline()) {
                 showErrorToast('YouTube download is not available offline. Please connect to the internet.', {
-                    title: 'Offline Mode'
+                    title: 'Offline Mode',
                 });
                 return null;
             }
-            
+
             const normalized = (url || '').replace('m.youtube.com', 'www.youtube.com');
             const encoded = encodeURIComponent(normalized);
             const heightParam = height ? `&height=${height}` : '';
+            const watchParam = shouldPostAsWatch ? '&post_as_watch=true' : '';
             const apiUrl = getYTDownloadAPI();
-            return `${apiUrl}/download?url=${encoded}&ext=mp4${heightParam}&disposition=inline&link_only=true&async_job=true`;
+            return `${apiUrl}/download?url=${encoded}&ext=mp4${heightParam}&disposition=inline&link_only=true&async_job=true${watchParam}`;
         } catch (e) {
             console.error('Error building download URL:', e);
             return null;
         }
+    };
+
+    const sanitizeFileName = (name) => {
+        if (!name || name === 'video') return 'video';
+        let cleanName = name.replace(/\.[^/.]+$/, '');
+        cleanName = cleanName.replace(/_/g, ' ');
+        cleanName = cleanName.replace(/[^a-zA-Z0-9. -]+/g, '-').replace(/^-+|-+$/g, '').replace(/\s+/g, ' ').trim();
+        return cleanName.substring(0, 100) || 'video';
+    };
+
+    const extractFileNameFromUrl = (url) => {
+        try {
+            if (!url) return null;
+            const urlObj = new URL(url);
+            let pathPart = urlObj.pathname || '';
+            if (pathPart.endsWith('/')) pathPart = pathPart.replace(/\/+$/, '');
+            let filename = pathPart.split('/').pop() || '';
+            try {
+                filename = decodeURIComponent(filename);
+            } catch (_) {}
+            filename = filename.replace(/\.mp4$/i, '');
+            if (!filename || filename.length < 3) return null;
+            return filename;
+        } catch (e) {
+            console.error('Error extracting filename from URL:', e);
+            return null;
+        }
+    };
+
+    const handleDownloadComplete = (fileUrl, title, watchPosted) => {
+        const finalTitle = title || extractFileNameFromUrl(fileUrl) || 'video';
+        const fileName = `${sanitizeFileName(finalTitle)}.mp4`;
+
+        const downloadItem = {
+            id: Date.now(),
+            fileName,
+            url: fileUrl,
+            timestamp: new Date().toISOString(),
+        };
+        setDownloadHistory((prev) => [downloadItem, ...prev]);
+
+        setCompletedDownload({
+            fileName,
+            fileUrl,
+            title: finalTitle,
+            watchPosted: !!watchPosted,
+        });
+        setShowDownloadModal(true);
+
+        setIsDownloading(false);
+        setDownloadProgress(100);
+        setDownloadStage('completed');
+        setDownloadStatus('completed');
+        setCurrentDownload(null);
+
+        const successMessage = watchPosted
+            ? 'Video ready! Posted to Watch and available for download.'
+            : 'Video ready! Use the download link in the modal.';
+        showSuccessToast(successMessage, { title: 'Download Complete' });
+
+        setTimeout(() => {
+            setDownloadProgress(0);
+            setDownloadStage('');
+            setDownloadStatus('');
+        }, 3000);
     };
 
     const pollProgress = async (progressUrl) => {
@@ -75,8 +147,8 @@ const YtDownload = () => {
         progressPollIntervalRef.current = setInterval(async () => {
             try {
                 const response = await axios.get(progressUrl, {
-                    headers: { Accept: 'application/json' },
-                    params: { _ts: Date.now() } // Prevent caching
+                    headers: getAuthHeaders(),
+                    params: { _ts: Date.now() },
                 });
 
                 const data = response.data;
@@ -85,8 +157,8 @@ const YtDownload = () => {
                 const pct = data?.pct || 0;
                 const fileUrl = data?.file_url;
                 const title = data?.title || data?.download_title || videoTitle;
+                const watchPosted = data?.watch_posted;
 
-                // Store title if available
                 if (title && title !== videoTitle) {
                     setVideoTitle(title);
                 }
@@ -96,30 +168,22 @@ const YtDownload = () => {
                 setDownloadStatus(status);
 
                 if (status === 'completed' && typeof fileUrl === 'string' && /(\.mp4)(\b|\?|$)/i.test(fileUrl)) {
-                    // Stop polling
                     if (progressPollIntervalRef.current) {
                         clearInterval(progressPollIntervalRef.current);
                         progressPollIntervalRef.current = null;
                     }
-
-                    // Extract filename from URL if title not available
-                    const finalTitle = title || extractFileNameFromUrl(fileUrl) || 'video';
-                    
-                    // Download the file
-                    downloadFile(fileUrl, finalTitle);
+                    handleDownloadComplete(fileUrl, title, watchPosted);
                 } else if (status === 'failed' || status === 'error') {
-                    // Stop polling on error
                     if (progressPollIntervalRef.current) {
                         clearInterval(progressPollIntervalRef.current);
                         progressPollIntervalRef.current = null;
                     }
                     setIsDownloading(false);
                     setDownloadStatus('failed');
-                    showErrorToast('Download failed. Please try again.', { title: 'Download Error' });
+                    showErrorToast(data?.error || 'Download failed. Please try again.', { title: 'Download Error' });
                 }
             } catch (err) {
                 console.error('Progress poll error:', err);
-                // Continue polling on network errors
             }
         }, 2000);
     };
@@ -136,37 +200,30 @@ const YtDownload = () => {
             attempts++;
             try {
                 const response = await axios.get(requestUrl, {
-                    headers: { Accept: 'application/json' },
-                    params: { _ts: Date.now() }
+                    headers: getAuthHeaders(),
+                    params: { _ts: Date.now() },
                 });
 
                 const json = response.data;
                 const title = json?.title || json?.download_title;
-                
-                // Store title if available
+
                 if (title) {
                     setVideoTitle(title);
                 }
-                
+
                 if (json && json.status === 'accepted' && typeof json.progress_url === 'string' && json.progress_url.length > 0) {
-                    // Stop status polling
                     if (statusPollIntervalRef.current) {
                         clearInterval(statusPollIntervalRef.current);
                         statusPollIntervalRef.current = null;
                     }
-
-                    // Start progress polling
                     pollProgress(json.progress_url);
                 } else if (json && json.status === 'completed' && json.file_url) {
-                    // Direct completion (synchronous)
                     if (statusPollIntervalRef.current) {
                         clearInterval(statusPollIntervalRef.current);
                         statusPollIntervalRef.current = null;
                     }
-                    
-                    // Extract filename from URL if title not available
                     const finalTitle = title || extractFileNameFromUrl(json.file_url) || 'video';
-                    downloadFile(json.file_url, finalTitle);
+                    handleDownloadComplete(json.file_url, finalTitle, json.watch_posted);
                 }
             } catch (err) {
                 console.error('Status poll error:', err);
@@ -176,239 +233,11 @@ const YtDownload = () => {
                         statusPollIntervalRef.current = null;
                     }
                     setIsDownloading(false);
-                    showErrorToast('Failed to start download. Please try again.', { title: 'Download Error' });
+                    const errMsg = err.response?.data?.error || err.response?.data?.message || 'Failed to start download. Please try again.';
+                    showErrorToast(errMsg, { title: 'Download Error' });
                 }
             }
         }, 800);
-    };
-
-    const postVideoAsWatch = async (blob, fileName) => {
-        try {
-            // Check authentication before attempting to post
-            if (!token || !isAuthenticated) {
-                showErrorToast('Please log in to post videos to Watch. Video will be downloaded only.', { 
-                    title: 'Authentication Required',
-                    autoClose: 5000
-                });
-                return false;
-            }
-
-            setIsPostingWatch(true);
-            showInfoToast('Uploading video to Watch...', { title: 'Posting', autoClose: 3000 });
-
-            // Step 1: Upload video file to /upload/video endpoint
-            // Use extended timeout for video uploads (5 minutes = 300000ms)
-            const videoFormData = new FormData();
-            const videoFile = new File([blob], `${sanitizeFileName(fileName)}.mp4`, { type: 'video/mp4' });
-            videoFormData.append('attachment', videoFile);
-
-            // Don't set Content-Type explicitly - axios will set it automatically with boundary for FormData
-            // Override timeout to 5 minutes for large video uploads
-            const uploadResponse = await api.post('/upload/video', videoFormData, {
-                timeout: 300000 // 5 minutes for video upload
-            });
-
-            if (uploadResponse.status !== 200 || !uploadResponse.data?.secure_url) {
-                throw new Error('Video upload failed');
-            }
-
-            // Step 2: Get the secure_url from upload response
-            const videoUrl = uploadResponse.data.secure_url;
-
-            // Step 3: Create watch with videoUrl and caption
-            const watchFormData = new FormData();
-            watchFormData.append('caption', videoTitle || fileName);
-            watchFormData.append('videoUrl', videoUrl);
-
-            // Don't set Content-Type explicitly - axios will set it automatically with boundary for FormData
-            // Use standard timeout for watch creation (should be quick)
-            const createWatchResponse = await api.post('/watch/create', watchFormData, {
-                timeout: 30000 // 30 seconds for watch creation
-            });
-
-            if (createWatchResponse.status === 200 || createWatchResponse.status === 201) {
-                showSuccessToast('Video posted to Watch successfully!', { title: 'Posted to Watch' });
-                return true;
-            } else {
-                throw new Error('Watch creation failed');
-            }
-        } catch (error) {
-            console.error('Error posting video to watch:', error);
-            
-            // Handle authentication errors specifically
-            if (error.response?.status === 401) {
-                showErrorToast('Please log in to post videos to Watch. Video downloaded successfully.', { 
-                    title: 'Authentication Required',
-                    autoClose: 5000
-                });
-            } else if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-                // Handle timeout errors specifically
-                showErrorToast('Video upload timed out. The video file may be too large or your connection is slow. Video downloaded successfully.', { 
-                    title: 'Upload Timeout',
-                    autoClose: 6000
-                });
-            } else {
-                const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || 'Unknown error';
-                showErrorToast(`Failed to post video to Watch: ${errorMessage}. Video downloaded successfully.`, { 
-                    title: 'Watch Post Error',
-                    autoClose: 5000
-                });
-            }
-            return false;
-        } finally {
-            setIsPostingWatch(false);
-        }
-    };
-
-    const downloadFile = async (fileUrl, fileName) => {
-        try {
-            showInfoToast('Preparing download...', { title: 'Download', autoClose: 2000 });
-            
-            // Fetch the file as a blob to ensure automatic download works
-            const response = await fetch(fileUrl, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'video/mp4, video/*, */*'
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            // Get the blob
-            const blob = await response.blob();
-            
-            // Add to download history immediately so it shows up in the history section
-            const downloadItem = {
-                id: Date.now(),
-                fileName: `${sanitizeFileName(fileName)}.mp4`,
-                url: fileUrl,
-                timestamp: new Date().toISOString(),
-            };
-            setDownloadHistory(prev => [downloadItem, ...prev]);
-            
-            // Post to watch if checkbox is checked and user is authenticated
-            if (postAsWatch && isAuthenticated) {
-                await postVideoAsWatch(blob, fileName);
-            } else if (postAsWatch && !isAuthenticated) {
-                // User checked the box but is no longer authenticated
-                showErrorToast('Please log in to post videos to Watch. Video downloaded successfully.', { 
-                    title: 'Authentication Required',
-                    autoClose: 3000
-                });
-                setPostAsWatch(false); // Uncheck the box
-            }
-            
-            // Create a blob URL
-            const blobUrl = window.URL.createObjectURL(blob);
-            
-            // Create a temporary anchor element to trigger automatic download
-            const link = document.createElement('a');
-            link.href = blobUrl;
-            link.download = `${sanitizeFileName(fileName)}.mp4`;
-            link.style.display = 'none';
-            
-            // Append to body, click, and remove
-            document.body.appendChild(link);
-            link.click();
-            
-            // Clean up
-            setTimeout(() => {
-                document.body.removeChild(link);
-                window.URL.revokeObjectURL(blobUrl);
-            }, 100);
-
-            setIsDownloading(false);
-            setDownloadProgress(100);
-            setDownloadStage('completed');
-            setDownloadStatus('completed');
-            setCurrentDownload(null);
-
-            const successMessage = postAsWatch 
-                ? 'Video downloaded and posted to Watch successfully!' 
-                : 'Video downloaded successfully!';
-            showSuccessToast(successMessage, { title: 'Download Complete' });
-
-            // Reset after 3 seconds
-            setTimeout(() => {
-                setDownloadProgress(0);
-                setDownloadStage('');
-                setDownloadStatus('');
-            }, 3000);
-        } catch (err) {
-            console.error('Download error:', err);
-            
-            // Fallback: try direct link download if blob method fails
-            try {
-                const link = document.createElement('a');
-                link.href = fileUrl;
-                link.download = `${sanitizeFileName(fileName)}.mp4`;
-                link.target = '_blank';
-                link.style.display = 'none';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                
-                // Still add to history and show success
-                const downloadItem = {
-                    id: Date.now(),
-                    fileName: `${sanitizeFileName(fileName)}.mp4`,
-                    url: fileUrl,
-                    timestamp: new Date().toISOString(),
-                };
-                setDownloadHistory(prev => [downloadItem, ...prev]);
-                
-                setIsDownloading(false);
-                setDownloadProgress(100);
-                setDownloadStage('completed');
-                setDownloadStatus('completed');
-                setCurrentDownload(null);
-                
-                showSuccessToast('Video download started!', { title: 'Download Started' });
-            } catch (fallbackErr) {
-                console.error('Fallback download error:', fallbackErr);
-                setIsDownloading(false);
-                setDownloadStatus('failed');
-                showErrorToast('Failed to download file. Please try again.', { title: 'Download Error' });
-            }
-        }
-    };
-
-    const extractFileNameFromUrl = (url) => {
-        try {
-            if (!url) return null;
-            const urlObj = new URL(url);
-            let path = urlObj.pathname || '';
-            if (path.endsWith('/')) path = path.replace(/\/+$/, '');
-            let filename = path.split('/').pop() || '';
-            try { 
-                filename = decodeURIComponent(filename); 
-            } catch (_) {}
-            
-            // Remove .mp4 extension if present (we'll add it back)
-            filename = filename.replace(/\.mp4$/i, '');
-            
-            // If filename is empty or just extension, return null
-            if (!filename || filename.length < 3) return null;
-            
-            return filename;
-        } catch (e) {
-            console.error('Error extracting filename from URL:', e);
-            return null;
-        }
-    };
-
-    const sanitizeFileName = (name) => {
-        if (!name || name === 'video') return 'video';
-        // Remove any file extension first
-        let cleanName = name.replace(/\.[^/.]+$/, '');
-        // Replace underscores with spaces
-        cleanName = cleanName.replace(/_/g, ' ');
-        // Sanitize and limit length (allow spaces, dots, and hyphens)
-        cleanName = cleanName.replace(/[^a-zA-Z0-9. -]+/g, '-').replace(/^-+|-+$/g, '').replace(/\s+/g, ' ').trim();
-        // Limit to 100 characters
-        return cleanName.substring(0, 100) || 'video';
     };
 
     const validateYouTubeUrl = (url) => {
@@ -417,7 +246,7 @@ const YtDownload = () => {
             /^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\/.+/i,
             /^https?:\/\/m\.youtube\.com\/.+/i,
         ];
-        return patterns.some(pattern => pattern.test(url));
+        return patterns.some((pattern) => pattern.test(url));
     };
 
     const handleDownload = async () => {
@@ -431,27 +260,32 @@ const YtDownload = () => {
             return;
         }
 
+        if (postAsWatch && !isAuthenticated) {
+            showErrorToast('Please log in to post videos to Watch', { title: 'Authentication Required' });
+            return;
+        }
+
         setIsDownloading(true);
         setDownloadProgress(0);
         setDownloadStage('starting');
         setDownloadStatus('running');
-        setVideoTitle(''); // Reset title for new download
+        setVideoTitle('');
+        setCompletedDownload(null);
         setCurrentDownload({
             url: youtubeUrl,
             quality: selectedQuality,
             startTime: new Date().toISOString(),
         });
 
-        showInfoToast('Preparing download...', { title: 'Download', autoClose: 3000 });
+        showInfoToast('Preparing download on server...', { title: 'Download', autoClose: 3000 });
 
-        const requestUrl = buildDownloadUrl(youtubeUrl, selectedQuality);
+        const requestUrl = buildDownloadUrl(youtubeUrl, selectedQuality, postAsWatch);
         if (!requestUrl) {
             setIsDownloading(false);
             showErrorToast('Failed to build download URL', { title: 'Error' });
             return;
         }
 
-        // Start polling for initial status
         pollInitialStatus(requestUrl);
     };
 
@@ -476,7 +310,8 @@ const YtDownload = () => {
     const getStageLabel = (stage) => {
         const labels = {
             starting: 'Starting...',
-            downloading: 'Downloading...',
+            downloading: 'Downloading on server...',
+            uploading_watch: 'Uploading to Watch...',
             transcoding: 'Processing...',
             completed: 'Completed',
             failed: 'Failed',
@@ -486,6 +321,12 @@ const YtDownload = () => {
 
     return (
         <div className='yt-download-page'>
+            <VideoDownloadModal
+                isOpen={showDownloadModal}
+                onClose={() => setShowDownloadModal(false)}
+                downloadInfo={completedDownload}
+            />
+
             <div className='container my-4'>
                 <div className='row justify-content-center'>
                     <div className='col-12 col-md-10 col-lg-8'>
@@ -516,7 +357,7 @@ const YtDownload = () => {
                                         id='quality-select'
                                         className='form-control yt-quality-select'
                                         value={selectedQuality || ''}
-                                        onChange={(e) => setSelectedQuality(e.target.value ? parseInt(e.target.value) : null)}
+                                        onChange={(e) => setSelectedQuality(e.target.value ? parseInt(e.target.value, 10) : null)}
                                         disabled={isDownloading}
                                     >
                                         {QUALITY_OPTIONS.map((option) => (
@@ -536,19 +377,19 @@ const YtDownload = () => {
                                             checked={postAsWatch}
                                             onChange={(e) => {
                                                 if (!isAuthenticated) {
-                                                    showErrorToast('Please log in to post videos to Watch', { 
+                                                    showErrorToast('Please log in to post videos to Watch', {
                                                         title: 'Authentication Required',
-                                                        autoClose: 3000
+                                                        autoClose: 3000,
                                                     });
                                                     return;
                                                 }
                                                 setPostAsWatch(e.target.checked);
                                             }}
-                                            disabled={isDownloading || isPostingWatch || !isAuthenticated}
+                                            disabled={isDownloading || !isAuthenticated}
                                         />
-                                        <label className='form-check-label' htmlFor='post-as-watch' style={{ 
+                                        <label className='form-check-label' htmlFor='post-as-watch' style={{
                                             opacity: !isAuthenticated ? 0.6 : 1,
-                                            cursor: !isAuthenticated ? 'not-allowed' : 'pointer'
+                                            cursor: !isAuthenticated ? 'not-allowed' : 'pointer',
                                         }}>
                                             <i className='fas fa-video' style={{ marginRight: '8px', color: '#3B82F6' }}></i>
                                             Post as Watch
@@ -562,7 +403,7 @@ const YtDownload = () => {
                                     )}
                                     {postAsWatch && isAuthenticated && (
                                         <small className='form-text text-muted' style={{ marginTop: '4px', display: 'block' }}>
-                                            The downloaded video will be automatically posted to your Watch feed
+                                            When the server finishes downloading, the video will be uploaded to your Watch feed automatically
                                         </small>
                                     )}
                                 </div>
@@ -583,7 +424,7 @@ const YtDownload = () => {
                                 )}
 
                                 <div className='yt-download-actions'>
-                                    {!isDownloading && !isPostingWatch ? (
+                                    {!isDownloading ? (
                                         <button
                                             className='btn btn-primary yt-download-btn'
                                             onClick={handleDownload}
@@ -591,14 +432,6 @@ const YtDownload = () => {
                                         >
                                             <i className='fas fa-download' style={{ marginRight: '8px' }}></i>
                                             Download Video
-                                        </button>
-                                    ) : isPostingWatch ? (
-                                        <button
-                                            className='btn btn-primary yt-download-btn'
-                                            disabled
-                                        >
-                                            <i className='fas fa-spinner fa-spin' style={{ marginRight: '8px' }}></i>
-                                            Posting to Watch...
                                         </button>
                                     ) : (
                                         <button
@@ -622,15 +455,21 @@ const YtDownload = () => {
                                                     <i className='fas fa-video' style={{ marginRight: '10px', color: '#666' }}></i>
                                                     <span className='history-item-name'>{item.fileName}</span>
                                                 </div>
-                                                <a
-                                                    href={item.url}
-                                                    download={item.fileName}
+                                                <button
+                                                    type='button'
                                                     className='btn btn-sm btn-link history-download-link'
-                                                    target='_blank'
-                                                    rel='noopener noreferrer'
+                                                    onClick={() => {
+                                                        setCompletedDownload({
+                                                            fileName: item.fileName,
+                                                            fileUrl: item.url,
+                                                            title: item.fileName.replace(/\.mp4$/i, ''),
+                                                            watchPosted: false,
+                                                        });
+                                                        setShowDownloadModal(true);
+                                                    }}
                                                 >
                                                     <i className='fas fa-download'></i>
-                                                </a>
+                                                </button>
                                             </div>
                                         ))}
                                     </div>

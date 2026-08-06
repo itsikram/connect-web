@@ -511,12 +511,25 @@
 
   body.message-page-mobile.message-keyboard-open .modern-message-container,
   body.message-page-mobile.message-keyboard-open .modern-message-container.is-mobile {
-    top: 0;
+    top: var(--message-vv-top, 0);
   }
 
   body.message-page-mobile.message-keyboard-open .modern-message-container #chatBox .chat-footer,
   body.message-page-mobile.message-keyboard-open .modern-message-container #chatBox .chat-footer.modern-composer {
-    padding-bottom: 8px !important;
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  /* iOS Home Screen app: stop focus scroll from shifting the whole chat upward */
+  html.standalone-ios body.message-page-mobile .modern-message-container #chatBox .new-message-input,
+  html.standalone-pwa body.message-page-mobile .modern-message-container #chatBox .new-message-input {
+    scroll-margin-bottom: 0;
+  }
+
+  html.standalone-ios body.message-page-mobile.message-keyboard-open .modern-message-container,
+  html.standalone-pwa body.message-page-mobile.message-keyboard-open .modern-message-container {
+    top: var(--message-vv-top, 0) !important;
+    height: var(--message-mobile-height, 100dvh) !important;
+    max-height: var(--message-mobile-height, 100dvh) !important;
   }
 
   .modern-message-container.loading,

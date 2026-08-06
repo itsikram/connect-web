@@ -71,3 +71,84 @@ export const createNotificationData = (options = {}) => {
         vibrate: options.vibrate || [200, 100, 200]
     };
 };
+
+const VALID_POST_LINK = /^\/post\/([a-f0-9]{24})$/i;
+const OBJECT_ID_IN_TEXT = /([a-f0-9]{24})/i;
+
+function extractPostId(value) {
+    if (value == null || value === '') return '';
+    if (typeof value === 'object' && value._id != null) {
+        return String(value._id);
+    }
+    const str = String(value);
+    if (/^[a-f0-9]{24}$/i.test(str)) return str;
+    const match = str.match(OBJECT_ID_IN_TEXT);
+    return match ? match[1] : '';
+}
+
+/** Resolve a safe in-app path for notification clicks */
+export function getNotificationLink(notification) {
+    const link = String(notification?.link || '').trim();
+    const data = notification?.data && typeof notification.data === 'object' ? notification.data : {};
+    const postId = extractPostId(data.postId);
+
+    if (VALID_POST_LINK.test(link)) return link;
+
+    if (link.startsWith('/post/')) {
+        if (postId) return `/post/${postId}`;
+        const match = link.match(OBJECT_ID_IN_TEXT);
+        if (match) return `/post/${match[1]}`;
+    }
+
+    if (postId) return `/post/${postId}`;
+
+    return link || '/';
+}
+
+/** Title + description lines for the header notification dropdown */
+export function getNotificationDisplayParts(notification) {
+    if (!notification) {
+        return { title: 'Notification', description: '' };
+    }
+
+    const text = String(notification.text || '').trim();
+    const storedTitle = String(notification.title || '').trim();
+    const data = notification.data && typeof notification.data === 'object' ? notification.data : {};
+    const type = notification.type || '';
+
+    const dataDescription =
+        data.commentBody ||
+        data.replyBody ||
+        data.replyMsg ||
+        data.message ||
+        data.body ||
+        '';
+
+    if (dataDescription) {
+        return {
+            title: text || storedTitle || 'Notification',
+            description: String(dataDescription).trim(),
+        };
+    }
+
+    if (type === 'message' && text.includes(': ')) {
+        const idx = text.indexOf(': ');
+        const sender = text.slice(0, idx).trim();
+        const message = text.slice(idx + 2).trim();
+        if (message) {
+            return {
+                title: sender || storedTitle || 'Message',
+                description: message,
+            };
+        }
+    }
+
+    if (storedTitle && text && storedTitle !== text) {
+        return { title: storedTitle, description: text };
+    }
+
+    return {
+        title: text || storedTitle || 'Notification',
+        description: '',
+    };
+}

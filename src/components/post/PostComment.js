@@ -24,7 +24,7 @@ const PostComment = ({
     const location = useLocation();
     const postId = post?._id ? String(post._id) : '';
     const [isSingle, setIsSingle] = useState(
-        location.pathname.includes(`/${postId}`)
+        Boolean(postId) && location.pathname.includes(`/post/${postId}`)
     );
     const [isLoadingInitial, setIsLoadingInitial] = useState(false);
     const [isLoadingMoreComments] = useState(false);
@@ -61,24 +61,35 @@ const PostComment = ({
     }, [syncParentComments]);
 
     useEffect(() => {
-        setIsSingle(location.pathname.includes(`/${postId}`));
+        setIsSingle(Boolean(postId) && location.pathname.includes(`/post/${postId}`));
     }, [location.pathname, postId]);
 
     useEffect(() => {
         originalCommentsCount.current = post?.comments?.length || 0;
     }, [postId, post?.comments?.length]);
 
-    // Reset local list only when switching posts (avoid wiping freshly posted comments).
+    const prevPostIdRef = useRef(postId);
+
+    const resolveIncomingComments = useCallback(() => {
+        if (Array.isArray(allCommentsProp)) return allCommentsProp;
+        if (Array.isArray(post?.comments)) return post.comments;
+        return [];
+    }, [allCommentsProp, post?.comments]);
+
+    // Reset when switching posts; also sync when parent data arrives after first paint.
     useEffect(() => {
-        if (Array.isArray(allCommentsProp)) {
-            setComments(allCommentsProp);
-        } else if (Array.isArray(post?.comments)) {
-            setComments(post.comments);
-        } else {
-            setComments([]);
-        }
-        originalCommentsCount.current = post?.comments?.length || allCommentsProp?.length || 0;
-    }, [postId]); // eslint-disable-line react-hooks/exhaustive-deps
+        const incoming = resolveIncomingComments();
+        const postChanged = prevPostIdRef.current !== postId;
+        prevPostIdRef.current = postId;
+
+        setComments((prev) => {
+            if (postChanged) return incoming;
+            if (prev.length === 0) return incoming;
+            if (incoming.length >= prev.length) return incoming;
+            return prev;
+        });
+        originalCommentsCount.current = post?.comments?.length || incoming.length || 0;
+    }, [postId, resolveIncomingComments, post?.comments?.length]);
 
     useEffect(() => {
         if ((comments?.length || 0) === 0 && (post?.comments?.length || 0) > 0) {

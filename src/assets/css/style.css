@@ -5587,6 +5587,30 @@ body {
   background-color: #18191A;
 }
 
+/* Header notification dropdown — message-list styles assume a light surface */
+.hr-notification-menu-container .modern-chat-list .modern-chat-item .contact-name {
+  color: #E4E6EB !important;
+}
+
+.hr-notification-menu-container .modern-chat-list .modern-chat-item .message-time {
+  color: #8A8D91 !important;
+}
+
+.hr-notification-menu-container .modern-chat-list .modern-chat-item .last-message-preview,
+.hr-notification-menu-container .modern-chat-list .modern-chat-item .message-text,
+.hr-notification-menu-container .modern-chat-list .modern-chat-item .notification-description {
+  color: #B0B3B8 !important;
+}
+
+.hr-notification-menu-container .modern-chat-list .modern-chat-item.unread .contact-name {
+  color: #FFFFFF !important;
+}
+
+.hr-notification-menu-container .modern-chat-list .modern-chat-item.unread .notification-description,
+.hr-notification-menu-container .modern-chat-list .modern-chat-item.unread .message-text {
+  color: #E4E6EB !important;
+}
+
 @media only screen and (max-width: 768px) {
   .nf-create-post .bottom .button-container li {
     flex-direction: column;

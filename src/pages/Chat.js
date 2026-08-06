@@ -540,6 +540,24 @@ const Chat = ({ }) => {
         };
     }, [isBlockedMe, friendId]);
 
+    // Keep the thread anchored at the bottom when the iOS keyboard resizes the chat pane.
+    useEffect(() => {
+        const vv = window.visualViewport;
+        if (!vv) return undefined;
+
+        const anchorIfNearBottom = () => {
+            if (!document.body.classList.contains('message-page-mobile')) return;
+            const el = msgListRef.current;
+            if (!el || !isNearBottomRef.current) return;
+            requestAnimationFrame(() => {
+                el.scrollTop = el.scrollHeight;
+            });
+        };
+
+        vv.addEventListener('resize', anchorIfNearBottom);
+        return () => vv.removeEventListener('resize', anchorIfNearBottom);
+    }, [friendId]);
+
     return (
         <div className="message-chat-root">
             <div id="chatBox" className="message-chat-box">

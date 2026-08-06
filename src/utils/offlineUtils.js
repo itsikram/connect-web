@@ -66,13 +66,8 @@ export const getYtDownloadApiUrl = () => {
     return process.env.REACT_APP_YT_DL_API_URL;
   }
   
-  // PRIORITY 2: If offline and no env var, try local server (if it proxies the service)
-  if (isOffline()) {
-    return getServerAddress();
-  }
-  
-  // PRIORITY 3: Default remote URL when online
-  return 'https://yt-dl-ufvy.onrender.com';
+  // PRIORITY 2: Use the main Connect server (Node.js ytdl-core service)
+  return getServerAddress();
 };
 
 /**
