@@ -30,11 +30,12 @@ const Message = (props) => {
     }, []);
 
     // Fit message UI to the visual viewport (critical on iPhone when the keyboard opens).
+    // Do NOT chase visualViewport.offsetTop while the keyboard is open — that shrinks/shifts
+    // the fixed chat shell under the keyboard after the first correct frame.
     useEffect(() => {
         const root = document.documentElement;
         const body = document.body;
         const html = document.documentElement;
-        const isStandaloneIOS = root.classList.contains('standalone-ios');
         const prev = {
             bodyOverflow: body.style.overflow,
             bodyPosition: body.style.position,
@@ -59,9 +60,20 @@ const Message = (props) => {
         let lastTop = -1;
         let wasKeyboardOpen = false;
         let rafId = 0;
-        const keyboardOpenRef = { current: false };
+        let settleTimer = 0;
+        // Baseline layout height while keyboard is closed (more reliable than innerHeight alone)
+        let closedBaseline = Math.round(window.visualViewport?.height || window.innerHeight || 0);
 
-        const applyViewport = () => {
+        const lockScroll = () => {
+            if (window.scrollY || window.pageYOffset || html.scrollTop || body.scrollTop) {
+                window.scrollTo(0, 0);
+                html.scrollTop = 0;
+                body.scrollTop = 0;
+            }
+        };
+
+        const applyViewport = (opts = {}) => {
+            const settle = !!opts.settle;
             const header = document.getElementById('header');
             const headerHeight = header
                 ? Math.ceil(header.getBoundingClientRect().height)
@@ -70,20 +82,29 @@ const Message = (props) => {
 
             const vv = window.visualViewport;
             const vvHeight = Math.round(vv?.height || window.innerHeight);
-            const vvOffsetTop = Math.round(vv?.offsetTop || 0);
-            const layoutHeight = Math.round(window.innerHeight || vvHeight);
-            const keyboardOpen = isMobile && (layoutHeight - vvHeight > 120);
+            const layoutHeight = Math.max(
+                Math.round(window.innerHeight || 0),
+                closedBaseline || 0
+            );
+            const keyboardOpen = isMobile && (
+                layoutHeight - vvHeight > 120 ||
+                (closedBaseline > 0 && closedBaseline - vvHeight > 120)
+            );
 
             let nextTop;
             let nextHeight;
 
             if (keyboardOpen) {
                 body.classList.add('message-keyboard-open');
-                nextTop = vvOffsetTop;
+                // Always pin to the top of the layout; height = visible viewport only.
+                // Never use vv.offsetTop — that pushes the shell under the keyboard.
+                nextTop = 0;
                 nextHeight = Math.max(200, vvHeight);
+                lockScroll();
             } else {
                 body.classList.remove('message-keyboard-open');
-                nextTop = headerHeight + vvOffsetTop;
+                closedBaseline = Math.max(closedBaseline, vvHeight, Math.round(window.innerHeight || 0));
+                nextTop = headerHeight;
                 nextHeight = Math.max(240, vvHeight - headerHeight);
             }
 
@@ -91,7 +112,25 @@ const Message = (props) => {
             const topDelta = Math.abs(nextTop - lastTop);
             const stateChanged = keyboardOpen !== wasKeyboardOpen;
 
-            if (stateChanged || heightDelta >= 8 || topDelta >= 8 || lastHeight < 0) {
+            // While keyboard is open, ignore tiny mid-animation shrinks unless this is a settle pass
+            // or the keyboard just opened / height grew (partial close).
+            let shouldApply = stateChanged || lastHeight < 0 || topDelta >= 1;
+            if (keyboardOpen && !stateChanged) {
+                if (settle) {
+                    shouldApply = true;
+                } else if (nextHeight > lastHeight + 8) {
+                    shouldApply = true;
+                } else if (nextHeight < lastHeight - 40) {
+                    // Large drop usually means a bad intermediate frame — wait for settle
+                    shouldApply = false;
+                } else {
+                    shouldApply = heightDelta >= 24;
+                }
+            } else if (!keyboardOpen) {
+                shouldApply = shouldApply || heightDelta >= 8;
+            }
+
+            if (shouldApply) {
                 root.style.setProperty('--message-vv-top', `${nextTop}px`);
                 root.style.setProperty('--message-mobile-height', `${nextHeight}px`);
                 lastHeight = nextHeight;
@@ -99,35 +138,40 @@ const Message = (props) => {
             }
 
             wasKeyboardOpen = keyboardOpen;
-            keyboardOpenRef.current = keyboardOpen;
-
-            if (isStandaloneIOS && window.scrollY !== 0) {
-                window.scrollTo(0, 0);
-            }
         };
 
         const syncViewport = () => {
             if (rafId) cancelAnimationFrame(rafId);
-            rafId = requestAnimationFrame(applyViewport);
+            rafId = requestAnimationFrame(() => {
+                applyViewport();
+                // After keyboard animation, apply one settled measurement
+                if (settleTimer) window.clearTimeout(settleTimer);
+                settleTimer = window.setTimeout(() => {
+                    applyViewport({ settle: true });
+                    lockScroll();
+                }, 180);
+            });
         };
 
         const onVisualViewportScroll = () => {
             if (!isMobile) return;
-            if (window.scrollY !== 0) {
-                window.scrollTo(0, 0);
-            }
-            // While the keyboard is open, follow offsetTop without re-measuring height every frame.
-            if (!keyboardOpenRef.current) return;
-            const vvOffsetTop = Math.round(window.visualViewport?.offsetTop || 0);
-            if (Math.abs(vvOffsetTop - lastTop) >= 8) {
-                root.style.setProperty('--message-vv-top', `${vvOffsetTop}px`);
-                lastTop = vvOffsetTop;
+            // Never move the fixed chat shell with offsetTop — only cancel the pan.
+            lockScroll();
+        };
+
+        const onFocusIn = (e) => {
+            if (!isMobile) return;
+            const t = e.target;
+            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) {
+                lockScroll();
+                syncViewport();
             }
         };
 
-        applyViewport();
+        applyViewport({ settle: true });
         window.addEventListener('resize', syncViewport);
         window.addEventListener('orientationchange', syncViewport);
+        window.addEventListener('focusin', onFocusIn);
         window.visualViewport?.addEventListener('resize', syncViewport);
         window.visualViewport?.addEventListener('scroll', onVisualViewportScroll);
 
@@ -139,6 +183,7 @@ const Message = (props) => {
 
         return () => {
             if (rafId) cancelAnimationFrame(rafId);
+            if (settleTimer) window.clearTimeout(settleTimer);
             body.classList.remove('message-page-mobile');
             body.classList.remove('message-keyboard-open');
             body.style.overflow = prev.bodyOverflow;
@@ -151,6 +196,7 @@ const Message = (props) => {
             root.style.removeProperty('--message-mobile-height');
             window.removeEventListener('resize', syncViewport);
             window.removeEventListener('orientationchange', syncViewport);
+            window.removeEventListener('focusin', onFocusIn);
             window.visualViewport?.removeEventListener('resize', syncViewport);
             window.visualViewport?.removeEventListener('scroll', onVisualViewportScroll);
             if (ro) ro.disconnect();
