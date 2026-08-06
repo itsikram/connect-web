@@ -13,7 +13,6 @@ import socket from "../../common/socket";
 import WatchSkeleton from "../../skletons/watch/WatchSkeleton";
 import ImageSkleton from "../../skletons/ImageSkleton";
 import { saveVideoFromUrl } from "../../utils/useSavedVideos";
-import checkImgLoading from "../../utils/checkImgLoading";
 import Rlike from "../../assets/images/reacts/reactLike.svg";
 import Rlove from "../../assets/images/reacts/reactLove.svg";
 import Rhaha from "../../assets/images/reacts/reactHaha.svg";
@@ -35,8 +34,8 @@ const Watch = ({ watch, onDelete = null, onUpdate = null }) => {
     let [totalComments, setTotalComments] = useState(watch.comments.length)
     let [isActive, setIsActive] = useState(false)
     let [playWatch, setPlayWatch] = useState(false)
+    let [isVideoPlaying, setIsVideoPlaying] = useState(false)
     let [reactType, setReactType] = useState(false);
-    let [thumbnailLoaded, setThumbnailLoaded] = useState(false)
     let [placedReacts, setPlacedReacts] = useState([]);
     const [imageExists, setImageExists] = useState(false);
     const [watchUrl, setWatchUrl] = useState(watch.videoUrl)
@@ -56,18 +55,6 @@ const Watch = ({ watch, onDelete = null, onUpdate = null }) => {
     const isMobile = useIsMobile();
 
     useEffect(() => {
-
-        if (watch?.thumbnail) {
-            checkImgLoading(watch.thumbnail, setThumbnailLoaded)
-        }
-
-
-
-
-    }, [watch])
-
-    useEffect(() => {
-
         socket.emit('is_active', { profileId: watchAuthorProfileId, myId: myProfileId })
         socket.on('is_active', (isUserActive, lastLogin, activeProfileId) => {
             if (activeProfileId === myProfileId) {
@@ -423,18 +410,20 @@ const Watch = ({ watch, onDelete = null, onUpdate = null }) => {
 
 
     useEffect(() => {
-
-
-        window.addEventListener('scroll', () => {
-            if (isElementNearTop(nfwatch?.current)) {
-                document.querySelectorAll('.watch-video').forEach((element => {
-                    element.pause();
-                }))
-
-                displayedWatch.current !== null && displayedWatch.current.play()
+        const onScroll = () => {
+            if (!nfwatch?.current || !displayedWatch.current) return;
+            if (isElementNearTop(nfwatch.current)) {
+                document.querySelectorAll('.watch-video').forEach((element) => {
+                    if (element !== displayedWatch.current) {
+                        element.pause();
+                    }
+                });
             }
-        });
-    }, [])
+        };
+
+        window.addEventListener('scroll', onScroll, { passive: true });
+        return () => window.removeEventListener('scroll', onScroll);
+    }, []);
 
     const getPipMeta = useCallback(() => ({
         watchId: watch._id,
@@ -493,6 +482,15 @@ const Watch = ({ watch, onDelete = null, onUpdate = null }) => {
         if (!watch?.videoUrl) return;
         saveVideoFromUrl(watch._id, watch.videoUrl, watch);
     }, [watch])
+
+    const handleWatchPlayClick = useCallback((e) => {
+        e?.preventDefault?.();
+        e?.stopPropagation?.();
+        const video = displayedWatch.current;
+        if (!video) return;
+        setPlayWatch(true);
+        video.play().then(() => setIsVideoPlaying(true)).catch(() => {});
+    }, []);
 
     const isThisPip = watchPip?.pip?.watchId === watch._id;
 
@@ -589,50 +587,7 @@ const Watch = ({ watch, onDelete = null, onUpdate = null }) => {
                             {caption}
                         </p>
                     )}
-                    {watch?.thumbnail && thumbnailLoaded ? (
-                        playWatch ? (
-                            <div className="attachment watch-video-wrap">
-                                {isThisPip ? (
-                                    <div className="watch-pip-inline-placeholder">
-                                        <span>Playing in picture-in-picture</span>
-                                        <button type="button" onClick={() => watchPip?.closePip?.()}>
-                                            Restore here
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <>
-                                        <video
-                                            id={`watch-${watch._id}`}
-                                            ref={displayedWatch}
-                                            className="w-100 watch-video"
-                                            controls
-                                            autoPlay
-                                            playsInline
-                                            webkit-playsinline="true"
-                                            src={`${watchUrl}`}
-                                        />
-                                        {watchPip && (
-                                            <button
-                                                type="button"
-                                                className="watch-pip-trigger"
-                                                title="Picture in picture"
-                                                onClick={minimizeToPip}
-                                            >
-                                                <i className="fas fa-external-link-alt" />
-                                            </button>
-                                        )}
-                                    </>
-                                )}
-                            </div>
-                        ) : (
-                            <div className="attachment watch-thumbnail-card">
-                                <img className="w-100" src={watch.thumbnail} alt="Watch thumbnail" />
-                                <button type="button" className="watch-play-button" onClick={() => setPlayWatch(true)}>
-                                    <i className="fas fa-play"></i>
-                                </button>
-                            </div>
-                        )
-                    ) : watchUrl ? (
+                    {watchUrl ? (
                         <div className="attachment watch-video-wrap">
                             {isThisPip ? (
                                 <div className="watch-pip-inline-placeholder">
@@ -647,12 +602,29 @@ const Watch = ({ watch, onDelete = null, onUpdate = null }) => {
                                         id={`watch-${watch._id}`}
                                         ref={displayedWatch}
                                         className="w-100 watch-video"
-                                        controls
+                                        controls={playWatch || isVideoPlaying}
                                         playsInline
                                         webkit-playsinline="true"
-                                        src={`${watchUrl}`}
+                                        preload="metadata"
+                                        poster={watch?.thumbnail || undefined}
+                                        src={watchUrl}
+                                        onPlay={() => {
+                                            setPlayWatch(true);
+                                            setIsVideoPlaying(true);
+                                        }}
+                                        onPause={() => setIsVideoPlaying(false)}
                                     />
-                                    {watchPip && (
+                                    {!playWatch && !isVideoPlaying && (
+                                        <button
+                                            type="button"
+                                            className="watch-play-button"
+                                            onClick={handleWatchPlayClick}
+                                            aria-label="Play video"
+                                        >
+                                            <i className="fas fa-play"></i>
+                                        </button>
+                                    )}
+                                    {watchPip && (playWatch || isVideoPlaying) && (
                                         <button
                                             type="button"
                                             className="watch-pip-trigger"
@@ -876,4 +848,18 @@ const Watch = ({ watch, onDelete = null, onUpdate = null }) => {
     );
 }
 
-export default Watch;
+export default React.memo(Watch, (prev, next) => {
+    const a = prev.watch;
+    const b = next.watch;
+    return (
+        prev.type === next.type
+        && a?._id === b?._id
+        && a?.videoUrl === b?.videoUrl
+        && a?.caption === b?.caption
+        && a?.thumbnail === b?.thumbnail
+        && a?.audience === b?.audience
+        && (a?.reacts?.length || 0) === (b?.reacts?.length || 0)
+        && (a?.comments?.length || 0) === (b?.comments?.length || 0)
+        && (a?.shares?.length || 0) === (b?.shares?.length || 0)
+    );
+});
