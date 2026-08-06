@@ -774,9 +774,25 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
                                 placeholder='Message' 
                                 id='newMessageInput' 
                                 className='new-message-input' 
+                                onTouchStart={(e) => {
+                                    // Focus with preventScroll before iOS does its default focus pan
+                                    if (document.body.classList.contains('message-page-mobile')) {
+                                        const el = e.currentTarget;
+                                        if (document.activeElement !== el) {
+                                            e.preventDefault();
+                                            el.focus({ preventScroll: true });
+                                        }
+                                        window.scrollTo(0, 0);
+                                    }
+                                }}
                                 onFocus={() => {
                                     addTyping();
                                     setShowAttachTray(false);
+                                    if (document.body.classList.contains('message-page-mobile')) {
+                                        window.scrollTo(0, 0);
+                                        document.documentElement.scrollTop = 0;
+                                        document.body.scrollTop = 0;
+                                    }
                                 }}
                                 onBlur={removeTyping} 
                                 disabled={isRecording || isUploadingAudio}

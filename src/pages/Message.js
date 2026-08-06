@@ -61,15 +61,28 @@ const Message = (props) => {
         let wasKeyboardOpen = false;
         let rafId = 0;
         let settleTimer = 0;
+        let focusLockTimer = 0;
         // Baseline layout height while keyboard is closed (more reliable than innerHeight alone)
         let closedBaseline = Math.round(window.visualViewport?.height || window.innerHeight || 0);
 
         const lockScroll = () => {
-            if (window.scrollY || window.pageYOffset || html.scrollTop || body.scrollTop) {
-                window.scrollTo(0, 0);
-                html.scrollTop = 0;
-                body.scrollTop = 0;
-            }
+            window.scrollTo(0, 0);
+            html.scrollTop = 0;
+            body.scrollTop = 0;
+        };
+
+        // iOS pans the page on focus — cancel it for a short burst so we don't bounce up then down.
+        const burstLockScroll = (ms = 400) => {
+            lockScroll();
+            if (focusLockTimer) window.clearInterval(focusLockTimer);
+            const started = Date.now();
+            focusLockTimer = window.setInterval(() => {
+                lockScroll();
+                if (Date.now() - started > ms) {
+                    window.clearInterval(focusLockTimer);
+                    focusLockTimer = 0;
+                }
+            }, 16);
         };
 
         const applyViewport = (opts = {}) => {
@@ -96,10 +109,10 @@ const Message = (props) => {
 
             if (keyboardOpen) {
                 body.classList.add('message-keyboard-open');
-                // Always pin to the top of the layout; height = visible viewport only.
-                // Never use vv.offsetTop — that pushes the shell under the keyboard.
-                nextTop = 0;
-                nextHeight = Math.max(200, vvHeight);
+                // Keep top under the site header — do NOT jump to 0 (that slides chat above the header).
+                // Only shrink height to the visible area above the keyboard.
+                nextTop = headerHeight;
+                nextHeight = Math.max(180, vvHeight - headerHeight);
                 lockScroll();
             } else {
                 body.classList.remove('message-keyboard-open');
@@ -112,8 +125,6 @@ const Message = (props) => {
             const topDelta = Math.abs(nextTop - lastTop);
             const stateChanged = keyboardOpen !== wasKeyboardOpen;
 
-            // While keyboard is open, ignore tiny mid-animation shrinks unless this is a settle pass
-            // or the keyboard just opened / height grew (partial close).
             let shouldApply = stateChanged || lastHeight < 0 || topDelta >= 1;
             if (keyboardOpen && !stateChanged) {
                 if (settle) {
@@ -121,7 +132,6 @@ const Message = (props) => {
                 } else if (nextHeight > lastHeight + 8) {
                     shouldApply = true;
                 } else if (nextHeight < lastHeight - 40) {
-                    // Large drop usually means a bad intermediate frame — wait for settle
                     shouldApply = false;
                 } else {
                     shouldApply = heightDelta >= 24;
@@ -144,7 +154,6 @@ const Message = (props) => {
             if (rafId) cancelAnimationFrame(rafId);
             rafId = requestAnimationFrame(() => {
                 applyViewport();
-                // After keyboard animation, apply one settled measurement
                 if (settleTimer) window.clearTimeout(settleTimer);
                 settleTimer = window.setTimeout(() => {
                     applyViewport({ settle: true });
@@ -155,7 +164,6 @@ const Message = (props) => {
 
         const onVisualViewportScroll = () => {
             if (!isMobile) return;
-            // Never move the fixed chat shell with offsetTop — only cancel the pan.
             lockScroll();
         };
 
@@ -163,7 +171,7 @@ const Message = (props) => {
             if (!isMobile) return;
             const t = e.target;
             if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) {
-                lockScroll();
+                burstLockScroll(450);
                 syncViewport();
             }
         };
@@ -184,6 +192,7 @@ const Message = (props) => {
         return () => {
             if (rafId) cancelAnimationFrame(rafId);
             if (settleTimer) window.clearTimeout(settleTimer);
+            if (focusLockTimer) window.clearInterval(focusLockTimer);
             body.classList.remove('message-page-mobile');
             body.classList.remove('message-keyboard-open');
             body.style.overflow = prev.bodyOverflow;

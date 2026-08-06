@@ -482,9 +482,9 @@
   }
 
   body.message-page-mobile.message-keyboard-open #header {
-    /* Keep header from stealing space while the keyboard is open */
-    visibility: hidden;
-    pointer-events: none;
+    /* Keep site header visible — hiding it caused the chat to jump above the header on focus */
+    visibility: visible;
+    pointer-events: auto;
   }
 
   .modern-message-container,
@@ -511,11 +511,11 @@
 
   body.message-page-mobile.message-keyboard-open .modern-message-container,
   body.message-page-mobile.message-keyboard-open .modern-message-container.is-mobile {
-    /* Stay pinned above the keyboard — never follow vv offsetTop */
-    top: 0 !important;
+    /* Same top as closed state — only height shrinks above the keyboard (no upward bounce) */
+    top: var(--message-vv-top, var(--site-header-height, 56px)) !important;
     bottom: auto !important;
-    height: var(--message-mobile-height, 100dvh) !important;
-    max-height: var(--message-mobile-height, 100dvh) !important;
+    height: var(--message-mobile-height, 50dvh) !important;
+    max-height: var(--message-mobile-height, 50dvh) !important;
   }
 
   body.message-page-mobile.message-keyboard-open .modern-message-container #chatBox .chat-footer,
@@ -523,17 +523,18 @@
     padding-bottom: 8px !important;
   }
 
-  /* iOS Home Screen app: stop focus scroll from shifting the whole chat upward */
-  html.standalone-ios body.message-page-mobile .modern-message-container #chatBox .new-message-input,
-  html.standalone-pwa body.message-page-mobile .modern-message-container #chatBox .new-message-input {
-    scroll-margin-bottom: 0;
+  /* Stop iOS from scrolling the focused composer into a weird place */
+  body.message-page-mobile .modern-message-container #chatBox .new-message-input {
+    scroll-margin: 0 !important;
+    scroll-margin-bottom: 0 !important;
+    scroll-margin-top: 0 !important;
   }
 
   html.standalone-ios body.message-page-mobile.message-keyboard-open .modern-message-container,
   html.standalone-pwa body.message-page-mobile.message-keyboard-open .modern-message-container {
-    top: 0 !important;
-    height: var(--message-mobile-height, 100dvh) !important;
-    max-height: var(--message-mobile-height, 100dvh) !important;
+    top: var(--message-vv-top, var(--site-header-height, 56px)) !important;
+    height: var(--message-mobile-height, 50dvh) !important;
+    max-height: var(--message-mobile-height, 50dvh) !important;
   }
 
   .modern-message-container.loading,
