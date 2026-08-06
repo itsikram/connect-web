@@ -23,7 +23,9 @@ const resolveProgressUrl = (json) => {
 };
 
 const QUALITY_OPTIONS = [
-    { label: 'Best Quality', value: 1080 },
+    { label: 'Best — up to 4K + HQ audio', value: 2160 },
+    { label: '1440p + HQ audio', value: 1440 },
+    { label: '1080p Full HD + HQ audio', value: 1080 },
     { label: '720p', value: 720 },
     { label: '480p', value: 480 },
     { label: '360p', value: 360 },
@@ -33,7 +35,7 @@ const QUALITY_OPTIONS = [
 const YtDownload = () => {
     const { isAuthenticated, token } = useAuth();
     const [youtubeUrl, setYoutubeUrl] = useState('');
-    const [selectedQuality, setSelectedQuality] = useState(1080);
+    const [selectedQuality, setSelectedQuality] = useState(2160);
     const [postAsWatch, setPostAsWatch] = useState(true);
     const [isDownloading, setIsDownloading] = useState(false);
     const [downloadProgress, setDownloadProgress] = useState(0);
@@ -171,6 +173,18 @@ const YtDownload = () => {
         saveVideoFromUrl(saveId, fileUrl, savedMetadata).catch((err) => {
             console.error('Failed to save to Saved Videos:', err);
         });
+
+        if (watchPosted) {
+            showSuccessToast('Video posted to your Watch feed with HQ audio.', {
+                title: 'Posted to Watch',
+                autoClose: 5000,
+            });
+        } else {
+            showSuccessToast('Video downloaded and saved to Saved Videos.', {
+                title: 'Download complete',
+                autoClose: 4000,
+            });
+        }
 
         setTimeout(() => {
             setDownloadProgress(0);
@@ -417,7 +431,9 @@ const YtDownload = () => {
                                 <i className='fab fa-youtube' style={{ color: '#FF0000', marginRight: '10px' }}></i>
                                 YouTube Video Downloader
                             </h1>
-                            <p className='yt-download-subtitle'>Download YouTube videos in your preferred quality</p>
+                            <p className='yt-download-subtitle'>
+                                Download merged high-quality video with HQ audio, or post directly to Watch
+                            </p>
 
                             <div className='yt-download-form'>
                                 <div className='form-group'>
@@ -469,8 +485,8 @@ const YtDownload = () => {
                                         {!isAuthenticated
                                             ? 'Please log in to download and post to Watch.'
                                             : postAsWatch
-                                                ? 'Videos are uploaded to Cloudinary and posted to your Watch feed. Caption = YouTube title.'
-                                                : 'Video will be downloaded only (not posted to Watch).'}
+                                                ? 'HQ video + audio is uploaded to Cloudinary and posted to Watch. Caption = YouTube title.'
+                                                : 'HQ video is saved to Saved Videos only (not posted to Watch).'}
                                     </small>
                                 </div>
 
@@ -497,7 +513,7 @@ const YtDownload = () => {
                                             disabled={!youtubeUrl.trim()}
                                         >
                                             <i className='fas fa-download' style={{ marginRight: '8px' }}></i>
-                                            Download Video
+                                            {postAsWatch ? 'Download & Post to Watch' : 'Download Video'}
                                         </button>
                                     ) : (
                                         <button
