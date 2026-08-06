@@ -1,41 +1,12 @@
 import React, { Fragment, useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import moment from "moment";
 import MegaMC from "../../components/MegaMC";
 import UserPP from "../../components/UserPP";
 import MessageList from "../../components/Message/MessageList";
-import api from "../../api/api";
+import NotificationMenu from "../../components/notification/NotificationMenu";
 import { useAuth } from "../../hooks/useAuth";
-import { addNotifications, viewNotification, viewNotifications } from "../../services/actions/notificationActions";
-import { getNotificationDisplayParts, getNotificationLink } from "../../utils/notificationUtils";
 import config from '../../config/config.json';
 import '../../pages/Message.css';
-
-function truncateNotificationTitle(str, maxLength) {
-    if (!str || typeof str !== 'string') return '';
-    return str.length > maxLength ? str.slice(0, maxLength) + '…' : str;
-}
-
-function getShortTimeAgo(timestamp) {
-    if (!timestamp) return '';
-    const now = moment();
-    const time = moment(timestamp);
-    const diff = now.diff(time);
-    const seconds = Math.floor(diff / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-    const weeks = Math.floor(days / 7);
-    const months = Math.floor(days / 30);
-    const years = Math.floor(days / 365);
-    if (seconds < 60) return 'now';
-    if (minutes < 60) return `${minutes}m`;
-    if (hours < 24) return `${hours}h`;
-    if (days < 7) return `${days}d`;
-    if (weeks < 4) return `${weeks}w`;
-    if (months < 12) return `${months}mo`;
-    return `${years}y`;
-}
 
 let HeaderRight = ({ dispatch, useSelector }) => {
     const { user, logout, isAuthenticated } = useAuth();
@@ -53,17 +24,15 @@ let HeaderRight = ({ dispatch, useSelector }) => {
     let navigate = useNavigate()
     const profilePath = user?.profile ? `/${user.profile}/` : '/'
     
-    const [notificationOption, setNotificationOption] = useState(false);
-    const notficationOptionMenuRef = useRef(null);
     const [messageOption, setMessageOption] = useState(false);
     const messageOptionMenuRef = useRef(null);
 
 
     let notificationMenuHeight = optionData.bodyHeight - optionData.headerHeight - 100
-    let notificationMenuStyle = { maxHeight: notificationMenuHeight + 'px' }
+    let notificationMenuStyle = { maxHeight: Math.max(notificationMenuHeight, 280) + 'px' }
 
     const headerNotifications = useMemo(
-        () => notificaitonData.filter(n => n.type !== 'message'),
+        () => (Array.isArray(notificaitonData) ? notificaitonData.filter(n => n.type !== 'message') : []),
         [notificaitonData]
     )
 
@@ -121,63 +90,6 @@ let HeaderRight = ({ dispatch, useSelector }) => {
         setIsMsgMenu(false)
     }
 
-    let handleNotificationClick = useCallback(async (e) => {
-        let notificationId = e.currentTarget.dataset.id
-        let updatedNotification = await api.post('/notification/view', { notificationId })
-        if (updatedNotification.status === 200) {
-            dispatch(viewNotification(notificationId))
-        }
-    }, [dispatch])
-
-    let handleNotificationToggleClick = useCallback(async () => {
-        if (notificationOption === true) {
-            setNotificationOption(false)
-
-        } else {
-            setNotificationOption(true)
-
-        }
-    }, [notificationOption])
-
-    let markAllAsRead = useCallback(async (e) => {
-
-        let unseenNotifications = notificaitonData.filter(noti => noti.isSeen === false);
-
-        console.log(unseenNotifications)
-
-        unseenNotifications.map(async (notification, index) => {
-
-            let updatedNotification = await api.post('/notification/viewall', { profile: profileData._id })
-            if (updatedNotification.status === 200) {
-                dispatch(viewNotifications(notification))
-            }
-        })
-
-
-    }, [dispatch, profileData._id, notificaitonData])
-
-    let handleNotiDelete = useCallback(async (e) => {
-        let deletedNotification = await api.post('/notification/deleteall', { profile: profileData._id })
-        if (deletedNotification.status === 200) {
-            dispatch(addNotifications([], true))
-            setIsNotificationMenu(false)
-        }
-
-    }, [dispatch, profileData._id])
-
-
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (notficationOptionMenuRef.current && !notficationOptionMenuRef.current.contains(event.target)) {
-                setNotificationOption(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, []);
-
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (messageOptionMenuRef.current && !messageOptionMenuRef.current.contains(event.target)) {
@@ -215,36 +127,7 @@ let HeaderRight = ({ dispatch, useSelector }) => {
 
     let goToProfilePath = useCallback(e => {
         navigate(profilePath)
-    }, [navigate])
-
-
-    let NoficationOptionMenu = () => {
-        return (
-            <div className="header-notification-option-menu" style={{ position: 'relative', display: 'inline-block' }} ref={notficationOptionMenuRef}>
-
-                {notificationOption && (
-                    <div style={{
-                        position: 'absolute',
-                        top: '20px',
-                        right: '0',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                        zIndex: 1003,
-                        width: '200px'
-                    }}>
-                        <ul className="notification-option-menu" style={{ listStyle: 'none', margin: 0, padding: '8px 0' }}>
-                            <li onClick={markAllAsRead} style={{ padding: '8px 16px', cursor: 'pointer' }}>Mark All As Read</li>
-                            <li onClick={handleNotiDelete} style={{ padding: '8px 16px', cursor: 'pointer' }}>Delete All</li>
-                            <li style={{ padding: '8px 16px', cursor: 'pointer' }}><Link to={'/settings/notification'}>Notification Setting</Link></li>
-
-                        </ul>
-                    </div>
-                )}
-            </div>
-        );
-    }
-
-
-
+    }, [navigate, profilePath])
 
     let logOutBtn = useCallback((e) => {
         e.preventDefault();
@@ -307,91 +190,36 @@ let HeaderRight = ({ dispatch, useSelector }) => {
                         </div>
                     </MegaMC>
                     )}
-                    <li onClick={showNotificationList} className={`header-quick-menu-item ${isNotificationMenu ? 'active' : ''}`} title="">
+                    <li onClick={showNotificationList} className={`header-quick-menu-item ${isNotificationMenu ? 'active' : ''}`} title="Notifications">
                         <div className="header-quick-menu-icon">
                             <i className="far fa-bell"></i>
                             {totalNotifications > 0 && (<span className="hr-counter-badge"><span className="counter">{totalNotifications}</span></span>)}
                         </div>
                     </li>
                     {isNotificationMenu && (
-                        <MegaMC style={{ right: '50%', zIndex: 1002, transform: 'translateX(50%)', top: '101%', width: '300px', backgroundColor: '#242526', borderRadius: '5px', display: 'block', boxShadow: '0px 0px 2px 0px rgba(255,255,255,0.3)' }} className="hr-mega-menu">
+                        <MegaMC
+                            style={{
+                                right: '50%',
+                                zIndex: 1002,
+                                transform: 'translateX(50%)',
+                                top: '101%',
+                                width: '360px',
+                                maxWidth: '95vw',
+                                backgroundColor: '#242526',
+                                borderRadius: '8px',
+                                display: 'block',
+                                boxShadow: '0px 0px 2px 0px rgba(255,255,255,0.3)'
+                            }}
+                            className="hr-mega-menu hr-notification-mega"
+                        >
                             <div className="hr-mm-container">
-                                {
-                                    headerNotifications.length > 0 ? (
-                                        <div className="hr-notification-menu-container">
-                                            <div className={"notification-leftside-header"}>
-                                                <h2 className={"notification-leftside-title"}>
-                                                    Notifications
-                                                </h2>
-                                                <div className={"notification-sidebar-header-menu"}>
-                                                    <div onClick={handleNotificationToggleClick} className={"header-menu-icons"}>
-                                                        <i className={"far fa-ellipsis-h"}></i>
-                                                        {notificationOption && <NoficationOptionMenu />}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="modern-message-list-container" style={{ padding: '0 10px 10px', minHeight: 0 }}>
-                                                <div className="modern-chat-list-container" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-                                                    <ul
-                                                        className="modern-chat-list"
-                                                        style={{ ...notificationMenuStyle, overflowY: 'auto', overflowX: 'hidden' }}
-                                                    >
-                                                        {headerNotifications.map((notification) => {
-                                                            const { title, description } = getNotificationDisplayParts(notification);
-                                                            const titleLine = truncateNotificationTitle(title, 52);
-                                                            return (
-                                                                <li
-                                                                    key={notification._id}
-                                                                    className={`modern-chat-item ${notification.isSeen === false ? 'unread' : ''}`}
-                                                                    data-id={notification._id}
-                                                                    onClick={handleNotificationClick}
-                                                                >
-                                                                    <Link to={getNotificationLink(notification)}>
-                                                                        <div className="chat-item-content chat-card">
-                                                                            <div className="avatar-section">
-                                                                                <div className="avatar-container">
-                                                                                    <img src={notification.icon} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                                                                </div>
-                                                                            </div>
-                                                                            <div className="chat-info">
-                                                                                <div className="chat-header">
-                                                                                    <h3 className="contact-name">{titleLine || 'Notification'}</h3>
-                                                                                    <div className="message-meta">
-                                                                                        <span
-                                                                                            className="message-time"
-                                                                                            title={notification.timestamp ? moment(notification.timestamp).format('LT, ll') : ''}
-                                                                                        >
-                                                                                            {getShortTimeAgo(notification.timestamp)}
-                                                                                        </span>
-                                                                                    </div>
-                                                                                </div>
-                                                                                {description ? (
-                                                                                    <div className="last-message-preview">
-                                                                                        <span
-                                                                                            className="message-text notification-description"
-                                                                                            style={{
-                                                                                                display: '-webkit-box',
-                                                                                                WebkitLineClamp: 2,
-                                                                                                WebkitBoxOrient: 'vertical',
-                                                                                                overflow: 'hidden',
-                                                                                            }}
-                                                                                        >
-                                                                                            {description}
-                                                                                        </span>
-                                                                                    </div>
-                                                                                ) : null}
-                                                                            </div>
-                                                                        </div>
-                                                                    </Link>
-                                                                </li>
-                                                            );
-                                                        })}
-                                                    </ul>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ) : (<p className="text-muted text-center mb-0">No Notification Found</p>)}
-
+                                <NotificationMenu
+                                    notifications={headerNotifications}
+                                    menuStyle={notificationMenuStyle}
+                                    profileId={profileData._id}
+                                    dispatch={dispatch}
+                                    onClose={() => setIsNotificationMenu(false)}
+                                />
                             </div>
                         </MegaMC>
                     )}

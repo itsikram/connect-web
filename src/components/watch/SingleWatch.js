@@ -378,10 +378,11 @@ const SinglePost = (watch) => {
     }
 
     let handleDownloadVideoClick = useCallback((e) => {
-
-        if (!watch?.videoUrl) return;
-        saveVideoFromUrl(watchData._id, watchData.videoUrl, watchData)
-    }, [watch])
+        e?.preventDefault?.();
+        e?.stopPropagation?.();
+        if (!watchData?.videoUrl) return;
+        saveVideoFromUrl(watchData._id, watchData.videoUrl, watchData);
+    }, [watchData])
 
 
 

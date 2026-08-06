@@ -20,6 +20,7 @@ const YtDownload = () => {
     const { isAuthenticated, token } = useAuth();
     const [youtubeUrl, setYoutubeUrl] = useState('');
     const [selectedQuality, setSelectedQuality] = useState(1080);
+    const [postAsWatch, setPostAsWatch] = useState(true);
     const [isDownloading, setIsDownloading] = useState(false);
     const [downloadProgress, setDownloadProgress] = useState(0);
     const [downloadStage, setDownloadStage] = useState('');
@@ -27,7 +28,6 @@ const YtDownload = () => {
     const [currentDownload, setCurrentDownload] = useState(null);
     const [downloadHistory, setDownloadHistory] = useState([]);
     const [videoTitle, setVideoTitle] = useState('');
-    const [postAsWatch, setPostAsWatch] = useState(false);
     const [showDownloadModal, setShowDownloadModal] = useState(false);
     const [completedDownload, setCompletedDownload] = useState(null);
 
@@ -53,7 +53,7 @@ const YtDownload = () => {
         return headers;
     };
 
-    const buildDownloadUrl = (url, height, shouldPostAsWatch) => {
+    const buildDownloadUrl = (url, height, shouldPostAsWatch = true) => {
         try {
             if (isOffline()) {
                 showErrorToast('YouTube download is not available offline. Please connect to the internet.', {
@@ -65,7 +65,7 @@ const YtDownload = () => {
             const normalized = (url || '').replace('m.youtube.com', 'www.youtube.com');
             const encoded = encodeURIComponent(normalized);
             const heightParam = height ? `&height=${height}` : '';
-            const watchParam = shouldPostAsWatch ? '&post_as_watch=true' : '';
+            const watchParam = `&post_as_watch=${shouldPostAsWatch ? 'true' : 'false'}`;
             const apiUrl = getYTDownloadAPI();
             return `${apiUrl}/download?url=${encoded}&ext=mp4${heightParam}&disposition=inline&link_only=true&async_job=true${watchParam}`;
         } catch (e) {
@@ -144,7 +144,7 @@ const YtDownload = () => {
             clearInterval(progressPollIntervalRef.current);
         }
 
-        progressPollIntervalRef.current = setInterval(async () => {
+        const fetchProgressOnce = async () => {
             try {
                 const response = await axios.get(progressUrl, {
                     headers: getAuthHeaders(),
@@ -164,16 +164,19 @@ const YtDownload = () => {
                 }
 
                 setDownloadProgress(Math.round(pct));
-                setDownloadStage(stage);
+                setDownloadStage(stage || 'downloading');
                 setDownloadStatus(status);
 
-                if (status === 'completed' && typeof fileUrl === 'string' && /(\.mp4)(\b|\?|$)/i.test(fileUrl)) {
+                if (status === 'completed' && typeof fileUrl === 'string' && fileUrl.length > 0) {
                     if (progressPollIntervalRef.current) {
                         clearInterval(progressPollIntervalRef.current);
                         progressPollIntervalRef.current = null;
                     }
                     handleDownloadComplete(fileUrl, title, watchPosted);
-                } else if (status === 'failed' || status === 'error') {
+                    return true;
+                }
+
+                if (status === 'failed' || status === 'error') {
                     if (progressPollIntervalRef.current) {
                         clearInterval(progressPollIntervalRef.current);
                         progressPollIntervalRef.current = null;
@@ -181,11 +184,17 @@ const YtDownload = () => {
                     setIsDownloading(false);
                     setDownloadStatus('failed');
                     showErrorToast(data?.error || 'Download failed. Please try again.', { title: 'Download Error' });
+                    return true;
                 }
             } catch (err) {
                 console.error('Progress poll error:', err);
             }
-        }, 2000);
+            return false;
+        };
+
+        // Immediate first poll so progress shows right away
+        fetchProgressOnce();
+        progressPollIntervalRef.current = setInterval(fetchProgressOnce, 800);
     };
 
     const startDownloadJob = async (requestUrl) => {
@@ -243,8 +252,8 @@ const YtDownload = () => {
             return;
         }
 
-        if (postAsWatch && !isAuthenticated) {
-            showErrorToast('Please log in to post videos to Watch', { title: 'Authentication Required' });
+        if (!isAuthenticated) {
+            showErrorToast('Please log in to download and post videos to Watch', { title: 'Authentication Required' });
             return;
         }
 
@@ -260,7 +269,10 @@ const YtDownload = () => {
             startTime: new Date().toISOString(),
         });
 
-        showInfoToast('Preparing download on server...', { title: 'Download', autoClose: 3000 });
+        showInfoToast(
+            postAsWatch ? 'Downloading and posting to Watch...' : 'Downloading video...',
+            { title: 'Download', autoClose: 3000 }
+        );
 
         const requestUrl = buildDownloadUrl(youtubeUrl, selectedQuality, postAsWatch);
         if (!requestUrl) {
@@ -294,7 +306,8 @@ const YtDownload = () => {
         const labels = {
             starting: 'Starting...',
             downloading: 'Downloading on server...',
-            uploading_watch: 'Uploading to Watch...',
+            uploading: 'Uploading to Cloudinary...',
+            uploading_watch: 'Posting to Watch...',
             transcoding: 'Processing...',
             completed: 'Completed',
             failed: 'Failed',
@@ -352,43 +365,27 @@ const YtDownload = () => {
                                 </div>
 
                                 <div className='form-group'>
-                                    <div className='form-check'>
+                                    <div className='form-check' style={{ opacity: 0.95 }}>
                                         <input
                                             className='form-check-input'
                                             type='checkbox'
                                             id='post-as-watch'
                                             checked={postAsWatch}
-                                            onChange={(e) => {
-                                                if (!isAuthenticated) {
-                                                    showErrorToast('Please log in to post videos to Watch', {
-                                                        title: 'Authentication Required',
-                                                        autoClose: 3000,
-                                                    });
-                                                    return;
-                                                }
-                                                setPostAsWatch(e.target.checked);
-                                            }}
                                             disabled={isDownloading || !isAuthenticated}
+                                            onChange={(e) => setPostAsWatch(e.target.checked)}
                                         />
-                                        <label className='form-check-label' htmlFor='post-as-watch' style={{
-                                            opacity: !isAuthenticated ? 0.6 : 1,
-                                            cursor: !isAuthenticated ? 'not-allowed' : 'pointer',
-                                        }}>
+                                        <label className='form-check-label' htmlFor='post-as-watch'>
                                             <i className='fas fa-video' style={{ marginRight: '8px', color: '#3B82F6' }}></i>
                                             Post as Watch
                                         </label>
                                     </div>
-                                    {!isAuthenticated && (
-                                        <small className='form-text text-muted' style={{ marginTop: '4px', display: 'block', color: '#ff6b6b' }}>
-                                            <i className='fas fa-info-circle' style={{ marginRight: '4px' }}></i>
-                                            Please log in to use this feature
-                                        </small>
-                                    )}
-                                    {postAsWatch && isAuthenticated && (
-                                        <small className='form-text text-muted' style={{ marginTop: '4px', display: 'block' }}>
-                                            When the server finishes downloading, the video will be uploaded to your Watch feed automatically
-                                        </small>
-                                    )}
+                                    <small className='form-text text-muted' style={{ marginTop: '4px', display: 'block' }}>
+                                        {!isAuthenticated
+                                            ? 'Please log in to download and post to Watch.'
+                                            : postAsWatch
+                                                ? 'Videos are uploaded to Cloudinary and posted to your Watch feed. Caption = YouTube title.'
+                                                : 'Video will be downloaded only (not posted to Watch).'}
+                                    </small>
                                 </div>
 
                                 {isDownloading && (

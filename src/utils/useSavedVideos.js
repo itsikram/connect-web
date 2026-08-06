@@ -1,4 +1,12 @@
-import { showVideoSavedToast } from "./toastUtils";
+import { showVideoSavedToast, showInfoToast, showErrorToast, showSuccessToast } from "./toastUtils";
+import { downloadFileWithProgress } from "./downloadFileWithProgress";
+import {
+  startWatchDownload,
+  updateWatchDownload,
+  completeWatchDownload,
+  failWatchDownload,
+  getWatchDownload,
+} from "./watchDownloadProgress";
 
 // ✅ Central DB open function
 const openVideoDB = (callback) => {
@@ -21,6 +29,23 @@ const openVideoDB = (callback) => {
   };
 };
 
+const putVideoInDb = (id, blob, metadata) =>
+  new Promise((resolve, reject) => {
+    openVideoDB((db) => {
+      if (!db) {
+        reject(new Error('Could not open video database'));
+        return;
+      }
+
+      const tx = db.transaction('videos', 'readwrite');
+      const store = tx.objectStore('videos');
+      store.put({ id, blob, metadata });
+
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => reject(tx.error || new Error('Failed to save video'));
+    });
+  });
+
 // ✅ LOAD video
 export const loadVideoById = (id, callback) => {
   openVideoDB((db) => {
@@ -37,32 +62,73 @@ export const loadVideoById = (id, callback) => {
         callback(videoURL, record.metadata);
       } else {
         console.warn('No video found with ID:', id);
+        callback(null, null);
       }
     };
   });
 };
 
-// ✅ SAVE video
+/**
+ * Save a Watch video to IndexedDB with live progress (shown on Saved Videos page).
+ * Immediately shows a "Downloading…" alert/toast.
+ */
 export const saveVideoFromUrl = async (id, url, metadata) => {
-  const response = await fetch(url);
-  const blob = await response.blob();
+  if (!id || !url) {
+    showErrorToast('Missing video URL', { title: 'Download Error' });
+    return false;
+  }
 
-  openVideoDB((db) => {
-    if (!db) return;
+  const existing = getWatchDownload(id);
+  if (existing && existing.status === 'downloading') {
+    showInfoToast('This video is already downloading…', {
+      title: 'Download in progress',
+      autoClose: 2500,
+    });
+    return false;
+  }
 
-    const tx = db.transaction('videos', 'readwrite');
-    const store = tx.objectStore('videos');
-    store.put({ id, blob, metadata });
+  const title = metadata?.caption || 'Watch video';
 
-    tx.oncomplete = () => {
-      console.log(`Video "${id}" saved with metadata`);
-      showVideoSavedToast(
-        metadata.caption || 'Video',
-        metadata.author.profilePic,
-        `/downloads/${metadata._id}`
-      );
-    };
+  // Instant feedback
+  showInfoToast(`Downloading “${title}”…`, {
+    title: 'Downloading',
+    autoClose: 3500,
   });
+  startWatchDownload(id, metadata);
+
+  try {
+    const { blob } = await downloadFileWithProgress(url, `${String(id)}.mp4`, {
+      saveToDisk: false,
+      onProgress: ({ loaded, total, percent }) => {
+        updateWatchDownload(id, {
+          status: 'downloading',
+          loaded,
+          total,
+          percent,
+        });
+      },
+    });
+
+    await putVideoInDb(id, blob, metadata);
+
+    completeWatchDownload(id);
+    showSuccessToast('Video saved to Saved Videos', {
+      title: 'Download Complete',
+      autoClose: 2500,
+    });
+    showVideoSavedToast(
+      title,
+      metadata?.author?.profilePic,
+      `/downloads/${metadata?._id || id}`
+    );
+    return true;
+  } catch (err) {
+    console.error('saveVideoFromUrl failed:', err);
+    const message = err?.message || 'Failed to download video';
+    failWatchDownload(id, message);
+    showErrorToast(message, { title: 'Download Error' });
+    return false;
+  }
 };
 
 // ✅ GET all videos

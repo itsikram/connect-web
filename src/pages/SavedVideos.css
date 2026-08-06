@@ -1,0 +1,113 @@
+.watch-download-progress-section {
+  margin-bottom: 28px;
+}
+
+.watch-download-progress-heading {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #e4e6eb;
+  margin: 0 0 14px;
+  display: flex;
+  align-items: center;
+}
+
+.watch-download-progress-card {
+  background: #242526;
+  border: 1px solid #3a3b3c;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.watch-download-progress-card.failed {
+  border-color: rgba(239, 68, 68, 0.45);
+}
+
+.watch-download-progress-media {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #18191a;
+  overflow: hidden;
+}
+
+.watch-download-progress-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.75;
+}
+
+.watch-download-progress-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #b0b3b8;
+  font-size: 28px;
+}
+
+.watch-download-progress-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.watch-download-progress-body {
+  padding: 12px 14px 14px;
+}
+
+.watch-download-progress-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e4e6eb;
+  margin: 0 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.watch-download-progress-status {
+  font-size: 0.85rem;
+  color: #b0b3b8;
+  margin: 0 0 10px;
+}
+
+.watch-download-progress-card.failed .watch-download-progress-status {
+  color: #f87171;
+}
+
+.watch-download-progress-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.watch-download-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #3b82f6 0%, #29b1a9 100%);
+  transition: width 0.2s ease;
+}
+
+.watch-download-progress-fill.error {
+  background: #ef4444;
+}
+
+.watch-download-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 0.75rem;
+  color: #9aa0a6;
+  font-weight: 600;
+}

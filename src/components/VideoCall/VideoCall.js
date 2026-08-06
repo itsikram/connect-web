@@ -62,6 +62,11 @@ const VideoCall = ({ myId }) => {
     const [remoteAspectRatio, setRemoteAspectRatio] = useState(null);
     const [localAspectRatio, setLocalAspectRatio] = useState(null);
     const callStartTime = useRef(null);
+    const receivingCallRef = useRef(false);
+
+    useEffect(() => {
+        receivingCallRef.current = receivingCall;
+    }, [receivingCall]);
 
     const myVideo = useRef();
     const userVideo = useRef();
@@ -347,7 +352,9 @@ const VideoCall = ({ myId }) => {
 
         stopRingtone();
         stopFlashingTitle();
-        const friendIdToNotify = incomingCall?.from || caller;
+        const friendIdToNotify = (incomingCall?.from && incomingCall.from !== myId)
+            ? incomingCall.from
+            : (incomingCall?.to || caller);
         const channelName = currentChannel;
 
         // If no call is active, just cleanup
@@ -356,9 +363,8 @@ const VideoCall = ({ myId }) => {
             return;
         }
 
-        if (!isCancelled) {
-            // Normal call end - emit end event if we have valid data
-            if (friendIdToNotify && channelName && callAccepted && friendIdToNotify !== myId) {
+        if (callAccepted) {
+            if (friendIdToNotify && channelName && friendIdToNotify !== myId) {
                 socket.emit('video-call-end', { to: friendIdToNotify, channelName });
                 console.log('VideoCall: Emitting video-call-end to friend:', friendIdToNotify);
             }
@@ -366,10 +372,15 @@ const VideoCall = ({ myId }) => {
             return;
         }
 
-        // Call was cancelled/rejected - only emit if we have valid data and haven't accepted
-        if (!callAccepted && friendIdToNotify && channelName && friendIdToNotify !== myId) {
-            socket.emit('video-call-reject', { to: friendIdToNotify, friendId: myId, channelName });
-            console.log('VideoCall: Emitting video-call-reject to friend:', friendIdToNotify);
+        // Not yet accepted — cancel (caller) or reject (callee)
+        if (friendIdToNotify && channelName && friendIdToNotify !== myId) {
+            if (receivingCall) {
+                socket.emit('video-call-reject', { to: friendIdToNotify, friendId: myId, channelName });
+                console.log('VideoCall: Emitting video-call-reject to friend:', friendIdToNotify);
+            } else {
+                socket.emit('video-call-cancel', { to: friendIdToNotify, channelName });
+                console.log('VideoCall: Emitting video-call-cancel to friend:', friendIdToNotify);
+            }
         }
 
         await cleanupVideoCall();
@@ -493,6 +504,8 @@ const VideoCall = ({ myId }) => {
                     console.error('createMicrophoneAndCameraTracks failed, falling back to mic only:', trackErr);
                     // Fallback to microphone-only to keep the call connected
                     localTracks.current = [await AgoraRTC.createMicrophoneAudioTrack()];
+                    setHasVideoInput(false);
+                    setIsCameraOn(false);
                 }
                 console.log('Created local tracks');
 
@@ -778,6 +791,12 @@ const VideoCall = ({ myId }) => {
 
         const applyIncomingVideoCall = async ({ from, channelName, callerName, callerProfilePic }) => {
             if (!from || !channelName) return;
+            // Already in a call — auto-reject so we don't corrupt the active Agora session
+            if (isJoiningOrJoined.current || callAccepted || (isVideoCall && receivingCallRef.current)) {
+                console.warn('VideoCall: Busy — rejecting incoming call');
+                socket.emit('video-call-reject', { to: from, friendId: myId, channelName });
+                return;
+            }
             socket.emit('update-call-status', { to: from, status: "Ringing..." });
             console.log('Incoming Agora video call from', from, 'channel:', channelName);
             setIsVideoCall(true);
@@ -798,9 +817,16 @@ const VideoCall = ({ myId }) => {
                     localTracks.current[1].play(myVideo.current, VIDEO_FIT);
                     const ar = readTrackAspectRatio(localTracks.current[1]);
                     if (ar) setLocalAspectRatio(ar);
+                    setHasVideoInput(true);
                 }
             } catch (error) {
                 console.error('Failed to start local video preview:', error);
+                try {
+                    localTracks.current = [await AgoraRTC.createMicrophoneAudioTrack()];
+                    setHasVideoInput(false);
+                } catch (micErr) {
+                    console.error('Mic fallback also failed:', micErr);
+                }
             }
 
             showCallNotification({
@@ -814,12 +840,13 @@ const VideoCall = ({ myId }) => {
             });
         };
 
-        socket.on('incoming-video-call', async ({ from, channelName, isAudio, callerName, callerProfilePic }) => {
+        const onIncomingVideoCall = async ({ from, channelName, isAudio, callerName, callerProfilePic }) => {
             // Only handle video calls, ignore audio calls
             if (!isAudio) {
                 await applyIncomingVideoCall({ from, channelName, callerName, callerProfilePic });
             }
-        });
+        };
+        socket.on('incoming-video-call', onIncomingVideoCall);
 
         // Web Push → open app while backgrounded (iOS Home Screen)
         const onPushIncoming = (event) => {
@@ -849,66 +876,89 @@ const VideoCall = ({ myId }) => {
         };
         window.addEventListener('rejectCallFromPush', onRejectFromPush);
 
-        socket.on('call-accepted', ({ channelName, isAudio }) => {
-            // Only handle video call acceptance
-            if (!isAudio) {
+        const onCallAccepted = ({ channelName, isAudio }) => {
+            // Caller joins here; callee already joined in answerCall — skip echo
+            if (!isAudio && !receivingCallRef.current) {
                 console.log('Agora video call accepted, joining channel:', channelName);
                 stopRingtone();
                 stopFlashingTitle();
                 setOutgoingCallStatus('');
                 startCall(channelName);
+            } else if (!isAudio && receivingCallRef.current) {
+                console.log('VideoCall: Ignoring call-accepted echo (callee already joined)');
+                stopRingtone();
+                stopFlashingTitle();
+                setOutgoingCallStatus('');
             }
-        });
+        };
+        socket.on('call-accepted', onCallAccepted);
 
         // Outgoing call status updates from callee
         const handleUpdatedCallStatus = ({ from, status }) => {
             // Only update if this status is for the current friend and we're the caller waiting
-            if (!callAccepted && !receivingCall && caller && from === caller) {
+            if (!callAccepted && !receivingCallRef.current && caller && from === caller) {
                 setOutgoingCallStatus(status || '');
             }
         };
         socket.on('updated-call-status', handleUpdatedCallStatus);
 
-        socket.on('video-call-ended', async () => {
+        const onVideoCallEnded = async () => {
             console.log('VideoCall: Received video-call-ended event from remote user');
-            // IMPORTANT: Do local cleanup ONLY. Do NOT re-emit end to avoid loops.
             stopRingtone();
             stopFlashingTitle();
             setOutgoingCallStatus('');
-            endCall();
-        });
-        socket.on('video-call-cancelled', async () => {
+            // Local cleanup ONLY — do not re-emit end
+            await cleanupVideoCall();
+        };
+        socket.on('video-call-ended', onVideoCallEnded);
+
+        const onVideoCallCancelled = async () => {
             console.log('VideoCall: Received video-call-cancelled event from remote user');
-            // IMPORTANT: Do local cleanup ONLY. Do NOT re-emit end to avoid loops.
             stopRingtone();
             stopFlashingTitle();
             setOutgoingCallStatus('');
-            endCall(true);
-        });
-        socket.on('video-call-rejected', async () => {
+            await cleanupVideoCall();
+        };
+        socket.on('video-call-cancelled', onVideoCallCancelled);
+
+        const onVideoCallRejected = async () => {
             console.log('VideoCall: Received video-call-rejected event from remote user');
             stopRingtone();
             stopFlashingTitle();
             setOutgoingCallStatus('');
-            endCall(true);
-        });
+            await cleanupVideoCall();
+        };
+        socket.on('video-call-rejected', onVideoCallRejected);
 
+        const onCallNotAccepted = async ({ isAudio, channelName }) => {
+            if (isAudio) return;
+            if (!currentChannel && !channelName) return;
+            if (channelName && currentChannel && channelName !== currentChannel) return;
+            console.log('VideoCall: Call not accepted (timeout)');
+            stopRingtone();
+            stopFlashingTitle();
+            setOutgoingCallStatus('No answer');
+            await cleanupVideoCall();
+        };
+        socket.on('call-not-accepted', onCallNotAccepted);
 
-        socket.on('apply-video-filter', ({ filter }) => {
+        const onApplyVideoFilter = ({ filter }) => {
             if (filter !== '') {
                 setFilterFriendVideo(filter);
             } else {
                 setFilterFriendVideo('');
             }
-        });
+        };
+        socket.on('apply-video-filter', onApplyVideoFilter);
 
         return () => {
-            socket.off('incoming-video-call');
-            socket.off('call-accepted');
-            socket.off('video-call-ended');
-            socket.off('video-call-cancelled');
-            socket.off('video-call-rejected');
-            socket.off('apply-video-filter');
+            socket.off('incoming-video-call', onIncomingVideoCall);
+            socket.off('call-accepted', onCallAccepted);
+            socket.off('video-call-ended', onVideoCallEnded);
+            socket.off('video-call-cancelled', onVideoCallCancelled);
+            socket.off('video-call-rejected', onVideoCallRejected);
+            socket.off('call-not-accepted', onCallNotAccepted);
+            socket.off('apply-video-filter', onApplyVideoFilter);
             socket.off('updated-call-status', handleUpdatedCallStatus);
             window.removeEventListener('startVideoCall', handleOutgoingVideoCall);
             window.removeEventListener('incomingCallFromPush', onPushIncoming);
@@ -916,7 +966,7 @@ const VideoCall = ({ myId }) => {
             stopRingtone(); // Stop ringtone on cleanup
             stopFlashingTitle();
         };
-    }, [startCall, cleanupVideoCall, endCall, myId, callAccepted, receivingCall, caller, mySettings]);
+    }, [startCall, cleanupVideoCall, myId, callAccepted, receivingCall, caller, mySettings, currentChannel, isVideoCall]);
 
     // Auto-answer when user pressed Accept on the system notification
     useEffect(() => {

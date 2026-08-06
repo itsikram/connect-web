@@ -1721,6 +1721,37 @@ body {
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  position: relative;
+}
+.nf-watch .header .author-info .right .watch-option-menu {
+  padding: 10px;
+  border-radius: 10px;
+  background-color: #18191A;
+  position: absolute;
+  width: 200px;
+  top: 100%;
+  right: 0;
+  z-index: 20;
+}
+.nf-watch .header .author-info .right .watch-option-menu ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.nf-watch .header .author-info .right .watch-option-menu ul li {
+  text-align: center;
+  margin-bottom: 5px;
+  padding: 5px;
+  border-bottom: 1px solid #242526;
+  transition: 0.3s;
+  cursor: pointer;
+}
+.nf-watch .header .author-info .right .watch-option-menu ul li:last-child {
+  border-bottom: 0;
+}
+.nf-watch .header .author-info .right .watch-option-menu ul li:hover {
+  border-radius: 5px;
+  background-color: #242526;
 }
 .nf-watch .header .author-info .right button {
   background: transparent;
@@ -1745,6 +1776,21 @@ body {
   padding: 0 12px;
   margin: 0;
   margin-bottom: 10px;
+}
+.nf-watch .body .watch-caption-editor {
+  padding: 0 12px;
+  margin-bottom: 10px;
+}
+.nf-watch .body .watch-caption-editor .caption-editor {
+  background-color: #3A3B3C;
+  border: 1px solid #4E4F50;
+  color: #E4E6EB;
+  border-radius: 8px;
+  resize: vertical;
+}
+.nf-watch .body .watch-caption-editor .watch-caption-editor-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 .nf-watch .body .attachment img {
   width: 100%;

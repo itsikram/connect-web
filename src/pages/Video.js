@@ -1,4 +1,4 @@
-import React, { Fragment, useState, useEffect } from "react";
+import React, { Fragment, useState, useEffect, useCallback } from "react";
 import Watch from "../components/watch/Watch";
 import CreateWatch from "../components/watch/CreateWatch";
 import api from "../api/api";
@@ -22,6 +22,12 @@ const Video = () => {
         loadData()
     }, [])
 
+    const handleWatchUpdate = useCallback((watchId, updates) => {
+        setWatches(prev => prev.map(item =>
+            item._id === watchId ? { ...item, ...updates } : item
+        ))
+    }, [])
+
     return (
         <Fragment>
             <div className="container mb-3" style={ isMobile ? { maxWidth: '100%', width: '100%' } : { maxWidth: '90%', width: '90%' } }>
@@ -38,6 +44,7 @@ const Video = () => {
                                     watch={video}
                                     type="watch"
                                     onDelete={(deletedId) => setWatches(prev => prev.filter(item => item._id !== deletedId))}
+                                    onUpdate={handleWatchUpdate}
                                 />
                             ))
                                 :

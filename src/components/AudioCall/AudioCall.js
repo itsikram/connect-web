@@ -520,17 +520,14 @@ const AudioCall = ({ myId }) => {
     }, [currentChannel, endMinimizedCall]);
 
     useEffect(() => {        
-        // Test socket connection
-        socket.on('connect', () => {
-            console.log('AudioCall - Socket connected');
-        });
-        
-        socket.on('disconnect', () => {
-            console.log('AudioCall - Socket disconnected');
-        });
-        
         const applyIncomingAudioCall = ({ from, channelName, callerName, callerProfilePic }) => {
             if (!from || !channelName) return;
+            // Already in a call — auto-reject
+            if (isJoiningOrJoined.current || callAccepted || (isAudioCall && receivingCallRef.current)) {
+                console.warn('AudioCall: Busy — rejecting incoming call');
+                socket.emit('audio-call-reject', { to: from, channelName });
+                return;
+            }
             socket.emit('update-call-status', { to: from, status: "Ringing..." });
             setIsAudioCall(true);
             setReceivingCall(true);
@@ -551,13 +548,14 @@ const AudioCall = ({ myId }) => {
             });
         };
 
-        socket.on('incoming-audio-call', ({ from, channelName, isAudio, callerName, callerProfilePic }) => {
+        const onIncomingAudioCall = ({ from, channelName, isAudio, callerName, callerProfilePic }) => {
             if (isAudio) {
                 applyIncomingAudioCall({ from, channelName, callerName, callerProfilePic });
             } else {
                 console.log('AudioCall - Ignoring video call (isAudio: false)');
             }
-        });
+        };
+        socket.on('incoming-audio-call', onIncomingAudioCall);
 
         // Web Push → open app while backgrounded (iOS Home Screen)
         const onPushIncoming = (event) => {
@@ -600,69 +598,77 @@ const AudioCall = ({ myId }) => {
             setIncomingCall({ from: myId, to, channelName, name: callerName || 'Friend', profilePic: callerProfilePic });
             console.log('AudioCall - Outgoing call modal should now be visible');
             setOutgoingCallStatus('Calling...');
-            // playRingtone();
         };
 
         window.addEventListener('startAudioCall', handleOutgoingAudioCall);
 
-        socket.on('call-accepted', ({ channelName, isAudio, callerId }) => {
+        const onCallAccepted = ({ channelName, isAudio, callerId }) => {
             // Caller side should join upon acceptance; callee already joined in answerCall
-            // Use ref to avoid stale closure issue
             if (isAudio && !receivingCallRef.current) {
                 console.log('Agora audio call accepted, joining channel:', channelName);
                 console.log('Call accepted data:', { channelName, isAudio, callerId });
                 stopRingtone();
                 setOutgoingCallStatus('');
-                // Call startCall directly since it's defined above
                 startCall(channelName);
             } else if (isAudio && receivingCallRef.current) {
                 console.log('Received call-accepted but we are the receiver (receivingCall=true), callee already joined in answerCall');
             }
-        });
+        };
+        socket.on('call-accepted', onCallAccepted);
 
-        socket.on('audio-call-ended', async () => {
+        const onAudioCallEnded = async () => {
             console.log('AudioCall: Received audio-call-ended event from server');
-            console.log('AudioCall: Current state - callAccepted:', callAccepted, 'isAudioCall:', isAudioCall);
-            console.log('AudioCall: Current channel:', currentChannel);
-            console.log('AudioCall: Incoming call:', incomingCall);
-            // IMPORTANT: Only do local cleanup, do NOT call endCall which would re-emit
-            stopRingtone(); // This also closes notification
+            stopRingtone();
             await cleanupAudioCall();
-        });
-        socket.on('audio-call-cancelled', async () => {
+        };
+        socket.on('audio-call-ended', onAudioCallEnded);
+
+        const onAudioCallCancelled = async () => {
             console.log('AudioCall: Received audio-call-cancelled event from server');
-            stopRingtone(); // This also closes notification
+            stopRingtone();
             await cleanupAudioCall();
-        });
-        socket.on('audio-call-rejected', async () => {
+        };
+        socket.on('audio-call-cancelled', onAudioCallCancelled);
+
+        const onAudioCallRejected = async () => {
             console.log('AudioCall: Received audio-call-rejected event from server');
-            stopRingtone(); // This also closes notification
+            stopRingtone();
             await cleanupAudioCall();
-        });
+        };
+        socket.on('audio-call-rejected', onAudioCallRejected);
+
+        const onCallNotAccepted = async ({ isAudio, channelName }) => {
+            if (!isAudio) return;
+            if (channelName && currentChannel && channelName !== currentChannel) return;
+            console.log('AudioCall: Call not accepted (timeout)');
+            stopRingtone();
+            setOutgoingCallStatus('No answer');
+            await cleanupAudioCall();
+        };
+        socket.on('call-not-accepted', onCallNotAccepted);
 
         const handleUpdatedCallStatus = ({ from, status }) => {
             // Only for outgoing (caller) side: receivingCall is false
-            if (!receivingCall && !callAccepted && caller && from === caller) {
+            if (!receivingCallRef.current && !callAccepted && caller && from === caller) {
                 setOutgoingCallStatus(status || '');
             }
         };
         socket.on('updated-call-status', handleUpdatedCallStatus);
 
         return () => {
-            socket.off('incoming-audio-call');
+            socket.off('incoming-audio-call', onIncomingAudioCall);
             window.removeEventListener('incomingCallFromPush', onPushIncoming);
             window.removeEventListener('rejectCallFromPush', onRejectFromPush);
-            socket.off('call-accepted');
-            socket.off('audio-call-ended');
-            socket.off('audio-call-cancelled');
-            socket.off('audio-call-rejected');
-            socket.off('connect');
-            socket.off('disconnect');
+            socket.off('call-accepted', onCallAccepted);
+            socket.off('audio-call-ended', onAudioCallEnded);
+            socket.off('audio-call-cancelled', onAudioCallCancelled);
+            socket.off('audio-call-rejected', onAudioCallRejected);
+            socket.off('call-not-accepted', onCallNotAccepted);
             window.removeEventListener('startAudioCall', handleOutgoingAudioCall);
-            stopRingtone(); // Stop ringtone on cleanup
+            stopRingtone();
             socket.off('updated-call-status', handleUpdatedCallStatus);
         };
-    }, [startCall, cleanupAudioCall, caller, receivingCall, callAccepted]); // Include deps
+    }, [startCall, cleanupAudioCall, caller, callAccepted, currentChannel, myId, isAudioCall]); // Include deps
 
     // Auto-answer when user pressed Accept on the system notification
     useEffect(() => {

@@ -77,6 +77,68 @@
     text-decoration: none;
 }
 
+.video-download-btn-primary:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.video-download-progress-block {
+    margin-bottom: 18px;
+    padding: 12px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.video-download-progress-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.85rem;
+    color: #c4c7cc;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.video-download-progress-track {
+    width: 100%;
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.1);
+    overflow: hidden;
+}
+
+.video-download-progress-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #667eea 0%, #29b1a9 100%);
+    transition: width 0.2s ease;
+}
+
+.video-download-progress-fill.complete {
+    background: #29b1a9;
+}
+
+.video-download-progress-fill.error {
+    background: #ef4444;
+}
+
+.video-download-progress-size {
+    margin-top: 6px;
+    font-size: 0.75rem;
+    color: #9aa0a6;
+    text-align: right;
+}
+
+.video-download-icon.downloading {
+    color: #667eea;
+}
+
+.video-download-icon.done {
+    color: #29b1a9;
+}
+
 .video-download-btn-secondary {
     background: rgba(255, 255, 255, 0.08);
     color: #e8eaed;

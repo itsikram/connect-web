@@ -20,9 +20,11 @@ import Rhaha from "../../assets/images/reacts/reactHaha.svg";
 import config from "../../config/config.json";
 import { useWatchPipOptional } from "../../contexts/WatchPipContext";
 import { buildPipPayloadFromVideo, shouldAutoWatchPip } from "../../utils/watchPipHelpers";
+import ModalContainer from "../modal/ModalContainer";
+import useIsMobile from "../../utils/useIsMobile";
 const default_pp_src = config?.defaultProfile;
 
-const Watch = ({ watch, onDelete = null }) => {
+const Watch = ({ watch, onDelete = null, onUpdate = null }) => {
 
 
     let myProfile = useSelector(state => state.profile)
@@ -38,10 +40,20 @@ const Watch = ({ watch, onDelete = null }) => {
     let [placedReacts, setPlacedReacts] = useState([]);
     const [imageExists, setImageExists] = useState(false);
     const [watchUrl, setWatchUrl] = useState(watch.videoUrl)
+    const [isWatchOption, setIsWatchOption] = useState(false)
+    const [isEditCaption, setIsEditCaption] = useState(false)
+    const [caption, setCaption] = useState(watch.caption || '')
+    const [captionDraft, setCaptionDraft] = useState(watch.caption || '')
+    const [isSavingCaption, setIsSavingCaption] = useState(false)
+    const [isEditAudienceModal, setIsEditAudienceModal] = useState(false)
+    const [selectedAudience, setSelectedAudience] = useState(watch.audience || 1)
+    const [isUpdatingAudience, setIsUpdatingAudience] = useState(false)
     const displayedWatch = useRef(null) // document.getElementById(`watch-${watch._id}`)
     const nfwatch = useRef(null) // document.getElementById(`watch-${watch._id}`)
+    const watchOptionMenu = useRef(null)
     const watchPip = useWatchPipOptional();
     const skipPipOnUnmount = useRef(false);
+    const isMobile = useIsMobile();
 
     useEffect(() => {
 
@@ -70,6 +82,9 @@ const Watch = ({ watch, onDelete = null }) => {
 
     useEffect(() => {
         setWatchUrl(watch.videoUrl)
+        setCaption(watch.caption || '')
+        setCaptionDraft(watch.caption || '')
+        setSelectedAudience(watch.audience || 1)
     }, [watch])
 
 
@@ -82,6 +97,93 @@ const Watch = ({ watch, onDelete = null }) => {
         img.onload = () => setImageExists(true);
         img.onerror = () => setImageExists(false);
     };
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (watchOptionMenu.current && !watchOptionMenu.current.contains(event.target)) {
+                setIsWatchOption(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, []);
+
+    let watchOptionClick = useCallback((e) => {
+        e?.stopPropagation?.()
+        setIsWatchOption(prev => !prev)
+    }, [])
+
+    let startEditCaption = useCallback(() => {
+        setCaptionDraft(caption)
+        setIsEditCaption(true)
+        setIsWatchOption(false)
+    }, [caption])
+
+    let cancelEditCaption = useCallback(() => {
+        setCaptionDraft(caption)
+        setIsEditCaption(false)
+    }, [caption])
+
+    let saveCaption = useCallback(async () => {
+        if (!watch?._id) return
+        setIsSavingCaption(true)
+        try {
+            let res = await api.post('/watch/update', {
+                watchId: watch._id,
+                caption: captionDraft,
+            })
+            if (res.status === 200) {
+                setCaption(captionDraft)
+                setIsEditCaption(false)
+                if (typeof onUpdate === 'function') {
+                    onUpdate(watch._id, { caption: captionDraft })
+                }
+            } else {
+                alert('Failed to update caption')
+            }
+        } catch (err) {
+            console.error('Update caption failed:', err)
+            alert('Failed to update caption')
+        } finally {
+            setIsSavingCaption(false)
+        }
+    }, [watch._id, captionDraft, onUpdate])
+
+    let editAudienceClick = useCallback(() => {
+        setSelectedAudience(watch.audience || 1)
+        setIsEditAudienceModal(true)
+        setIsWatchOption(false)
+    }, [watch.audience])
+
+    let onCloseEditAudience = useCallback(() => {
+        setIsEditAudienceModal(false)
+    }, [])
+
+    let onSaveAudience = useCallback(async () => {
+        if (!watch?._id) return
+        setIsUpdatingAudience(true)
+        try {
+            let res = await api.post('/watch/update', {
+                watchId: watch._id,
+                audience: selectedAudience,
+            })
+            if (res.status === 200) {
+                setIsEditAudienceModal(false)
+                if (typeof onUpdate === 'function') {
+                    onUpdate(watch._id, { audience: selectedAudience })
+                }
+            } else {
+                alert('Failed to update audience')
+            }
+        } catch (error) {
+            console.error('Error updating audience:', error)
+            alert('Failed to update audience')
+        } finally {
+            setIsUpdatingAudience(false)
+        }
+    }, [watch._id, selectedAudience, onUpdate])
 
     useEffect(() => {
         let storedReacts = [];
@@ -136,7 +238,7 @@ const Watch = ({ watch, onDelete = null }) => {
 
 
     let hideThisWatch = async (e) => {
-        let target = e.currentTarget;
+        let target = e?.currentTarget;
 
         if (isAuth) {
             confirmAlert({
@@ -147,11 +249,15 @@ const Watch = ({ watch, onDelete = null }) => {
                         label: "Yes",
                         onClick: async () => {
                             try {
-                                let deleteRes = await api.post('/watch/delete', { watchId: watch._id, authorId: watch.author?._id })
+                                const authorId = watch.author?._id || watch.author
+                                let deleteRes = await api.post('/watch/delete', {
+                                    watchId: watch._id,
+                                    authorId,
+                                })
                                 if (deleteRes.status === 200) {
                                     if (typeof onDelete === 'function') {
                                         onDelete(watch._id)
-                                    } else {
+                                    } else if (target) {
                                         $(target).parents('.nf-watch').css({
                                             'min-height': '0px',
                                             'padding': '10px'
@@ -159,11 +265,12 @@ const Watch = ({ watch, onDelete = null }) => {
                                         $(target).parents('.nf-watch').html('<p class="fs-6 mb-0 text-center text-danger">' + deleteRes.data.message + '</p>');
                                     }
                                 } else {
-                                    alert('Failed to delete watch')
+                                    alert(deleteRes.data?.message || 'Failed to delete watch')
                                 }
                             } catch (err) {
                                 console.error('Delete watch failed:', err)
-                                alert('Failed to delete watch')
+                                const msg = err.response?.data?.message || err.message || 'Failed to delete watch'
+                                alert(msg)
                             }
                         },
                     },
@@ -175,9 +282,14 @@ const Watch = ({ watch, onDelete = null }) => {
             });
 
 
-        } else {
+        } else if (target) {
             $(target).parents('.nf-watch').hide();
         }
+    }
+
+    let deleteFromMenu = (e) => {
+        setIsWatchOption(false)
+        hideThisWatch(e)
     }
 
     let removeReact = async (watchType = 'watch', target = null) => {
@@ -327,9 +439,9 @@ const Watch = ({ watch, onDelete = null }) => {
     const getPipMeta = useCallback(() => ({
         watchId: watch._id,
         videoUrl: watchUrl || watch.videoUrl,
-        title: watch.caption || `${watch?.author?.user?.firstName || "Watch"}`,
+        title: caption || `${watch?.author?.user?.firstName || "Watch"}`,
         thumbnail: watch.thumbnail || "",
-    }), [watch, watchUrl]);
+    }), [watch, watchUrl, caption]);
 
     const minimizeToPip = useCallback(() => {
         if (!watchPip?.startPip || !displayedWatch.current) return;
@@ -376,9 +488,10 @@ const Watch = ({ watch, onDelete = null }) => {
     }, [watchPip, getPipMeta]);
 
     let handleDownloadVideoClick = useCallback((e) => {
-
+        e?.preventDefault?.();
+        e?.stopPropagation?.();
         if (!watch?.videoUrl) return;
-        saveVideoFromUrl(watch._id, watch.videoUrl, watch)
+        saveVideoFromUrl(watch._id, watch.videoUrl, watch);
     }, [watch])
 
     const isThisPip = watchPip?.pip?.watchId === watch._id;
@@ -417,10 +530,24 @@ const Watch = ({ watch, onDelete = null }) => {
 
                         </div>
                         <div className="right">
-                            <button onClick={handleDownloadVideoClick} className="watch-three-dot"><i className="fas fa-download"></i></button>
-                            {
-                                isAuth && <button className="watch-three-dot"><i className="far fa-ellipsis-h"></i></button>
-                            }
+                            <button onClick={handleDownloadVideoClick} className="watch-three-dot" title="Download"><i className="fas fa-download"></i></button>
+                            <>
+                                <button onClick={watchOptionClick} className="watch-three-dot" aria-label="Video options"><i className="far fa-ellipsis-h"></i></button>
+                                {isWatchOption && (
+                                    <div className="watch-option-menu" ref={watchOptionMenu}>
+                                        <ul>
+                                            {isAuth && (
+                                                <>
+                                                    <li onClick={startEditCaption}>Edit Video</li>
+                                                    <li onClick={editAudienceClick}>Edit Audience</li>
+                                                    <li onClick={deleteFromMenu}>Delete Video</li>
+                                                </>
+                                            )}
+                                            {!isAuth && <li>Report This Video</li>}
+                                        </ul>
+                                    </div>
+                                )}
+                            </>
 
                             <button onClick={hideThisWatch.bind(this)} className="watch-close"> <i className="far fa-times"></i></button>
                         </div>
@@ -428,9 +555,40 @@ const Watch = ({ watch, onDelete = null }) => {
 
                 </div>
                 <div className="body">
-                    <p className="caption">
-                        {watch.caption}
-                    </p>
+                    {isEditCaption && isAuth ? (
+                        <div className="watch-caption-editor">
+                            <textarea
+                                className="form-control caption-editor mb-2"
+                                value={captionDraft}
+                                onChange={(e) => setCaptionDraft(e.target.value)}
+                                rows={3}
+                                maxLength={500}
+                                placeholder="Write a caption..."
+                            />
+                            <div className="watch-caption-editor-actions">
+                                <button
+                                    type="button"
+                                    className="btn btn-secondary btn-sm me-2"
+                                    onClick={cancelEditCaption}
+                                    disabled={isSavingCaption}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn btn-primary btn-sm"
+                                    onClick={saveCaption}
+                                    disabled={isSavingCaption}
+                                >
+                                    {isSavingCaption ? 'Saving...' : 'Save'}
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <p className="caption">
+                            {caption}
+                        </p>
+                    )}
                     {watch?.thumbnail && thumbnailLoaded ? (
                         playWatch ? (
                             <div className="attachment watch-video-wrap">
@@ -607,6 +765,113 @@ const Watch = ({ watch, onDelete = null }) => {
                 </div>
 
             </div>
+
+            <ModalContainer
+                title="Edit Audience"
+                style={{ width: isMobile ? '95%' : "500px", top: "50%" }}
+                isOpen={isEditAudienceModal}
+                onRequestClose={onCloseEditAudience}
+                id="edit-watch-audience-modal"
+            >
+                <div className="modal-header">
+                    <h3 className="modal-title">Edit Audience</h3>
+                    <div onClick={onCloseEditAudience} className="modal-close-btn text-danger">
+                        <i className="far fa-times"></i>
+                    </div>
+                </div>
+                <div className="modal-body">
+                    <div className="edit-audience-container">
+                        <p className="mb-3">Who can see this video?</p>
+                        <div className="audience-options">
+                            <div
+                                className={`audience-option ${selectedAudience === 1 ? 'selected' : ''}`}
+                                onClick={() => setSelectedAudience(1)}
+                                style={{
+                                    padding: '12px',
+                                    margin: '8px 0',
+                                    border: selectedAudience === 1 ? '2px solid #007bff' : '1px solid #ddd',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    backgroundColor: selectedAudience === 1 ? '#e7f3ff' : '#fff'
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <i className="far fa-globe" style={{ fontSize: '20px', color: '#007bff' }}></i>
+                                    <div>
+                                        <strong>Public</strong>
+                                        <p className="mb-0 text-muted" style={{ fontSize: '14px' }}>Anyone can see this video</p>
+                                    </div>
+                                    {selectedAudience === 1 && (
+                                        <i className="far fa-check-circle" style={{ marginLeft: 'auto', color: '#007bff', fontSize: '20px' }}></i>
+                                    )}
+                                </div>
+                            </div>
+                            <div
+                                className={`audience-option ${selectedAudience === 2 ? 'selected' : ''}`}
+                                onClick={() => setSelectedAudience(2)}
+                                style={{
+                                    padding: '12px',
+                                    margin: '8px 0',
+                                    border: selectedAudience === 2 ? '2px solid #007bff' : '1px solid #ddd',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    backgroundColor: selectedAudience === 2 ? '#e7f3ff' : '#fff'
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <i className="far fa-user-friends" style={{ fontSize: '20px', color: '#007bff' }}></i>
+                                    <div>
+                                        <strong>Friends</strong>
+                                        <p className="mb-0 text-muted" style={{ fontSize: '14px' }}>Only your friends can see this video</p>
+                                    </div>
+                                    {selectedAudience === 2 && (
+                                        <i className="far fa-check-circle" style={{ marginLeft: 'auto', color: '#007bff', fontSize: '20px' }}></i>
+                                    )}
+                                </div>
+                            </div>
+                            <div
+                                className={`audience-option ${selectedAudience === 3 ? 'selected' : ''}`}
+                                onClick={() => setSelectedAudience(3)}
+                                style={{
+                                    padding: '12px',
+                                    margin: '8px 0',
+                                    border: selectedAudience === 3 ? '2px solid #007bff' : '1px solid #ddd',
+                                    borderRadius: '8px',
+                                    cursor: 'pointer',
+                                    backgroundColor: selectedAudience === 3 ? '#e7f3ff' : '#fff'
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <i className="far fa-lock" style={{ fontSize: '20px', color: '#007bff' }}></i>
+                                    <div>
+                                        <strong>Only Me</strong>
+                                        <p className="mb-0 text-muted" style={{ fontSize: '14px' }}>Only you can see this video</p>
+                                    </div>
+                                    {selectedAudience === 3 && (
+                                        <i className="far fa-check-circle" style={{ marginLeft: 'auto', color: '#007bff', fontSize: '20px' }}></i>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="edit-audience-button text-end mt-3">
+                            <button
+                                className="btn btn-secondary me-2"
+                                onClick={onCloseEditAudience}
+                                disabled={isUpdatingAudience}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                className="btn btn-primary"
+                                onClick={onSaveAudience}
+                                disabled={isUpdatingAudience}
+                            >
+                                {isUpdatingAudience ? 'Saving...' : 'Save'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </ModalContainer>
         </>
     );
 }

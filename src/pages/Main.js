@@ -383,13 +383,14 @@ const Main = () => {
 
         api.get('notification/', {
             params: {
-                profileId
+                profileId,
+                limit: 50,
             },
             signal: abortController.signal
         }).then(res => {
 
             console.log('oldNotifications', res.data)
-            dispatch(addNotifications(res?.data))
+            dispatch(addNotifications(res?.data, true))
 
         }).catch(err => {
             // Don't log aborted requests as errors
@@ -759,6 +760,29 @@ const Main = () => {
             socket.off('speak_message', handleSpeakMessage);
         };
     }, [socket, isTabActive, dispatch])
+
+    // Realtime in-app notification feed (bell menu)
+    useEffect(() => {
+        if (!profileId || !isAuthenticated) return;
+
+        const handleNewNotification = (notification) => {
+            if (!notification?._id) return;
+            dispatch(addNotification(notification));
+
+            // Skip message types — they already toast via the message channel
+            if (notification.type === 'message') return;
+
+            if (document.visibilityState === 'visible') {
+                const notificationLink = getNotificationLink(notification);
+                notify(notification.text, false, notification.icon, notificationLink);
+            }
+        };
+
+        socket.on('newNotification', handleNewNotification);
+        return () => {
+            socket.off('newNotification', handleNewNotification);
+        };
+    }, [profileId, isAuthenticated, dispatch])
 
     // Global ludo game invitation handlers - work throughout the entire app
     useEffect(() => {

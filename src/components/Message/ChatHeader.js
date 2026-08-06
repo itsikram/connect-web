@@ -659,69 +659,15 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
     }, [friendId, cleanupVideoCall, callAccepted, currentChannel]);
 
     useEffect(() => {
-        socket.on('incoming-video-call', ({ from, channelName, isAudio, callerName, callerProfilePic }) => {
+        // ChatHeader no longer owns 1:1 video calls (VideoCall.js does).
+        // Keep live-voice + call-status display helpers only.
 
-            socket.emit('update-call-status', { to: from, status: "Ringing..." });
-            // Only handle video calls in ChatHeader, audio calls handled by AudioCall component
-            if (!isAudio) {
-                console.log('Incoming Agora video call from', from, 'channel:', channelName);
-                console.log('Caller info:', { callerName, callerProfilePic });
-                setIncomingCall({ from, channelName, name: callerName || 'Unknown Caller', profilePic: callerProfilePic });
-                setIsVideoCalling(true);
-                playCallingBeep();
-                
-                // Show browser notification for incoming call
-                showCallNotification({
-                    callerName: callerName || 'Unknown Caller',
-                    callerProfilePic: callerProfilePic,
-                    callType: 'video',
-                    onClick: () => {
-                        // Focus the window when notification is clicked
-                        window.focus();
-                    }
-                });
-            }
-        });
-
-        // Outgoing call status updates from callee
         const handleUpdatedCallStatus = ({ from, status }) => {
-            // Only update if this status is for the current friend and we're the caller waiting
             if (!callAccepted && isVideoCalling && from === friendId) {
                 setOutgoingCallStatus(status || '');
             }
         };
         socket.on('updated-call-status', handleUpdatedCallStatus);
-
-        socket.on('video-call-rejected', ({to: friendId, channelName}) => {
-            console.log('ChatHeader: Received video-call-rejected event from server');
-            stopCallingBeep(); // Explicitly stop the beep (this also closes notification)
-            cleanupVideoCall();
-        });
-
-        socket.on('apply-video-filter', ({ filter }) => {
-
-            if (filter !== '') {
-                setFilterFriendVideo(filter);
-            } else {
-                setFilterFriendVideo('');
-            }
-        });
-
-        socket.on('call-accepted', ({ channelName, isAudio }) => {
-            // Only handle video call acceptance
-            if (!isAudio && isVideoCalling) { // caller-side only
-                stopCallingBeep();
-                startCall(channelName);
-            }
-        });
-
-        socket.on('video-call-ended', () => {
-            console.log('ChatHeader: Received videoCallEnd event from server');
-            // IMPORTANT: Only do local cleanup, do NOT call handleLeaveCall which would re-emit
-            stopCallingBeep(); // Explicitly stop the beep (this also closes notification)
-            cleanupVideoCall();
-            setOutgoingCallStatus('');
-        });
 
         // Live voice: when friend starts/stops, we join/leave and play their audio
         const liveVoiceClientRef = { current: null };
@@ -735,7 +681,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             liveVoiceClientRef.current = null;
         };
 
-        socket.on('live-voice-start', async ({ channelName }) => {
+        const onLiveVoiceStart = async ({ channelName }) => {
             try {
                 // Create a new lightweight client for voice-only playback
                 await ensureLeaveLiveVoice();
@@ -772,9 +718,11 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                 setIsLiveVoiceActive(false);
                 setIsLiveVoiceModalOpen(false);
             }
-        });
+        };
 
-        socket.on('live-voice-stop', async () => {
+        socket.on('live-voice-start', onLiveVoiceStart);
+
+        const onLiveVoiceStop = async () => {
             await ensureLeaveLiveVoice();
             setIsLiveVoiceActive(false);
             setIsLiveVoiceModalOpen(false);
@@ -783,10 +731,11 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                 clearInterval(liveVoiceDurationTimerRef.current);
                 liveVoiceDurationTimerRef.current = null;
             }
-        });
+        };
+        socket.on('live-voice-stop', onLiveVoiceStop);
 
         // Listen for local request to leave subscriber (when user wants to start publishing)
-        socket.on('live-voice-leave-subscriber', async ({ channelName }) => {
+        const onLiveVoiceLeaveSubscriber = async ({ channelName }) => {
             // Only leave if we're currently receiving on this channel
             if (liveVoiceClientRef.current && isLiveVoiceActive) {
                 await ensureLeaveLiveVoice();
@@ -798,24 +747,33 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                     liveVoiceDurationTimerRef.current = null;
                 }
             }
-        });
+        };
+        socket.on('live-voice-leave-subscriber', onLiveVoiceLeaveSubscriber);
+
+        const onApplyVideoFilter = ({ filter }) => {
+            if (filter !== '') {
+                setFilterFriendVideo(filter);
+            } else {
+                setFilterFriendVideo('');
+            }
+        };
+        // apply-video-filter may still be used if peer emits via other paths
+        socket.on('apply-video-filter', onApplyVideoFilter);
 
         return () => {
-            socket.off('incoming-video-call');
-            socket.off('call-accepted');
-            socket.off('videoCallEnd');
-            socket.off('apply-video-filter');
-            socket.off('live-voice-start');
-            socket.off('live-voice-stop');
-            socket.off('live-voice-leave-subscriber');
+            socket.off('apply-video-filter', onApplyVideoFilter);
+            socket.off('live-voice-start', onLiveVoiceStart);
+            socket.off('live-voice-stop', onLiveVoiceStop);
+            socket.off('live-voice-leave-subscriber', onLiveVoiceLeaveSubscriber);
             socket.off('updated-call-status', handleUpdatedCallStatus);
             // Cleanup live voice duration timer
             if (liveVoiceDurationTimerRef.current) {
                 clearInterval(liveVoiceDurationTimerRef.current);
                 liveVoiceDurationTimerRef.current = null;
             }
+            ensureLeaveLiveVoice();
         };
-    }, [startCall, isVideoCalling, cleanupVideoCall, callAccepted, friendId]);
+    }, [isVideoCalling, callAccepted, friendId, numericUid, isLiveVoiceActive]);
 
     // Notify caller when user focuses the tab during an incoming ringing call
     const notifyFocusDuringIncomingCall = useCallback(() => {
@@ -962,15 +920,26 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
 
     const handleVideoCallBtn = useCallback(e => {
         const id = e.currentTarget.dataset.id;
-        // setReceiverId(id); // Function not defined, commenting out
         setIncomingCall(null);
-        setIsVideoCalling(true);
-        callFriend(id);
-    }, [callFriend]);
+        // Use the global VideoCall component (same path as StickyChatBox) to avoid
+        // dual Agora joins / conflicting socket handlers in ChatHeader.
+        setIsVideoCalling(false);
+
+        const channelName = `${profileId}-${id}`;
+        window.dispatchEvent(new CustomEvent('startVideoCall', {
+            detail: {
+                to: id,
+                channelName,
+                callerName: friendProfile.fullName || `${friendProfile.user?.firstName || ''} ${friendProfile.user?.surname || ''}`.trim() || 'Friend',
+                callerProfilePic: friendProfile.profilePic
+            }
+        }));
+
+        socket.emit('video-call', { to: id, channelName, isAudio: false });
+    }, [profileId, friendProfile]);
 
     const handleAudioCallBtn = useCallback(e => {
         const id = e.currentTarget.dataset.id;
-        // setReceiverId(id); // Function not defined, commenting out
         setIncomingCall(null);
         setIsVideoCalling(false);
 
@@ -980,7 +949,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             detail: {
                 to: id,
                 channelName,
-                callerName: friendProfile.fullName || `${friendProfile.user?.firstName} ${friendProfile.user?.surname}` || 'Friend',
+                callerName: friendProfile.fullName || `${friendProfile.user?.firstName || ''} ${friendProfile.user?.surname || ''}`.trim() || 'Friend',
                 callerProfilePic: friendProfile.profilePic
             }
         }));
