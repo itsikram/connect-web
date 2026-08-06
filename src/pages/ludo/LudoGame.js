@@ -6241,7 +6241,6 @@ const LudoGame = () => {
 
     const effectiveCurrentPlayer = currentPlayerRef.current !== undefined ? currentPlayerRef.current : currentPlayer;
     const effectiveDiceForUi = diceValueRef.current || diceValue || 0;
-    const isMyTurn = !onlineMode || currentPlayer === myPlayerIndex;
     const canTapDice = canRollDice && effectiveDiceForUi === 0 && isMyTurn;
     const turnHint = !gameStarted
         ? 'Waiting…'
