@@ -1,7 +1,10 @@
-// Game constants for Ludo
-export const COLORS = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00'];
+// Game constants for Ludo — refined board palette (still classic R/G/B/Y)
+export const COLORS = ['#E53935', '#43A047', '#1E88E5', '#FDD835'];
 export const PLAYER_NAMES = ['Red', 'Green', 'Blue', 'Yellow'];
 export const PLAYER_EMOJIS = ['🔴', '🟢', '🔵', '🟡'];
+export const PLAYER_LETTERS = ['R', 'G', 'B', 'Y'];
+export const BOARD_GRID_STROKE = '#C5CDD6';
+export const BOARD_OUTER_STROKE = '#1A2330';
 export const DEFAULT_MAX_STEPS = 59;
 
 // Precomputed board paths (identical to RN)

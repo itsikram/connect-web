@@ -14,103 +14,85 @@ export const GameHeader = ({
     onToggleControlMode,
     onPlaySound
 }) => {
+    const showExit = Boolean(gameId || savedGameStateRef?.current);
+
     return (
-        <div style={{ padding: '10px 20px', background: 'rgba(26, 35, 50, 0.9)', borderBottom: '1px solid rgba(255, 215, 0, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'space-around' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ color: '#00D4FF', fontSize: 28, fontWeight: 'bold' }}>Ludo Classic</div>
+        <header className="ludo-header">
+            <div className="ludo-header__brand">
+                <div className="ludo-header__mark" aria-hidden="true">
+                    <div className="ludo-header__mark-grid">
+                        <span /><span /><span /><span />
+                    </div>
+                </div>
+                <div>
+                    <div className="ludo-header__title">Ludo Classic</div>
+                    <div className="ludo-header__subtitle">
+                        {gameStarted ? (gameId ? 'Online match' : 'Local match') : 'Ready to play'}
+                    </div>
+                </div>
             </div>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div className="ludo-header__actions">
                 {!gameStarted ? (
                     <>
-                        <button onClick={onStartGame} style={{ background: '#00D4FF', color: 'white', padding: '8px 36px', border: 'none', borderRadius: 20, cursor: 'pointer', fontWeight: 'bold' }}>Start</button>
-                        {(gameId || savedGameStateRef?.current) && (
+                        <button type="button" className="ludo-btn ludo-btn--primary" onClick={onStartGame}>
+                            <span className="ludo-btn__label">Start</span>
+                            <span aria-hidden="true">▶</span>
+                        </button>
+                        {showExit && (
                             <button
+                                type="button"
+                                className="ludo-btn ludo-btn--ghost"
                                 onClick={onExitGame}
-                                style={{
-                                    background: '#888888',
-                                    color: 'white',
-                                    padding: '10px 20px',
-                                    border: 'none',
-                                    borderRadius: 20,
-                                    cursor: 'pointer',
-                                    fontWeight: 'bold',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 6
-                                }}
-                                title="Exit game and clear all saved data"
+                                title="Exit game and clear saved data"
                             >
-                                <span>🚪</span>
-                                <span>Exit Game</span>
+                                <span className="ludo-btn__label">Exit</span>
                             </button>
                         )}
                     </>
                 ) : (
                     <>
                         <button
+                            type="button"
+                            className="ludo-btn ludo-btn--danger"
                             onClick={onResetGame}
-                            style={{
-                                background: '#FF4444',
-                                color: 'white',
-                                padding: '10px 20px',
-                                border: 'none',
-                                borderRadius: 20,
-                                cursor: 'pointer',
-                                fontWeight: 'bold',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 6
-                            }}
-                            title="Restart the game from beginning"
+                            title="Restart from the beginning"
                         >
-                            <span>🔄</span>
-                            <span>Restart</span>
+                            <span className="ludo-btn__label">Restart</span>
                         </button>
                         <button
+                            type="button"
+                            className="ludo-btn ludo-btn--ghost"
                             onClick={onExitGame}
-                            style={{
-                                background: '#888888',
-                                color: 'white',
-                                padding: '10px 20px',
-                                border: 'none',
-                                borderRadius: 20,
-                                cursor: 'pointer',
-                                fontWeight: 'bold',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 6
-                            }}
-                            title="Exit game and clear all saved data"
+                            title="Exit game and clear saved data"
                         >
-                            <span>🚪</span>
-                            <span>Exit Game</span>
+                            <span className="ludo-btn__label">Exit</span>
                         </button>
                     </>
                 )}
                 {isDebug && (
-                    <button onClick={onTriggerDebugCelebration} title="Debug: Test celebration" style={{ background: 'transparent', color: '#FFD700', padding: '6px 10px', border: '1px solid #FFD700', borderRadius: 12, cursor: 'pointer', fontWeight: 700 }}>Debug Celebrate</button>
+                    <button
+                        type="button"
+                        className="ludo-btn ludo-btn--sm ludo-btn--accent"
+                        onClick={onTriggerDebugCelebration}
+                        title="Debug: Test celebration"
+                    >
+                        Debug
+                    </button>
                 )}
                 {(isSpecialUser || isDebug) && (
                     <button
+                        type="button"
+                        className={`ludo-btn ludo-btn--sm ${controlMode ? 'ludo-btn--primary' : 'ludo-btn--accent'}`}
                         onClick={() => {
                             onToggleControlMode();
                             onPlaySound('buttonClick');
                         }}
-                        title={controlMode ? "Disable control mode (dice prompts)" : "Enable control mode (dice prompts)"}
-                        style={{
-                            background: controlMode ? '#29B1A9' : 'transparent',
-                            color: controlMode ? 'white' : '#29B1A9',
-                            padding: '6px 10px',
-                            border: `1px solid ${controlMode ? '#29B1A9' : '#29B1A9'}`,
-                            borderRadius: 12,
-                            cursor: 'pointer',
-                            fontWeight: 700
-                        }}
+                        title={controlMode ? 'Disable control mode' : 'Enable control mode (dice prompts)'}
                     >
-                        {controlMode ? 'Control On' : 'Control Off'}
+                        {controlMode ? 'Control On' : 'Control'}
                     </button>
                 )}
             </div>
-        </div>
+        </header>
     );
 };

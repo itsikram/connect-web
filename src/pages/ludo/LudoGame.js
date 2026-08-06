@@ -12,12 +12,16 @@ import {
     COLORS,
     PLAYER_NAMES,
     PLAYER_EMOJIS,
+    PLAYER_LETTERS,
     PATHS,
     SAFE_CELLS,
     HOME_POSITIONS,
     STEP_DURATION_MS,
-    DEFAULT_MAX_STEPS
+    DEFAULT_MAX_STEPS,
+    BOARD_GRID_STROKE,
+    BOARD_OUTER_STROKE
 } from './constants/gameConstants';
+import './LudoGame.css';
 import { adjustHexColor } from './utils/colorUtils';
 import {
     getPositionOnPath,
@@ -86,35 +90,36 @@ const LudoGame = () => {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    // Board size calculations for responsive design
-    const RESPONSIVE_PADDING_MIN = 5;
+    // Board size calculations for responsive design (reserves chrome for header + dock)
+    const isCompactLayout = winSize.width <= 768;
+    const RESPONSIVE_PADDING_MIN = 8;
     const RESPONSIVE_PADDING_MAX = 20;
-    const BOARD_SIZE_MAX = 600;
-    const BOARD_SIZE_MIN = 250;
+    const BOARD_SIZE_MAX = isCompactLayout ? 520 : 600;
+    const BOARD_SIZE_MIN = isCompactLayout ? 280 : 300;
     const AVAILABLE_WIDTH_MIN = 200;
     const AVAILABLE_HEIGHT_MIN = 200;
     const BOARD_CELLS = 15; // 15x15 grid
+    const CHROME_HEIGHT = isCompactLayout ? 210 : 230; // header + dock + gaps
 
     const responsivePadding = Math.min(
-        RESPONSIVE_PADDING_MAX, 
-        Math.max(RESPONSIVE_PADDING_MIN, winSize.width * 0.05)
+        RESPONSIVE_PADDING_MAX,
+        Math.max(RESPONSIVE_PADDING_MIN, winSize.width * 0.04)
     );
     const totalPadding = responsivePadding * 2;
-    
+
     const availableWidth = Math.max(AVAILABLE_WIDTH_MIN, winSize.width - totalPadding);
-    const availableHeight = Math.max(AVAILABLE_HEIGHT_MIN, winSize.height - totalPadding);
-    
+    const availableHeight = Math.max(AVAILABLE_HEIGHT_MIN, winSize.height - CHROME_HEIGHT);
+
     const calculatedBoardSize = Math.min(
-        availableWidth * 0.98, 
-        availableHeight * 0.65, 
+        availableWidth,
+        availableHeight,
         BOARD_SIZE_MAX
     );
-    
-    const minBoardSize = Math.min(BOARD_SIZE_MIN, availableWidth * 0.95);
-    const BOARD_SIZE = Math.max(
-        minBoardSize, 
+
+    const BOARD_SIZE = Math.round(Math.max(
+        Math.min(BOARD_SIZE_MIN, availableWidth),
         Math.min(BOARD_SIZE_MAX, calculatedBoardSize)
-    );
+    ));
     const CELL_SIZE = BOARD_SIZE / BOARD_CELLS;
 
     // ============================================================================
@@ -5815,9 +5820,9 @@ const LudoGame = () => {
                         y={row * CELL_SIZE}
                         width={CELL_SIZE}
                         height={CELL_SIZE}
-                        fill={'#FFFFFF'}
-                        stroke={'#000000'}
-                        strokeWidth={1}
+                        fill={'#FAFAF8'}
+                        stroke={BOARD_GRID_STROKE}
+                        strokeWidth={0.75}
                     />
                 );
             }
@@ -5825,11 +5830,34 @@ const LudoGame = () => {
         return rects;
     };
 
+    const renderSafeStar = (col, row, color, key) => {
+        const cx = (col + 0.5) * CELL_SIZE;
+        const cy = (row + 0.5) * CELL_SIZE;
+        const r = CELL_SIZE * 0.32;
+        const points = [];
+        for (let i = 0; i < 8; i++) {
+            const angle = (Math.PI / 4) * i - Math.PI / 2;
+            const radius = i % 2 === 0 ? r : r * 0.42;
+            points.push(`${cx + Math.cos(angle) * radius},${cy + Math.sin(angle) * radius}`);
+        }
+        return (
+            <polygon
+                key={key}
+                points={points.join(' ')}
+                fill={color}
+                stroke={BOARD_OUTER_STROKE}
+                strokeWidth={0.8}
+                opacity={0.95}
+            />
+        );
+    };
+
     const renderStaticRects = () => {
         const elems = [];
+        const stroke = BOARD_OUTER_STROKE;
         // Corner home areas (colored border with inner white)
         const drawHome = (x0, y0, color, idx) => {
-            elems.push(<rect key={`home-outer-${x0}-${y0}`} x={x0 * CELL_SIZE} y={y0 * CELL_SIZE} width={CELL_SIZE * 6} height={CELL_SIZE * 6} fill={color} stroke="#000" strokeWidth={2} />);
+            elems.push(<rect key={`home-outer-${x0}-${y0}`} x={x0 * CELL_SIZE} y={y0 * CELL_SIZE} width={CELL_SIZE * 6} height={CELL_SIZE * 6} fill={color} stroke={stroke} strokeWidth={1.5} rx={CELL_SIZE * 0.15} />);
             const innerX = (x0 + 1) * CELL_SIZE;
             const innerY = (y0 + 1) * CELL_SIZE;
             const innerW = CELL_SIZE * 4;
@@ -5842,13 +5870,13 @@ const LudoGame = () => {
                 ));
                 // Dark overlay over background image for contrast
                 elems.push(
-                    <rect key={`home-cover-overlay-${x0}-${y0}`} x={innerX} y={innerY} width={innerW} height={innerH} fill="rgba(0,0,0,0.5)" />
+                    <rect key={`home-cover-overlay-${x0}-${y0}`} x={innerX} y={innerY} width={innerW} height={innerH} fill="rgba(0,0,0,0.45)" />
                 );
                 // Border frame over the image
-                elems.push(<rect key={`home-inner-border-${x0}-${y0}`} x={innerX} y={innerY} width={innerW} height={innerH} fill="none" stroke="#000" strokeWidth={2} />);
+                elems.push(<rect key={`home-inner-border-${x0}-${y0}`} x={innerX} y={innerY} width={innerW} height={innerH} fill="none" stroke={stroke} strokeWidth={1.5} rx={CELL_SIZE * 0.1} />);
             } else {
-                // Fallback white background
-                elems.push(<rect key={`home-inner-${x0}-${y0}`} x={innerX} y={innerY} width={innerW} height={innerH} fill="#FFFFFF" stroke="#000" strokeWidth={2} />);
+                // Fallback soft cream background
+                elems.push(<rect key={`home-inner-${x0}-${y0}`} x={innerX} y={innerY} width={innerW} height={innerH} fill="#FFFEFA" stroke={stroke} strokeWidth={1.5} rx={CELL_SIZE * 0.1} />);
             }
             // four pips
             const cx = (x0 + 1) * CELL_SIZE + CELL_SIZE * 2;
@@ -5857,7 +5885,8 @@ const LudoGame = () => {
             const gap = CELL_SIZE * 0.45; // increase spacing between home placeholders
             const offsets = [[-gap, -gap], [gap, -gap], [-gap, gap], [gap, gap]];
             offsets.forEach((o, i) => {
-                elems.push(<circle key={`pip-${x0}-${y0}-${i}`} cx={cx + o[0]} cy={cy + o[1]} r={pipRadius} fill={color} stroke="#000" strokeWidth={2} />);
+                elems.push(<circle key={`pip-${x0}-${y0}-${i}`} cx={cx + o[0]} cy={cy + o[1]} r={pipRadius} fill={color} stroke={stroke} strokeWidth={1.5} />);
+                elems.push(<circle key={`pip-inner-${x0}-${y0}-${i}`} cx={cx + o[0]} cy={cy + o[1]} r={pipRadius * 0.55} fill="rgba(255,255,255,0.35)" />);
             });
         };
         drawHome(0, 0, colors[0], 0); // red
@@ -5867,67 +5896,60 @@ const LudoGame = () => {
 
         // Cross paths - single width
         for (let c = 0; c < 15; c++) {
-            elems.push(<rect key={`hpath-${c}`} x={c * CELL_SIZE} y={7 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill="#FFFFFF" stroke="#000" strokeWidth={1} />);
+            elems.push(<rect key={`hpath-${c}`} x={c * CELL_SIZE} y={7 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill="#FFFEFA" stroke={BOARD_GRID_STROKE} strokeWidth={0.75} />);
         }
         for (let r = 0; r < 15; r++) {
-            elems.push(<rect key={`vpath-${r}`} x={7 * CELL_SIZE} y={r * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill="#FFFFFF" stroke="#000" strokeWidth={1} />);
+            elems.push(<rect key={`vpath-${r}`} x={7 * CELL_SIZE} y={r * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill="#FFFEFA" stroke={BOARD_GRID_STROKE} strokeWidth={0.75} />);
         }
 
-        const homeLineColor = "gray"
-
         // Colored home columns (five squares towards center)
-        for (let r = 1; r <= 5; r++) elems.push(<rect key={`green-col-${r}`} x={7 * CELL_SIZE} y={r * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[1]} stroke="#000" strokeWidth={1} />);
-        for (let c = 9; c <= 13; c++) elems.push(<rect key={`yellow-row-${c}`} x={c * CELL_SIZE} y={7 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[3]} stroke="#000" strokeWidth={1} />);
-        for (let r = 9; r <= 12; r++) elems.push(<rect key={`blue-col-${r}`} x={7 * CELL_SIZE} y={r * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[2]} stroke="#000" strokeWidth={1} />);
-        for (let c = 1; c <= 5; c++) elems.push(<rect key={`red-row-${c}`} x={c * CELL_SIZE} y={7 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[0]} stroke="#000" strokeWidth={1} />);
+        for (let r = 1; r <= 5; r++) elems.push(<rect key={`green-col-${r}`} x={7 * CELL_SIZE} y={r * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[1]} stroke={BOARD_GRID_STROKE} strokeWidth={0.75} />);
+        for (let c = 9; c <= 13; c++) elems.push(<rect key={`yellow-row-${c}`} x={c * CELL_SIZE} y={7 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[3]} stroke={BOARD_GRID_STROKE} strokeWidth={0.75} />);
+        for (let r = 9; r <= 12; r++) elems.push(<rect key={`blue-col-${r}`} x={7 * CELL_SIZE} y={r * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[2]} stroke={BOARD_GRID_STROKE} strokeWidth={0.75} />);
+        for (let c = 1; c <= 5; c++) elems.push(<rect key={`red-row-${c}`} x={c * CELL_SIZE} y={7 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[0]} stroke={BOARD_GRID_STROKE} strokeWidth={0.75} />);
 
         // Center pinwheel across the full 3x3 center (cells 6..8,6..8)
-        // Coordinates of the 3x3 center square
-        const cx = (7.5) * CELL_SIZE; // center point
+        const cx = (7.5) * CELL_SIZE;
         const cy = (7.5) * CELL_SIZE;
         const xLeft = 6 * CELL_SIZE;
         const xRight = 9 * CELL_SIZE;
         const yTop = 6 * CELL_SIZE;
         const yBottom = 9 * CELL_SIZE;
-        // Top (green)
-        elems.push(<path key="center-tri-green" d={`M ${xLeft} ${yTop} L ${xRight} ${yTop} L ${cx} ${cy} Z`} fill={colors[1]} stroke="#000" strokeWidth={1} />);
-        // Right (yellow)
-        elems.push(<path key="center-tri-yellow" d={`M ${xRight} ${yTop} L ${xRight} ${yBottom} L ${cx} ${cy} Z`} fill={colors[3]} stroke="#000" strokeWidth={1} />);
-        // Bottom (blue)
-        elems.push(<path key="center-tri-blue" d={`M ${xLeft} ${yBottom} L ${xRight} ${yBottom} L ${cx} ${cy} Z`} fill={colors[2]} stroke="#000" strokeWidth={1} />);
-        // Left (red)
-        elems.push(<path key="center-tri-red" d={`M ${xLeft} ${yTop} L ${xLeft} ${yBottom} L ${cx} ${cy} Z`} fill={colors[0]} stroke="#000" strokeWidth={1} />);
+        elems.push(<path key="center-tri-green" d={`M ${xLeft} ${yTop} L ${xRight} ${yTop} L ${cx} ${cy} Z`} fill={colors[1]} stroke={stroke} strokeWidth={1} />);
+        elems.push(<path key="center-tri-yellow" d={`M ${xRight} ${yTop} L ${xRight} ${yBottom} L ${cx} ${cy} Z`} fill={colors[3]} stroke={stroke} strokeWidth={1} />);
+        elems.push(<path key="center-tri-blue" d={`M ${xLeft} ${yBottom} L ${xRight} ${yBottom} L ${cx} ${cy} Z`} fill={colors[2]} stroke={stroke} strokeWidth={1} />);
+        elems.push(<path key="center-tri-red" d={`M ${xLeft} ${yTop} L ${xLeft} ${yBottom} L ${cx} ${cy} Z`} fill={colors[0]} stroke={stroke} strokeWidth={1} />);
+        elems.push(<circle key="center-hub" cx={cx} cy={cy} r={CELL_SIZE * 0.22} fill="#FFFEFA" stroke={stroke} strokeWidth={1} />);
 
         // Highlight entry cells for all players
-        elems.push(<rect key="highlight-1-6" x={1 * CELL_SIZE} y={6 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[0]} stroke="#000" strokeWidth={1} />);   // Red entry
-        elems.push(<rect key="highlight-8-1" x={8 * CELL_SIZE} y={1 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[1]} stroke="#000" strokeWidth={1} />);   // Green entry
-        elems.push(<rect key="highlight-6-13" x={6 * CELL_SIZE} y={13 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[2]} stroke="#000" strokeWidth={1} />); // Blue entry
-        elems.push(<rect key="highlight-13-8" x={13 * CELL_SIZE} y={8 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[3]} stroke="#000" strokeWidth={1} />); // Yellow entry
+        elems.push(<rect key="highlight-1-6" x={1 * CELL_SIZE} y={6 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[0]} stroke={BOARD_GRID_STROKE} strokeWidth={0.75} />);
+        elems.push(<rect key="highlight-8-1" x={8 * CELL_SIZE} y={1 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[1]} stroke={BOARD_GRID_STROKE} strokeWidth={0.75} />);
+        elems.push(<rect key="highlight-6-13" x={6 * CELL_SIZE} y={13 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[2]} stroke={BOARD_GRID_STROKE} strokeWidth={0.75} />);
+        elems.push(<rect key="highlight-13-8" x={13 * CELL_SIZE} y={8 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[3]} stroke={BOARD_GRID_STROKE} strokeWidth={0.75} />);
 
-        // Ensure cell (7,12) is blue
-        elems.push(<rect key="force-blue-7-12" x={7 * CELL_SIZE} y={13 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[2]} stroke="#000" strokeWidth={1} />);
+        // Ensure cell (7,13) is blue (home stretch entry)
+        elems.push(<rect key="force-blue-7-12" x={7 * CELL_SIZE} y={13 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={colors[2]} stroke={BOARD_GRID_STROKE} strokeWidth={0.75} />);
+
+        // Classic safe-zone stars on start/safe squares
+        elems.push(renderSafeStar(2, 7, '#FFFEFA', 'star-2-7'));
+        elems.push(renderSafeStar(7, 2, '#FFFEFA', 'star-7-2'));
+        elems.push(renderSafeStar(13, 7, '#FFFEFA', 'star-13-7'));
+        elems.push(renderSafeStar(7, 13, '#FFFEFA', 'star-7-13'));
+        elems.push(renderSafeStar(1, 6, 'rgba(255,255,255,0.85)', 'star-1-6'));
+        elems.push(renderSafeStar(8, 1, 'rgba(255,255,255,0.85)', 'star-8-1'));
+        elems.push(renderSafeStar(6, 13, 'rgba(255,255,255,0.85)', 'star-6-13'));
+        elems.push(renderSafeStar(13, 8, 'rgba(255,255,255,0.85)', 'star-13-8'));
 
         return (<>{elems}</>);
     };
 
     // Calculate token size - round to whole pixels for precise rendering
     // Ensure minimum token size of 10px for very small screens to maintain visibility
-    const tokenSize = Math.max(10, Math.round(CELL_SIZE * 0.9));
+    const tokenSize = Math.max(12, Math.round(CELL_SIZE * 0.88));
     const boardStyle = {
-        position: 'relative',
+        '--ludo-board-size': `${BOARD_SIZE}px`,
         width: `${BOARD_SIZE}px`,
         height: `${BOARD_SIZE}px`,
-        maxWidth: '100%',
-        maxHeight: '100%',
-        borderRadius: '15px',
-        overflow: 'hidden',
-        background: '#fff',
-        boxShadow: '0 6px 12px rgba(0,0,0,0.4)',
-        // Ensure proper scaling on mobile devices
-        transform: 'translateZ(0)', // Hardware acceleration
-        willChange: 'transform',
-        // Prevent board from overflowing on very small screens
-        boxSizing: 'border-box'
     };
 
     // Calculate cell occupancy for tokens that are in play (to handle overlapping tokens)
@@ -6068,26 +6090,26 @@ const LudoGame = () => {
                         width: `${tokenSize}px`,
                         height: `${tokenSize}px`,
                         borderRadius: '50%',
-                        background: "black",
-                        border: `3px solid ${adjustHexColor(piece.color, -30)}`,
-                        boxShadow: isActivePlayer ? `0 6px 8px ${piece.color}66` : 'none',
+                        background: `radial-gradient(circle at 35% 30%, ${adjustHexColor(piece.color, 35)}, ${piece.color} 55%, ${adjustHexColor(piece.color, -25)})`,
+                        border: `2.5px solid ${adjustHexColor(piece.color, -40)}`,
+                        boxShadow: isActivePlayer
+                            ? `0 3px 0 ${adjustHexColor(piece.color, -45)}, 0 6px 12px rgba(0,0,0,0.35)`
+                            : 'none',
                         opacity: isActivePlayer ? 1 : 0.3,
                         overflow: 'hidden',
-                        animation: canMove ? 'tokenPulseScale 900ms ease-in-out infinite, tokenGlow 1200ms ease-in-out infinite' : 'none',
-                        // Ensure proper rendering on mobile
+                        animation: canMove ? 'ludo-token-pulse 900ms ease-in-out infinite, ludo-token-glow 1200ms ease-in-out infinite' : 'none',
                         transform: 'translateZ(0)',
                         backfaceVisibility: 'hidden',
-                        pointerEvents: 'none' // Prevent clicks on the visual element
+                        pointerEvents: 'none'
                     }}>
-                    {/* Color ring border inside token matching user color */}
                     <div style={{
                         position: 'absolute',
-                        left: 4,
-                        top: 4,
-                        right: 4,
-                        bottom: 4,
-                        border: `3px solid ${adjustHexColor(piece.color, -40)}`,
-                        borderRadius: (tokenSize / 2) - 4,
+                        left: 3,
+                        top: 3,
+                        right: 3,
+                        bottom: 3,
+                        border: `2px solid rgba(255,255,255,0.55)`,
+                        borderRadius: (tokenSize / 2) - 3,
                         pointerEvents: 'none'
                     }} />
                     {avatar ? (
@@ -6096,11 +6118,12 @@ const LudoGame = () => {
                             left: '50%',
                             top: '50%',
                             transform: 'translate(-50%, -50%)',
-                            width: tokenSize * 0.72,
-                            height: tokenSize * 0.72,
-                            borderRadius: (tokenSize * 0.72) / 2,
+                            width: tokenSize * 0.68,
+                            height: tokenSize * 0.68,
+                            borderRadius: (tokenSize * 0.68) / 2,
                             objectFit: 'cover',
-                            pointerEvents: 'none'
+                            pointerEvents: 'none',
+                            border: '1.5px solid rgba(255,255,255,0.7)'
                         }} />
                     ) : null}
                     </div>
@@ -6111,77 +6134,128 @@ const LudoGame = () => {
 
     // Screens
     if (gameEnded) {
-        return <GameEndedScreen winners={winners} onResetGame={resetGame} />;
+        return (
+            <div className="ludo-root">
+                <AnimatedBackground />
+                <GameEndedScreen winners={winners} onResetGame={resetGame} />
+            </div>
+        );
     }
 
     if (showPlayerSelection) {
         return (
-            <PlayerSelectionModal
-                show={showPlayerSelection}
-                selectedPlayerCount={selectedPlayerCount}
-                onlineMode={onlineMode}
-                friendSearchQuery={friendSearchQuery}
-                loadingSearch={loadingSearch}
-                searchResults={searchResults}
-                friendList={friendList}
-                selectedFriends={selectedFriends}
-                invitedStatusByFriendId={invitedStatusByFriendId}
-                players={players}
-                myProfile={myProfile}
-                joinedGames={joinedGames}
-                inviteCopied={inviteCopied}
-                incomingInvite={incomingInvite}
-                socketRef={socketRef}
-                onPlayerCountChange={setSelectedPlayerCount}
-                onOnlineModeToggle={() => setOnlineMode(!onlineMode)}
-                onFriendSearchChange={onChangeFriendSearch}
-                onFriendSelect={(f, isSelected) => {
-                                            setSelectedFriends(prev => {
-                                                if (isSelected) return prev.filter(p => p._id !== f._id);
-                                                const next = [...prev, f];
-                                                return next.slice(0, Math.max(0, selectedPlayerCount - 1));
-                                            });
-                }}
-                onInviteFriend={inviteFriend}
-                onAssignFriendOffline={assignFriendOffline}
-                onGetNextOpenSlot={getNextOpenSlot}
-                onGetInvitedNameForSlot={getInvitedNameForSlot}
-                onOpenPlayerEditor={openPlayerEditor}
-                onCopyInviteLink={copyInviteLink}
-                onPlaySound={playSound}
-                onCancel={() => setShowPlayerSelection(false)}
-                onConfirmPlayerCount={confirmPlayerCount}
-                onJoinGame={(game) => {
-                    // Handle join game logic
-                    setGameId(game.gameId);
-                    setOnlineMode(true);
-                    ensureSocketConnected();
-                    if (socketRef.current) {
-                        socketRef.current.emit('ludo:join', { gameId: game.gameId });
-                        socketRef.current.emit('ludo:players:get', { gameId: game.gameId });
-                    }
-                }}
-            />
+            <div className="ludo-root">
+                <AnimatedBackground />
+                <PlayerSelectionModal
+                    show={showPlayerSelection}
+                    selectedPlayerCount={selectedPlayerCount}
+                    onlineMode={onlineMode}
+                    friendSearchQuery={friendSearchQuery}
+                    loadingSearch={loadingSearch}
+                    searchResults={searchResults}
+                    friendList={friendList}
+                    selectedFriends={selectedFriends}
+                    invitedStatusByFriendId={invitedStatusByFriendId}
+                    players={players}
+                    myProfile={myProfile}
+                    joinedGames={joinedGames}
+                    inviteCopied={inviteCopied}
+                    incomingInvite={incomingInvite}
+                    socketRef={socketRef}
+                    onPlayerCountChange={setSelectedPlayerCount}
+                    onOnlineModeToggle={() => setOnlineMode(!onlineMode)}
+                    onFriendSearchChange={onChangeFriendSearch}
+                    onFriendSelect={(f, isSelected) => {
+                        setSelectedFriends(prev => {
+                            if (isSelected) return prev.filter(p => p._id !== f._id);
+                            const next = [...prev, f];
+                            return next.slice(0, Math.max(0, selectedPlayerCount - 1));
+                        });
+                    }}
+                    onInviteFriend={inviteFriend}
+                    onAssignFriendOffline={assignFriendOffline}
+                    onGetNextOpenSlot={getNextOpenSlot}
+                    onGetInvitedNameForSlot={getInvitedNameForSlot}
+                    onOpenPlayerEditor={openPlayerEditor}
+                    onCopyInviteLink={copyInviteLink}
+                    onPlaySound={playSound}
+                    onCancel={() => setShowPlayerSelection(false)}
+                    onConfirmPlayerCount={confirmPlayerCount}
+                    onJoinGame={(game) => {
+                        setGameId(game.gameId);
+                        setOnlineMode(true);
+                        ensureSocketConnected();
+                        if (socketRef.current) {
+                            socketRef.current.emit('ludo:join', { gameId: game.gameId });
+                            socketRef.current.emit('ludo:players:get', { gameId: game.gameId });
+                        }
+                    }}
+                />
+                <PlayerEditorModal
+                    show={showPlayerEditor}
+                    editingPlayerIndex={editingPlayerIndex}
+                    player={editingPlayerIndex != null ? players[editingPlayerIndex] : null}
+                    editName={editName}
+                    editAvatarUrl={editAvatarUrl}
+                    inviteCopied={inviteCopied}
+                    avatarFileInputRef={avatarFileInputRef}
+                    onNameChange={setEditName}
+                    onAvatarUrlChange={setEditAvatarUrl}
+                    onPickAvatarFile={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                                setEditAvatarUrl(event.target.result);
+                            };
+                            reader.readAsDataURL(file);
+                        }
+                    }}
+                    onCopyInviteLink={copyInviteLink}
+                    onClose={() => {
+                        setShowPlayerEditor(false);
+                        setEditingPlayerIndex(null);
+                        setEditName('');
+                        setEditAvatarUrl('');
+                    }}
+                    onSave={() => {
+                        if (editingPlayerIndex != null) {
+                            setPlayers(prev => {
+                                const copy = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
+                                if (copy[editingPlayerIndex]) {
+                                    if (editName.trim()) copy[editingPlayerIndex].name = editName.trim();
+                                    if (editAvatarUrl.trim()) copy[editingPlayerIndex].avatar = editAvatarUrl.trim();
+                                }
+                                return copy;
+                            });
+                            setShowPlayerEditor(false);
+                            setEditingPlayerIndex(null);
+                            setEditName('');
+                            setEditAvatarUrl('');
+                        }
+                    }}
+                />
+            </div>
         );
     }
 
+    const effectiveCurrentPlayer = currentPlayerRef.current !== undefined ? currentPlayerRef.current : currentPlayer;
+    const effectiveDiceForUi = diceValueRef.current || diceValue || 0;
+    const isMyTurn = !onlineMode || currentPlayer === myPlayerIndex;
+    const canTapDice = canRollDice && effectiveDiceForUi === 0 && isMyTurn;
+    const turnHint = !gameStarted
+        ? 'Waiting…'
+        : !isMyTurn
+            ? 'Opponent turn'
+            : canTapDice
+                ? 'Tap dice to roll'
+                : effectiveDiceForUi > 0
+                    ? 'Tap a glowing piece'
+                    : 'Wait…';
+
     return (
-        <>
-        <div style={{ minHeight: '100vh', background: '#1a1a2e', color: 'white', position: 'relative', zIndex: 10 }}>
+        <div className="ludo-root" style={{ '--ludo-board-size': `${BOARD_SIZE}px` }}>
             <AnimatedBackground />
-            <style>{`
-                @keyframes tokenPulseScale { 0% { transform: scale(1); } 50% { transform: scale(1.12); } 100% { transform: scale(1); } }
-                @keyframes tokenGlow { 0% { box-shadow: 0 0 10px rgba(255,215,0,0.4), 0 0 20px rgba(255,215,0,0.2); } 50% { box-shadow: 0 0 16px rgba(255,215,0,0.9), 0 0 30px rgba(255,215,0,0.6); } 100% { box-shadow: 0 0 10px rgba(255,215,0,0.4), 0 0 20px rgba(255,215,0,0.2); } }
-                @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-                @keyframes diceRoll { 
-                    0% { transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg) scale(1); } 
-                    25% { transform: rotateX(90deg) rotateY(90deg) rotateZ(45deg) scale(1.05); }
-                    50% { transform: rotateX(180deg) rotateY(180deg) rotateZ(90deg) scale(1.1); }
-                    75% { transform: rotateX(270deg) rotateY(270deg) rotateZ(135deg) scale(1.05); }
-                    100% { transform: rotateX(360deg) rotateY(360deg) rotateZ(180deg) scale(1); }
-                }
-            `}</style>
             <GameHeader
                 gameStarted={gameStarted}
                 gameId={gameId}
@@ -6201,14 +6275,14 @@ const LudoGame = () => {
                 pendingInvites={pendingInvites}
                 onDismissInvite={(inv) => {
                     if (socketRef.current) {
-                        try { 
-                            socketRef.current.emit('ludo:invites:dismiss', { 
-                                gameId: inv.gameId, 
-                                by: inv.from 
-                            }); 
+                        try {
+                            socketRef.current.emit('ludo:invites:dismiss', {
+                                gameId: inv.gameId,
+                                by: inv.from
+                            });
                         } catch (_e) { }
                     }
-                    setPendingInvites(prev => 
+                    setPendingInvites(prev =>
                         prev.filter(i => !(String(i.gameId) === String(inv.gameId) && String(i.from) === String(inv.from)))
                     );
                 }}
@@ -6218,408 +6292,280 @@ const LudoGame = () => {
                 }}
             />
 
-            {((gameStarted || (onlineMode && waitingForPlayers) || isReconnecting) && (!onlineMode || gameId)) && (
-                <div style={{ padding: responsivePadding }}>
+            {((gameStarted || (onlineMode && waitingForPlayers) || isReconnecting) && (!onlineMode || gameId)) ? (
+                <div className="ludo-stage" style={{ paddingLeft: responsivePadding, paddingRight: responsivePadding }}>
+                    <div className="ludo-board-wrap" style={boardStyle}>
+                        <svg
+                            width={BOARD_SIZE}
+                            height={BOARD_SIZE}
+                            viewBox={`0 0 ${BOARD_SIZE} ${BOARD_SIZE}`}
+                            preserveAspectRatio="xMidYMid meet"
+                            style={{ display: 'block', width: `${BOARD_SIZE}px`, height: `${BOARD_SIZE}px` }}
+                        >
+                            <rect x="0" y="0" width={BOARD_SIZE} height={BOARD_SIZE} fill="#FAFAF8" stroke={BOARD_OUTER_STROKE} strokeWidth="2" rx="12" ry="12" />
+                            {renderBoardGrid()}
+                            {renderStaticRects()}
+                        </svg>
+                        <div className="ludo-tokens" style={{ width: `${BOARD_SIZE}px`, height: `${BOARD_SIZE}px` }}>
+                            {renderPlayerOrder.map((playerIndex) => (
+                                players[playerIndex]?.pieces.map((piece, pieceIndex) => tokenNode(playerIndex, pieceIndex, piece))
+                            ))}
+                        </div>
 
-
-                    <div style={{ display: 'flex', justifyContent: 'center' }}>
-                        <div style={boardStyle}>
-                            <svg
-                                width={BOARD_SIZE}
-                                height={BOARD_SIZE}
-                                viewBox={`0 0 ${BOARD_SIZE} ${BOARD_SIZE}`}
-                                preserveAspectRatio="none"
-                                style={{ display: 'block', width: `${BOARD_SIZE}px`, height: `${BOARD_SIZE}px` }}
-                            >
-                                <rect x="0" y="0" width={BOARD_SIZE} height={BOARD_SIZE} fill="#FFFFFF" stroke="#000000" strokeWidth="2" rx="10" ry="10" />
-                                {renderBoardGrid()}
-                                {renderStaticRects()}
-                                {/* Safe zone markers filled with matching piece color */}
-
-                            </svg>
-                            {/* Tokens overlay - positioned absolutely to match SVG coordinates exactly */}
-                            <div style={{
-                                position: 'absolute',
-                                left: 0,
-                                top: 0,
-                                width: `${BOARD_SIZE}px`,
-                                height: `${BOARD_SIZE}px`,
-                                // Ensure pixel-perfect alignment on mobile devices
-                                transform: 'translateZ(0)',
-                                willChange: 'contents'
-                            }}>
-                                {renderPlayerOrder.map((playerIndex) => (
-                                    players[playerIndex]?.pieces.map((piece, pieceIndex) => tokenNode(playerIndex, pieceIndex, piece))
-                                ))}
-                            </div>
-                            {/* Waiting lobby overlay for host */}
-                            {waitingForPlayers && (
-                                <div style={{ position: 'absolute', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    <div style={{ background: 'rgba(26, 35, 50, 0.95)', border: '2px solid rgba(255, 215, 0, 0.5)', color: 'white', padding: 16, borderRadius: 16, textAlign: 'center', minWidth: 320 }}>
-                                        <div style={{ fontWeight: 800, marginBottom: 6 }}>{myPlayerIndex === 0 ? 'Waiting for players to join…' : 'Waiting for other players…'}</div>
-                                        <div style={{ fontSize: 12, color: '#B0B0B0', marginBottom: 10 }}>{myPlayerIndex === 0 ? 'Invites sent. The game will begin once your friends join.' : 'The game will begin once all players have joined.'}</div>
-                                        {/* Joined status */}
-                                        <div style={{ fontSize: 12, color: '#B0B0B0', marginBottom: 6 }}>
-                                            {(() => {
-                                                const max = Math.max(2, Math.min(4, selectedPlayerCount));
-                                                const joined = Array.from({ length: max }).filter((_, i) => {
-                                                    if (i === 0) {
-                                                        return Boolean(players[0]?.profileId || myProfile?._id);
-                                                    }
-                                                    const seat = players[i];
-                                                    const hasProfileId = Boolean(seat?.profileId);
-                                                    if (!hasProfileId) return false;
-                                                    // If they have profileId, check if they actually joined (not just invited)
-                                                    // Use String() to handle ObjectId vs string comparisons
-                                                    const profileIdStr = seat?.profileId ? String(seat.profileId) : null;
-                                                    const inviteStatus = profileIdStr ? (invitedStatusByFriendId[profileIdStr] || invitedStatusByFriendId[seat.profileId]) : null;
-                                                    // Check if this slot was reserved for an invited friend (try both string and original key)
-                                                    const wasInvitedToThisSlot = profileIdStr && (invitedSlotByFriendId[profileIdStr] === i || invitedSlotByFriendId[seat.profileId] === i);
-                                                    console.log(`[JoinedCount] Slot ${i}: profileId=${profileIdStr}, inviteStatus=${inviteStatus}, wasInvitedToThisSlot=${wasInvitedToThisSlot}, invitedStatusByFriendId keys:`, Object.keys(invitedStatusByFriendId), `invitedSlotByFriendId:`, invitedSlotByFriendId);
-                                                    // Consider them joined only if:
-                                                    // - If they were invited to this slot: only joined if status is explicitly 'joined'
-                                                    // - If they were NOT invited to this slot: joined (offline assignment)
-                                                    // If status is 'invited' OR they were invited but status is missing/undefined, they haven't joined yet
-                                                    const isJoined = wasInvitedToThisSlot
-                                                        ? inviteStatus === 'joined'  // If invited, only joined if status is 'joined'
-                                                        : inviteStatus !== 'invited';  // If not invited, joined unless status is 'invited'
-                                                    console.log(`[JoinedCount] Slot ${i}: isJoined=${isJoined} (inviteStatus=${inviteStatus}, wasInvitedToThisSlot=${wasInvitedToThisSlot})`);
-                                                    console.log(`[JoinedCount] Slot ${i}: isJoined=${isJoined} (inviteStatus=${inviteStatus}, wasInvitedToThisSlot=${wasInvitedToThisSlot})`);
-                                                    return isJoined;
-                                                }).length;
-                                                return `Joined ${joined}/${max}`;
-                                            })()}
-                                        </div>
-                                        <div style={{ display: 'grid', gap: 6 }}>
-                                            {Array.from({ length: Math.max(2, Math.min(4, selectedPlayerCount)) }).map((_, i) => {
+                        {waitingForPlayers && (
+                            <div className="ludo-overlay">
+                                <div className="ludo-card">
+                                    <div className="ludo-card__title">
+                                        {myPlayerIndex === 0 ? 'Waiting for players…' : 'Waiting for others…'}
+                                    </div>
+                                    <div className="ludo-card__body">
+                                        {myPlayerIndex === 0
+                                            ? 'Invites sent. The match starts when everyone joins.'
+                                            : 'The match starts when all players have joined.'}
+                                    </div>
+                                    <div className="ludo-muted" style={{ marginBottom: 8 }}>
+                                        {(() => {
+                                            const max = Math.max(2, Math.min(4, selectedPlayerCount));
+                                            const joined = Array.from({ length: max }).filter((_, i) => {
+                                                if (i === 0) return Boolean(players[0]?.profileId || myProfile?._id);
                                                 const seat = players[i];
-                                                // Check if player has actually joined - must have profileId AND not just be invited
-                                                const hasProfileId = i === 0 ? Boolean(seat?.profileId || myProfile?._id) : Boolean(seat?.profileId);
-                                                // If they have profileId, check invited status - if status is 'invited', they haven't joined yet
-                                                // Use String() to handle ObjectId vs string comparisons
+                                                const hasProfileId = Boolean(seat?.profileId);
+                                                if (!hasProfileId) return false;
                                                 const profileIdStr = seat?.profileId ? String(seat.profileId) : null;
-
-
-                                                const inviteStatus = (i === 0 ? null : (profileIdStr ? (invitedStatusByFriendId[profileIdStr] || invitedStatusByFriendId[seat.profileId]) : null));
-                                                // Check if this slot was reserved for an invited friend (even if status lookup failed)
+                                                const inviteStatus = profileIdStr ? (invitedStatusByFriendId[profileIdStr] || invitedStatusByFriendId[seat.profileId]) : null;
                                                 const wasInvitedToThisSlot = profileIdStr && (invitedSlotByFriendId[profileIdStr] === i || invitedSlotByFriendId[seat.profileId] === i);
-                                                // Debug logging
-                                                if (i > 0 && seat?.profileId) {
-                                                    console.log(`[SeatStatus] Slot ${i}: profileId=${profileIdStr}, inviteStatus=${inviteStatus}, wasInvitedToThisSlot=${wasInvitedToThisSlot}, hasProfileId=${hasProfileId}, invitedStatusByFriendId keys:`, Object.keys(invitedStatusByFriendId), `invitedSlotByFriendId:`, invitedSlotByFriendId);
-                                                }
-                                                // Only consider joined if:
-                                                // - Slot 0 is always joined if hasProfileId (host)
-                                                // - OR has profileId AND:
-                                                //   - If they were invited to this slot: only joined if status is explicitly 'joined'
-                                                //   - If they were NOT invited to this slot: joined (offline assignment)
-                                                // If status is 'invited' OR they were invited but status is missing/undefined, they haven't joined yet
-                                                const joined = hasProfileId && (i === 0 || (
-                                                    wasInvitedToThisSlot
-                                                        ? inviteStatus === 'joined'  // If invited, only joined if status is 'joined'
-                                                        : inviteStatus !== 'invited'  // If not invited, joined unless status is 'invited' (shouldn't happen)
-                                                ));
-                                                if (i > 0 && seat?.profileId) {
-                                                    console.log(`[SeatStatus] Slot ${i}: joined=${joined} (inviteStatus=${inviteStatus}, wasInvitedToThisSlot=${wasInvitedToThisSlot})`);
-                                                }
-                                                const name = seat?.name || (i === 0 ? (myProfile?.fullName || 'You') : `Seat ${i + 1}`);
-                                                const invitedName = !joined ? getInvitedNameForSlot(i) : null;
-                                                return (
-                                                    <div key={`seatstat-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.04)', padding: '6px 8px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)' }}>
-                                                        <div style={{ width: 20, height: 20, borderRadius: 10, overflow: 'hidden', background: '#333', border: '2px solid #111', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                            {seat?.avatar ? <img src={seat.avatar} alt=" " style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 10 }}>{['R', 'G', 'Y', 'B'][i] || 'P'}</span>}
-                                                        </div>
-                                                        <div style={{ fontSize: 12, flex: 1, textAlign: 'left' }}>{name}</div>
-                                                        <div style={{ fontSize: 11, fontWeight: 700, color: joined ? '#00FF00' : '#FFD700', padding: '2px 8px', borderRadius: 4, background: joined ? 'rgba(0,255,0,0.1)' : 'rgba(255,215,0,0.1)' }}>{joined ? 'Joined' : (invitedName ? `Invited: ${invitedName}` : 'Waiting…')}</div>
+                                                return wasInvitedToThisSlot ? inviteStatus === 'joined' : inviteStatus !== 'invited';
+                                            }).length;
+                                            return `Joined ${joined}/${max}`;
+                                        })()}
+                                    </div>
+                                    <div className="ludo-seat-list">
+                                        {Array.from({ length: Math.max(2, Math.min(4, selectedPlayerCount)) }).map((_, i) => {
+                                            const seat = players[i];
+                                            const hasProfileId = i === 0 ? Boolean(seat?.profileId || myProfile?._id) : Boolean(seat?.profileId);
+                                            const profileIdStr = seat?.profileId ? String(seat.profileId) : null;
+                                            const inviteStatus = (i === 0 ? null : (profileIdStr ? (invitedStatusByFriendId[profileIdStr] || invitedStatusByFriendId[seat.profileId]) : null));
+                                            const wasInvitedToThisSlot = profileIdStr && (invitedSlotByFriendId[profileIdStr] === i || invitedSlotByFriendId[seat.profileId] === i);
+                                            const joined = hasProfileId && (i === 0 || (
+                                                wasInvitedToThisSlot
+                                                    ? inviteStatus === 'joined'
+                                                    : inviteStatus !== 'invited'
+                                            ));
+                                            const name = seat?.name || (i === 0 ? (myProfile?.fullName || 'You') : `Seat ${i + 1}`);
+                                            const invitedName = !joined ? getInvitedNameForSlot(i) : null;
+                                            return (
+                                                <div key={`seatstat-${i}`} className="ludo-seat">
+                                                    <div className="ludo-seat__avatar">
+                                                        {seat?.avatar
+                                                            ? <img src={seat.avatar} alt="" />
+                                                            : <span>{PLAYER_LETTERS[i] || 'P'}</span>}
                                                     </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                            {/* Reconnecting overlay */}
-                            {isReconnecting && (
-                                <div style={{ position: 'absolute', inset: 0, zIndex: 60, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    <div style={{ background: 'rgba(26, 35, 50, 0.95)', border: '2px solid rgba(255, 215, 0, 0.5)', color: 'white', padding: 20, borderRadius: 16, textAlign: 'center', minWidth: 320 }}>
-                                        <div style={{ fontWeight: 800, marginBottom: 6 }}>Reconnecting to game...</div>
-                                        <div style={{ fontSize: 12, color: '#B0B0B0', marginBottom: 16 }}>Please wait while we restore your game session.</div>
-                                        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
-                                            <div style={{ width: 40, height: 40, border: '4px solid rgba(255, 215, 0, 0.3)', borderTop: '4px solid #FFD700', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                                        </div>
-                                        <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-                                            <button
-                                                onClick={startNewGame}
-                                                style={{
-                                                    background: '#29B1A9',
-                                                    color: 'white',
-                                                    padding: '10px 20px',
-                                                    border: 'none',
-                                                    borderRadius: 12,
-                                                    cursor: 'pointer',
-                                                    fontWeight: 'bold',
-                                                    fontSize: 14
-                                                }}
-                                            >
-                                                Start New Game
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                            {/* Friend disconnected overlay (for host only) */}
-                            {(() => {
-                                const isHost = myPlayerIndex === 0 || (players && players[0]?.profileId && String(players[0].profileId) === String(myProfile?._id));
-                                // Don't show if user is reconnecting themselves
-                                const hasDisconnectedFriends = disconnectedPlayers.size > 0 && gameStarted && onlineMode && isHost && !isReconnecting;
-
-                                if (!hasDisconnectedFriends) return null;
-
-                                // Get names of disconnected players
-                                const disconnectedNames = Array.from(disconnectedPlayers)
-                                    .map(pid => {
-                                        const player = players.find(p => p.profileId && String(p.profileId) === pid);
-                                        return player?.name || 'Friend';
-                                    })
-                                    .filter(Boolean);
-
-                                return (
-                                    <div style={{ position: 'absolute', inset: 0, zIndex: 59, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        <div style={{ background: 'rgba(26, 35, 50, 0.95)', border: '2px solid rgba(255, 100, 100, 0.5)', color: 'white', padding: 20, borderRadius: 16, textAlign: 'center', minWidth: 320 }}>
-                                            <div style={{ fontWeight: 800, marginBottom: 6, color: '#FF6B6B' }}>Friend Disconnected</div>
-                                            <div style={{ fontSize: 12, color: '#B0B0B0', marginBottom: 16 }}>
-                                                {disconnectedNames.length === 1
-                                                    ? `${disconnectedNames[0]} has disconnected from the game.`
-                                                    : `${disconnectedNames.length} friends have disconnected from the game.`
-                                                }
-                                            </div>
-                                            {disconnectedNames.length > 0 && (
-                                                <div style={{ marginBottom: 16, padding: '10px', background: 'rgba(255,255,255,0.05)', borderRadius: 8 }}>
-                                                    <div style={{ fontSize: 11, color: '#B0B0B0', marginBottom: 6 }}>Disconnected players:</div>
-                                                    <div style={{ fontSize: 13, fontWeight: 600 }}>
-                                                        {disconnectedNames.join(', ')}
+                                                    <div className="ludo-seat__name">{name}</div>
+                                                    <div className={`ludo-seat__badge ${joined ? 'ludo-seat__badge--joined' : 'ludo-seat__badge--waiting'}`}>
+                                                        {joined ? 'Joined' : (invitedName ? `Invited: ${invitedName}` : 'Waiting…')}
                                                     </div>
                                                 </div>
-                                            )}
-                                            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
-                                                <div style={{ width: 40, height: 40, border: '4px solid rgba(255, 100, 100, 0.3)', borderTop: '4px solid #FF6B6B', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                                            </div>
-                                            <div style={{ fontSize: 11, color: '#B0B0B0' }}>Waiting for reconnection...</div>
-                                        </div>
+                                            );
+                                        })}
                                     </div>
-                                );
-                            })()}
-                            {/* Center dice overlay - lower z-index and no pointer events when dice is rolled */}
-                            {/* Only allow clicks when dice value is 0 and can roll, otherwise let clicks pass through to tokens */}
-                            <div style={{
-                                position: 'absolute',
-                                inset: 0,
-                                zIndex: ((diceValueRef.current > 0 || diceValue > 0) && currentPlayer === myPlayerIndex) ? 5 : 50,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                textAlign: 'center',
-                                pointerEvents: (canRollDice && diceValueRef.current === 0 && diceValue === 0 && (!onlineMode || currentPlayer === myPlayerIndex)) ? 'auto' : 'none'
-                            }}>
-                                <button onClick={rollDice} disabled={!canRollDice || (onlineMode && currentPlayer !== myPlayerIndex)} style={{ background: 'transparent', border: 'none', padding: 0, cursor: (canRollDice && (!onlineMode || currentPlayer === myPlayerIndex)) ? 'pointer' : 'default' }}>
-                                    {(() => {
-                                        // Debug: Log dice render state
-                                        if (diceValue !== diceValueRef.current || currentPlayer !== currentPlayerRef.current) {
-                                            console.log('[DICE_RENDER] State mismatch detected', {
-                                                diceValue,
-                                                diceValueRef: diceValueRef.current,
-                                                currentPlayer,
-                                                currentPlayerRef: currentPlayerRef.current,
-                                                canRollDice,
-                                                isMyTurn: !onlineMode || currentPlayer === myPlayerIndex,
-                                                timestamp: Date.now()
-                                            });
-                                        }
-
-                                        // Mobile device detection
-                                        const isMobile = winSize.width <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-                                        // Reduce dice size for mobile devices
-                                        const diceSize = isMobile ? 72 : 108;
-                                        const avatarSize = isMobile ? 56 : 80;
-                                        // CRITICAL: Calculate effective dice value
-                                        // Show actual dice value (prefer ref, fallback to state)
-                                        let effectiveDiceValue = diceValueRef.current || diceValue || 0;
-                                        const effectiveCurrentPlayer = currentPlayerRef.current !== undefined ? currentPlayerRef.current : currentPlayer;
-
-                                        return (
-                                            <div style={{ width: diceSize, height: diceSize, perspective: '800px' }}>
-                                                <div style={{
-                                                    width: '100%',
-                                                    height: '100%',
-                                                    transformStyle: 'preserve-3d',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    transform: `scale(1)`,
-                                                    transition: 'transform 0.7s ease-in-out',
-                                                    filter: 'drop-shadow(0 6px 10px rgba(0,0,0,0.4))'
-                                                }}>
-                                                    {(!isRollingRef.current && effectiveDiceValue === 0) ? (
-                                                        // Show avatar when dice value is 0 and not rolling
-                                                        players[effectiveCurrentPlayer]?.avatar ? (
-                                                            <img src={players[effectiveCurrentPlayer].avatar} alt="current player" style={{ width: avatarSize, height: avatarSize, borderRadius: "50%", objectFit: 'cover', boxShadow: '0 6px 10px rgba(0,0,0,0.35)', border: `3px solid ${players[effectiveCurrentPlayer]?.color || '#FFD700'}` }} />
-                                                        ) : (
-                                                            <img src={siteConfig.logo} alt="Connect" style={{ width: avatarSize, height: avatarSize, borderRadius: "50%", objectFit: 'contain', background: 'transparent', boxShadow: '0 6px 10px rgba(0,0,0,0.35)', border: `3px solid ${players[effectiveCurrentPlayer]?.color || '#FFD700'}` }} />
-                                                        )
-                                                    ) : (
-                                                        // Show dice - always show when there's a dice value
-                                                        // Show effectiveDiceValue (the actual rolled value)
-                                                        // CRITICAL: Ensure we show a valid value (1-6) when dice has been rolled
-                                                        <DiceSVG
-                                                            value={effectiveDiceValue || 0}
-                                                            size={diceSize}
-                                                            strokeColor={players[effectiveCurrentPlayer]?.color || '#FFD700'}
-                                                        />
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-                                    })()}
-                                </button>
+                                </div>
                             </div>
+                        )}
+
+                        {isReconnecting && (
+                            <div className="ludo-overlay">
+                                <div className="ludo-card">
+                                    <div className="ludo-card__title">Reconnecting…</div>
+                                    <div className="ludo-card__body">Restoring your game session. Hang tight.</div>
+                                    <div className="ludo-spinner" />
+                                    <button type="button" className="ludo-btn ludo-btn--primary" onClick={startNewGame}>
+                                        Start New Game
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {(() => {
+                            const isHost = myPlayerIndex === 0 || (players && players[0]?.profileId && String(players[0].profileId) === String(myProfile?._id));
+                            const hasDisconnectedFriends = disconnectedPlayers.size > 0 && gameStarted && onlineMode && isHost && !isReconnecting;
+                            if (!hasDisconnectedFriends) return null;
+                            const disconnectedNames = Array.from(disconnectedPlayers)
+                                .map(pid => {
+                                    const player = players.find(p => p.profileId && String(p.profileId) === pid);
+                                    return player?.name || 'Friend';
+                                })
+                                .filter(Boolean);
+                            return (
+                                <div className="ludo-overlay ludo-overlay--warn">
+                                    <div className="ludo-card ludo-card--danger">
+                                        <div className="ludo-card__title ludo-card__title--danger">Friend Disconnected</div>
+                                        <div className="ludo-card__body">
+                                            {disconnectedNames.length === 1
+                                                ? `${disconnectedNames[0]} left the match.`
+                                                : `${disconnectedNames.length} friends left the match.`}
+                                        </div>
+                                        {disconnectedNames.length > 0 && (
+                                            <div className="ludo-seat" style={{ marginBottom: 12, justifyContent: 'center' }}>
+                                                <div className="ludo-seat__name" style={{ textAlign: 'center', whiteSpace: 'normal' }}>
+                                                    {disconnectedNames.join(', ')}
+                                                </div>
+                                            </div>
+                                        )}
+                                        <div className="ludo-spinner ludo-spinner--danger" />
+                                        <div className="ludo-muted">Waiting for reconnection…</div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
+                        <div
+                            className={`ludo-dice-hit ${((diceValueRef.current > 0 || diceValue > 0) && currentPlayer === myPlayerIndex) ? 'ludo-dice-hit--low' : ''} ${canTapDice ? 'ludo-dice-hit--active' : ''}`}
+                        >
+                            <button
+                                type="button"
+                                className={`ludo-dice-btn ${canTapDice ? 'ludo-dice-btn--ready' : ''}`}
+                                onClick={rollDice}
+                                disabled={!canRollDice || (onlineMode && currentPlayer !== myPlayerIndex)}
+                                aria-label={canTapDice ? 'Roll dice' : 'Dice'}
+                            >
+                                {(() => {
+                                    const isMobile = winSize.width <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                                    const diceSize = isMobile ? Math.min(72, BOARD_SIZE * 0.18) : Math.min(108, BOARD_SIZE * 0.2);
+                                    const avatarSize = isMobile ? Math.min(56, BOARD_SIZE * 0.14) : Math.min(80, BOARD_SIZE * 0.15);
+                                    const showDice = isRollingRef.current || effectiveDiceForUi > 0;
+                                    return (
+                                        <div style={{ width: diceSize, height: diceSize, perspective: '800px' }}>
+                                            <div style={{
+                                                width: '100%',
+                                                height: '100%',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                filter: 'drop-shadow(0 6px 10px rgba(0,0,0,0.4))'
+                                            }}>
+                                                {!showDice ? (
+                                                    <img
+                                                        src={players[effectiveCurrentPlayer]?.avatar || siteConfig.logo}
+                                                        alt="current player"
+                                                        className="ludo-center-avatar"
+                                                        style={{
+                                                            width: avatarSize,
+                                                            height: avatarSize,
+                                                            objectFit: players[effectiveCurrentPlayer]?.avatar ? 'cover' : 'contain',
+                                                            border: `3px solid ${players[effectiveCurrentPlayer]?.color || '#2ec4b6'}`
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <DiceSVG
+                                                        value={effectiveDiceForUi || 0}
+                                                        size={diceSize}
+                                                        strokeColor={players[effectiveCurrentPlayer]?.color || '#2ec4b6'}
+                                                    />
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+                            </button>
                         </div>
                     </div>
-                    {/* Current Turn panel moved below the board */}
-                    <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, background: 'rgba(26, 35, 50, 0.8)', padding: 16, borderRadius: 16, border: '1px solid rgba(255, 215, 0, 0.2)', width: BOARD_SIZE }}>
-                            <div style={{ fontSize: 12, color: '#B0B0B0' }}>Current Turn</div>
-                            {(() => {
-                                // Use ref value for consistency, fallback to state
-                                const effectiveCurrentPlayer = currentPlayerRef.current !== undefined ? currentPlayerRef.current : currentPlayer;
-                                return (
-                                    <div style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 10, background: players[effectiveCurrentPlayer]?.color, padding: '8px 12px', borderRadius: 24 }}>
-                                        {players[effectiveCurrentPlayer]?.avatar ? (
-                                            <img src={players[effectiveCurrentPlayer].avatar} alt="avatar" style={{ width: 26, height: 26, borderRadius: 13, objectFit: 'cover', border: '2px solid #111', background: '#fff' }} />
-                                        ) : (
-                                            <div style={{ width: 26, height: 26, borderRadius: 13, background: '#fff', border: '2px solid #111' }} />
-                                        )}
-                                        <div style={{ fontWeight: 'bold', color: '#fff', flex: 1 }}>{players[effectiveCurrentPlayer]?.name}</div>
-                                    </div>
-                                );
-                            })()}
-                            {/* Player settings buttons */}
-                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                {/* Sound toggle button */}
+
+                    <div className="ludo-dock" style={{ maxWidth: BOARD_SIZE }}>
+                        <div className="ludo-dock__label">Current Turn</div>
+                        <div className="ludo-turn" style={{ background: players[effectiveCurrentPlayer]?.color || '#2ec4b6' }}>
+                            {players[effectiveCurrentPlayer]?.avatar ? (
+                                <img
+                                    src={players[effectiveCurrentPlayer].avatar}
+                                    alt=""
+                                    className="ludo-turn__avatar"
+                                />
+                            ) : (
+                                <div className="ludo-turn__avatar ludo-turn__avatar--empty" />
+                            )}
+                            <div className="ludo-turn__name">{players[effectiveCurrentPlayer]?.name || 'Player'}</div>
+                            <div className="ludo-turn__hint">{turnHint}</div>
+                        </div>
+
+                        <div className="ludo-players-row">
+                            {renderPlayerOrder.map((idx) => (
                                 <button
-                                    onClick={() => {
-                                        setSoundsEnabled(!soundsEnabled);
-                                        if (!soundsEnabled) {
-                                            playSound('buttonClick');
-                                        }
-                                    }}
-                                    title={soundsEnabled ? 'Disable sounds' : 'Enable sounds'}
-                                    style={{
-                                        padding: '8px 12px',
-                                        background: soundsEnabled ? 'rgba(41, 177, 169, 0.3)' : 'rgba(255, 255, 255, 0.1)',
-                                        border: `1px solid ${soundsEnabled ? '#29B1A9' : 'rgba(255, 255, 255, 0.2)'}`,
-                                        borderRadius: 8,
-                                        color: 'white',
-                                        cursor: 'pointer',
-                                        fontSize: 14,
-                                        fontWeight: 600,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: 6
-                                    }}
+                                    key={`pbtn-${idx}`}
+                                    type="button"
+                                    className={`ludo-player-chip ${idx === effectiveCurrentPlayer ? 'ludo-player-chip--active' : ''}`}
+                                    style={{ background: players[idx]?.color }}
+                                    onClick={() => openPlayerEditor(idx)}
+                                    title={players[idx]?.name || 'Player'}
+                                    aria-label={`Edit ${players[idx]?.name || 'player'}`}
                                 >
-                                    <span>{soundsEnabled ? '🔊' : '🔇'}</span>
-                                    <span>{soundsEnabled ? 'Sound On' : 'Sound Off'}</span>
+                                    {players[idx]?.avatar ? (
+                                        <img src={players[idx].avatar} alt="" />
+                                    ) : (
+                                        <span className="ludo-player-chip__letter">{PLAYER_LETTERS[idx] || 'P'}</span>
+                                    )}
                                 </button>
-                                
-                                {/* Reload button */}
-                                {onlineMode && (
-                                    <button
-                                        onClick={() => { playSound('buttonClick'); reloadGameState(); }}
-                                        style={{
-                                            padding: '8px 12px',
-                                            background: 'rgba(100, 100, 255, 0.3)',
-                                            border: '1px solid rgba(100, 100, 255, 0.5)',
-                                            borderRadius: 8,
-                                            color: 'white',
-                                            cursor: 'pointer',
-                                            fontSize: 14,
-                                            fontWeight: 600,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 6
-                                        }}
-                                        title="Reload game state from server"
-                                    >
-                                        <span>🔄</span>
-                                        <span>Reload</span>
-                                    </button>
-                                )}
-                                
-                                {/* Reconnect socket button */}
-                                {onlineMode && gameStarted && !gameEnded && (
-                                    <button
-                                        onClick={() => { playSound('buttonClick'); reconnectSocket(); }}
-                                        style={{
-                                            padding: '8px 12px',
-                                            background: 'rgba(0, 200, 100, 0.3)',
-                                            border: '1px solid rgba(0, 200, 100, 0.5)',
-                                            borderRadius: 8,
-                                            color: 'white',
-                                            cursor: 'pointer',
-                                            fontSize: 14,
-                                            fontWeight: 600,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 6
-                                        }}
-                                        title="Reconnect socket and sync game state"
-                                    >
-                                        <span>🔌</span>
-                                        <span>Reconnect</span>
-                                    </button>
-                                )}
-                                
-                                {/* Re-invite button */}
-                                {onlineMode && myPlayerIndex === 0 && (
-                                    <button
-                                        onClick={() => { playSound('buttonClick'); reInvitePlayers(); }}
-                                        style={{
-                                            padding: '8px 12px',
-                                            background: 'rgba(255, 165, 0, 0.3)',
-                                            border: '1px solid rgba(255, 165, 0, 0.5)',
-                                            borderRadius: 8,
-                                            color: 'white',
-                                            cursor: 'pointer',
-                                            fontSize: 14,
-                                            fontWeight: 600,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: 6
-                                        }}
-                                        title="Re-invite players to fill empty slots"
-                                    >
-                                        <span>📨</span>
-                                        <span>Re-invite</span>
-                                    </button>
-                                )}
-                                {renderPlayerOrder.map((idx) => (
-                                    <button key={`pbtn-${idx}`} onClick={() => openPlayerEditor(idx)} title={players[idx]?.name || 'Player'} style={{
-                                        width: 32,
-                                        height: 32,
-                                        borderRadius: 16,
-                                        background: players[idx]?.color,
-                                        border: '2px solid #222',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
-                                    }} aria-label={`Edit ${players[idx]?.name || 'player'}`}>
-                                        {players[idx]?.avatar ? (
-                                            <img src={players[idx].avatar} alt=" " style={{ width: 24, height: 24, borderRadius: 12, objectFit: 'cover', border: '2px solid #fff' }} />
-                                        ) : (
-                                            <span style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>{['R', 'G', 'Y', 'B'][idx] || 'P'}</span>
-                                        )}
-                                    </button>
-                                ))}
-                            </div>
+                            ))}
+                        </div>
+
+                        <div className="ludo-toolbar">
+                            <button
+                                type="button"
+                                className={`ludo-tool ${soundsEnabled ? 'ludo-tool--on' : ''}`}
+                                onClick={() => {
+                                    setSoundsEnabled(!soundsEnabled);
+                                    if (!soundsEnabled) playSound('buttonClick');
+                                }}
+                                title={soundsEnabled ? 'Disable sounds' : 'Enable sounds'}
+                            >
+                                <span className="ludo-tool__dot" />
+                                <span className="ludo-tool__label">{soundsEnabled ? 'Sound On' : 'Sound Off'}</span>
+                            </button>
+                            {onlineMode && (
+                                <button
+                                    type="button"
+                                    className="ludo-tool"
+                                    onClick={() => { playSound('buttonClick'); reloadGameState(); }}
+                                    title="Reload game state from server"
+                                >
+                                    <span className="ludo-tool__label">Reload</span>
+                                </button>
+                            )}
+                            {onlineMode && gameStarted && !gameEnded && (
+                                <button
+                                    type="button"
+                                    className="ludo-tool"
+                                    onClick={() => { playSound('buttonClick'); reconnectSocket(); }}
+                                    title="Reconnect socket and sync"
+                                >
+                                    <span className="ludo-tool__label">Reconnect</span>
+                                </button>
+                            )}
+                            {onlineMode && myPlayerIndex === 0 && (
+                                <button
+                                    type="button"
+                                    className="ludo-tool"
+                                    onClick={() => { playSound('buttonClick'); reInvitePlayers(); }}
+                                    title="Re-invite players to fill empty slots"
+                                >
+                                    <span className="ludo-tool__label">Re-invite</span>
+                                </button>
+                            )}
                         </div>
                     </div>
+                </div>
+            ) : (
+                <div className="ludo-idle">
+                    <div className="ludo-header__mark" style={{ width: 56, height: 56, borderRadius: 16 }}>
+                        <div className="ludo-header__mark-grid" style={{ width: 28, height: 28, gap: 3 }}>
+                            <span /><span /><span /><span />
+                        </div>
+                    </div>
+                    <div className="ludo-idle__title">Ludo Classic</div>
+                    <div className="ludo-idle__copy">
+                        Start a local match or invite friends for an online game.
+                    </div>
+                    <button type="button" className="ludo-btn ludo-btn--primary" onClick={startGame}>
+                        Start Game
+                    </button>
                 </div>
             )}
 
@@ -6636,35 +6582,12 @@ const LudoGame = () => {
                 onDecline={declineIncomingInvite}
             />
 
-            {/* Connection Status Indicator */}
-            {onlineMode && gameStarted && !gameEnded && (
-                <div style={{
-                    position: 'fixed',
-                    top: 10,
-                    right: 10,
-                    zIndex: 1000,
-                    background: socketRef.current?.connected ? 'rgba(0, 200, 0, 0.9)' : 'rgba(255, 0, 0, 0.9)',
-                    color: 'white',
-                    padding: '6px 12px',
-                    borderRadius: 20,
-                    fontSize: 12,
-                    fontWeight: 'bold',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
-                }}>
-                    <div style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: '50%',
-                        background: socketRef.current?.connected ? '#00FF00' : '#FF0000'
-                    }} />
-                    <div data-connection-status>
-                        {socketRef.current?.connected ? 'Connected' : 'Disconnected'}
-                    </div>
-                </div>
-            )}
+            <ConnectionStatus
+                socket={socketRef.current}
+                onlineMode={onlineMode}
+                gameStarted={gameStarted}
+                gameEnded={gameEnded}
+            />
 
             <PlayerEditorModal
                 show={showPlayerEditor}
@@ -6711,7 +6634,6 @@ const LudoGame = () => {
                 }}
             />
         </div>
-        </>
     );
 };
 
