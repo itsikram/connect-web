@@ -16,6 +16,7 @@ import {
 } from '../../utils/emotionDetection';
 import config from '../../config/config.json';
 import ringtones from '../../config/ringtones.json';
+import { normalizeRingtoneId } from '../../utils/normalizeRingtoneId';
 import { unlockAudio, playAudioWithWebAudio, initializeAudioUnlock } from '../../utils/audioUnlock';
 import { showCallNotification, closeCallNotification } from '../../utils/callNotification';
 import LiveVoiceModal from './LiveVoiceModal';
@@ -854,9 +855,8 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
     useEffect(() => {
         if (callingBeepAudio?.current && incomingCall) {
             // Use user's ringtone preference or fallback to default
-            const ringtone = settings.ringtone 
-                ? ringtones.find(r => r.id === settings.ringtone)
-                : null;
+            const ringtoneId = normalizeRingtoneId(settings.ringtone);
+            const ringtone = ringtones.find(r => r.id === ringtoneId);
             const toneSrc = ringtone?.src || config?.callingBeep || '';
             
             if (toneSrc) {

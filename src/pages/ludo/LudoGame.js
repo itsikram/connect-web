@@ -59,6 +59,12 @@ import { PendingInvitesBanner } from './components/PendingInvitesBanner';
 import { PlayerSelectionModal } from './components/PlayerSelectionModal';
 import { useAudio } from './hooks/useAudio';
 import { showLudoInviteToast } from '../../utils/toastUtils';
+import {
+    shouldShowLudoInviteAlert,
+    markInviteHandled,
+    setActiveLudoGameId,
+    clearActiveLudoGameId,
+} from '../../utils/ludoInviteUtils';
 
 /**
  * LudoGame Component
@@ -189,6 +195,7 @@ const LudoGame = () => {
     
     // Online mode and connection
     const [onlineMode, setOnlineMode] = useState(false);
+    const [playWithComputer, setPlayWithComputer] = useState(false);
     const [gameId, setGameId] = useState(null);
     const [myPlayerIndex, setMyPlayerIndex] = useState(0);
     const [waitingForPlayers, setWaitingForPlayers] = useState(false);
@@ -257,6 +264,8 @@ const LudoGame = () => {
     const moveTimersRef = useRef([]);
     const isMovingRef = useRef(false);
     const isAutoMovingRef = useRef(false);
+    const playWithComputerRef = useRef(false);
+    const botActingRef = useRef(false);
     
     // ============================================================================
     // SECTION 9: SOUND EFFECTS
@@ -655,6 +664,7 @@ const LudoGame = () => {
 
 
     useEffect(() => { playersRef.current = players; }, [players]);
+    useEffect(() => { playWithComputerRef.current = playWithComputer; }, [playWithComputer]);
     useEffect(() => { currentPlayerRef.current = currentPlayer; }, [currentPlayer]);
     useEffect(() => { myPlayerIndexRef.current = myPlayerIndex; }, [myPlayerIndex]);
     useEffect(() => { selectedPlayerCountRef.current = selectedPlayerCount; }, [selectedPlayerCount]);
@@ -704,9 +714,9 @@ const LudoGame = () => {
      * Check if it's the current player's turn
      */
     const isMyTurn = useMemo(() => {
-        if (!onlineMode) return true; // Offline mode - always your turn
+        if (!onlineMode && !playWithComputer) return true; // Offline hot-seat
         return currentPlayer === myPlayerIndex;
-    }, [onlineMode, currentPlayer, myPlayerIndex]);
+    }, [onlineMode, playWithComputer, currentPlayer, myPlayerIndex]);
 
     // ============================================================================
     // SECTION 11: GAME LOGIC HELPERS
@@ -2552,6 +2562,20 @@ const LudoGame = () => {
         return playable;
     }, [players, maxSteps]);
 
+    const pickBotPiece = useCallback((playableIds, playerIndex) => {
+        const pieces = playersRef.current[playerIndex]?.pieces || [];
+        let best = playableIds[0];
+        let bestSteps = -1;
+        playableIds.forEach((id) => {
+            const steps = pieces[id]?.steps ?? 0;
+            if (steps > bestSteps) {
+                bestSteps = steps;
+                best = id;
+            }
+        });
+        return best;
+    }, []);
+
     /**
      * Roll the dice for the current player
      * Handles both offline and online modes with proper synchronization
@@ -2576,13 +2600,26 @@ const LudoGame = () => {
             console.log('[ROLL_DICE] Blocked: waitingForPlayers');
             return;
         }
-        if (!canRollDice || isRollingRef.current) {
-            console.log('[ROLL_DICE] Blocked: canRollDice=', canRollDice, 'isRollingRef=', isRollingRef.current);
+
+        const isBotTurn = playWithComputerRef.current
+            && !onlineMode
+            && playersRef.current[currentPlayerRef.current]?.isBot;
+
+        if (!botActingRef.current && isBotTurn) {
             return;
         }
-        if (isRollingRef.current) {
-            console.log('[ROLL_DICE] Blocked: isRollingRef.current=', isRollingRef.current);
-            return; // Additional guard
+
+        if (!botActingRef.current) {
+            if (!canRollDice || isRollingRef.current) {
+                console.log('[ROLL_DICE] Blocked: canRollDice=', canRollDice, 'isRollingRef=', isRollingRef.current);
+                return;
+            }
+            if (isRollingRef.current) {
+                console.log('[ROLL_DICE] Blocked: isRollingRef.current=', isRollingRef.current);
+                return; // Additional guard
+            }
+        } else if (isRollingRef.current) {
+            return;
         }
 
         // CRITICAL: Prevent rolling if a move is in progress
@@ -2592,18 +2629,16 @@ const LudoGame = () => {
         }
 
         // CRITICAL: Use refs to ensure we check the most current values (avoid stale closures)
-        // Only the current player can roll dice in online mode
-        if (onlineMode) {
+        // Only the current player can roll dice in online or vs-computer mode
+        if (onlineMode || playWithComputerRef.current) {
             const currentMyPlayerIndex = myPlayerIndexRef.current;
             const currentPlayerIndex = currentPlayerRef.current;
-            if (currentMyPlayerIndex !== currentPlayerIndex) {
+            if (!botActingRef.current && currentMyPlayerIndex !== currentPlayerIndex) {
                 console.log('[ROLL_DICE] Blocked: not my turn', { myIndex: currentMyPlayerIndex, currentPlayer: currentPlayerIndex });
-                // Not the current player's turn - prevent roll
                 return;
             }
             if (diceValueRef.current > 0) {
                 console.log('[ROLL_DICE] Blocked: dice value already set', { diceValue: diceValueRef.current });
-                // Already have a dice value, wait for move
                 return;
             }
         }
@@ -2614,9 +2649,9 @@ const LudoGame = () => {
 
         // CRITICAL: Double-check conditions right before setting flags (prevent race conditions)
         // Re-check canRollDice and diceValue one more time after potential state updates
-        if (!canRollDice || isRollingRef.current) return;
+        if (!botActingRef.current && (!canRollDice || isRollingRef.current)) return;
         if (diceValueRef.current > 0 || diceValue > 0) return;
-        if (onlineMode && myPlayerIndexRef.current !== currentPlayerRef.current) return;
+        if ((onlineMode || playWithComputerRef.current) && !botActingRef.current && myPlayerIndexRef.current !== currentPlayerRef.current) return;
 
         // CRITICAL: Final check - ensure no move is in progress (double-check after all other checks)
         // Only block if actually moving, not just because timers exist (timers might be stale)
@@ -3011,12 +3046,12 @@ const LudoGame = () => {
             return;
         }
 
-        // In online mode, only allow moves if it's the current player's turn
+        // In online or vs-computer mode, only allow moves if it's the current player's turn
         // CRITICAL: Use refs to get the most current values (avoid stale closures)
-        if (onlineMode) {
+        if (onlineMode || playWithComputerRef.current) {
             const currentMyPlayerIndex = myPlayerIndexRef.current;
             const currentPlayerIndex = currentPlayerRef.current;
-            if (currentMyPlayerIndex !== currentPlayerIndex) {
+            if (!botActingRef.current && currentMyPlayerIndex !== currentPlayerIndex) {
                 return; // Not the current player's turn
             }
         }
@@ -4491,7 +4526,8 @@ const LudoGame = () => {
             // 4. No move is in progress
             const currentMyPlayerIndex = myPlayerIndexRef.current;
             const currentPlayerIndex = currentPlayerRef.current;
-            const isMyTurn = !onlineMode || (currentMyPlayerIndex === currentPlayerIndex);
+            const isMyTurn = (!onlineMode && !playWithComputer)
+                || (currentMyPlayerIndex === currentPlayerIndex);
             const hasNoDiceValue = diceValueRef.current === 0 && diceValue === 0;
             const isNotRolling = !isRollingRef.current;
 
@@ -4518,7 +4554,7 @@ const LudoGame = () => {
 
             // CRITICAL: Force update if it's not the player's turn but canRollDice is true
             // This fixes the bug where canRollDice stays true after game starts when it's not the player's turn
-            const needsForceUpdate = !isMyTurn && currentCanRollDice && onlineMode;
+            const needsForceUpdate = !isMyTurn && currentCanRollDice && (onlineMode || playWithComputer);
 
             // Only update if value actually changed and enough time has passed, OR if we need to force update
             if ((shouldEnable !== currentCanRollDice && timeSinceLastUpdate > MIN_UPDATE_INTERVAL) || needsForceUpdate) {
@@ -4549,7 +4585,37 @@ const LudoGame = () => {
         }
         // Removed canRollDice from dependencies to prevent infinite loop
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [waitingForPlayers, gameStarted, players, selectedPlayerCount, onlineMode, currentPlayer, myPlayerIndex, diceValue]);
+    }, [waitingForPlayers, gameStarted, players, selectedPlayerCount, onlineMode, playWithComputer, currentPlayer, myPlayerIndex, diceValue]);
+
+    // CPU opponent turns in local vs-computer mode
+    useEffect(() => {
+        if (!playWithComputer || onlineMode || !gameStarted || gameEnded || waitingForPlayers) return;
+
+        const cp = currentPlayerRef.current;
+        const player = playersRef.current[cp];
+        if (!player?.isBot) return;
+
+        const timer = setTimeout(() => {
+            if (isMovingRef.current || isAutoMovingRef.current || isRollingRef.current) return;
+
+            botActingRef.current = true;
+            try {
+                if (diceValueRef.current === 0) {
+                    rollDice();
+                } else {
+                    const playable = getPlayablePieces(cp, diceValueRef.current);
+                    if (playable.length === 0) return;
+                    const pick = playable.length === 1 ? playable[0] : pickBotPiece(playable, cp);
+                    movePiece(pick);
+                }
+            } finally {
+                botActingRef.current = false;
+            }
+        }, 900);
+
+        return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [playWithComputer, onlineMode, gameStarted, gameEnded, waitingForPlayers, currentPlayer, diceValue, canRollDice]);
 
     // DEBUG: Track canRollDice changes (reduced logging to prevent spam)
     const prevCanRollDiceRef = useRef(canRollDice);
@@ -4653,97 +4719,88 @@ const LudoGame = () => {
                 try {
                     if (!payload) return;
                     if (payload.to && myProfile?._id && String(payload.to) !== String(myProfile._id)) return;
-                    
-                    // Skip invites for games the user is already in
+
+                    if (isJoiningViaInviteRef.current) return;
+
                     const currentGameId = gameIdRef.current;
                     const joinedGamesList = joinedGamesRef.current;
                     if (currentGameId && String(payload.gameId) === String(currentGameId)) {
-                        return; // User is already in this game
+                        return;
                     }
                     if (Array.isArray(joinedGamesList) && joinedGamesList.some(g => String(g.gameId) === String(payload.gameId))) {
-                        return; // User has already joined this game
+                        return;
                     }
-                    
-                    // Create unique key for this invite
+                    if (!shouldShowLudoInviteAlert(payload.gameId, payload.by)) {
+                        return;
+                    }
+
                     const inviteKey = `${payload.gameId}:${payload.by}`;
                     const now = Date.now();
-                    
-                    // CRITICAL: Check and mark synchronously BEFORE any async operations
-                    // This prevents race conditions when both onInvite and onInvites fire
+
                     const lastShownTime = shownInviteToastsRef.current.get(inviteKey);
-                    if (lastShownTime && (now - lastShownTime) < 30000) {
-                        return; // Already shown a toast for this invite recently (30 seconds), skip
+                    if (lastShownTime && (now - lastShownTime) < 300000) {
+                        return;
                     }
-                    
-                    // Mark immediately to prevent duplicate toasts from other handlers
+
                     shownInviteToastsRef.current.set(inviteKey, now);
-                    
-                    // Clean up old entries (older than 1 minute)
+
                     for (const [key, timestamp] of shownInviteToastsRef.current.entries()) {
-                        if (now - timestamp > 60000) {
+                        if (now - timestamp > 600000) {
                             shownInviteToastsRef.current.delete(key);
                         }
                     }
-                    
-                    // Store inviter info
+
                     try {
                         if (payload?.by) setLastInviter({ id: payload.by, name: payload.name, avatar: payload.avatar, cover: payload.cover });
                     } catch (_e) { }
-                    
-                    // Check if this invite already exists in pending invites
+
+                    const inv = {
+                        from: payload.by,
+                        name: payload.name,
+                        avatar: payload.avatar,
+                        cover: payload.cover,
+                        gameId: payload.gameId,
+                        slotIndex: payload.slotIndex,
+                        playerCount: payload.playerCount,
+                        ts: now,
+                    };
+
                     setPendingInvites(prev => {
                         const exists = prev.find(i => String(i.gameId) === String(payload.gameId) && String(i.from) === String(payload.by));
-                        
-                        // Show toast for new invites or re-invites after 5 minutes
-                        if (!exists || (now - (exists.ts || 0)) > 5 * 60 * 1000) {
-                            const inv = {
-                                from: payload.by,
-                                name: payload.name,
-                                avatar: payload.avatar,
-                                cover: payload.cover,
-                                gameId: payload.gameId,
-                                slotIndex: payload.slotIndex,
-                                playerCount: payload.playerCount,
-                                ts: now,
-                            };
-                            
-                            // Show toast notification for the new or re-invite
-                            showLudoInviteToast(
-                                payload.name || 'A friend',
-                                payload.avatar,
-                                () => {
-                                    // Accept callback
-                                    setIncomingInviteRequest(inv);
-                                    setTimeout(() => acceptIncomingInvite(), 0);
-                                },
-                                () => {
-                                    // Decline callback
-                                    if (socketRef.current) {
-                                        try { 
-                                            socketRef.current.emit('ludo:invites:dismiss', { 
-                                                gameId: payload.gameId, 
-                                                by: payload.by 
-                                            }); 
-                                        } catch (_e) { }
-                                    }
-                                    // Remove from pending invites
-                                    setPendingInvites(prev => 
-                                        prev.filter(i => !(String(i.gameId) === String(payload.gameId) && String(i.from) === String(payload.by)))
-                                    );
-                                }
-                            );
-                            
-                            // Update or add the invite in pending list
-                            const updated = prev.filter(i => !(String(i.gameId) === String(payload.gameId) && String(i.from) === String(payload.by)));
-                            return [inv, ...updated].slice(0, 20);
-                        }
-                        
-                        return prev; // Don't show duplicate toast for recent invites
+                        if (exists) return prev;
+                        return [inv, ...prev].slice(0, 20);
                     });
+
+                    showLudoInviteToast(
+                        payload.name || 'A friend',
+                        payload.avatar,
+                        () => {
+                            markInviteHandled(payload.gameId, payload.by);
+                            setActiveLudoGameId(payload.gameId);
+                            setIncomingInviteRequest(inv);
+                            setTimeout(() => acceptIncomingInvite(), 0);
+                        },
+                        () => {
+                            markInviteHandled(payload.gameId, payload.by);
+                            if (socketRef.current) {
+                                try {
+                                    socketRef.current.emit('ludo:invites:dismiss', {
+                                        gameId: payload.gameId,
+                                        by: payload.by
+                                    });
+                                } catch (_e) { }
+                            }
+                            setPendingInvites(prev =>
+                                prev.filter(i => !(String(i.gameId) === String(payload.gameId) && String(i.from) === String(payload.by)))
+                            );
+                        }
+                    );
                 } catch (_e) { }
             };
             const onInvites = (payload) => {
                 try {
+                    if (isJoiningViaInviteRef.current) return;
+
                     const arr = Array.isArray(payload?.invites) ? payload.invites : [];
                     const normalized = arr.map(x => ({
                         from: x.by ?? x.from,
@@ -4755,84 +4812,64 @@ const LudoGame = () => {
                         playerCount: x.playerCount,
                         ts: x.ts || Date.now()
                     }));
-                    
-                    // Filter out invites for games the user is already in
+
                     const currentGameId = gameIdRef.current;
                     const joinedGamesList = joinedGamesRef.current;
                     const filteredNormalized = normalized.filter(inv => {
-                        // Skip if user is already in this game
                         if (currentGameId && String(inv.gameId) === String(currentGameId)) {
                             return false;
                         }
-                        // Skip if user has already joined this game
                         if (Array.isArray(joinedGamesList) && joinedGamesList.some(g => String(g.gameId) === String(inv.gameId))) {
                             return false;
                         }
-                        return true;
+                        return shouldShowLudoInviteAlert(inv.gameId, inv.from);
                     });
-                    
+
+                    setPendingInvites(prev => {
+                        const invitesToAdd = filteredNormalized.filter(inv =>
+                            !prev.find(p => String(p.gameId) === String(inv.gameId) && String(p.from) === String(inv.from))
+                        );
+                        return [...prev, ...invitesToAdd].slice(0, 20);
+                    });
+
                     const now = Date.now();
-                    
-                    // CRITICAL: Filter and mark toasts synchronously BEFORE state updates
-                    // This prevents race conditions when both onInvite and onInvites fire
-                    const newInvites = filteredNormalized.filter(inv => {
-                        // Check if we've already shown a toast for this invite recently (within 30 seconds)
+                    const firstNewInvite = filteredNormalized.find(inv => {
                         const inviteKey = `${inv.gameId}:${inv.from}`;
                         const lastShownTime = shownInviteToastsRef.current.get(inviteKey);
-                        if (lastShownTime && (now - lastShownTime) < 30000) {
-                            return false; // Already shown a toast for this invite recently, skip
+                        if (lastShownTime && (now - lastShownTime) < 300000) {
+                            return false;
                         }
-                        
-                        // Mark immediately to prevent duplicate toasts from other handlers
                         shownInviteToastsRef.current.set(inviteKey, now);
                         return true;
                     });
-                    
-                    // Clean up old entries (older than 1 minute) - do this once
-                    for (const [key, timestamp] of shownInviteToastsRef.current.entries()) {
-                        if (now - timestamp > 60000) {
-                            shownInviteToastsRef.current.delete(key);
-                        }
-                    }
-                        
-                        // Show toast for each new invite
-                        newInvites.forEach(inv => {
-                            showLudoInviteToast(
-                                inv.name || 'A friend',
-                                inv.avatar,
-                                () => {
-                                    // Accept callback
-                                    setIncomingInviteRequest(inv);
-                                    setTimeout(() => acceptIncomingInvite(), 0);
-                                },
-                                () => {
-                                    // Decline callback
-                                    if (socketRef.current) {
-                                        try { 
-                                            socketRef.current.emit('ludo:invites:dismiss', { 
-                                                gameId: inv.gameId, 
-                                                by: inv.from 
-                                            }); 
-                                        } catch (_e) { }
-                                    }
-                                    // Remove from pending invites
-                                    setPendingInvites(prev => 
-                                        prev.filter(i => !(String(i.gameId) === String(inv.gameId) && String(i.from) === String(inv.from)))
-                                    );
+
+                    if (firstNewInvite) {
+                        showLudoInviteToast(
+                            firstNewInvite.name || 'A friend',
+                            firstNewInvite.avatar,
+                            () => {
+                                markInviteHandled(firstNewInvite.gameId, firstNewInvite.from);
+                                setActiveLudoGameId(firstNewInvite.gameId);
+                                setIncomingInviteRequest(firstNewInvite);
+                                setTimeout(() => acceptIncomingInvite(), 0);
+                            },
+                            () => {
+                                markInviteHandled(firstNewInvite.gameId, firstNewInvite.from);
+                                if (socketRef.current) {
+                                    try {
+                                        socketRef.current.emit('ludo:invites:dismiss', {
+                                            gameId: firstNewInvite.gameId,
+                                            by: firstNewInvite.from
+                                        });
+                                    } catch (_e) { }
                                 }
-                            );
-                        });
-                    
-                    setPendingInvites(prev => {
-                        // Find invites that are new (not already in pending)
-                        const invitesToAdd = filteredNormalized.filter(inv => 
-                            !prev.find(p => String(p.gameId) === String(inv.gameId) && String(p.from) === String(inv.from))
+                                setPendingInvites(prev =>
+                                    prev.filter(i => !(String(i.gameId) === String(firstNewInvite.gameId) && String(i.from) === String(firstNewInvite.from)))
+                                );
+                            }
                         );
-                        
-                        // Only add filtered invites to pending list
-                        return [...prev, ...invitesToAdd].slice(0, 20);
-                    });
-                    
+                    }
+
                     try {
                         if (filteredNormalized[0]?.from) setLastInviter({ id: filteredNormalized[0].from, name: filteredNormalized[0].name, avatar: filteredNormalized[0].avatar });
                     } catch (_e) { }
@@ -4998,6 +5035,7 @@ const LudoGame = () => {
                 }
             }
             localStorage.removeItem('ludo_game_state');
+            clearActiveLudoGameId();
             savedGameStateRef.current = null;
             console.log('[EXIT_GAME] Cleared localStorage game state');
         } catch (_e) {
@@ -5149,7 +5187,22 @@ const LudoGame = () => {
                     avatar: prevSeat?.avatar || baseAvatar,
                     cover: prevSeat?.cover || baseCover,
                     profileId: i === 0 ? (myProfile?._id || 'local') : (prevSeat?.profileId || undefined),
+                    isBot: prevSeat?.isBot || false,
                 });
+            }
+            if (playWithComputer && !onlineMode) {
+                for (let i = 1; i < next.length; i++) {
+                    const seat = next[i];
+                    const hasHumanFriend = seat?.profileId && !String(seat.profileId).startsWith('bot-');
+                    if (!hasHumanFriend) {
+                        next[i] = {
+                            ...seat,
+                            name: `Computer ${i}`,
+                            isBot: true,
+                            profileId: `bot-${i}`,
+                        };
+                    }
+                }
             }
             // Update ref immediately to keep state synchronized
             playersRef.current = next;
@@ -5596,6 +5649,8 @@ const LudoGame = () => {
             hasProcessedReconnectionStateRef.current = true; // Mark as processed to prevent reconnection logic
             isJoiningViaInviteRef.current = true; // Mark that we're joining via invite
             inviteAcceptTimestampRef.current = Date.now(); // Track when we accepted invite to prevent reconnection
+            markInviteHandled(payload.gameId, payload.from);
+            setActiveLudoGameId(payload.gameId);
 
             // CRITICAL: Clear saved game state to prevent reconnection logic from triggering
             // This is a new join, not a reconnection
@@ -5653,6 +5708,10 @@ const LudoGame = () => {
                                         coverPic: myProfile?.coverPic
                                     },
                                     from: payload.from
+                                });
+                                socketRef.current.emit('ludo:invites:dismiss', {
+                                    gameId: payload.gameId,
+                                    by: payload.from,
                                 });
                                 console.log('[ACCEPT_INVITE] Sent accept event', {
                                     gameId: payload.gameId,
@@ -6055,7 +6114,7 @@ const LudoGame = () => {
                         e.preventDefault();
                         // Only call movePiece if conditions are met - check both ref and state
                         const currentDiceValue = diceValueRef.current > 0 ? diceValueRef.current : diceValue;
-                        if ((!onlineMode || myPlayerIndex === currentPlayer) && isActivePlayer && isCurrentPlayer && currentDiceValue > 0 && !isMovingRef.current && !isAutoMovingRef.current) {
+                        if (((!onlineMode && !playWithComputer) || myPlayerIndex === currentPlayer) && isActivePlayer && isCurrentPlayer && currentDiceValue > 0 && !isMovingRef.current && !isAutoMovingRef.current) {
                             movePiece(pieceIndex);
                         }
                     }}
@@ -6150,6 +6209,7 @@ const LudoGame = () => {
                     show={showPlayerSelection}
                     selectedPlayerCount={selectedPlayerCount}
                     onlineMode={onlineMode}
+                    playWithComputer={playWithComputer}
                     friendSearchQuery={friendSearchQuery}
                     loadingSearch={loadingSearch}
                     searchResults={searchResults}
@@ -6164,6 +6224,13 @@ const LudoGame = () => {
                     socketRef={socketRef}
                     onPlayerCountChange={setSelectedPlayerCount}
                     onOnlineModeToggle={() => setOnlineMode(!onlineMode)}
+                    onPlayWithComputerToggle={() => {
+                        setPlayWithComputer((prev) => {
+                            const next = !prev;
+                            if (next) setOnlineMode(false);
+                            return next;
+                        });
+                    }}
                     onFriendSearchChange={onChangeFriendSearch}
                     onFriendSelect={(f, isSelected) => {
                         setSelectedFriends(prev => {
@@ -6245,7 +6312,7 @@ const LudoGame = () => {
     const turnHint = !gameStarted
         ? 'Waiting…'
         : !isMyTurn
-            ? 'Opponent turn'
+            ? (players[effectiveCurrentPlayer]?.isBot ? 'Computer turn' : 'Opponent turn')
             : canTapDice
                 ? 'Tap dice to roll'
                 : effectiveDiceForUi > 0
@@ -6257,6 +6324,7 @@ const LudoGame = () => {
             <AnimatedBackground />
             <GameHeader
                 gameStarted={gameStarted}
+                playWithComputer={playWithComputer}
                 gameId={gameId}
                 savedGameStateRef={savedGameStateRef}
                 isDebug={isDebug}
@@ -6424,7 +6492,7 @@ const LudoGame = () => {
                                 type="button"
                                 className={`ludo-dice-btn ${canTapDice ? 'ludo-dice-btn--ready' : ''}`}
                                 onClick={rollDice}
-                                disabled={!canRollDice || (onlineMode && currentPlayer !== myPlayerIndex)}
+                                disabled={!canRollDice || ((onlineMode || playWithComputer) && currentPlayer !== myPlayerIndex)}
                                 aria-label={canTapDice ? 'Roll dice' : 'Dice'}
                             >
                                 {(() => {

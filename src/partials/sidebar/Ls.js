@@ -1,8 +1,9 @@
 
 import React, { Fragment, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useSelector, useDispatch } from 'react-redux';
+import { useSelector } from 'react-redux';
 import UserPP from '../../components/UserPP';
+import { SIDEBAR_MENU_ITEMS } from './sidebarMenuItems';
 
 let LeftSidebar = () => {
 
@@ -14,8 +15,33 @@ let LeftSidebar = () => {
 
     let goToProfilePath = useCallback(e => {
         navigate(profilePath)
-    }, [Date.now()])
+    }, [navigate, profilePath])
 
+    const renderMenuItem = (item) => {
+        const iconStyle = { color: item.accent || '#29B1A9', fontSize: '18px' };
+        const content = (
+            <div className='ls-nav-menu-item'>
+                <div className='ls-icon' style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundImage: 'none' }}>
+                    <i className={`fas ${item.icon}`} style={iconStyle} aria-hidden="true" />
+                </div>
+                <div className='ls-text'>{item.label}</div>
+            </div>
+        );
+
+        if (item.disabled || !item.to) {
+            return (
+                <div className='text-decoration-none' style={{ opacity: 0.55, cursor: 'not-allowed' }} title="Coming soon">
+                    {content}
+                </div>
+            );
+        }
+
+        return (
+            <Link to={item.to} className='text-decoration-none'>
+                {content}
+            </Link>
+        );
+    };
 
     return (
         <Fragment>
@@ -31,211 +57,12 @@ let LeftSidebar = () => {
                                 <div className='ls-text user-name'>{profileData.user && profileData.user.firstName} {profileData.user && profileData.user.surname}</div>
                             </div>
                         </div>
-
                     </li>
-                    <li>
-                        <Link to="/friends/" className='text-decoration-none'>
-                            <div className='ls-nav-menu-item'>
-                                <div className='ls-icon lsi-friends'>
-
-                                </div>
-                                <div className='ls-text'>
-                                    Find Friends
-                                </div>
-                            </div>
-                        </Link>
-                    </li>
-                    <li>
-                        <Link to="/yt-download/" className='text-decoration-none'>
-                            <div className='ls-nav-menu-item'>
-                                <div className='ls-icon lsi-yt-download'>
-
-                                </div>
-                                <div className='ls-text'>
-                                    YT Download
-                                </div>
-                            </div>
-                        </Link>
-                    </li>
-                    <li>
-                        <Link to="/ludo-game" className='text-decoration-none'>
-                            <div className='ls-nav-menu-item'>
-                                <div className='ls-icon lsi-ludo' style={{backgroundImage: 'unset'}}>
-                                    <svg style={{transform: 'scale(0.7)'}} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-                                        <defs>
-                                            <linearGradient id="bgGradient" x1="0" y1="0" x2="1" y2="1">
-                                                <stop offset="0%" stopColor="#f9f9f9" />
-                                                <stop offset="100%" stopColor="#e0e0e0" />
-                                            </linearGradient>
-                                            <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
-                                                <feDropShadow dx="0" dy="4" stdDeviation="6" floodColor="#000" floodOpacity="0.15" />
-                                            </filter>
-                                        </defs>
-
-                                        <rect width="512" height="512" rx="80" fill="url(#bgGradient)" />
-
-                                        <rect x="40" y="40" width="190" height="190" rx="28" fill="#ff4d4d" filter="url(#shadow)" />
-                                        <rect x="282" y="40" width="190" height="190" rx="28" fill="#4da6ff" filter="url(#shadow)" />
-                                        <rect x="40" y="282" width="190" height="190" rx="28" fill="#33cc66" filter="url(#shadow)" />
-                                        <rect x="282" y="282" width="190" height="190" rx="28" fill="#ffcc33" filter="url(#shadow)" />
-
-                                        <rect x="206" y="206" width="100" height="100" rx="20" fill="#fff" stroke="#ccc" strokeWidth="3" filter="url(#shadow)" />
-
-                                        <circle cx="256" cy="256" r="30" fill="#555" />
-
-                                        <circle cx="256" cy="256" r="6" fill="#fff" />
-                                        <circle cx="236" cy="236" r="6" fill="#fff" />
-                                        <circle cx="276" cy="236" r="6" fill="#fff" />
-                                        <circle cx="236" cy="276" r="6" fill="#fff" />
-                                        <circle cx="276" cy="276" r="6" fill="#fff" />
-
-                                        <rect x="20" y="20" width="472" height="472" rx="80" fill="none" stroke="#ccc" strokeWidth="4" />
-                                    </svg>
-
-                                </div>
-                                <div className='ls-text'>
-                                    Ludo Game
-                                </div>
-                            </div>
-                        </Link>
-                    </li>
-                    <li>
-                        <Link to="/video-player" className='text-decoration-none'>
-                            <div className='ls-nav-menu-item'>
-                                <div className='ls-icon lsi-video-player' style={{backgroundImage: 'unset'}}>
-                                    <svg style={{transform: 'scale(0.7)'}} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-                                        <defs>
-                                            <linearGradient id="videoGradient" x1="0" y1="0" x2="1" y2="1">
-                                                <stop offset="0%" stopColor="#3B82F6" />
-                                                <stop offset="100%" stopColor="#2563EB" />
-                                            </linearGradient>
-                                        </defs>
-                                        <rect width="512" height="512" rx="80" fill="url(#videoGradient)" />
-                                        <polygon points="200,150 200,362 362,256" fill="#FFFFFF" />
-                                        <circle cx="256" cy="256" r="200" fill="none" stroke="#FFFFFF" strokeWidth="8" opacity="0.3" />
-                                    </svg>
-                                </div>
-                                <div className='ls-text'>
-                                    Video Player
-                                </div>
-                            </div>
-                        </Link>
-                    </li>
-                    <li>
-                        <Link to="/downloads/" className='text-decoration-none'>
-                            <div className='ls-nav-menu-item'>
-                                <div className='ls-icon lsi-downloads'>
-
-                                </div>
-                                <div className='ls-text'>
-                                    Saved Videos
-                                </div>
-                            </div>
-                        </Link>
-                    </li>
-                    <li>
-                        <Link to="/downloads/" className='text-decoration-none'>
-                            <div className='ls-nav-menu-item'>
-                                <div className='ls-icon lsi-group'>
-
-                                </div>
-                                <div className='ls-text'>
-                                    Group
-                                </div>
-                            </div>
-                        </Link>
-                    </li>
-                    <li>
-                        <Link to="/watch/" className='text-decoration-none'>
-                            <div className='ls-nav-menu-item'>
-                                <div className='ls-icon lsi-watch'>
-
-                                </div>
-                                <div className='ls-text'>
-                                    Watch
-                                </div>
-                            </div>
-                        </Link>
-                    </li>
-                    <li>
-                        <Link to="/marketplace/" className='text-decoration-none'>
-                            <div className='ls-nav-menu-item'>
-                                <div className='ls-icon lsi-mp'>
-
-                                </div>
-                                <div className='ls-text'>
-                                    Marketplace
-                                </div>
-                            </div>
-                        </Link>
-                    </li>
-                    <li>
-                        <div className='ls-nav-menu-item'>
-                            <div className='ls-icon lsi-memo'>
-
-                            </div>
-                            <div className='ls-text'>
-                                Memories
-                            </div>
-                        </div>
-                    </li>
-                    <li>
-                        <div className='ls-nav-menu-item'>
-                            <div className='lsi-star'>
-
-                            </div>
-                            <div className='ls-text'>
-                                Favourites
-                            </div>
-                        </div>
-                    </li>
-                    <li>
-                        <div className='ls-nav-menu-item'>
-                            <div className='ls-icon lsi-pages'>
-
-                            </div>
-                            <div className='ls-text'>
-                                Pages
-                            </div>
-                        </div>
-                    </li>
-                    <li>
-                        <div className='ls-nav-menu-item'>
-                            <div className='ls-icon lsi-saved'>
-
-                            </div>
-                            <div className='ls-text'>
-                                Saved
-                            </div>
-                        </div>
-                    </li>
-                    <li>
-                        <Link to="/menu/" className='text-decoration-none'>
-                            <div className='ls-nav-menu-item'>
-                                <div className='ls-icon lsi-menu'>
-
-                                </div>
-                                <div className='ls-text'>
-                                    Menu
-                                </div>
-                            </div>
-                        </Link>
-                    </li>
-
-
-
-
-                    <li>
-                        <div className='ls-nav-menu-item'>
-                            <div className='lsi-card'>
-
-                            </div>
-                            <div className='ls-text'>
-                                Orders & Payments
-                            </div>
-                        </div>
-                    </li>
-
+                    {SIDEBAR_MENU_ITEMS.map((item) => (
+                        <li key={item.id}>
+                            {renderMenuItem(item)}
+                        </li>
+                    ))}
                 </ul>
             </div>
         </Fragment>

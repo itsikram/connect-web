@@ -1,8 +1,12 @@
 .app-menu-modal {
   display: flex;
   flex-direction: column;
+  width: 100%;
+  max-width: 100%;
   height: 100%;
   min-height: 0;
+  box-sizing: border-box;
+  overflow: hidden;
   color: #e4e6eb;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
@@ -15,6 +19,9 @@
   padding: 16px 18px 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .app-menu-modal-title {
@@ -54,10 +61,29 @@
 .app-menu-modal-body {
   flex: 1;
   min-height: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
   padding: 16px 14px 24px;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+}
+
+.app-menu-modal-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.app-menu-modal-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-menu-modal-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
 }
 
 .app-menu-profile-card {
@@ -116,6 +142,9 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 @media (min-width: 480px) {
@@ -131,7 +160,7 @@
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
-  padding: 14px 8px 12px;
+  padding: 14px 6px 12px;
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.03);
@@ -140,6 +169,9 @@
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
   min-height: 96px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   text-align: center;
 }
 
@@ -193,15 +225,62 @@
 }
 
 /* Fullscreen mobile shell */
+#app-menu-modal.fullscreen-modal,
+.fullscreen-modal#app-menu-modal {
+  inset: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: auto !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  transform: none !important;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
 .fullscreen-modal .app-menu-modal {
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+.fullscreen-modal .app-menu-modal-header {
+  padding-left: max(14px, env(safe-area-inset-left, 0px));
+  padding-right: max(14px, env(safe-area-inset-right, 0px));
 }
 
 .fullscreen-modal .app-menu-modal-body {
+  padding-left: max(12px, env(safe-area-inset-left, 0px));
+  padding-right: max(12px, env(safe-area-inset-right, 0px));
   padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
 }
 
+@media (max-width: 768px) {
+  .app-menu-modal-title {
+    font-size: 1.05rem;
+  }
+
+  .app-menu-modal-subtitle {
+    font-size: 0.75rem;
+  }
+
+  .app-menu-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .app-menu-icon-wrap {
+    width: 42px;
+    height: 42px;
+  }
+
+  .app-menu-grid-label {
+    font-size: 0.68rem;
+  }
+}
+
+.header-app-menu-container .header-mm-button,
 .header-mobile-menu-button-container .header-mm-button {
   display: flex;
   align-items: center;
@@ -212,15 +291,19 @@
   cursor: pointer;
 }
 
+.header-app-menu-container .header-mm-button i,
 .header-mobile-menu-button-container .header-mm-button i {
   font-size: 18px;
 }
 
+.header-app-menu-container .header-mm-button.active,
+.header-app-menu-container .header-mm-button:hover,
 .header-mobile-menu-button-container .header-mm-button.active,
 .header-mobile-menu-button-container .header-mm-button:hover {
   color: #29B1A9;
 }
 
+.header-app-menu-container:has(.header-mm-button.active),
 .header-mobile-menu-button-container:has(.header-mm-button.active) {
   background-color: rgba(41, 177, 169, 0.15);
   border-color: rgba(41, 177, 169, 0.35);

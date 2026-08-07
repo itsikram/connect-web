@@ -1,5 +1,6 @@
 import config from '../config/config.json';
 import ringtones from '../config/ringtones.json';
+import { normalizeRingtoneId } from './normalizeRingtoneId';
 
 /**
  * Audio Preloader Service
@@ -187,12 +188,11 @@ class AudioPreloader {
      */
     getRingtone(ringtoneId = null) {
         let src = config?.callingBeep; // Default fallback
+        const normalizedId = normalizeRingtoneId(ringtoneId);
 
-        if (ringtoneId) {
-            const ringtone = ringtones.find(r => r.id === ringtoneId);
-            if (ringtone?.src) {
-                src = ringtone.src;
-            }
+        const ringtone = ringtones.find(r => r.id === normalizedId);
+        if (ringtone?.src) {
+            src = ringtone.src;
         }
 
         if (!src) {

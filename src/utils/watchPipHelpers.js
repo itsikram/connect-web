@@ -8,19 +8,31 @@ export const shouldAutoWatchPip = () => {
 };
 
 export const buildPipPayloadFromVideo = (videoEl, meta = {}) => {
-  if (!videoEl || !meta.watchId || !meta.videoUrl) return null;
-  // Only pip if something was actually playing or has progress
+  if (!videoEl || !meta.videoUrl) return null;
+  const watchId = meta.watchId || null;
+  const libraryVideoId = meta.libraryVideoId || meta.pipId || null;
+  if (!watchId && !libraryVideoId) return null;
+
   const hasProgress = (videoEl.currentTime || 0) > 0.2;
   const playing = !videoEl.paused && !videoEl.ended;
   if (!playing && !hasProgress) return null;
 
   return {
-    watchId: meta.watchId,
+    watchId,
+    libraryVideoId,
+    source: meta.source || (watchId ? "watch" : "library"),
     videoUrl: meta.videoUrl,
     currentTime: videoEl.currentTime || 0,
     playing,
     muted: !!videoEl.muted,
-    title: meta.title || "Watch",
+    title: meta.title || (watchId ? "Watch" : "Video"),
     thumbnail: meta.thumbnail || "",
   };
 };
+
+export const buildLibraryPipPayloadFromVideo = (videoEl, meta = {}) =>
+  buildPipPayloadFromVideo(videoEl, {
+    ...meta,
+    source: "library",
+    libraryVideoId: meta.libraryVideoId || meta.pipId,
+  });

@@ -2,6 +2,7 @@ import React from 'react';
 
 export const GameHeader = ({
     gameStarted,
+    playWithComputer,
     gameId,
     savedGameStateRef,
     isDebug,
@@ -27,7 +28,9 @@ export const GameHeader = ({
                 <div>
                     <div className="ludo-header__title">Ludo Classic</div>
                     <div className="ludo-header__subtitle">
-                        {gameStarted ? (gameId ? 'Online match' : 'Local match') : 'Ready to play'}
+                        {gameStarted
+                            ? (gameId ? 'Online match' : (playWithComputer ? 'Vs computer' : 'Local match'))
+                            : 'Ready to play'}
                     </div>
                 </div>
             </div>

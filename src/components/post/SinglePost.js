@@ -316,30 +316,23 @@ const SinglePost = () => {
     let [newCaption, setNewCaption] = useState('')
 
     useEffect(() => {
-        if (postData.caption) {
-            setNewCaption(postData.caption)
+        if (postData && postData.caption !== undefined) {
+            setNewCaption(postData.caption || '')
         }
-    }, [postData.caption])
+    }, [postData?._id])
 
-    let handleEditCaption = useCallback(async (e) => {
-        e.preventDefault();
+    const handleEditCaption = useCallback((e) => {
         setNewCaption(e.target.value)
-        return setPostData(postData => {
-            return {
-                ...postData,
-                caption: e.target.value
-            }
-        })
-    },[])
+    }, [])
 
-    let updateCaption = useCallback(async (e) => {
-        let res = await api.post('/post/update', { postId, caption: postData.caption })
+    const updateCaption = useCallback(async () => {
+        const res = await api.post('/post/update', { postId, caption: newCaption })
 
-        if (res.status == 200) {
+        if (res.status === 200) {
+            setPostData((prev) => ({ ...prev, caption: newCaption }))
             showSuccessToast('Caption Updated')
         }
-
-    },[])
+    }, [postId, newCaption])
     let PostContent = () => {
         switch (postData.type) {
             case 'share':
@@ -670,7 +663,7 @@ const SinglePost = () => {
                                 isAuth && isEditMode ? <>
                                     <div className='input-group'>
                                         <input
-                                            onChange={handleEditCaption.bind(this)}
+                                            onChange={handleEditCaption}
                                             className='caption-editor form-control mb-2'
                                             placeholder='Enter Your Caption'
                                             value={newCaption}
@@ -879,7 +872,7 @@ const SinglePost = () => {
                     <div className="sp-layout">
                         <div className="sp-main-col">
                             <section className="sp-panel sp-post-panel" id="post-container">
-                                <PostContent />
+                                {PostContent()}
                             </section>
                         </div>
 

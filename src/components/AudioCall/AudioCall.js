@@ -5,6 +5,7 @@ import AgoraRTC from 'agora-rtc-sdk-ng';
 import { useSelector } from 'react-redux';
 import useIsMobile from '../../utils/useIsMobile';
 import ringtones from '../../config/ringtones.json';
+import { normalizeRingtoneId } from '../../utils/normalizeRingtoneId';
 import api from '../../api/api';
 import { useCallMinimize } from '../../contexts/CallMinimizeContext';
 import config from '../../config/config.json';
@@ -391,7 +392,7 @@ const AudioCall = ({ myId }) => {
     useEffect(() => {
         if (ringtoneAudio?.current && receivingCall && incomingCall) {
             // Use user's ringtone preference or fallback to default
-            const ringtoneId = mySettings.ringtone || null;
+            const ringtoneId = normalizeRingtoneId(mySettings.ringtone);
             
             // Get preloaded ringtone audio
             const preloadedAudio = audioPreloader.getRingtone(ringtoneId);
@@ -427,9 +428,7 @@ const AudioCall = ({ myId }) => {
                 }
             } else {
                 // Fallback to legacy method
-                const ringtone = ringtoneId 
-                    ? ringtones.find(r => r.id === ringtoneId)
-                    : null;
+                const ringtone = ringtones.find(r => r.id === ringtoneId);
                 const toneSrc = ringtone?.src || config?.callingBeep || '';
                 
                 if (toneSrc) {

@@ -123,6 +123,14 @@ const Home = () => {
     }, [])
 
     useEffect(() => {
+        const handleStoryCreated = () => {
+            fetchStories()
+        }
+        window.addEventListener('story:created', handleStoryCreated)
+        return () => window.removeEventListener('story:created', handleStoryCreated)
+    }, [])
+
+    useEffect(() => {
         if (newsFeedPosts.length > 0) {
             const pageNumber = Math.floor(newsFeedPosts.length / 3)
             setPageNumber(pageNumber)

@@ -1,59 +1,53 @@
-import { SET_MODE_SHARE,SET_NOTIFICATION,UPDATE_OPTION,LOAD_SETTINGS } from "../constants/settingConsts";
-import {CLEAR_ALL_STATE} from '../constants/authConsts';
-let initialState = {
-    isShareEmotion: false,
-    notification: true,
-    showTyping: true,
+import { SET_MODE_SHARE, SET_NOTIFICATION, UPDATE_OPTION, LOAD_SETTINGS } from "../constants/settingConsts";
+import { CLEAR_ALL_STATE } from '../constants/authConsts';
 
-}
+const initialState = {
+    isShareEmotion: false,
+    isShareLocation: true,
+    showIsTyping: true,
+    ringtone: 1,
+    themeMode: 'dark',
+    postVisibility: 'public',
+    friendRequestVisibility: 'public',
+    timelinePostVisibility: 'public',
+    friendRequestReceived: true,
+    friendRequestAccepted: true,
+    newMessageReceived: true,
+    newFriendPost: true,
+    newFriendStory: true,
+    newFriendWatch: true,
+    friendRequestReceivedEmail: false,
+    friendRequestAcceptedEmail: false,
+    newMessageReceivedEmail: false,
+    newFriendPostEmail: false,
+    newFriendStoryEmail: false,
+    newFriendWatchEmail: false,
+};
+
 const settingReducer = (state = initialState, action) => {
     switch (action.type) {
         case SET_MODE_SHARE:
             return {
-                isShareEmotion: action.payload
+                ...state,
+                isShareEmotion: action.payload,
             };
-            break;
 
         case SET_NOTIFICATION:
-            // let newNotification = action.payload
-            // let isNotiExits = state.filter(noti => noti._id === action.payload._id )
-            // if(isNotiExits.length > 0) return state;
-            // return [newNotification,
-            //     ...state,
-                
-            // ];
-            break;
-
         case UPDATE_OPTION:
-            // let newNotifications = action.payload
-            // let isReset = action.reset || false
+            return state;
 
-
-            // if(isReset) {
-            //     return [
-            //         ...newNotifications
-            //     ];
-            // }else {
-            //     return [
-
-            //         ...state,
-            //         ...newNotifications
-            //     ];
-            // }
-
-            break;
-
-            case LOAD_SETTINGS:
-
-                return action.payload
-            break
+        case LOAD_SETTINGS:
+            return {
+                ...initialState,
+                ...action.payload,
+            };
 
         case CLEAR_ALL_STATE:
-            return initialState
+            return initialState;
 
         default:
             return state;
     }
-}
+};
 
 export default settingReducer;

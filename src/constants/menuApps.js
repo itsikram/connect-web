@@ -1,0 +1,15 @@
+/** Apps shown on the /menu page and in header / sidebar launchers. */
+
+export const MENU_APPS = [
+    { key: 'ludo', name: 'Ludo Game', desc: 'Play the classic board game', icon: '🎲', faIcon: 'fa-dice', href: '/ludo-game', colorA: '#F43F5E', colorB: '#F59E0B' },
+    { key: 'chess', name: 'Chess Game', desc: 'Play the classic strategy game', icon: '♟️', faIcon: 'fa-chess', href: '/chess-game', colorA: '#8B5CF6', colorB: '#6366F1' },
+    { key: 'video-player', name: 'Video Player', desc: 'Play video songs in a continuous loop', icon: '🎬', faIcon: 'fa-play-circle', href: '/video-player', colorA: '#3B82F6', colorB: '#2563EB' },
+    { key: 'yt-download', name: 'YouTube Downloader', desc: 'Download YouTube videos in any quality', icon: '⬇️', faIcon: 'fa-download', href: '/yt-download', colorA: '#FF0000', colorB: '#DC2626' },
+    { key: 'notes', name: 'Notes', desc: 'Quickly capture ideas and thoughts', icon: '📝', faIcon: 'fa-sticky-note', href: '/notes', colorA: '#6366F1', colorB: '#8B5CF6' },
+    { key: 'tasks', name: 'Tasks', desc: 'Plan your day and track progress', icon: '✅', faIcon: 'fa-tasks', href: '/tasks', colorA: '#10B981', colorB: '#34D399' },
+    { key: 'timer', name: 'Focus Timer', desc: 'Stay in flow with timed sessions', icon: '⏱️', faIcon: 'fa-clock', href: '/timer', colorA: '#F59E0B', colorB: '#F97316' },
+    { key: 'flashcards', name: 'Flashcards', desc: 'Memorize faster with spaced repetition', icon: '🧠', faIcon: 'fa-clone', href: '/flashcards', colorA: '#3B82F6', colorB: '#06B6D4' },
+    { key: 'calendar', name: 'Calendar', desc: 'See what\'s ahead at a glance', icon: '📅', faIcon: 'fa-calendar', href: '/calendar', colorA: '#EF4444', colorB: '#F97316' },
+    { key: 'habits', name: 'Habits', desc: 'Build consistent study routines', icon: '📈', faIcon: 'fa-chart-line', href: '/habits', colorA: '#22C55E', colorB: '#84CC16' },
+    { key: 'health', name: 'Health & Fitness', desc: 'Fitness tips, nutrition advice & wellness guides', icon: '💪', faIcon: 'fa-heartbeat', href: '/health', colorA: '#059669', colorB: '#10B981' },
+];

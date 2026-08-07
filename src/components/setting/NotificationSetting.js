@@ -1,120 +1,154 @@
-import React, { useCallback } from 'react';
-
+import React, { useCallback, useEffect, useState } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
 import api from '../../api/api';
+import { loadSettings } from '../../services/actions/settingsActions';
+import { showSuccessToast, showErrorToast } from '../../utils/toastUtils';
+
+const NOTIFICATION_DEFAULTS = {
+    friendRequestReceived: true,
+    friendRequestAccepted: true,
+    newMessageReceived: true,
+    newFriendPost: true,
+    newFriendStory: true,
+    newFriendWatch: true,
+    friendRequestReceivedEmail: false,
+    friendRequestAcceptedEmail: false,
+    newMessageReceivedEmail: false,
+    newFriendPostEmail: false,
+    newFriendStoryEmail: false,
+    newFriendWatchEmail: false,
+};
+
+const PUSH_TOGGLES = [
+    { key: 'friendRequestReceived', label: 'Friend Request Received', help: 'Get notified when someone sends you a friend request' },
+    { key: 'friendRequestAccepted', label: 'Friend Request Accepted', help: 'Get notified when someone accepts your friend request' },
+    { key: 'newMessageReceived', label: 'New Message Received', help: 'Get notified when you receive a new message' },
+    { key: 'newFriendPost', label: "New Friend's Post", help: 'Get notified when your friends create new posts' },
+    { key: 'newFriendStory', label: "New Friend's Story", help: 'Get notified when your friends share new stories' },
+    { key: 'newFriendWatch', label: "New Friend's Watch", help: 'Get notified when your friends share new watch content' },
+];
+
+const EMAIL_TOGGLES = [
+    { key: 'friendRequestReceivedEmail', label: 'Friend Request Received', help: 'Get email notifications for new friend requests' },
+    { key: 'friendRequestAcceptedEmail', label: 'Friend Request Accepted', help: 'Get email notifications when friend requests are accepted' },
+    { key: 'newMessageReceivedEmail', label: 'New Message Received', help: 'Get email notifications for new messages' },
+    { key: 'newFriendPostEmail', label: "New Friend's Post", help: 'Get email notifications for new friend posts' },
+    { key: 'newFriendStoryEmail', label: "New Friend's Story", help: 'Get email notifications for new friend stories' },
+    { key: 'newFriendWatchEmail', label: "New Friend's Watch", help: 'Get email notifications for new friend watch content' },
+];
 
 const NotificationSetting = () => {
+    const dispatch = useDispatch();
+    const reduxSettings = useSelector((state) => state.setting);
+    const [notificationSettings, setNotificationSettings] = useState(NOTIFICATION_DEFAULTS);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isUnregistering, setIsUnregistering] = useState(false);
+
+    useEffect(() => {
+        setNotificationSettings({
+            friendRequestReceived: reduxSettings.friendRequestReceived ?? true,
+            friendRequestAccepted: reduxSettings.friendRequestAccepted ?? true,
+            newMessageReceived: reduxSettings.newMessageReceived ?? true,
+            newFriendPost: reduxSettings.newFriendPost ?? true,
+            newFriendStory: reduxSettings.newFriendStory ?? true,
+            newFriendWatch: reduxSettings.newFriendWatch ?? true,
+            friendRequestReceivedEmail: reduxSettings.friendRequestReceivedEmail ?? false,
+            friendRequestAcceptedEmail: reduxSettings.friendRequestAcceptedEmail ?? false,
+            newMessageReceivedEmail: reduxSettings.newMessageReceivedEmail ?? false,
+            newFriendPostEmail: reduxSettings.newFriendPostEmail ?? false,
+            newFriendStoryEmail: reduxSettings.newFriendStoryEmail ?? false,
+            newFriendWatchEmail: reduxSettings.newFriendWatchEmail ?? false,
+        });
+    }, [reduxSettings]);
+
+    const handleToggle = (key) => {
+        setNotificationSettings((prev) => ({
+            ...prev,
+            [key]: !prev[key],
+        }));
+    };
+
+    const handleSave = async (e) => {
+        e.preventDefault();
+        setIsSaving(true);
+        try {
+            const res = await api.post('/setting/update', notificationSettings);
+            if (res.status === 200) {
+                dispatch(loadSettings(res.data));
+                showSuccessToast('Notification settings saved');
+            }
+        } catch (error) {
+            console.error('Error saving notification settings:', error);
+            showErrorToast('Failed to save notification settings');
+        } finally {
+            setIsSaving(false);
+        }
+    };
 
     const handleUnregisterAllDevices = useCallback(async () => {
-        const confirmed = window.confirm('Unregister all browsers and devices for notifications? This will unregister all other devices except the current one.');
+        const confirmed = window.confirm(
+            'Unregister all browsers and devices for notifications? This will unregister all other devices except the current one.'
+        );
         if (!confirmed) return;
+
+        setIsUnregistering(true);
         try {
-            // Unregister all browsers
             await api.post('/web-notification/unregister-all-browsers');
-            // Unregister all device tokens (mobile app devices)
-            // Pass empty currentToken to unregister all device tokens
             await api.post('/notification/token/unregister-all-others', { currentToken: '' });
-            alert('All other devices have been unregistered for notifications.');
+            showSuccessToast('All other devices have been unregistered for notifications.');
         } catch (error) {
             console.error('Failed to unregister devices', error);
-            alert('Failed to unregister devices. Please try again.');
+            showErrorToast('Failed to unregister devices. Please try again.');
+        } finally {
+            setIsUnregistering(false);
         }
-    }, [])
-    return (
-        <>
-            <div className='message-setting'>
-                <div className='setting-field-container'>
-                    <h3>Notification Settings</h3>
-                    <p className="setting-section-desc">Choose which alerts you get on Connect and by email.</p>
-                    <form>
-                        <div className="form-check form-switch my-3">
-                            <input type="checkbox" className="form-check-input" id="friendRewReceived" />
-                            <label className="form-check-label" for="friendRewReceived">Friends Request Received</label>
-                            <br />
-                            <small id="friendRewReceived" className="form-text text-muted">We Will sent you notification for each new Friends Request Received</small>
-                        </div>
-                        <div className="form-check form-switch my-3">
-                            <input type="checkbox" className="form-check-input" id="friendRewAccepted" />
-                            <label className="form-check-label" for="friendRewAccepted">Friends Request Accpeted</label>
-                            <br />
-                            <small id="ifriendRewAcceptedHelp" className="form-text text-muted">We Will sent you notification for each new Friends Request Accpeted</small>
-                        </div>
-                        <div className="form-check form-switch my-3">
-                            <input type="checkbox" className="form-check-input" id="newMessageReceived" />
-                            <label className="form-check-label" for="newMessageReceived">New Message Received</label>
-                            <br />
-                            <small id="isNotificationHelp" className="form-text text-muted">We Will sent you notification for each Message Received</small>
-                        </div>
-                        <div className="form-check form-switch my-3">
-                            <input type="checkbox" className="form-check-input" id="newFriendPost" />
-                            <label className="form-check-label" for="newFriendPost">New Frieds's Post</label>
-                            <br />
-                            <small id="isNotificationHelp" className="form-text text-muted">We Will sent you notification for each Frieds's new Post</small>
-                        </div>
-                        <div className="form-check form-switch my-3">
-                            <input type="checkbox" className="form-check-input" id="newFriendStory" />
-                            <label className="form-check-label" for="newFriendStory">New Frieds's Story</label>
-                            <br />
-                            <small id="isNotificationHelp" className="form-text text-muted">We Will sent you notification for each Frieds's new Story</small>
-                        </div>
-                        <div className="form-check form-switch my-3">
-                            <input type="checkbox" className="form-check-input" id="newFriendWatch" />
-                            <label className="form-check-label" for="newFriendWatch">New Frieds's Watch</label>
-                            <br />
-                            <small id="newFriendWatchHelp" className="form-text text-muted">We Will sent you notification for each Frieds's new Watch</small>
-                        </div>
+    }, []);
 
-
-                        <button type="button" className="btn btn-danger" onClick={(e) => { e.preventDefault(); handleUnregisterAllDevices(); }}>
-                            Unregister all browsers & devices
-                        </button>
-
-                        <hr />
-
-                        <h4 className='text-center'>Email Notifications</h4>
-
-                        <div className="form-check form-switch my-3">
-                            <input type="checkbox" className="form-check-input" id="friendRewReceivedEmail" />
-                            <label className="form-check-label" for="friendRewReceivedEmail">Friends Request Received</label>
-                            <br />
-                            <small id="friendRewReceivedEmail" className="form-text text-muted">We Will sent you notification for each new Friends Request Received</small>
-                        </div>
-                        <div className="form-check form-switch my-3">
-                            <input type="checkbox" className="form-check-input" id="friendRewAcceptedEmail" />
-                            <label className="form-check-label" for="friendRewAcceptedEmail">Friends Request Accpeted</label>
-                            <br />
-                            <small id="ifriendRewAcceptedEmailHelp" className="form-text text-muted">We Will sent you notification for each new Friends Request Accpeted</small>
-                        </div>
-                        <div className="form-check form-switch my-3">
-                            <input type="checkbox" className="form-check-input" id="newMessageReceivedEmail" />
-                            <label className="form-check-label" for="newMessageReceivedEmail">New Message Received</label>
-                            <br />
-                            <small id="isNotificationEmailHelp" className="form-text text-muted">We Will sent you notification for each Message Received</small>
-                        </div>
-                        <div className="form-check form-switch my-3">
-                            <input type="checkbox" className="form-check-input" id="newFriendPostEmail" />
-                            <label className="form-check-label" for="newFriendPostEmail">New Frieds's Post</label>
-                            <br />
-                            <small id="newFriendPostEmailHelp" className="form-text text-muted">We Will sent you notification for each Frieds's new Post</small>
-                        </div>
-                        <div className="form-check form-switch my-3">
-                            <input type="checkbox" className="form-check-input" id="newFriendStoryEmail" />
-                            <label className="form-check-label" for="newFriendStoryEmail">New Frieds's Story</label>
-                            <br />
-                            <small id="isNotificationHelp" className="form-text text-muted">We Will sent you notification for each Frieds's new Story</small>
-                        </div>
-                        <div className="form-check form-switch my-3">
-                            <input type="checkbox" className="form-check-input" id="newFriendWatchEmail" />
-                            <label className="form-check-label" for="newFriendWatchEmail">New Frieds's Watch</label>
-                            <br />
-                            <small id="newFriendWatchHelp" className="form-text text-muted">We Will sent you notification for each Frieds's new Watch</small>
-                        </div>
-
-                        <button type="submit" className="btn btn-primary">Save Settings</button>
-                    </form>
-                </div>
-            </div>
-        </>
+    const renderToggle = ({ key, label, help }) => (
+        <div className="form-check form-switch my-3" key={key}>
+            <input
+                type="checkbox"
+                className="form-check-input"
+                id={key}
+                checked={Boolean(notificationSettings[key])}
+                onChange={() => handleToggle(key)}
+            />
+            <label className="form-check-label" htmlFor={key}>{label}</label>
+            <br />
+            <small className="form-text text-muted">{help}</small>
+        </div>
     );
-}
+
+    return (
+        <div className="message-setting">
+            <div className="setting-field-container">
+                <h3>Notification Settings</h3>
+                <p className="setting-section-desc">Choose which alerts you get on Connect and by email.</p>
+                <form onSubmit={handleSave}>
+                    <h4 className="mb-2">Push Notifications</h4>
+                    {PUSH_TOGGLES.map(renderToggle)}
+
+                    <button
+                        type="button"
+                        className="btn btn-danger mb-3"
+                        onClick={handleUnregisterAllDevices}
+                        disabled={isUnregistering}
+                    >
+                        {isUnregistering ? 'Unregistering…' : 'Unregister all browsers & devices'}
+                    </button>
+
+                    <hr />
+
+                    <h4 className="text-center">Email Notifications</h4>
+                    {EMAIL_TOGGLES.map(renderToggle)}
+
+                    <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                        {isSaving ? 'Saving…' : 'Save Settings'}
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
+};
 
 export default NotificationSetting;

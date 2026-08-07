@@ -26,13 +26,21 @@ export const WatchPipProvider = ({ children }) => {
   // pip: { watchId, videoUrl, currentTime, playing, title, thumbnail, muted }
 
   const startPip = useCallback((data) => {
-    if (!data?.videoUrl || !data?.watchId) return;
+    if (!data?.videoUrl) return;
+    const watchId = data.watchId || null;
+    const libraryVideoId = data.libraryVideoId || data.pipId || null;
+    if (!watchId && !libraryVideoId) return;
+
+    const source = data.source || (watchId ? "watch" : "library");
+
     setPip({
-      watchId: data.watchId,
+      watchId,
+      libraryVideoId,
+      source,
       videoUrl: data.videoUrl,
       currentTime: Number(data.currentTime) || 0,
       playing: data.playing !== false,
-      title: data.title || "Watch",
+      title: data.title || (source === "library" ? "Video" : "Watch"),
       thumbnail: data.thumbnail || "",
       muted: !!data.muted,
     });

@@ -1,73 +1,73 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { useSelector,useDispatch } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import api from '../../api/api';
 import { loadSettings } from '../../services/actions/settingsActions';
-
+import { applyThemeMode } from '../../utils/applyThemeMode';
+import { showSuccessToast, showErrorToast } from '../../utils/toastUtils';
 
 const PreferenceSetting = () => {
+    const oldSettings = useSelector((state) => state.setting);
+    const dispatch = useDispatch();
+    const [settings, setSettings] = useState({ themeMode: oldSettings.themeMode || 'dark' });
+    const [isSaving, setIsSaving] = useState(false);
 
-    let oldSettings = useSelector(state => state.setting)
-    let dispatch = useDispatch()
-    let [settings, setSettings] = useState({themeMode: oldSettings.themeMode || 'dark'})
-    let [isSaving, setIsSaving] = useState(false)
+    useEffect(() => {
+        if (oldSettings?.themeMode) {
+            setSettings({ themeMode: oldSettings.themeMode });
+        }
+    }, [oldSettings?.themeMode]);
 
+    const handleInputChange = useCallback((e) => {
+        const { name, value } = e.target;
+        setSettings((prev) => ({ ...prev, [name]: value }));
+    }, []);
 
-    let handleInputChange = useCallback(async (e) => {
-        let name = e.target.name
-        let value = e.target.value
-        setSettings(settings => {
-            return {
-                ...settings,
-                [name] : value
-            }
-        })
-
-    },[settings])
-
-    // useEffect(() => {
-    //     if(oldSettings.themeMode) {
-    //         return alert(oldSettings.themeMode)
-    //     setSettings()
-
-    //     }
-    // }, [oldSettings])
-
-    let handleSettingSubmitBtnClick = useCallback(async (e) => {
+    const handleSettingSubmitBtnClick = useCallback(async (e) => {
         e.preventDefault();
-        setIsSaving(true)
+        setIsSaving(true);
         try {
-            let updateSetting = await api.post('setting/update', { ...settings })
-            if (updateSetting.status == 200) {
-                dispatch(loadSettings(updateSetting.data))
+            const updateSetting = await api.post('setting/update', { ...settings });
+            if (updateSetting.status === 200) {
+                dispatch(loadSettings(updateSetting.data));
+                applyThemeMode(settings.themeMode);
+                showSuccessToast('Preference settings saved');
             }
         } catch (error) {
-            console.log('Error updating settings:', error)
+            console.error('Error updating settings:', error);
+            showErrorToast('Failed to save preference settings');
         } finally {
-            setIsSaving(false)
+            setIsSaving(false);
         }
-    },[])
-    return (
-        <>
-            <div className='profile-setting'>
-                <div className='setting-field-container'>
-                    <h3>Preference Settings</h3>
-                    <p className="setting-section-desc">Customize how Connect looks and feels for you.</p>
-                    <form>
-                        <div className="form-group mb-2">
-                            <label for="themeMode">Theme Mode</label>
-                            <select value={settings.themeMode || 'dark'} onChange={handleInputChange.bind(this)} className='form-control' name='themeMode' id='themeMode'>
-                                <option value='default'>Default</option>
-                                <option value='dark'>Dark</option>
-                                <option value='light'>Light</option>
-                            </select>
-                        </div>
+    }, [settings, dispatch]);
 
-                        <button onClick={handleSettingSubmitBtnClick.bind(this)} type="submit" className="btn btn-primary">Save Settings</button>
-                    </form>
-                </div>
+    return (
+        <div className="profile-setting">
+            <div className="setting-field-container">
+                <h3>Preference Settings</h3>
+                <p className="setting-section-desc">Customize how Connect looks and feels for you.</p>
+                <form onSubmit={handleSettingSubmitBtnClick}>
+                    <div className="form-group mb-2">
+                        <label htmlFor="themeMode">Theme Mode</label>
+                        <select
+                            value={settings.themeMode || 'dark'}
+                            onChange={handleInputChange}
+                            className="form-control"
+                            name="themeMode"
+                            id="themeMode"
+                        >
+                            <option value="default">Default</option>
+                            <option value="dark">Dark</option>
+                            <option value="light">Light</option>
+                        </select>
+                    </div>
+
+                    <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                        {isSaving ? 'Saving…' : 'Save Settings'}
+                    </button>
+                </form>
             </div>
-        </>
+        </div>
     );
-}
+};
 
 export default PreferenceSetting;

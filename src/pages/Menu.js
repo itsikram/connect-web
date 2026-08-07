@@ -1,19 +1,6 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
-
-const APPS = [
-    { key: 'ludo', name: 'Ludo Game', desc: 'Play the classic board game', icon: '🎲', colorA: '#F43F5E', colorB: '#F59E0B', href: '/ludo-game' },
-    { key: 'chess', name: 'Chess Game', desc: 'Play the classic strategy game', icon: '♟️', colorA: '#8B5CF6', colorB: '#6366F1', href: '/chess-game' },
-    { key: 'video-player', name: 'Video Player', desc: 'Play video songs in a continuous loop', icon: '🎬', colorA: '#3B82F6', colorB: '#2563EB', href: '/video-player' },
-    { key: 'yt-download', name: 'YouTube Downloader', desc: 'Download YouTube videos in any quality', icon: '⬇️', colorA: '#FF0000', colorB: '#DC2626', href: '/yt-download' },
-    { key: 'notes', name: 'Notes', desc: 'Quickly capture ideas and thoughts', icon: '📝', colorA: '#6366F1', colorB: '#8B5CF6', href: '/notes' },
-    { key: 'tasks', name: 'Tasks', desc: 'Plan your day and track progress', icon: '✅', colorA: '#10B981', colorB: '#34D399', href: '/tasks' },
-    { key: 'timer', name: 'Focus Timer', desc: 'Stay in flow with timed sessions', icon: '⏱️', colorA: '#F59E0B', colorB: '#F97316', href: '/timer' },
-    { key: 'flashcards', name: 'Flashcards', desc: 'Memorize faster with spaced repetition', icon: '🧠', colorA: '#3B82F6', colorB: '#06B6D4', href: '/flashcards' },
-    { key: 'calendar', name: 'Calendar', desc: 'See what\'s ahead at a glance', icon: '📅', colorA: '#EF4444', colorB: '#F97316', href: '/calendar' },
-    { key: 'habits', name: 'Habits', desc: 'Build consistent study routines', icon: '📈', colorA: '#22C55E', colorB: '#84CC16', href: '/habits' }
-]
-
+import { MENU_APPS } from '../constants/menuApps'
 
 const pageStyle = {
     minHeight: '100vh',
@@ -110,7 +97,7 @@ const Menu = () => {
                 </div>
 
                 <div style={gridStyle}>
-                    {APPS.map((app) => (
+                    {MENU_APPS.map((app) => (
                         <Link
                             key={app.key}
                             to={app.href || '#'}

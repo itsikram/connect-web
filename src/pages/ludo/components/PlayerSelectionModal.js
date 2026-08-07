@@ -5,6 +5,7 @@ export const PlayerSelectionModal = ({
     show,
     selectedPlayerCount,
     onlineMode,
+    playWithComputer,
     friendSearchQuery,
     loadingSearch,
     searchResults,
@@ -19,6 +20,7 @@ export const PlayerSelectionModal = ({
     socketRef,
     onPlayerCountChange,
     onOnlineModeToggle,
+    onPlayWithComputerToggle,
     onFriendSearchChange,
     onFriendSelect,
     onInviteFriend,
@@ -75,11 +77,28 @@ export const PlayerSelectionModal = ({
 
                 <div style={{ marginTop: 8, marginBottom: 4 }}>
                     <div className="ludo-toggle-row">
+                        <div className="ludo-section-title" style={{ marginBottom: 0 }}>Play with Computer</div>
+                        <button
+                            type="button"
+                            className={`ludo-btn ludo-btn--sm ${playWithComputer ? 'ludo-btn--primary' : 'ludo-btn--ghost'}`}
+                            onClick={() => { onPlaySound('buttonClick'); onPlayWithComputerToggle(); }}
+                        >
+                            {playWithComputer ? 'On' : 'Off'}
+                        </button>
+                    </div>
+                    {playWithComputer && (
+                        <div className="ludo-muted" style={{ marginBottom: 8 }}>
+                            Empty seats are filled by CPU opponents. You play as the first seat.
+                        </div>
+                    )}
+
+                    <div className="ludo-toggle-row">
                         <div className="ludo-section-title" style={{ marginBottom: 0 }}>Play Online with Friends</div>
                         <button
                             type="button"
                             className={`ludo-btn ludo-btn--sm ${onlineMode ? 'ludo-btn--primary' : 'ludo-btn--ghost'}`}
                             onClick={onOnlineModeToggle}
+                            disabled={playWithComputer}
                         >
                             {onlineMode ? 'On' : 'Off'}
                         </button>

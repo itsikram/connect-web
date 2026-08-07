@@ -33,7 +33,7 @@ const WatchPipPlayer = () => {
     else video.addEventListener("loadedmetadata", onReady, { once: true });
 
     return () => video.removeEventListener("loadedmetadata", onReady);
-  }, [pip?.watchId, pip?.videoUrl]);
+  }, [pip?.watchId, pip?.libraryVideoId, pip?.videoUrl]);
 
   useEffect(() => {
     if (!pip) return undefined;
@@ -76,6 +76,18 @@ const WatchPipPlayer = () => {
     const time = video ? video.currentTime : pip.currentTime;
     updatePip({ currentTime: time, playing: video ? !video.paused : true });
     closePip();
+
+    if (pip.source === "library" && pip.libraryVideoId) {
+      navigate("/video-player", {
+        state: {
+          resumeAt: time,
+          videoId: pip.libraryVideoId,
+          autoplay: true,
+        },
+      });
+      return;
+    }
+
     navigate(`/watch/${pip.watchId}`, {
       state: { resumeAt: time, autoplay: true },
     });
@@ -139,7 +151,7 @@ const WatchPipPlayer = () => {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       role="dialog"
-      aria-label="Watch picture in picture"
+      aria-label={pip.source === "library" ? "Video pop-out player" : "Watch picture in picture"}
     >
       <video
         ref={videoRef}
@@ -147,6 +159,7 @@ const WatchPipPlayer = () => {
         src={pip.videoUrl}
         playsInline
         webkit-playsinline="true"
+        preload="auto"
         poster={pip.thumbnail || undefined}
       />
       <div className="watch-pip-controls">

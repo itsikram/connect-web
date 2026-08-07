@@ -18,6 +18,7 @@ import Rhaha from "../../assets/images/reacts/reactHaha.svg";
 import config from "../../config/config.json";
 import { useWatchPipOptional } from "../../contexts/WatchPipContext";
 import { buildPipPayloadFromVideo, shouldAutoWatchPip } from "../../utils/watchPipHelpers";
+import WatchVideoPlayer from "./WatchVideoPlayer";
 const default_pp_src = config?.defaultProfile;
 
 
@@ -460,38 +461,17 @@ const SinglePost = (watch) => {
                                             </div>
                                             {
                                                 (watchUrl &&
-                                                    <div className="attachment watch-video-wrap">
-                                                        {watchPip?.pip?.watchId === (watchData?._id || watchId) ? (
-                                                            <div className="watch-pip-inline-placeholder">
-                                                                <span>Playing in picture-in-picture</span>
-                                                                <button type="button" onClick={() => watchPip?.closePip?.()}>
-                                                                    Restore here
-                                                                </button>
-                                                            </div>
-                                                        ) : (
-                                                            <>
-                                                                <video
-                                                                    id={`watch-${watchData?._id || watchId}`}
-                                                                    ref={displayedWatch}
-                                                                    className="w-100 watch-video"
-                                                                    controls
-                                                                    playsInline
-                                                                    webkit-playsinline="true"
-                                                                    src={`${watchUrl}`}
-                                                                />
-                                                                {watchPip && (
-                                                                    <button
-                                                                        type="button"
-                                                                        className="watch-pip-trigger"
-                                                                        title="Picture in picture"
-                                                                        onClick={minimizeToPip}
-                                                                    >
-                                                                        <i className="fas fa-external-link-alt" />
-                                                                    </button>
-                                                                )}
-                                                            </>
-                                                        )}
-                                                    </div>
+                                                    <WatchVideoPlayer
+                                                        watchId={watchData?._id || watchId}
+                                                        videoUrl={watchUrl}
+                                                        thumbnail={watchData?.thumbnail}
+                                                        videoRef={displayedWatch}
+                                                        eager
+                                                        isPipActive={watchPip?.pip?.watchId === (watchData?._id || watchId)}
+                                                        onRestorePip={() => watchPip?.closePip?.()}
+                                                        showPipButton={!!watchPip}
+                                                        onMinimizePip={minimizeToPip}
+                                                    />
 
                                                     ||
 

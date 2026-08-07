@@ -377,6 +377,25 @@ body {
 #header .header-container .header-left .header-logo-container {
   float: left;
 }
+#header .header-container .header-left .header-app-menu-container {
+  padding: 10px;
+  border-radius: 50px;
+  height: 40px;
+  width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: 0.3s;
+  background-color: rgba(58, 59, 60, 0.4);
+  margin-left: 10px;
+  backdrop-filter: blur(5px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 2px 8px rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+}
+#header .header-container .header-left .header-app-menu-container i {
+  font-size: 20px;
+}
 #header .header-container .header-left .header-search-back-container {
   display: none;
 }
@@ -5792,7 +5811,8 @@ body {
     display: block !important;
     width: 90% !important;
   }
-  #header .header-container .header-mobile-menu-button-container {
+  #header .header-container .header-mobile-menu-button-container,
+  #header .header-container .header-app-menu-container {
     padding: 10px;
     border-radius: 50px;
     height: 40px;
@@ -5804,7 +5824,8 @@ body {
     background-color: #3A3B3C;
     margin-left: 5px;
   }
-  #header .header-container .header-mobile-menu-button-container i {
+  #header .header-container .header-mobile-menu-button-container i,
+  #header .header-container .header-app-menu-container i {
     font-size: 20px;
   }
   .header-quick-menu-icon.hr-three-dot {

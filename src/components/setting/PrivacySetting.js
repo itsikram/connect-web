@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import api from '../../api/api';
+import { showSuccessToast, showErrorToast } from '../../utils/toastUtils';
 
 const PrivacySetting = () => {
     const profile = useSelector(state => state.profile);
@@ -44,11 +45,11 @@ const PrivacySetting = () => {
             setSaving(true);
             const res = await api.post('/setting/update', settings);
             if (res.status === 200) {
-                alert('Privacy settings saved successfully!');
+                showSuccessToast('Privacy settings saved successfully!');
             }
         } catch (error) {
             console.error('Error saving settings:', error);
-            alert('Failed to save privacy settings');
+            showErrorToast('Failed to save privacy settings');
         } finally {
             setSaving(false);
         }

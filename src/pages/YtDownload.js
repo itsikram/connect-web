@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { showSuccessToast, showErrorToast, showInfoToast } from '../utils/toastUtils';
 import axios from 'axios';
 import { getYtDownloadApiUrl, isOffline, normalizeServerUrl } from '../utils/offlineUtils';
@@ -32,42 +32,43 @@ const QUALITY_OPTIONS = [
     { label: '240p', value: 240 },
 ];
 
+const createClientJobId = () => `job-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const parseYoutubeUrls = (text) =>
+    String(text || '')
+        .split(/[\n,]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+
 const YtDownload = () => {
     const { isAuthenticated, token } = useAuth();
     const [youtubeUrl, setYoutubeUrl] = useState('');
     const [selectedQuality, setSelectedQuality] = useState(2160);
     const [postAsWatch, setPostAsWatch] = useState(true);
-    const [isDownloading, setIsDownloading] = useState(false);
-    const [downloadProgress, setDownloadProgress] = useState(0);
-    const [downloadStage, setDownloadStage] = useState('');
-    const [downloadStatus, setDownloadStatus] = useState('');
-    const [currentDownload, setCurrentDownload] = useState(null);
+    const [activeJobs, setActiveJobs] = useState([]);
     const [downloadHistory, setDownloadHistory] = useState([]);
-    const [videoTitle, setVideoTitle] = useState('');
     const [showDownloadModal, setShowDownloadModal] = useState(false);
     const [completedDownload, setCompletedDownload] = useState(null);
 
-    const progressPollIntervalRef = useRef(null);
-    const statusPollIntervalRef = useRef(null);
+    const pollersRef = useRef(new Map());
+    const completedRef = useRef(new Set());
+    const slowNotifyRef = useRef(new Set());
+    const pollInFlightRef = useRef(new Set());
 
     useEffect(() => {
         return () => {
-            if (progressPollIntervalRef.current) {
-                clearInterval(progressPollIntervalRef.current);
-            }
-            if (statusPollIntervalRef.current) {
-                clearInterval(statusPollIntervalRef.current);
-            }
+            pollersRef.current.forEach((intervalId) => clearInterval(intervalId));
+            pollersRef.current.clear();
         };
     }, []);
 
-    const getAuthHeaders = () => {
+    const getAuthHeaders = useCallback(() => {
         const headers = { Accept: 'application/json' };
         if (token) {
             headers.Authorization = token;
         }
         return headers;
-    };
+    }, [token]);
 
     const buildDownloadUrl = (url, height, shouldPostAsWatch = true) => {
         try {
@@ -133,204 +134,6 @@ const YtDownload = () => {
         }
     };
 
-    const handleDownloadComplete = (fileUrl, title, watchPosted, watchId) => {
-        const finalTitle = title || extractFileNameFromUrl(fileUrl) || 'video';
-        const fileName = `${sanitizeFileName(finalTitle)}.mp4`;
-        const sourceUrl = currentDownload?.url || youtubeUrl;
-        const ytVideoId = extractYouTubeVideoId(sourceUrl);
-        const saveId = watchId || (ytVideoId ? `yt-${ytVideoId}` : `yt-${Date.now()}`);
-
-        const downloadItem = {
-            id: Date.now(),
-            fileName,
-            url: fileUrl,
-            timestamp: new Date().toISOString(),
-        };
-        setDownloadHistory((prev) => [downloadItem, ...prev]);
-
-        setCompletedDownload({
-            fileName,
-            fileUrl,
-            title: finalTitle,
-            watchPosted: !!watchPosted,
-        });
-        setShowDownloadModal(true);
-
-        setIsDownloading(false);
-        setDownloadProgress(100);
-        setDownloadStage('completed');
-        setDownloadStatus('completed');
-        setCurrentDownload(null);
-
-        const savedMetadata = {
-            _id: saveId,
-            caption: finalTitle,
-            thumbnail: ytVideoId ? `https://i.ytimg.com/vi/${ytVideoId}/hqdefault.jpg` : '',
-            source: 'youtube',
-            youtubeUrl: sourceUrl,
-        };
-
-        saveVideoFromUrl(saveId, fileUrl, savedMetadata).catch((err) => {
-            console.error('Failed to save to Saved Videos:', err);
-        });
-
-        if (watchPosted) {
-            showSuccessToast('Video posted to your Watch feed with HQ audio.', {
-                title: 'Posted to Watch',
-                autoClose: 5000,
-            });
-        } else {
-            showSuccessToast('Video downloaded and saved to Saved Videos.', {
-                title: 'Download complete',
-                autoClose: 4000,
-            });
-        }
-
-        setTimeout(() => {
-            setDownloadProgress(0);
-            setDownloadStage('');
-            setDownloadStatus('');
-        }, 3000);
-    };
-
-    const pollProgress = async (progressUrl) => {
-        if (progressPollIntervalRef.current) {
-            clearInterval(progressPollIntervalRef.current);
-        }
-
-        const secureProgressUrl = toSecureProgressUrl(progressUrl);
-        let pollFailures = 0;
-
-        const fetchProgressOnce = async () => {
-            try {
-                const response = await fetch(`${secureProgressUrl}?_ts=${Date.now()}`, {
-                    method: 'GET',
-                    headers: getAuthHeaders(),
-                    cache: 'no-store',
-                    mode: 'cors',
-                    credentials: 'omit',
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Progress HTTP ${response.status}`);
-                }
-
-                pollFailures = 0;
-
-                const data = await response.json();
-                const status = data?.status;
-                const stage = data?.stage || '';
-                const pct = Number(data?.pct) || 0;
-                const fileUrl = data?.file_url;
-                const title = data?.title || data?.download_title || videoTitle;
-                const watchPosted = data?.watch_posted;
-                const watchId = data?.watch_id;
-
-                if (title && title !== videoTitle) {
-                    setVideoTitle(title);
-                }
-
-                setDownloadProgress((prev) => Math.max(prev, Math.round(pct)));
-                setDownloadStage(stage || 'downloading');
-                setDownloadStatus(status);
-
-                if (status === 'completed' && typeof fileUrl === 'string' && fileUrl.length > 0) {
-                    if (progressPollIntervalRef.current) {
-                        clearInterval(progressPollIntervalRef.current);
-                        progressPollIntervalRef.current = null;
-                    }
-                    handleDownloadComplete(fileUrl, title, watchPosted, watchId);
-                    return true;
-                }
-
-                if (status === 'failed' || status === 'error') {
-                    if (progressPollIntervalRef.current) {
-                        clearInterval(progressPollIntervalRef.current);
-                        progressPollIntervalRef.current = null;
-                    }
-                    setIsDownloading(false);
-                    setDownloadStatus('failed');
-                    const raw = data?.error || 'Download failed. Please try again.';
-                    const friendly = /format is not available|no video formats/i.test(raw)
-                        ? 'Download failed. Please try again in a moment.'
-                        : raw;
-                    showErrorToast(friendly, { title: 'Download Error' });
-                    return true;
-                }
-            } catch (err) {
-                pollFailures += 1;
-                const errLabel = err?.message || String(err);
-                console.error('Progress poll error:', errLabel);
-
-                if (pollFailures === 8) {
-                    showInfoToast('Still preparing your video on the server…', {
-                        title: 'Download in progress',
-                        autoClose: 4000,
-                    });
-                }
-
-                if (pollFailures >= 120) {
-                    if (progressPollIntervalRef.current) {
-                        clearInterval(progressPollIntervalRef.current);
-                        progressPollIntervalRef.current = null;
-                    }
-                    setIsDownloading(false);
-                    setDownloadStatus('failed');
-                    showErrorToast(
-                        'Lost connection to download progress. The video may still finish — check Watch or try again.',
-                        { title: 'Progress unavailable' }
-                    );
-                    return true;
-                }
-            }
-            return false;
-        };
-
-        // Immediate first poll so progress shows right away
-        fetchProgressOnce();
-        progressPollIntervalRef.current = setInterval(fetchProgressOnce, 800);
-    };
-
-    const startDownloadJob = async (requestUrl) => {
-        try {
-            const response = await axios.get(requestUrl, {
-                headers: getAuthHeaders(),
-                params: { _ts: Date.now() },
-            });
-
-            const json = response.data;
-            const title = json?.title || json?.download_title;
-
-            if (title) {
-                setVideoTitle(title);
-            }
-
-            if (json && json.status === 'accepted') {
-                const progressUrl = resolveProgressUrl(json);
-                if (progressUrl) {
-                    setDownloadProgress(5);
-                    setDownloadStage('starting');
-                    pollProgress(progressUrl);
-                    return;
-                }
-            }
-
-            if (json && json.status === 'completed' && json.file_url) {
-                const finalTitle = title || extractFileNameFromUrl(json.file_url) || 'video';
-                handleDownloadComplete(json.file_url, finalTitle, json.watch_posted, json.watch_id);
-                return;
-            }
-
-            setIsDownloading(false);
-            showErrorToast('Unexpected response from download server', { title: 'Download Error' });
-        } catch (err) {
-            console.error('Start download error:', err);
-            setIsDownloading(false);
-            const errMsg = err.response?.data?.error || err.response?.data?.message || 'Failed to start download. Please try again.';
-            showErrorToast(errMsg, { title: 'Download Error' });
-        }
-    };
-
     const validateYouTubeUrl = (url) => {
         if (!url) return false;
         const patterns = [
@@ -340,14 +143,283 @@ const YtDownload = () => {
         return patterns.some((pattern) => pattern.test(url));
     };
 
-    const handleDownload = async () => {
-        if (!youtubeUrl.trim()) {
-            showErrorToast('Please enter a YouTube URL', { title: 'Invalid URL' });
-            return;
-        }
+    const updateJob = useCallback((clientId, patch) => {
+        setActiveJobs((prev) =>
+            prev.map((job) => (job.clientId === clientId ? { ...job, ...patch } : job))
+        );
+    }, []);
 
-        if (!validateYouTubeUrl(youtubeUrl)) {
-            showErrorToast('Please enter a valid YouTube URL', { title: 'Invalid URL' });
+    const stopPolling = useCallback((clientId) => {
+        const intervalId = pollersRef.current.get(clientId);
+        if (intervalId) {
+            clearInterval(intervalId);
+            pollersRef.current.delete(clientId);
+        }
+    }, []);
+
+    const removeJob = useCallback(
+        (clientId) => {
+            stopPolling(clientId);
+            slowNotifyRef.current.delete(clientId);
+            pollInFlightRef.current.delete(clientId);
+            setActiveJobs((prev) => prev.filter((job) => job.clientId !== clientId));
+        },
+        [stopPolling]
+    );
+
+    const handleDownloadComplete = useCallback(
+        (job, fileUrl, title, watchPosted, watchId, openModal) => {
+            const completionKey = job.progressId || job.clientId;
+            if (completedRef.current.has(completionKey)) return;
+            completedRef.current.add(completionKey);
+
+            const finalTitle = title || extractFileNameFromUrl(fileUrl) || 'video';
+            const fileName = `${sanitizeFileName(finalTitle)}.mp4`;
+            const sourceUrl = job.url;
+            const ytVideoId = extractYouTubeVideoId(sourceUrl);
+            const saveId = watchId || (ytVideoId ? `yt-${ytVideoId}` : `yt-${Date.now()}`);
+
+            setDownloadHistory((prev) => [
+                {
+                    id: Date.now(),
+                    fileName,
+                    url: fileUrl,
+                    timestamp: new Date().toISOString(),
+                },
+                ...prev,
+            ]);
+
+            if (openModal) {
+                setCompletedDownload({
+                    fileName,
+                    fileUrl,
+                    title: finalTitle,
+                    watchPosted: !!watchPosted,
+                });
+                setShowDownloadModal(true);
+            }
+
+            const savedMetadata = {
+                _id: saveId,
+                caption: finalTitle,
+                thumbnail: ytVideoId ? `https://i.ytimg.com/vi/${ytVideoId}/hqdefault.jpg` : '',
+                source: 'youtube',
+                youtubeUrl: sourceUrl,
+            };
+
+            saveVideoFromUrl(saveId, fileUrl, savedMetadata).catch((err) => {
+                console.error('Failed to save to Saved Videos:', err);
+            });
+
+            const toastTitle = finalTitle.length > 48 ? `${finalTitle.slice(0, 45)}…` : finalTitle;
+            if (watchPosted) {
+                showSuccessToast(`Posted to Watch: ${toastTitle}`, {
+                    title: 'Download complete',
+                    autoClose: 4000,
+                });
+            } else {
+                showSuccessToast(`Saved: ${toastTitle}`, {
+                    title: 'Download complete',
+                    autoClose: 3500,
+                });
+            }
+
+            removeJob(job.clientId);
+        },
+        [removeJob]
+    );
+
+    const pollProgress = useCallback(
+        (job, progressUrl, openModalOnComplete) => {
+            stopPolling(job.clientId);
+
+            const secureProgressUrl = toSecureProgressUrl(progressUrl);
+            let pollFailures = 0;
+
+            const fetchProgressOnce = async () => {
+                if (pollInFlightRef.current.has(job.clientId)) return false;
+                pollInFlightRef.current.add(job.clientId);
+
+                try {
+                    const response = await fetch(`${secureProgressUrl}?_ts=${Date.now()}`, {
+                        method: 'GET',
+                        headers: getAuthHeaders(),
+                        cache: 'no-store',
+                        mode: 'cors',
+                        credentials: 'omit',
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Progress HTTP ${response.status}`);
+                    }
+
+                    pollFailures = 0;
+
+                    const data = await response.json();
+                    const status = data?.status;
+                    const stage = data?.stage || '';
+                    const pct = Number(data?.pct) || 0;
+                    const fileUrl = data?.file_url;
+                    const title = data?.title || data?.download_title || job.title;
+                    const watchPosted = data?.watch_posted;
+                    const watchId = data?.watch_id;
+                    const progressId = data?.progress_id || job.progressId;
+
+                    setActiveJobs((prev) =>
+                        prev.map((j) => {
+                            if (j.clientId !== job.clientId) return j;
+                            return {
+                                ...j,
+                                progress: Math.max(j.progress || 0, Math.round(pct)),
+                                stage: stage || 'downloading',
+                                status,
+                                title: title || j.title,
+                                progressId: progressId || j.progressId,
+                            };
+                        })
+                    );
+
+                    if (status === 'completed' && typeof fileUrl === 'string' && fileUrl.length > 0) {
+                        stopPolling(job.clientId);
+                        handleDownloadComplete(
+                            { ...job, progressId },
+                            fileUrl,
+                            title,
+                            watchPosted,
+                            watchId,
+                            openModalOnComplete
+                        );
+                        return true;
+                    }
+
+                    if (status === 'failed' || status === 'error') {
+                        stopPolling(job.clientId);
+                        const completionKey = progressId || job.clientId;
+                        if (!completedRef.current.has(completionKey)) {
+                            completedRef.current.add(completionKey);
+                            const raw = data?.error || 'Download failed. Please try again.';
+                            const friendly = /format is not available|no video formats/i.test(raw)
+                                ? 'Download failed. Please try again in a moment.'
+                                : raw;
+                            showErrorToast(friendly, {
+                                title: job.title ? `Failed: ${job.title.slice(0, 40)}` : 'Download Error',
+                            });
+                        }
+                        removeJob(job.clientId);
+                        return true;
+                    }
+                } catch (err) {
+                    pollFailures += 1;
+                    console.error('Progress poll error:', err?.message || err);
+
+                    if (pollFailures === 8 && !slowNotifyRef.current.has(job.clientId)) {
+                        slowNotifyRef.current.add(job.clientId);
+                        showInfoToast('Still preparing on the server…', {
+                            title: job.title || 'Download in progress',
+                            autoClose: 3500,
+                        });
+                    }
+
+                    if (pollFailures >= 120) {
+                        stopPolling(job.clientId);
+                        if (!completedRef.current.has(job.clientId)) {
+                            completedRef.current.add(job.clientId);
+                            showErrorToast(
+                                'Lost connection to download progress. The video may still finish — check Watch or try again.',
+                                { title: 'Progress unavailable' }
+                            );
+                        }
+                        removeJob(job.clientId);
+                        return true;
+                    }
+                } finally {
+                    pollInFlightRef.current.delete(job.clientId);
+                }
+
+                return false;
+            };
+
+            fetchProgressOnce();
+            const intervalId = setInterval(fetchProgressOnce, 1000);
+            pollersRef.current.set(job.clientId, intervalId);
+        },
+        [getAuthHeaders, handleDownloadComplete, removeJob, stopPolling, updateJob]
+    );
+
+    const startDownloadJob = useCallback(
+        async (job, openModalOnComplete) => {
+            const requestUrl = buildDownloadUrl(job.url, job.quality, job.postAsWatch);
+            if (!requestUrl) {
+                removeJob(job.clientId);
+                return;
+            }
+
+            try {
+                const response = await axios.get(requestUrl, {
+                    headers: getAuthHeaders(),
+                    params: { _ts: Date.now() },
+                });
+
+                const json = response.data;
+                const title = json?.title || json?.download_title;
+
+                if (title) {
+                    updateJob(job.clientId, { title });
+                }
+
+                if (json?.progress_id) {
+                    updateJob(job.clientId, {
+                        progressId: json.progress_id,
+                        progress: 5,
+                        stage: 'starting',
+                        status: 'running',
+                    });
+                }
+
+                if (json && json.status === 'accepted') {
+                    const progressUrl = resolveProgressUrl(json);
+                    if (progressUrl) {
+                        pollProgress(
+                            { ...job, title: title || job.title, progressId: json.progress_id },
+                            progressUrl,
+                            openModalOnComplete
+                        );
+                        return;
+                    }
+                }
+
+                if (json && json.status === 'completed' && json.file_url) {
+                    const finalTitle = title || extractFileNameFromUrl(json.file_url) || 'video';
+                    handleDownloadComplete(
+                        { ...job, progressId: json.progress_id },
+                        json.file_url,
+                        finalTitle,
+                        json.watch_posted,
+                        json.watch_id,
+                        openModalOnComplete
+                    );
+                    return;
+                }
+
+                showErrorToast('Unexpected response from download server', { title: 'Download Error' });
+                removeJob(job.clientId);
+            } catch (err) {
+                console.error('Start download error:', err);
+                const errMsg =
+                    err.response?.data?.error ||
+                    err.response?.data?.message ||
+                    'Failed to start download. Please try again.';
+                showErrorToast(errMsg, { title: 'Download Error' });
+                removeJob(job.clientId);
+            }
+        },
+        [getAuthHeaders, handleDownloadComplete, pollProgress, removeJob, updateJob]
+    );
+
+    const handleDownload = async () => {
+        const rawUrls = parseYoutubeUrls(youtubeUrl);
+        if (rawUrls.length === 0) {
+            showErrorToast('Please enter at least one YouTube URL', { title: 'Invalid URL' });
             return;
         }
 
@@ -356,55 +428,96 @@ const YtDownload = () => {
             return;
         }
 
-        setIsDownloading(true);
-        setDownloadProgress(0);
-        setDownloadStage('starting');
-        setDownloadStatus('running');
-        setVideoTitle('');
-        setCompletedDownload(null);
-        setCurrentDownload({
-            url: youtubeUrl,
-            quality: selectedQuality,
-            startTime: new Date().toISOString(),
-        });
-
-        showInfoToast(
-            postAsWatch ? 'Downloading and posting to Watch...' : 'Downloading video...',
-            { title: 'Download', autoClose: 3000 }
-        );
-
-        const requestUrl = buildDownloadUrl(youtubeUrl, selectedQuality, postAsWatch);
-        if (!requestUrl) {
-            setIsDownloading(false);
-            showErrorToast('Failed to build download URL', { title: 'Error' });
+        const invalid = rawUrls.filter((url) => !validateYouTubeUrl(url));
+        if (invalid.length > 0) {
+            showErrorToast('One or more URLs are not valid YouTube links', { title: 'Invalid URL' });
             return;
         }
 
-        startDownloadJob(requestUrl);
+        const runningIds = new Set(
+            activeJobs
+                .filter((job) => job.status === 'running')
+                .map((job) => extractYouTubeVideoId(job.url))
+                .filter(Boolean)
+        );
+
+        const urlsToStart = [];
+        const skipped = [];
+        rawUrls.forEach((url) => {
+            const vid = extractYouTubeVideoId(url);
+            if (vid && runningIds.has(vid)) {
+                skipped.push(url);
+                return;
+            }
+            if (vid) runningIds.add(vid);
+            urlsToStart.push(url);
+        });
+
+        if (urlsToStart.length === 0) {
+            showErrorToast('These videos are already downloading', { title: 'Already in queue' });
+            return;
+        }
+
+        if (skipped.length > 0) {
+            showInfoToast(`Skipped ${skipped.length} duplicate URL(s) already downloading`, {
+                title: 'Queue updated',
+                autoClose: 3000,
+            });
+        }
+
+        const openModalOnComplete = urlsToStart.length === 1 && activeJobs.length === 0;
+
+        if (urlsToStart.length === 1) {
+            showInfoToast(
+                postAsWatch ? 'Downloading and posting to Watch…' : 'Downloading video…',
+                { title: 'Download started', autoClose: 2500 }
+            );
+        } else {
+            showInfoToast(`Started ${urlsToStart.length} downloads`, {
+                title: 'Batch download',
+                autoClose: 3000,
+            });
+        }
+
+        const newJobs = urlsToStart.map((url) => ({
+            clientId: createClientJobId(),
+            url,
+            quality: selectedQuality,
+            postAsWatch,
+            title: extractYouTubeVideoId(url) ? `YouTube ${extractYouTubeVideoId(url)}` : url.slice(0, 40),
+            progress: 0,
+            stage: 'starting',
+            status: 'running',
+            progressId: null,
+        }));
+
+        setActiveJobs((prev) => [...newJobs, ...prev]);
+        setYoutubeUrl('');
+
+        newJobs.forEach((job) => {
+            startDownloadJob(job, openModalOnComplete);
+        });
     };
 
-    const handleCancel = () => {
-        if (progressPollIntervalRef.current) {
-            clearInterval(progressPollIntervalRef.current);
-            progressPollIntervalRef.current = null;
-        }
-        if (statusPollIntervalRef.current) {
-            clearInterval(statusPollIntervalRef.current);
-            statusPollIntervalRef.current = null;
-        }
-        setIsDownloading(false);
-        setDownloadProgress(0);
-        setDownloadStage('');
-        setDownloadStatus('');
-        setVideoTitle('');
-        setCurrentDownload(null);
-        showInfoToast('Download cancelled', { title: 'Cancelled', autoClose: 2000 });
+    const handleCancelJob = (clientId) => {
+        removeJob(clientId);
+        showInfoToast('Removed from queue (server may still finish)', {
+            title: 'Cancelled',
+            autoClose: 2500,
+        });
+    };
+
+    const handleCancelAll = () => {
+        activeJobs.forEach((job) => stopPolling(job.clientId));
+        pollersRef.current.clear();
+        setActiveJobs([]);
+        showInfoToast('All downloads removed from queue', { title: 'Cancelled', autoClose: 2500 });
     };
 
     const getStageLabel = (stage) => {
         const labels = {
             starting: 'Starting...',
-            preparing: 'Preparing video on home server...',
+            preparing: 'Preparing on home server...',
             downloading: 'Downloading on server...',
             uploading: 'Uploading to Cloudinary...',
             uploading_watch: 'Posting to Watch...',
@@ -414,6 +527,8 @@ const YtDownload = () => {
         };
         return labels[stage] || stage || 'Preparing...';
     };
+
+    const runningCount = activeJobs.filter((job) => job.status === 'running').length;
 
     return (
         <div className='yt-download-page'>
@@ -432,20 +547,20 @@ const YtDownload = () => {
                                 YouTube Video Downloader
                             </h1>
                             <p className='yt-download-subtitle'>
-                                Download merged high-quality video with HQ audio, or post directly to Watch
+                                Download merged high-quality video with HQ audio, or post directly to Watch.
+                                Paste multiple URLs (one per line) to download in parallel.
                             </p>
 
                             <div className='yt-download-form'>
                                 <div className='form-group'>
-                                    <label htmlFor='youtube-url'>YouTube URL</label>
-                                    <input
+                                    <label htmlFor='youtube-url'>YouTube URL(s)</label>
+                                    <textarea
                                         id='youtube-url'
-                                        type='text'
-                                        className='form-control yt-url-input'
-                                        placeholder='https://www.youtube.com/watch?v=... or https://youtu.be/...'
+                                        className='form-control yt-url-input yt-url-textarea'
+                                        placeholder={'https://www.youtube.com/watch?v=...\nhttps://youtu.be/...\n(one URL per line)'}
                                         value={youtubeUrl}
                                         onChange={(e) => setYoutubeUrl(e.target.value)}
-                                        disabled={isDownloading}
+                                        rows={3}
                                     />
                                 </div>
 
@@ -456,7 +571,6 @@ const YtDownload = () => {
                                         className='form-control yt-quality-select'
                                         value={selectedQuality || ''}
                                         onChange={(e) => setSelectedQuality(e.target.value ? parseInt(e.target.value, 10) : null)}
-                                        disabled={isDownloading}
                                     >
                                         {QUALITY_OPTIONS.map((option) => (
                                             <option key={option.value || 'best'} value={option.value || ''}>
@@ -473,7 +587,7 @@ const YtDownload = () => {
                                             type='checkbox'
                                             id='post-as-watch'
                                             checked={postAsWatch}
-                                            disabled={isDownloading || !isAuthenticated}
+                                            disabled={!isAuthenticated}
                                             onChange={(e) => setPostAsWatch(e.target.checked)}
                                         />
                                         <label className='form-check-label' htmlFor='post-as-watch'>
@@ -490,40 +604,57 @@ const YtDownload = () => {
                                     </small>
                                 </div>
 
-                                {isDownloading && (
-                                    <div className='download-progress-container'>
-                                        <div className='progress-info'>
-                                            <span className='progress-stage'>{getStageLabel(downloadStage)}</span>
-                                            <span className='progress-percentage'>{downloadProgress}%</span>
+                                {activeJobs.length > 0 && (
+                                    <div className='yt-active-downloads'>
+                                        <div className='yt-active-downloads-header'>
+                                            <h3>Active downloads ({runningCount})</h3>
+                                            {activeJobs.length > 1 && (
+                                                <button type='button' className='btn btn-sm btn-link yt-cancel-all' onClick={handleCancelAll}>
+                                                    Cancel all
+                                                </button>
+                                            )}
                                         </div>
-                                        <div className='progress-bar-wrapper'>
-                                            <div
-                                                className='progress-bar-fill'
-                                                style={{ width: `${downloadProgress}%` }}
-                                            ></div>
+                                        <div className='yt-active-downloads-list'>
+                                            {activeJobs.map((job) => (
+                                                <div key={job.clientId} className='download-progress-container yt-job-progress'>
+                                                    <div className='progress-info'>
+                                                        <span className='progress-stage'>
+                                                            {job.title ? `${job.title.slice(0, 50)} · ` : ''}
+                                                            {getStageLabel(job.stage)}
+                                                        </span>
+                                                        <span className='progress-percentage'>{job.progress || 0}%</span>
+                                                    </div>
+                                                    <div className='progress-bar-wrapper'>
+                                                        <div
+                                                            className='progress-bar-fill'
+                                                            style={{ width: `${job.progress || 0}%` }}
+                                                        ></div>
+                                                    </div>
+                                                    <button
+                                                        type='button'
+                                                        className='btn btn-sm btn-link yt-job-cancel'
+                                                        onClick={() => handleCancelJob(job.clientId)}
+                                                    >
+                                                        Remove
+                                                    </button>
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
                                 )}
 
                                 <div className='yt-download-actions'>
-                                    {!isDownloading ? (
-                                        <button
-                                            className='btn btn-primary yt-download-btn'
-                                            onClick={handleDownload}
-                                            disabled={!youtubeUrl.trim()}
-                                        >
-                                            <i className='fas fa-download' style={{ marginRight: '8px' }}></i>
-                                            {postAsWatch ? 'Download & Post to Watch' : 'Download Video'}
-                                        </button>
-                                    ) : (
-                                        <button
-                                            className='btn btn-secondary yt-cancel-btn'
-                                            onClick={handleCancel}
-                                        >
-                                            <i className='fas fa-times' style={{ marginRight: '8px' }}></i>
-                                            Cancel Download
-                                        </button>
-                                    )}
+                                    <button
+                                        className='btn btn-primary yt-download-btn'
+                                        onClick={handleDownload}
+                                        disabled={!youtubeUrl.trim()}
+                                    >
+                                        <i className='fas fa-download' style={{ marginRight: '8px' }}></i>
+                                        {postAsWatch ? 'Download & Post to Watch' : 'Download Video'}
+                                        {parseYoutubeUrls(youtubeUrl).length > 1
+                                            ? ` (${parseYoutubeUrls(youtubeUrl).length})`
+                                            : ''}
+                                    </button>
                                 </div>
                             </div>
 

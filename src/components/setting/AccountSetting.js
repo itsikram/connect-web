@@ -1,119 +1,193 @@
 import React, { useCallback, useState } from 'react';
-import { useSelector, useDispatch } from 'react-redux';
+import { useSelector } from 'react-redux';
 import api from '../../api/api';
-
+import { showSuccessToast, showErrorToast } from '../../utils/toastUtils';
 
 const AccountSetting = () => {
-    let myProfile = useSelector(state => state.profile)
-    let [data, setData] = useState({ userEmail: myProfile?.user && myProfile.user.email })
-    let [editEmail, setEditEmail] = useState(false)
-    let handleInputChange = useCallback(async (e) => {
-        let name = e.target.id;
-        let value = e.target.value
-        setData({
-            ...data,
-            [name]: value
-        })
-    },[])
+    const myProfile = useSelector((state) => state.profile);
+    const [data, setData] = useState({
+        userEmail: myProfile?.user?.email || '',
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+    });
+    const [editEmail, setEditEmail] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
-    let handleSubmit = useCallback(async (e) => {
+    const handleInputChange = useCallback((e) => {
+        const { id, value } = e.target;
+        setData((prev) => ({ ...prev, [id]: value }));
+    }, []);
+
+    const handleSubmit = useCallback(async (e) => {
         e.preventDefault();
+        setIsSaving(true);
 
+        try {
+            if (data.userEmail && data.userEmail !== myProfile?.user?.email) {
+                const emailChangeRes = await api.post('auth/changeEmail', {
+                    email: data.userEmail,
+                });
 
-
-        if (data.userEmail != myProfile?.user.email) {
-
-            let emailChangeRes = await api.post('auth/changeEmail', {
-                email: data.userEmail
-            })
-
-            if (emailChangeRes.status == 200) {
-                let updatedUser = JSON.stringify(emailChangeRes.data);
-                localStorage.setItem('user', updatedUser)
-                return window.location.reload()
-
+                if (emailChangeRes.status === 200) {
+                    localStorage.setItem('user', JSON.stringify(emailChangeRes.data));
+                    showSuccessToast('Email updated successfully');
+                    window.location.reload();
+                    return;
+                }
             }
 
+            if (!data.newPassword && !data.confirmPassword && !data.currentPassword) {
+                return;
+            }
+
+            if (!data.currentPassword || !data.newPassword || !data.confirmPassword) {
+                showErrorToast('Please fill in all password fields');
+                return;
+            }
+
+            if (data.newPassword.length < 6) {
+                showErrorToast('New password must be at least 6 characters');
+                return;
+            }
+
+            if (data.newPassword !== data.confirmPassword) {
+                showErrorToast('Your new password and confirm password do not match');
+                return;
+            }
+
+            const res = await api.post('auth/changePass', data);
+
+            if (res.status === 400) {
+                showErrorToast('Your current password is invalid');
+                return;
+            }
+
+            if (res.status === 200 || res.status === 202) {
+                localStorage.setItem('user', JSON.stringify(res.data));
+                showSuccessToast('Password updated successfully');
+                setData((prev) => ({
+                    ...prev,
+                    currentPassword: '',
+                    newPassword: '',
+                    confirmPassword: '',
+                }));
+            }
+        } catch (error) {
+            console.error('Account settings error:', error);
+            showErrorToast(error?.response?.data?.message || 'Failed to update account settings');
+        } finally {
+            setIsSaving(false);
         }
+    }, [data, myProfile?.user?.email]);
 
-
-        if (data.confirmPassword && data.confirmPassword.length < 2) return;
-
-        if (data.newPassword !== data.confirmPassword) {
-            return alert('Your New password and Confirm Password is not same')
-        }
-
-        let res = await api.post('auth/changePass', data)
-
-        if (res.status == 400) {
-            return alert('Your Current password is invalid')
-        }
-
-        if (res.status == 200) {
-            let updatedUser = JSON.stringify(res.data);
-            localStorage.setItem('user', updatedUser)
-            window.location.reload()
-        }
-    },[data])
-
-    let deleteAccount = useCallback(async (e) => {
+    const deleteAccount = useCallback(async (e) => {
         e.preventDefault();
-        let userData = JSON.parse(localStorage.getItem('user'))
-        let deletedAccountRes = await api.post('auth/delete', { userData: userData })
-        if (deletedAccountRes.status == 200) {
-            localStorage.removeItem('user')
-            alert(deletedAccountRes.data.message)
-            window.location.reload();
-        }
-    },[myProfile])
+        const confirmed = window.confirm(
+            'Delete your account permanently? This cannot be undone.'
+        );
+        if (!confirmed) return;
 
-    let handleEditEmailClick = useCallback((e) => {
+        setIsDeleting(true);
+        try {
+            const deletedAccountRes = await api.post('auth/delete');
+            if (deletedAccountRes.status === 200) {
+                localStorage.removeItem('user');
+                showSuccessToast(deletedAccountRes.data.message || 'Account deleted');
+                window.location.href = '/';
+            }
+        } catch (error) {
+            console.error('Delete account error:', error);
+            showErrorToast(error?.response?.data?.message || 'Failed to delete account');
+        } finally {
+            setIsDeleting(false);
+        }
+    }, []);
+
+    const handleEditEmailClick = useCallback((e) => {
         e.preventDefault();
-        setEditEmail(!editEmail)
-    },[editEmail])
+        setEditEmail((prev) => !prev);
+    }, []);
 
     return (
-        <>
-            <div className='profile-setting'>
-                <div className='setting-field-container'>
-                    <h3>Account Settings</h3>
-                    <p className="setting-section-desc">Manage your email and password.</p>
+        <div className="profile-setting">
+            <div className="setting-field-container">
+                <h3>Account Settings</h3>
+                <p className="setting-section-desc">Manage your email and password.</p>
 
-                    <form>
-                        <h3 className='fs-4'>Change Password</h3>
-                        <div className="form-group mb-2">
-                            <label for="userEmail">Email</label>
-                            <div className='input-group'>
-                                <input onChange={handleInputChange.bind(this)} type="email" className="form-control" id="userEmail" disabled={!editEmail && true} value={editEmail ? data.userEmail : myProfile?.user  && myProfile?.user.email} placeholder="Email" />
-
-                                <div className='input-group-append'>
-                                    <button onClick={handleEditEmailClick.bind(this)} className='btn btn-danger'><i className='fas fa-pen'></i></button>
-                                </div>
+                <form onSubmit={handleSubmit}>
+                    <h3 className="fs-4">Change Password</h3>
+                    <div className="form-group mb-2">
+                        <label htmlFor="userEmail">Email</label>
+                        <div className="input-group">
+                            <input
+                                onChange={handleInputChange}
+                                type="email"
+                                className="form-control"
+                                id="userEmail"
+                                disabled={!editEmail}
+                                value={editEmail ? data.userEmail : (myProfile?.user?.email || '')}
+                                placeholder="Email"
+                            />
+                            <div className="input-group-append">
+                                <button type="button" onClick={handleEditEmailClick} className="btn btn-danger">
+                                    <i className="fas fa-pen" aria-hidden="true" />
+                                </button>
                             </div>
                         </div>
-                        <div className="form-group mb-2">
-                            <label for="currentPassword">Current Password</label>
-                            <input onChange={handleInputChange.bind(this)} type="password" className="form-control" id="currentPassword" placeholder="Current Password" />
-                        </div>
-                        <div className="form-group mb-2">
-                            <label for="newPassword">New Password</label>
-                            <input onChange={handleInputChange.bind(this)} type="password" className="form-control" id="newPassword" placeholder="New Password" />
-                        </div>
-                        <div className="form-group mb-2">
-                            <label for="confirmPassword">Confirm Password</label>
-                            <input onChange={handleInputChange.bind(this)} type="password" className="form-control" id="confirmPassword" placeholder="Confirm Password" />
-                        </div>
+                    </div>
+                    <div className="form-group mb-2">
+                        <label htmlFor="currentPassword">Current Password</label>
+                        <input
+                            onChange={handleInputChange}
+                            type="password"
+                            className="form-control"
+                            id="currentPassword"
+                            value={data.currentPassword}
+                            placeholder="Current Password"
+                        />
+                    </div>
+                    <div className="form-group mb-2">
+                        <label htmlFor="newPassword">New Password</label>
+                        <input
+                            onChange={handleInputChange}
+                            type="password"
+                            className="form-control"
+                            id="newPassword"
+                            value={data.newPassword}
+                            placeholder="New Password"
+                        />
+                    </div>
+                    <div className="form-group mb-2">
+                        <label htmlFor="confirmPassword">Confirm Password</label>
+                        <input
+                            onChange={handleInputChange}
+                            type="password"
+                            className="form-control"
+                            id="confirmPassword"
+                            value={data.confirmPassword}
+                            placeholder="Confirm Password"
+                        />
+                    </div>
 
-                        <button type="submit" onClick={handleSubmit.bind(this)} className="btn btn-primary">Save Settings</button>
-                        <br />
+                    <button type="submit" className="btn btn-primary" disabled={isSaving}>
+                        {isSaving ? 'Saving…' : 'Save Settings'}
+                    </button>
+                    <br />
 
-                        <button onClick={deleteAccount.bind(this)} className='btn btn-danger mt-3'>Delete My Account</button>
-
-                    </form>
-                </div>
+                    <button
+                        type="button"
+                        onClick={deleteAccount}
+                        className="btn btn-danger mt-3"
+                        disabled={isDeleting}
+                    >
+                        {isDeleting ? 'Deleting…' : 'Delete My Account'}
+                    </button>
+                </form>
             </div>
-        </>
+        </div>
     );
-}
+};
 
 export default AccountSetting;

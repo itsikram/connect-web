@@ -1,4 +1,6 @@
 User-agent: *
 Allow: /
+Allow: /portfolio
+Allow: /portfolio/
 
 Sitemap: https://connect-zfgx.onrender.com/sitemap.xml

@@ -150,13 +150,13 @@ let HeaderLeft = () => {
 
         </div>
 
-        <div className="header-mobile-menu-button-container">
-          {isMobile && <MenuButton />}
-          <AppMenuModal
-            isOpen={isAppMenuOpen}
-            onRequestClose={() => setIsAppMenuOpen(false)}
-          />
+        <div className="header-app-menu-container">
+          <MenuButton />
         </div>
+        <AppMenuModal
+          isOpen={isAppMenuOpen}
+          onRequestClose={() => setIsAppMenuOpen(false)}
+        />
         <div className="header-search-back-container">
           <i onClick={handleBackButtonClick} className="fal fa-arrow-left header-search-back-icon"></i>
         </div>

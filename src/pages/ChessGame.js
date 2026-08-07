@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Chess } from 'chess.js';
 import { useSelector } from 'react-redux';
 import socket from '../common/socket';
+import { pickComputerMove } from '../utils/chessComputer';
 
 const BOARD_SIZE = 8;
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
@@ -41,7 +42,7 @@ const ChessGame = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 640);
   
   // Multiplayer state
-  const [gameMode, setGameMode] = useState(null); // null (not set), 'local', or 'online'
+  const [gameMode, setGameMode] = useState(null); // null (not set), 'local', 'online', or 'computer'
   const [gameId, setGameId] = useState(null);
   const [myColor, setMyColor] = useState(null); // 'w' or 'b'
   const [whitePlayer, setWhitePlayer] = useState(null);
@@ -51,6 +52,7 @@ const ChessGame = () => {
   const [opponentDisconnected, setOpponentDisconnected] = useState(false);
   const isProcessingRemoteMove = useRef(false);
   const lastLocalMoveRef = useRef(null);
+  const computerThinkingRef = useRef(false);
   
   // Check URL params for gameId (from invite)
   useEffect(() => {
@@ -233,6 +235,30 @@ const ChessGame = () => {
   const gameOver = engine.isGameOver();
   const inCheck = engine.isCheck();
 
+  // Computer opponent (plays black)
+  useEffect(() => {
+    if (gameMode !== 'computer' || gameOver || promotionFromTo) return;
+    if (engine.turn() !== 'b') return;
+
+    const timer = setTimeout(() => {
+      if (computerThinkingRef.current) return;
+      computerThinkingRef.current = true;
+      try {
+        const move = pickComputerMove(engine);
+        if (move) {
+          engine.move(move);
+          setSelected(null);
+          setLegalTargets([]);
+          setFenVersion(v => v + 1);
+        }
+      } finally {
+        computerThinkingRef.current = false;
+      }
+    }, 650);
+
+    return () => clearTimeout(timer);
+  }, [fenVersion, gameMode, gameOver, promotionFromTo, engine]);
+
   const handleSquareClick = useCallback((square) => {
     if (gameOver) return;
     if (promotionFromTo) return;
@@ -249,6 +275,11 @@ const ChessGame = () => {
         console.log('[CHESS] Cannot move: not your turn', { myColor, turnColor });
         return;
       }
+    }
+
+    // Vs computer: you play white only
+    if (gameMode === 'computer' && turnColor !== 'w') {
+      return;
     }
 
     if (selected === square) {
@@ -481,6 +512,22 @@ const ChessGame = () => {
   };
 
   const getGameStatus = () => {
+    if (gameMode === 'computer') {
+      if (gameOver) {
+        if (engine.isCheckmate()) return 'Checkmate';
+        if (engine.isStalemate()) return 'Stalemate';
+        if (engine.isThreefoldRepetition()) return 'Threefold repetition';
+        if (engine.isInsufficientMaterial()) return 'Draw by insufficient material';
+        return 'Draw';
+      }
+
+      if (turnColor === 'b') {
+        return `Computer thinking…${inCheck ? ' (you are in check)' : ''}`;
+      }
+
+      return `Your turn (White)${inCheck ? ' (check)' : ''}`;
+    }
+
     if (gameMode === 'online') {
       if (waitingForOpponent) {
         return 'Waiting for opponent...';
@@ -762,6 +809,18 @@ const ChessGame = () => {
               </button>
               <button
                 style={winnerButtonStyle}
+                onClick={() => {
+                  setGameMode('computer');
+                  setMyColor('w');
+                  setShowGameModeSelect(false);
+                }}
+                onMouseEnter={(e) => Object.assign(e.currentTarget.style, buttonHoverStyle)}
+                onMouseLeave={(e) => Object.assign(e.currentTarget.style, winnerButtonStyle)}
+              >
+                Play vs Computer
+              </button>
+              <button
+                style={winnerButtonStyle}
                 onClick={createOnlineGame}
                 onMouseEnter={(e) => Object.assign(e.currentTarget.style, buttonHoverStyle)}
                 onMouseLeave={(e) => Object.assign(e.currentTarget.style, winnerButtonStyle)}
@@ -804,7 +863,11 @@ const ChessGame = () => {
     <div style={pageStyle} key={`fen-${fenVersion}`}>
       <div style={containerStyle}>
         <div style={topBarStyle}>
-          <h1 style={titleStyle}>Chess {gameMode === 'online' && gameId && <span style={{ fontSize: '12px', opacity: 0.7 }}>({gameId.substring(0, 8)}...)</span>}</h1>
+          <h1 style={titleStyle}>
+            Chess
+            {gameMode === 'computer' && <span style={{ fontSize: '12px', opacity: 0.7 }}> (vs Computer)</span>}
+            {gameMode === 'online' && gameId && <span style={{ fontSize: '12px', opacity: 0.7 }}>({gameId.substring(0, 8)}...)</span>}
+          </h1>
           <div style={{ display: 'flex', gap: '8px' }}>
             {gameMode === 'local' && (
               <button

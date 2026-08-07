@@ -62,6 +62,55 @@
     background-color: #ffffff;
 }
 
+.yt-url-textarea {
+    resize: vertical;
+    min-height: 88px;
+    line-height: 1.45;
+    font-family: inherit;
+}
+
+.yt-active-downloads {
+    margin: clamp(16px, 4vw, 24px) 0;
+}
+
+.yt-active-downloads-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.yt-active-downloads-header h3 {
+    margin: 0;
+    font-size: clamp(1rem, 3vw, 1.15rem);
+    color: #2c3e50;
+    font-weight: 600;
+}
+
+.yt-active-downloads-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.yt-job-progress {
+    margin: 0;
+    position: relative;
+}
+
+.yt-job-cancel,
+.yt-cancel-all {
+    color: #e74c3c !important;
+    text-decoration: none !important;
+    padding: 0;
+    margin-top: 6px;
+    font-size: 0.85rem;
+}
+
+.yt-cancel-all {
+    margin-top: 0;
+}
+
 .yt-url-input:focus,
 .yt-quality-select:focus {
     outline: none;

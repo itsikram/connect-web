@@ -39,12 +39,12 @@ const ProfileSetting = () => {
 
     }, [myProfile])
 
-    let handleInputChange = useCallback(async (e) => {
-        setSetings({
-            ...settings,
+    let handleInputChange = useCallback((e) => {
+        setSetings((prev) => ({
+            ...prev,
             [e.target.name]: e.target.value
-        })
-    },[settings])
+        }))
+    }, [])
 
     let handleSubmitSettings = useCallback(async (e) => {
         e.preventDefault();
