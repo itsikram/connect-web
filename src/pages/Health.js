@@ -158,22 +158,24 @@ const Health = () => {
                     </aside>
 
                     <main className="health-main">
-                        <nav className="health-category-nav" aria-label="Fitness topics">
-                            {FITNESS_CATEGORIES.map((cat) => (
-                                <button
-                                    key={cat.id}
-                                    type="button"
-                                    className={`health-category-btn ${activeCategory === cat.id ? 'is-active' : ''}`}
-                                    onClick={() => {
-                                        setActiveCategory(cat.id);
-                                        setExpandedArticle(null);
-                                    }}
-                                >
-                                    <i className={`fas ${cat.icon}`} aria-hidden="true" />
-                                    {cat.label}
-                                </button>
-                            ))}
-                        </nav>
+                        <div className="health-category-nav-wrap">
+                            <nav className="health-category-nav" aria-label="Fitness topics">
+                                {FITNESS_CATEGORIES.map((cat) => (
+                                    <button
+                                        key={cat.id}
+                                        type="button"
+                                        className={`health-category-btn ${activeCategory === cat.id ? 'is-active' : ''}`}
+                                        onClick={() => {
+                                            setActiveCategory(cat.id);
+                                            setExpandedArticle(null);
+                                        }}
+                                    >
+                                        <i className={`fas ${cat.icon}`} aria-hidden="true" />
+                                        {cat.label}
+                                    </button>
+                                ))}
+                            </nav>
+                        </div>
 
                         <section className="health-panel health-articles-panel">
                             <div className="health-articles-head">

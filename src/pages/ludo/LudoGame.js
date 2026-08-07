@@ -266,6 +266,7 @@ const LudoGame = () => {
     const isAutoMovingRef = useRef(false);
     const playWithComputerRef = useRef(false);
     const botActingRef = useRef(false);
+    const botTurnTimerRef = useRef(null);
     
     // ============================================================================
     // SECTION 9: SOUND EFFECTS
@@ -748,7 +749,7 @@ const LudoGame = () => {
         while (attempts < baseOrder.length) {
             currentIndex = (currentIndex + 1) % baseOrder.length;
             const candidateIndex = baseOrder[currentIndex];
-            const player = players[candidateIndex];
+            const player = playersRef.current?.[candidateIndex] || players[candidateIndex];
             
             const hasWon = winners.some(w => w.id === candidateIndex);
             const isOffline = player?.isOffline && !player?.isBot;
@@ -2549,7 +2550,7 @@ const LudoGame = () => {
      * @returns {Array<number>} Array of piece indices that can be moved
      */
     const getPlayablePieces = useCallback((playerIndex, diceVal) => {
-        const playerData = players[playerIndex];
+        const playerData = playersRef.current?.[playerIndex] || players[playerIndex];
         if (!playerData || !Array.isArray(playerData.pieces)) return [];
         const playable = [];
         playerData.pieces.forEach((piece, pieceIndex) => {
@@ -2561,6 +2562,32 @@ const LudoGame = () => {
         });
         return playable;
     }, [players, maxSteps]);
+
+    const isBotPlayerIndex = useCallback((playerIndex) => {
+        return Boolean(playersRef.current?.[playerIndex]?.isBot);
+    }, []);
+
+    const advanceTurnForPlayer = useCallback((fromPlayer) => {
+        const nextPlayer = getNextActivePlayer(fromPlayer);
+        playSound('turnChange');
+        setCurrentPlayer(nextPlayer);
+        currentPlayerRef.current = nextPlayer;
+        lastTurnAdvanceTimeRef.current = Date.now();
+        setDiceValueImmediate(0);
+        lastLocalDiceRollTimeRef.current = 0;
+
+        if (myPlayerIndex === 0 && onlineMode && gameId) {
+            setTimeout(() => {
+                emitPlayersStateAfterSave(false);
+            }, 300);
+        }
+
+        setTimeout(() => {
+            if (currentPlayerRef.current === nextPlayer && diceValueRef.current === 0) {
+                setCanRollDice(true);
+            }
+        }, 200);
+    }, [getNextActivePlayer, playSound, setDiceValueImmediate, myPlayerIndex, onlineMode, gameId, emitPlayersStateAfterSave]);
 
     const pickBotPiece = useCallback((playableIds, playerIndex) => {
         const pieces = playersRef.current[playerIndex]?.pieces || [];
@@ -2633,7 +2660,8 @@ const LudoGame = () => {
         if (onlineMode || playWithComputerRef.current) {
             const currentMyPlayerIndex = myPlayerIndexRef.current;
             const currentPlayerIndex = currentPlayerRef.current;
-            if (!botActingRef.current && currentMyPlayerIndex !== currentPlayerIndex) {
+            const cpuTurn = isBotPlayerIndex(currentPlayerIndex) || botActingRef.current;
+            if (!cpuTurn && currentMyPlayerIndex !== currentPlayerIndex) {
                 console.log('[ROLL_DICE] Blocked: not my turn', { myIndex: currentMyPlayerIndex, currentPlayer: currentPlayerIndex });
                 return;
             }
@@ -2643,15 +2671,20 @@ const LudoGame = () => {
             }
         }
 
-        // Prevent rapid successive rolls - increased to 1000ms for better protection
+        // Prevent rapid successive rolls - skip cooldown for CPU turns
         const timeSinceLastRoll = Date.now() - lastRollTimeRef.current;
-        if (timeSinceLastRoll < 1000) return; // Minimum 1000ms between rolls
+        const isCpuRoll = botActingRef.current || (
+            playWithComputerRef.current &&
+            !onlineMode &&
+            playersRef.current[currentPlayerRef.current]?.isBot
+        );
+        if (!isCpuRoll && timeSinceLastRoll < 1000) return;
 
         // CRITICAL: Double-check conditions right before setting flags (prevent race conditions)
         // Re-check canRollDice and diceValue one more time after potential state updates
         if (!botActingRef.current && (!canRollDice || isRollingRef.current)) return;
         if (diceValueRef.current > 0 || diceValue > 0) return;
-        if ((onlineMode || playWithComputerRef.current) && !botActingRef.current && myPlayerIndexRef.current !== currentPlayerRef.current) return;
+        if ((onlineMode || playWithComputerRef.current) && !botActingRef.current && !isBotPlayerIndex(currentPlayerRef.current) && myPlayerIndexRef.current !== currentPlayerRef.current) return;
 
         // CRITICAL: Final check - ensure no move is in progress (double-check after all other checks)
         // Only block if actually moving, not just because timers exist (timers might be stale)
@@ -2861,32 +2894,18 @@ const LudoGame = () => {
         if (playablePieces.length === 0) {
             // No moves available - advance turn
             setTimeout(() => {
-                const nextPlayer = getNextActivePlayer(currentPlayer);
-                // Play turn change sound
-                playSound('turnChange');
-                setCurrentPlayer(nextPlayer);
-                currentPlayerRef.current = nextPlayer;
-                lastTurnAdvanceTimeRef.current = Date.now();
-                setDiceValueImmediate(0);
-                lastLocalDiceRollTimeRef.current = 0;
-
-                // CRITICAL: Save and emit game state when turn changes (host only)
-                if (myPlayerIndex === 0 && onlineMode && gameId) {
-                    setTimeout(() => {
-                        emitPlayersStateAfterSave(false);
-                    }, 300); // Small delay to ensure state is synchronized
-                }
-
-                // CRITICAL: Add a small delay before allowing next roll to ensure all state is synchronized
-                // This prevents race conditions where the old player might still be able to roll
-                setTimeout(() => {
-                    // Double-check that it's the new player's turn and dice is 0
-                    if (currentPlayerRef.current === nextPlayer && diceValueRef.current === 0) {
-                        setCanRollDice(true);
-                    }
-                }, 200); // Small delay to ensure state propagation
+                advanceTurnForPlayer(currentPlayer);
             }, 400);
         } else if (playablePieces.length === 1) {
+            const isCpuTurnNow = playWithComputerRef.current
+                && !onlineMode
+                && playersRef.current[currentPlayerRef.current]?.isBot;
+
+            // CPU moves via the bot-turn effect after dice state updates
+            if (isCpuTurnNow) {
+                return;
+            }
+
             // Only one playable piece - move it automatically
             isAutoMovingRef.current = true;
             setCanRollDice(false);
@@ -3051,7 +3070,8 @@ const LudoGame = () => {
         if (onlineMode || playWithComputerRef.current) {
             const currentMyPlayerIndex = myPlayerIndexRef.current;
             const currentPlayerIndex = currentPlayerRef.current;
-            if (!botActingRef.current && currentMyPlayerIndex !== currentPlayerIndex) {
+            const cpuTurn = isBotPlayerIndex(currentPlayerIndex) || botActingRef.current;
+            if (!cpuTurn && currentMyPlayerIndex !== currentPlayerIndex) {
                 return; // Not the current player's turn
             }
         }
@@ -4595,25 +4615,51 @@ const LudoGame = () => {
         const player = playersRef.current[cp];
         if (!player?.isBot) return;
 
-        const timer = setTimeout(() => {
-            if (isMovingRef.current || isAutoMovingRef.current || isRollingRef.current) return;
+        if (botTurnTimerRef.current) {
+            clearTimeout(botTurnTimerRef.current);
+        }
+
+        botTurnTimerRef.current = setTimeout(() => {
+            botTurnTimerRef.current = null;
+
+            if (isMovingRef.current || isAutoMovingRef.current || isRollingRef.current) {
+                return;
+            }
+
+            const playerIndex = currentPlayerRef.current;
+            if (!playersRef.current[playerIndex]?.isBot) return;
 
             botActingRef.current = true;
+
             try {
                 if (diceValueRef.current === 0) {
                     rollDice();
-                } else {
-                    const playable = getPlayablePieces(cp, diceValueRef.current);
-                    if (playable.length === 0) return;
-                    const pick = playable.length === 1 ? playable[0] : pickBotPiece(playable, cp);
-                    movePiece(pick);
+                    return;
                 }
+
+                const playable = getPlayablePieces(playerIndex, diceValueRef.current);
+                if (playable.length === 0) {
+                    advanceTurnForPlayer(playerIndex);
+                    return;
+                }
+
+                const pick = playable.length === 1
+                    ? playable[0]
+                    : pickBotPiece(playable, playerIndex);
+                movePiece(pick);
             } finally {
-                botActingRef.current = false;
+                setTimeout(() => {
+                    botActingRef.current = false;
+                }, 2000);
             }
         }, 900);
 
-        return () => clearTimeout(timer);
+        return () => {
+            if (botTurnTimerRef.current) {
+                clearTimeout(botTurnTimerRef.current);
+                botTurnTimerRef.current = null;
+            }
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [playWithComputer, onlineMode, gameStarted, gameEnded, waitingForPlayers, currentPlayer, diceValue, canRollDice]);
 

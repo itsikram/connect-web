@@ -43,7 +43,22 @@ const AppMenuModal = ({ isOpen, onRequestClose }) => {
             onRequestClose={onRequestClose}
             isFullscreen={isMobile}
             id="app-menu-modal"
-            style={isMobile ? { maxWidth: '100%', overflow: 'hidden' } : { width: 'min(92vw, 520px)', maxHeight: '85vh', borderRadius: '16px', overflow: 'hidden' }}
+            style={isMobile
+                ? {
+                    display: 'flex',
+                    flexDirection: 'column',
+                    height: '100dvh',
+                    maxHeight: '100dvh',
+                    overflow: 'hidden',
+                }
+                : {
+                    display: 'flex',
+                    flexDirection: 'column',
+                    width: 'min(92vw, 520px)',
+                    maxHeight: 'min(85dvh, 85vh)',
+                    borderRadius: '16px',
+                    overflow: 'hidden',
+                }}
         >
             <div className="app-menu-modal">
                 <div className="app-menu-modal-header">

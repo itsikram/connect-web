@@ -9,7 +9,7 @@ import LoadingSpinner, { TypingIndicator } from "../loading/LoadingSpinner";
 import { getProfileDisplayName, splitMentionBody } from './commentUtils';
 import './CommentStyles.css';
 
-const SingleComment = ({ comment, postData, myProfile, isEditMode }) => {
+const SingleComment = ({ comment, postData, myProfile, isEditMode, parentType = 'post', onRemove }) => {
     const myId = myProfile?._id;
     const authorName = getProfileDisplayName(comment?.author);
     const [totalComment, setTotalComment] = useState(Array.isArray(comment?.reacts) ? comment.reacts.length : 0);
@@ -58,9 +58,13 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode }) => {
             const dltRes = await api.post('/comment/deleteComment', {
                 commentId: comment._id,
                 postId: post?._id,
+                parentType,
             });
             if (dltRes.status === 200) {
                 setRemoved(true);
+                if (typeof onRemove === 'function') {
+                    onRemove(comment._id);
+                }
             }
         } catch (error) {
             console.log(error);

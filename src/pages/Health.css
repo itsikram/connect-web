@@ -1,13 +1,25 @@
+/* Health & Fitness — mobile-first (iPhone safe areas) */
+
 .health-page {
-    min-height: 100vh;
+    min-height: calc(100dvh - var(--site-header-height, 56px));
+    min-height: calc(100svh - var(--site-header-height, 56px));
     background: linear-gradient(165deg, #0a1628 0%, #0f172a 45%, #0c1220 100%);
     color: #e2e8f0;
-    padding: clamp(16px, 4vw, 32px);
+    padding:
+        max(12px, env(safe-area-inset-top, 0px))
+        max(12px, env(safe-area-inset-right, 0px))
+        max(24px, env(safe-area-inset-bottom, 0px))
+        max(12px, env(safe-area-inset-left, 0px));
+    box-sizing: border-box;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
 }
 
 .health-container {
+    width: 100%;
     max-width: 1100px;
     margin: 0 auto;
+    min-width: 0;
 }
 
 .health-back-link {
@@ -17,8 +29,12 @@
     color: #94a3b8;
     text-decoration: none;
     font-size: 0.9rem;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
+    padding: 8px 4px;
+    min-height: 44px;
     transition: color 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
 }
 
 .health-back-link:hover {
@@ -27,7 +43,7 @@
 
 .health-header-content {
     text-align: center;
-    margin-bottom: 24px;
+    margin-bottom: 20px;
 }
 
 .health-badge {
@@ -38,17 +54,18 @@
     border-radius: 999px;
     background: rgba(16, 185, 129, 0.15);
     color: #34d399;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 
 .health-title {
-    margin: 0 0 10px;
-    font-size: clamp(1.75rem, 5vw, 2.5rem);
+    margin: 0 0 8px;
+    font-size: clamp(1.5rem, 6vw, 2.5rem);
     font-weight: 700;
+    line-height: 1.15;
     background: linear-gradient(135deg, #f0fdf4 0%, #6ee7b7 100%);
     -webkit-background-clip: text;
     background-clip: text;
@@ -59,21 +76,22 @@
     margin: 0 auto;
     max-width: 560px;
     color: #94a3b8;
-    font-size: clamp(0.95rem, 2.5vw, 1.05rem);
-    line-height: 1.6;
+    font-size: clamp(0.875rem, 3.5vw, 1.05rem);
+    line-height: 1.55;
+    padding: 0 4px;
 }
 
 .health-disclaimer {
     display: flex;
     align-items: flex-start;
     gap: 10px;
-    padding: 12px 16px;
-    margin-bottom: 24px;
+    padding: 12px 14px;
+    margin-bottom: 18px;
     border-radius: 12px;
     background: rgba(245, 158, 11, 0.08);
     border: 1px solid rgba(245, 158, 11, 0.25);
     color: #fcd34d;
-    font-size: 0.85rem;
+    font-size: clamp(0.78rem, 3.2vw, 0.85rem);
     line-height: 1.5;
 }
 
@@ -84,47 +102,68 @@
 
 .health-stats-row {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-    margin-bottom: 24px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 18px;
 }
 
 .health-stat-card {
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 16px 12px;
+    justify-content: center;
+    padding: 12px 8px;
     border-radius: 14px;
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid rgba(255, 255, 255, 0.08);
+    min-width: 0;
 }
 
 .health-stat-value {
-    font-size: 1.5rem;
+    font-size: clamp(1.1rem, 4.5vw, 1.5rem);
     font-weight: 700;
     color: #34d399;
+    line-height: 1.2;
 }
 
 .health-stat-label {
-    font-size: 0.75rem;
+    font-size: clamp(0.62rem, 2.8vw, 0.75rem);
     color: #64748b;
     margin-top: 4px;
     text-align: center;
+    line-height: 1.25;
 }
 
 .health-grid {
     display: grid;
-    grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
-    gap: 20px;
+    grid-template-columns: 1fr;
+    gap: 16px;
     align-items: start;
+}
+
+.health-sidebar,
+.health-main {
+    min-width: 0;
+}
+
+.health-main {
+    order: 1;
+}
+
+.health-sidebar {
+    order: 2;
 }
 
 .health-panel {
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 16px;
-    padding: clamp(16px, 3vw, 22px);
-    margin-bottom: 16px;
+    padding: clamp(14px, 3.5vw, 22px);
+    margin-bottom: 14px;
+}
+
+.health-panel:last-child {
+    margin-bottom: 0;
 }
 
 .health-panel-title {
@@ -132,18 +171,19 @@
     align-items: center;
     gap: 10px;
     margin: 0 0 8px;
-    font-size: 1.05rem;
+    font-size: clamp(0.95rem, 3.8vw, 1.05rem);
     font-weight: 600;
     color: #f1f5f9;
 }
 
 .health-panel-title i {
     color: #10b981;
+    flex-shrink: 0;
 }
 
 .health-panel-desc {
-    margin: 0 0 16px;
-    font-size: 0.875rem;
+    margin: 0 0 14px;
+    font-size: clamp(0.8rem, 3.2vw, 0.875rem);
     color: #64748b;
     line-height: 1.5;
 }
@@ -152,7 +192,7 @@
     height: 6px;
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.08);
-    margin-bottom: 16px;
+    margin-bottom: 14px;
     overflow: hidden;
 }
 
@@ -177,17 +217,21 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 10px 12px;
-    border-radius: 10px;
+    padding: 12px;
+    min-height: 48px;
+    border-radius: 12px;
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid transparent;
     cursor: pointer;
     transition: background 0.2s ease, border-color 0.2s ease;
-    font-size: 0.9rem;
+    font-size: clamp(0.85rem, 3.5vw, 0.9rem);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    box-sizing: border-box;
 }
 
-.health-check-item:hover {
-    background: rgba(255, 255, 255, 0.05);
+.health-check-item:active {
+    background: rgba(255, 255, 255, 0.06);
 }
 
 .health-check-item.is-done {
@@ -207,10 +251,16 @@
     height: 0;
 }
 
+.health-check-item > span:last-child {
+    flex: 1;
+    min-width: 0;
+    line-height: 1.35;
+}
+
 .health-check-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -220,12 +270,12 @@
 }
 
 .health-tip-quote {
-    margin: 0 0 16px;
-    padding: 14px 16px;
+    margin: 0 0 14px;
+    padding: 14px;
     border-left: 3px solid #10b981;
     background: rgba(16, 185, 129, 0.06);
     border-radius: 0 10px 10px 0;
-    font-size: 0.95rem;
+    font-size: clamp(0.875rem, 3.5vw, 0.95rem);
     line-height: 1.6;
     color: #cbd5e1;
     font-style: normal;
@@ -239,39 +289,73 @@
 }
 
 .health-tip-nav button {
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     border: 1px solid rgba(255, 255, 255, 0.12);
     background: rgba(255, 255, 255, 0.04);
     color: #94a3b8;
     cursor: pointer;
     transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
 }
 
-.health-tip-nav button:hover {
-    background: rgba(16, 185, 129, 0.15);
+.health-tip-nav button:active {
+    background: rgba(16, 185, 129, 0.2);
     color: #34d399;
-    border-color: rgba(16, 185, 129, 0.35);
 }
 
 .health-tip-nav span {
     font-size: 0.8rem;
     color: #64748b;
+    min-width: 48px;
+    text-align: center;
+}
+
+.health-category-nav-wrap {
+    position: relative;
+    margin-bottom: 14px;
+    margin-left: calc(-1 * max(12px, env(safe-area-inset-left, 0px)));
+    margin-right: calc(-1 * max(12px, env(safe-area-inset-right, 0px)));
+    padding-left: max(12px, env(safe-area-inset-left, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
+}
+
+.health-category-nav-wrap::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: max(12px, env(safe-area-inset-right, 0px));
+    width: 28px;
+    height: 100%;
+    pointer-events: none;
+    background: linear-gradient(to left, #0f172a 0%, transparent 100%);
 }
 
 .health-category-nav {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 8px;
-    margin-bottom: 16px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 6px;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+}
+
+.health-category-nav::-webkit-scrollbar {
+    display: none;
 }
 
 .health-category-btn {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 10px 16px;
+    padding: 11px 16px;
+    min-height: 44px;
     border-radius: 999px;
     border: 1px solid rgba(255, 255, 255, 0.1);
     background: rgba(255, 255, 255, 0.03);
@@ -280,11 +364,15 @@
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
+    flex-shrink: 0;
+    scroll-snap-align: start;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    white-space: nowrap;
 }
 
-.health-category-btn:hover {
-    background: rgba(255, 255, 255, 0.06);
-    color: #e2e8f0;
+.health-category-btn:active {
+    transform: scale(0.98);
 }
 
 .health-category-btn.is-active {
@@ -294,7 +382,7 @@
 }
 
 .health-articles-head {
-    margin-bottom: 16px;
+    margin-bottom: 14px;
 }
 
 .health-articles {
@@ -318,54 +406,69 @@
 .health-article-toggle {
     width: 100%;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    gap: 16px;
-    padding: 16px 18px;
+    gap: 12px;
+    padding: 14px;
+    min-height: 44px;
     border: none;
     background: transparent;
     color: inherit;
     text-align: left;
     cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    box-sizing: border-box;
+}
+
+.health-article-toggle > div {
+    flex: 1;
+    min-width: 0;
 }
 
 .health-article-toggle h3 {
     margin: 0 0 4px;
-    font-size: 1rem;
+    font-size: clamp(0.92rem, 3.8vw, 1rem);
     font-weight: 600;
     color: #f1f5f9;
+    line-height: 1.3;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
 }
 
 .health-article-toggle p {
     margin: 0;
-    font-size: 0.85rem;
+    font-size: clamp(0.78rem, 3.2vw, 0.85rem);
     color: #64748b;
-    line-height: 1.4;
+    line-height: 1.45;
 }
 
 .health-article-toggle > i {
     color: #10b981;
     flex-shrink: 0;
+    margin-top: 4px;
+    font-size: 0.85rem;
 }
 
 .health-article-points {
     margin: 0;
-    padding: 0 18px 18px 42px;
+    padding: 0 14px 14px 32px;
     list-style: none;
 }
 
 .health-article-points li {
     position: relative;
     margin-bottom: 10px;
-    font-size: 0.9rem;
+    font-size: clamp(0.82rem, 3.4vw, 0.9rem);
     line-height: 1.55;
     color: #cbd5e1;
+    overflow-wrap: anywhere;
 }
 
 .health-article-points li::before {
     content: '';
     position: absolute;
-    left: -18px;
+    left: -14px;
     top: 0.55em;
     width: 6px;
     height: 6px;
@@ -373,33 +476,110 @@
     background: #10b981;
 }
 
-@media (max-width: 900px) {
+/* Tablet+ */
+@media (min-width: 768px) {
+    .health-page {
+        padding:
+            max(16px, env(safe-area-inset-top, 0px))
+            max(20px, env(safe-area-inset-right, 0px))
+            max(28px, env(safe-area-inset-bottom, 0px))
+            max(20px, env(safe-area-inset-left, 0px));
+    }
+
+    .health-stats-row {
+        gap: 12px;
+        margin-bottom: 24px;
+    }
+
+    .health-stat-card {
+        padding: 16px 12px;
+    }
+
     .health-grid {
-        grid-template-columns: 1fr;
+        gap: 20px;
     }
 
-    .health-sidebar {
-        order: 2;
+    .health-category-nav-wrap {
+        margin-left: 0;
+        margin-right: 0;
+        padding-left: 0;
+        padding-right: 0;
     }
 
-    .health-main {
-        order: 1;
+    .health-category-nav-wrap::after {
+        display: none;
+    }
+
+    .health-category-nav {
+        flex-wrap: wrap;
+        overflow-x: visible;
+        scroll-snap-type: none;
+    }
+
+    .health-check-item:hover {
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .health-category-btn:hover {
+        background: rgba(255, 255, 255, 0.06);
+        color: #e2e8f0;
+    }
+
+    .health-tip-nav button:hover {
+        background: rgba(16, 185, 129, 0.15);
+        color: #34d399;
+        border-color: rgba(16, 185, 129, 0.35);
     }
 }
 
-@media (max-width: 520px) {
+@media (min-width: 900px) {
+    .health-grid {
+        grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+    }
+
+    .health-main {
+        order: 0;
+    }
+
+    .health-sidebar {
+        order: 0;
+    }
+}
+
+/* Very small phones */
+@media (max-width: 359px) {
     .health-stats-row {
         grid-template-columns: 1fr;
     }
 
-    .health-category-nav {
-        overflow-x: auto;
-        flex-wrap: nowrap;
-        padding-bottom: 4px;
-        -webkit-overflow-scrolling: touch;
+    .health-stat-card {
+        flex-direction: row;
+        justify-content: space-between;
+        padding: 12px 14px;
     }
 
-    .health-category-btn {
-        flex-shrink: 0;
+    .health-stat-label {
+        margin-top: 0;
+        text-align: right;
+    }
+}
+
+/* iPhone landscape — use horizontal space */
+@media (max-width: 896px) and (orientation: landscape) and (max-height: 500px) {
+    .health-grid {
+        grid-template-columns: minmax(0, 280px) minmax(0, 1fr);
+    }
+
+    .health-main,
+    .health-sidebar {
+        order: 0;
+    }
+
+    .health-header-content {
+        margin-bottom: 12px;
+    }
+
+    .health-disclaimer {
+        margin-bottom: 12px;
     }
 }

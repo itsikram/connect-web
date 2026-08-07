@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 import './VideoPlayer.css';
+import useIsMobile from '../utils/useIsMobile';
 import { useWatchPipOptional } from '../contexts/WatchPipContext';
 import { buildLibraryPipPayloadFromVideo } from '../utils/watchPipHelpers';
 import {
@@ -27,6 +28,16 @@ const VideoPlayer = () => {
     const myProfileId = useSelector((state) => state.profile?._id);
     const location = useLocation();
     const watchPip = useWatchPipOptional();
+    const isMobile = useIsMobile();
+    const [isTouchDevice, setIsTouchDevice] = useState(false);
+
+    useEffect(() => {
+        setIsTouchDevice(
+            'ontouchstart' in window ||
+            navigator.maxTouchPoints > 0 ||
+            window.matchMedia('(pointer: coarse)').matches
+        );
+    }, []);
 
     const [customVideos, setCustomVideos] = useState(() => loadCustomPlaylist());
     const [watchVideos, setWatchVideos] = useState([]);
@@ -338,36 +349,72 @@ const VideoPlayer = () => {
         }
     };
 
+    const useTouchReorder = isMobile || isTouchDevice;
+    const canDragReorder = sortMode === 'custom' && !useTouchReorder;
+
+    const applyPlaylistReorder = useCallback((fromIndex, toIndex) => {
+        if (sortMode !== 'custom' || fromIndex === toIndex) return;
+        if (fromIndex < 0 || toIndex < 0 || fromIndex >= filteredVideos.length || toIndex >= filteredVideos.length) {
+            return;
+        }
+
+        const visibleIds = filteredVideos.map((v) => v.id);
+        const reorderedVisible = reorderPlaylistIds(visibleIds, fromIndex, toIndex);
+
+        setPlaylistOrder((prev) => {
+            const base = prev.length ? [...prev] : allVideos.map((v) => v.id);
+            const visibleSet = new Set(visibleIds);
+            const withoutVisible = base.filter((id) => !visibleSet.has(id));
+            const firstVisibleIdx = base.findIndex((id) => visibleSet.has(id));
+            const insertAt = firstVisibleIdx >= 0 ? firstVisibleIdx : withoutVisible.length;
+            const next = [
+                ...withoutVisible.slice(0, insertAt),
+                ...reorderedVisible,
+                ...withoutVisible.slice(insertAt),
+            ];
+            savePlaylistOrder(next);
+            return next;
+        });
+
+        if (currentVideoIndex === fromIndex) {
+            setCurrentVideoIndex(toIndex);
+        } else if (fromIndex < currentVideoIndex && toIndex >= currentVideoIndex) {
+            setCurrentVideoIndex((prev) => prev - 1);
+        } else if (fromIndex > currentVideoIndex && toIndex <= currentVideoIndex) {
+            setCurrentVideoIndex((prev) => prev + 1);
+        }
+    }, [sortMode, filteredVideos, allVideos, currentVideoIndex]);
+
     const handleDragStart = (index) => {
-        if (sortMode !== 'custom') return;
+        if (!canDragReorder) return;
         setDragIndex(index);
     };
 
     const handleDragOver = (e, index) => {
-        if (sortMode !== 'custom' || dragIndex === null || dragIndex === index) return;
+        if (!canDragReorder || dragIndex === null || dragIndex === index) return;
         e.preventDefault();
     };
 
     const handleDrop = (index) => {
-        if (sortMode !== 'custom' || dragIndex === null || dragIndex === index) {
+        if (!canDragReorder || dragIndex === null || dragIndex === index) {
             setDragIndex(null);
             return;
         }
 
-        const ids = filteredVideos.map((v) => v.id);
-        const nextIds = reorderPlaylistIds(ids, dragIndex, index);
-        setPlaylistOrder(nextIds);
-        savePlaylistOrder(nextIds);
-
-        if (currentVideoIndex === dragIndex) {
-            setCurrentVideoIndex(index);
-        } else if (dragIndex < currentVideoIndex && index >= currentVideoIndex) {
-            setCurrentVideoIndex((prev) => prev - 1);
-        } else if (dragIndex > currentVideoIndex && index <= currentVideoIndex) {
-            setCurrentVideoIndex((prev) => prev + 1);
-        }
-
+        applyPlaylistReorder(dragIndex, index);
         setDragIndex(null);
+    };
+
+    const movePlaylistItem = (index, direction, e) => {
+        e?.stopPropagation?.();
+        e?.preventDefault?.();
+        const targetIndex = direction === 'up' ? index - 1 : index + 1;
+        applyPlaylistReorder(index, targetIndex);
+    };
+
+    const handleSortChange = (e) => {
+        setSortMode(e.target.value);
+        setCurrentVideoIndex(0);
     };
 
     const stats = useMemo(
@@ -504,21 +551,29 @@ const VideoPlayer = () => {
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
-                            <select
-                                className="form-input video-player-sort"
-                                value={sortMode}
-                                onChange={(e) => setSortMode(e.target.value)}
-                            >
-                                {SORT_OPTIONS.map((opt) => (
-                                    <option key={opt.id} value={opt.id}>
-                                        {opt.label}
-                                    </option>
-                                ))}
-                            </select>
+                            <label className="video-player-sort-label">
+                                <span className="video-player-sort-text">Sort by</span>
+                                <select
+                                    className="form-input video-player-sort"
+                                    value={sortMode}
+                                    onChange={handleSortChange}
+                                    aria-label="Sort playlist"
+                                >
+                                    {SORT_OPTIONS.map((opt) => (
+                                        <option key={opt.id} value={opt.id}>
+                                            {opt.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
                         </div>
 
                         {sortMode === 'custom' && filteredVideos.length > 1 ? (
-                            <p className="video-player-sort-hint">Drag items to reorder</p>
+                            <p className="video-player-sort-hint">
+                                {useTouchReorder
+                                    ? 'Use the arrow buttons to reorder videos'
+                                    : 'Drag items to reorder'}
+                            </p>
                         ) : null}
 
                         {libraryLoading && filteredVideos.length === 0 ? (
@@ -531,17 +586,39 @@ const VideoPlayer = () => {
                                     <div
                                         key={video.id}
                                         className={`playlist-item ${index === currentVideoIndex ? 'active' : ''} ${dragIndex === index ? 'dragging' : ''}`}
-                                        draggable={sortMode === 'custom'}
+                                        draggable={canDragReorder}
                                         onDragStart={() => handleDragStart(index)}
                                         onDragOver={(e) => handleDragOver(e, index)}
                                         onDrop={() => handleDrop(index)}
                                         onDragEnd={() => setDragIndex(null)}
                                         onClick={() => handlePlayVideo(index)}
                                     >
-                                        {sortMode === 'custom' ? (
+                                        {sortMode === 'custom' && canDragReorder ? (
                                             <span className="playlist-drag-handle" title="Drag to reorder">
                                                 <i className="fas fa-grip-vertical" />
                                             </span>
+                                        ) : null}
+                                        {sortMode === 'custom' && useTouchReorder ? (
+                                            <div className="playlist-reorder-btns">
+                                                <button
+                                                    type="button"
+                                                    className="playlist-reorder-btn"
+                                                    disabled={index === 0}
+                                                    onClick={(e) => movePlaylistItem(index, 'up', e)}
+                                                    aria-label="Move video up"
+                                                >
+                                                    <i className="fas fa-chevron-up" aria-hidden="true" />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="playlist-reorder-btn"
+                                                    disabled={index === filteredVideos.length - 1}
+                                                    onClick={(e) => movePlaylistItem(index, 'down', e)}
+                                                    aria-label="Move video down"
+                                                >
+                                                    <i className="fas fa-chevron-down" aria-hidden="true" />
+                                                </button>
+                                            </div>
                                         ) : null}
                                         <div className="playlist-item-thumbnail">
                                             {video.thumbnail ? (
