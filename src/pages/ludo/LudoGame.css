@@ -1,6 +1,6 @@
 /* Ludo Game — shared UI theme (mobile + desktop) */
 
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,500&family=Outfit:wght@600;700;800&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,500&family=Outfit:wght@600;700;800&display=swap");
 
 .ludo-root {
   --ludo-bg: #0c1219;
@@ -20,8 +20,8 @@
   --ludo-radius: 16px;
   --ludo-radius-sm: 10px;
   --ludo-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
-  --ludo-font: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
-  --ludo-display: 'Outfit', 'DM Sans', sans-serif;
+  --ludo-font: "DM Sans", "Segoe UI", system-ui, sans-serif;
+  --ludo-display: "Outfit", "DM Sans", sans-serif;
   --ludo-safe-bottom: env(safe-area-inset-bottom, 0px);
   --ludo-safe-top: env(safe-area-inset-top, 0px);
 
@@ -50,48 +50,90 @@
 
 .ludo-root button:disabled {
   cursor: default;
-  opacity: 0.55;
+  opacity: 0.85;
 }
 
 /* ---------- Keyframes ---------- */
 @keyframes ludo-token-pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.1); }
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
 }
 
 @keyframes ludo-token-glow {
-  0%, 100% { filter: drop-shadow(0 0 4px rgba(46, 196, 182, 0.35)); }
-  50% { filter: drop-shadow(0 0 10px rgba(46, 196, 182, 0.85)); }
+  0%,
+  100% {
+    filter: drop-shadow(0 0 4px rgba(46, 196, 182, 0.35));
+  }
+  50% {
+    filter: drop-shadow(0 0 10px rgba(46, 196, 182, 0.85));
+  }
 }
 
 @keyframes ludo-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes ludo-pulse-opacity {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.55; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
 }
 
 @keyframes ludo-fade-up {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes ludo-winner-pop {
-  0% { transform: scale(0.6); opacity: 0; }
-  70% { transform: scale(1.08); }
-  100% { transform: scale(1); opacity: 1; }
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 @keyframes ludo-text-shine {
-  0% { background-position: 0% 50%; }
-  100% { background-position: 200% 50%; }
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
 }
 
 @keyframes ludo-winner-glow {
-  0%, 100% { opacity: 0.45; transform: translate(-50%, -50%) scale(1); }
-  50% { opacity: 0.75; transform: translate(-50%, -50%) scale(1.08); }
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 0.75;
+    transform: translate(-50%, -50%) scale(1.08);
+  }
 }
 
 /* ---------- Header ---------- */
@@ -140,10 +182,18 @@
   border-radius: 2px;
 }
 
-.ludo-header__mark-grid span:nth-child(1) { background: #e53935; }
-.ludo-header__mark-grid span:nth-child(2) { background: #43a047; }
-.ludo-header__mark-grid span:nth-child(3) { background: #1e88e5; }
-.ludo-header__mark-grid span:nth-child(4) { background: #fdd835; }
+.ludo-header__mark-grid span:nth-child(1) {
+  background: #e53935;
+}
+.ludo-header__mark-grid span:nth-child(2) {
+  background: #43a047;
+}
+.ludo-header__mark-grid span:nth-child(3) {
+  background: #1e88e5;
+}
+.ludo-header__mark-grid span:nth-child(4) {
+  background: #fdd835;
+}
 
 .ludo-header__title {
   font-family: var(--ludo-display);
@@ -182,7 +232,10 @@
   font-weight: 700;
   font-size: 0.85rem;
   cursor: pointer;
-  transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
   white-space: nowrap;
 }
 
@@ -349,6 +402,15 @@
   position: absolute;
   inset: 0;
   transform: translateZ(0);
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+}
+
+.ludo-tokens img {
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* ---------- Overlays on board ---------- */
@@ -361,7 +423,7 @@
   justify-content: center;
   padding: 12px;
   background: rgba(6, 10, 16, 0.72);
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(2px);
 }
 
 .ludo-overlay--warn {
@@ -611,7 +673,9 @@
   cursor: pointer;
   padding: 0;
   position: relative;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .ludo-player-chip:hover {
@@ -775,7 +839,9 @@
   color: var(--ludo-text);
   cursor: pointer;
   text-align: left;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .ludo-choice:hover {
@@ -923,7 +989,7 @@
 }
 
 .ludo-check--on::after {
-  content: '';
+  content: "";
   width: 5px;
   height: 9px;
   border: solid #06241f;
@@ -975,7 +1041,11 @@
 }
 
 .ludo-winner-card {
-  background: linear-gradient(180deg, rgba(18, 28, 40, 0.98), rgba(12, 18, 25, 0.96));
+  background: linear-gradient(
+    180deg,
+    rgba(18, 28, 40, 0.98),
+    rgba(12, 18, 25, 0.96)
+  );
   border-radius: 24px;
   padding: 28px 22px;
   border: 1px solid rgba(46, 196, 182, 0.35);
