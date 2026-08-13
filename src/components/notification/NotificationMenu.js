@@ -258,12 +258,61 @@ const NotificationMenu = ({
   );
 
   const renderItem = (notification) => {
-    const isLudoInvite = Boolean(notification?.isLudoInvite);
+    const derivedInvitePayload =
+      notification?.invitePayload ||
+      (notification?.type === "ludo_invite"
+        ? {
+            gameId:
+              notification?.gameId ||
+              notification?.data?.gameId ||
+              notification?.linkData?.gameId,
+            from:
+              notification?.from ||
+              notification?.by ||
+              notification?.inviterId ||
+              notification?.data?.inviterId ||
+              notification?.data?.from ||
+              notification?.linkData?.inviterId,
+            name:
+              notification?.inviterName ||
+              notification?.senderName ||
+              notification?.name,
+            avatar:
+              notification?.inviterAvatar ||
+              notification?.icon ||
+              notification?.avatar,
+            slotIndex:
+              notification?.slotIndex ||
+              notification?.data?.slotIndex ||
+              notification?.linkData?.slotIndex,
+            playerCount:
+              notification?.playerCount ||
+              notification?.data?.playerCount ||
+              notification?.linkData?.playerCount,
+            ts: notification?.timestamp,
+          }
+        : null);
+    const isLudoInvite = Boolean(
+      notification?.isLudoInvite ||
+      (notification?.type === "ludo_invite" &&
+        derivedInvitePayload?.gameId &&
+        derivedInvitePayload?.from &&
+        shouldShowLudoInviteAlert(
+          derivedInvitePayload.gameId,
+          derivedInvitePayload.from,
+        )),
+    );
     const parts = isLudoInvite
       ? {
-          avatar: notification.inviterAvatar || notification.icon,
-          actorName: notification.inviterName || "A friend",
-          headline: `${notification.inviterName || "A friend"} invited you to play Ludo`,
+          avatar:
+            notification.inviterAvatar ||
+            notification.icon ||
+            derivedInvitePayload?.avatar,
+          actorName:
+            notification.inviterName ||
+            derivedInvitePayload?.name ||
+            "A friend",
+          headline: `${notification.inviterName || derivedInvitePayload?.name || "A friend"} invited you to play Ludo`,
           description: "",
           typeMeta: {
             label: "Ludo Invite",
@@ -327,9 +376,7 @@ const NotificationMenu = ({
                     if (
                       typeof window.acceptLudoInviteFromHeader === "function"
                     ) {
-                      window.acceptLudoInviteFromHeader(
-                        notification.invitePayload,
-                      );
+                      window.acceptLudoInviteFromHeader(derivedInvitePayload);
                     }
                     onClose?.();
                   }}
@@ -344,9 +391,7 @@ const NotificationMenu = ({
                     if (
                       typeof window.declineLudoInviteFromHeader === "function"
                     ) {
-                      window.declineLudoInviteFromHeader(
-                        notification.invitePayload,
-                      );
+                      window.declineLudoInviteFromHeader(derivedInvitePayload);
                     }
                   }}
                 >

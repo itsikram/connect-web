@@ -980,7 +980,28 @@ const Main = () => {
     const onInvite = (payload) => {
       try {
         if (!payload) return;
-        if (location.pathname.includes("/ludo-game")) return;
+        // If we're already on the Ludo page for this game, suppress and dismiss.
+        if (location.pathname.includes("/ludo-game")) {
+          try {
+            const activeInvite = localStorage.getItem("ludo_pending_invite");
+            const parsedInvite = activeInvite ? JSON.parse(activeInvite) : null;
+            const samePendingGame =
+              parsedInvite?.gameId &&
+              String(parsedInvite.gameId) === String(payload.gameId);
+            if (samePendingGame || isUserInLudoGame(payload.gameId)) {
+              if (socket && socket.connected) {
+                socket.emit("ludo:invites:dismiss", {
+                  gameId: payload.gameId,
+                  by: payload.by,
+                });
+              }
+              return;
+            }
+          } catch (_e) {
+            return;
+          }
+          return;
+        }
         // Check if invite is for this user
         if (payload.to && String(payload.to) !== String(myProfile._id)) return;
 
@@ -1063,7 +1084,34 @@ const Main = () => {
 
     const onInvites = (payload) => {
       try {
-        if (location.pathname.includes("/ludo-game")) return;
+        if (location.pathname.includes("/ludo-game")) {
+          const arr = Array.isArray(payload?.invites) ? payload.invites : [];
+          arr.forEach((inv) => {
+            try {
+              const gameId = inv?.gameId;
+              const from = inv?.by ?? inv?.from;
+              if (!gameId) return;
+              const activeInvite = localStorage.getItem("ludo_pending_invite");
+              const parsedInvite = activeInvite
+                ? JSON.parse(activeInvite)
+                : null;
+              const samePendingGame =
+                parsedInvite?.gameId &&
+                String(parsedInvite.gameId) === String(gameId);
+              if (
+                (samePendingGame || isUserInLudoGame(gameId)) &&
+                socket &&
+                socket.connected
+              ) {
+                socket.emit("ludo:invites:dismiss", {
+                  gameId,
+                  by: from,
+                });
+              }
+            } catch (_e) {}
+          });
+          return;
+        }
 
         const arr = Array.isArray(payload?.invites) ? payload.invites : [];
         const normalized = arr.map((x) => ({

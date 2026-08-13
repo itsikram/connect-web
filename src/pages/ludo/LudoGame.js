@@ -69,6 +69,7 @@ import {
   markInviteHandled,
   setActiveLudoGameId,
   clearActiveLudoGameId,
+  clearHandledLudoInvites,
 } from "../../utils/ludoInviteUtils";
 
 /**
@@ -206,6 +207,9 @@ const LudoGame = () => {
   const currentPlayerUpdatedFromServerRef = useRef(false);
   const autoStartTriggeredRef = useRef(false);
   const recentMovesRef = useRef(new Map()); // pieceKey -> { toSteps, timestamp }
+  const latestSentPlayersSeqRef = useRef(0);
+  const latestAppliedPlayersSeqRef = useRef(0);
+  const selfHealPlayersGetRequestRef = useRef({ gameId: null, timestamp: 0 });
   // ============================================================================
   // SECTION 5: ONLINE MULTIPLAYER STATE
   // ============================================================================
@@ -1735,15 +1739,31 @@ const LudoGame = () => {
 
     // Shared function to sync game state
     const syncGameState = (source) => {
-      // If we're in an active game, ensure we have the latest state
+      // If we're in an active game, only resync when actually reconnecting.
+      // During normal live play, focus/visibility events can otherwise replay an
+      // older cached snapshot and overwrite a newer local/host state.
       if (gameId && gameStartedRef.current && !gameEnded) {
+        const socket = socketRef.current;
+        const shouldForceResync =
+          isReconnecting ||
+          !socket ||
+          !socket.connected ||
+          source === "PAGESHOW";
+
         console.log(`[${source}] Syncing game state`, {
           gameId,
           gameStarted: gameStartedRef.current,
-          socketConnected: socketRef.current?.connected,
+          socketConnected: socket?.connected,
+          shouldForceResync,
+          isReconnecting,
         });
 
-        const socket = socketRef.current;
+        if (!shouldForceResync) {
+          console.log(
+            `[${source}] Skipping live resync because socket is already healthy`,
+          );
+          return;
+        }
 
         // If socket is not connected, ensure it connects
         if (!socket || !socket.connected) {
@@ -1809,7 +1829,7 @@ const LudoGame = () => {
 
           setTimeout(waitForConnection, 300);
         } else {
-          // Socket is connected, just request latest state
+          // Connected and explicitly forcing a resync (e.g. pageshow/rejoin)
           const now = Date.now();
           const lastRequest = lastPlayersGetRequestRef.current;
           const timeSinceLastRequest = now - lastRequest.timestamp;
@@ -1822,7 +1842,7 @@ const LudoGame = () => {
             lastPlayersGetRequestRef.current = { gameId, timestamp: now };
             try {
               console.log(
-                `[${source}] Requesting latest game state (socket already connected)`,
+                `[${source}] Requesting latest game state (forced resync)`,
               );
               socket.emit("ludo:join", { gameId });
               socket.emit("ludo:players:get", { gameId });
@@ -2225,6 +2245,9 @@ const LudoGame = () => {
             : [],
         }));
 
+        const nextPlayersSeq = latestSentPlayersSeqRef.current + 1;
+        latestSentPlayersSeqRef.current = nextPlayersSeq;
+
         const payload = {
           gameId,
           players: minimalPlayers,
@@ -2233,6 +2256,7 @@ const LudoGame = () => {
           diceValue: diceValueRef.current,
           gameStarted: gameStartedRef.current,
           timestamp: Date.now(),
+          playersSeq: nextPlayersSeq,
         };
 
         // Emitting optimized state
@@ -3312,6 +3336,8 @@ const LudoGame = () => {
                 }))
               : [],
           }));
+          const nextPlayersSeq = latestSentPlayersSeqRef.current + 1;
+          latestSentPlayersSeqRef.current = nextPlayersSeq;
           socketRef.current.emit("ludo:players", {
             gameId,
             players: minimalPlayers,
@@ -3321,6 +3347,7 @@ const LudoGame = () => {
             gameStarted: true,
             gameEnded: false,
             winners: [],
+            playersSeq: nextPlayersSeq,
           });
         } catch (_e) {}
       }
@@ -3400,7 +3427,7 @@ const LudoGame = () => {
 
         // Advance turn immediately after rolling the 3rd 6
         setTimeout(() => {
-          const nextPlayer = getNextActivePlayer(currentPlayer);
+          const nextPlayer = getNextActivePlayer(currentPlayerRef.current);
           playSound("turnChange");
           setCurrentPlayer(nextPlayer);
           currentPlayerRef.current = nextPlayer;
@@ -3463,13 +3490,19 @@ const LudoGame = () => {
       } catch (_e) {}
     }
 
-    const currentPlayerData = players[currentPlayer];
-    const playablePieces = getPlayablePieces(currentPlayer, value);
+    const currentPlayersForRoll =
+      playersRef.current && Array.isArray(playersRef.current)
+        ? playersRef.current
+        : players;
+    const rollingPlayerIndex = currentPlayerRef.current;
+    const currentPlayerData = currentPlayersForRoll[rollingPlayerIndex];
+    const playablePieces = getPlayablePieces(rollingPlayerIndex, value);
 
     if (playablePieces.length === 0) {
-      // No moves available - advance turn
+      // No moves available - advance turn using the authoritative ref value,
+      // not the render-time state variable, to avoid stale online turn handoff.
       setTimeout(() => {
-        advanceTurnForPlayer(currentPlayer);
+        advanceTurnForPlayer(currentPlayerRef.current);
       }, 400);
     } else if (playablePieces.length === 1) {
       const isCpuTurnNow =
@@ -3602,6 +3635,9 @@ const LudoGame = () => {
     // Update at intervals (only if state hasn't already reached target)
     for (let s = updateEvery; s < stepsToGo; s += updateEvery) {
       const timer = setTimeout(() => {
+        moveTimersRef.current = moveTimersRef.current.filter(
+          (t) => t !== timer,
+        );
         // Check if state is already at or past target (for immediate updates)
         const currentState =
           playersRef.current?.[playerIndex]?.pieces?.[pieceIndex];
@@ -3627,6 +3663,9 @@ const LudoGame = () => {
 
     // Final update to exact position (only if not already there)
     const finalTimer = setTimeout(() => {
+      moveTimersRef.current = moveTimersRef.current.filter(
+        (t) => t !== finalTimer,
+      );
       const currentState =
         playersRef.current?.[playerIndex]?.pieces?.[pieceIndex];
       const currentSteps = currentState?.steps ?? fromSteps;
@@ -3695,8 +3734,14 @@ const LudoGame = () => {
     const rolledNow = effectiveDiceValue;
     const rolledDiceValue = rolledNow; // Explicitly name it for clarity
 
-    const currentPlayerData = players[currentPlayer];
+    const currentPlayersForMove =
+      playersRef.current && Array.isArray(playersRef.current)
+        ? playersRef.current
+        : players;
+    const currentPlayerData = currentPlayersForMove[currentPlayer];
     if (!currentPlayerData) {
+      isMovingRef.current = false;
+      isAutoMovingRef.current = false;
       return;
     }
     const piece = currentPlayerData.pieces[pieceId];
@@ -3726,45 +3771,100 @@ const LudoGame = () => {
         // Play piece out sound
         playSound("pieceOut");
 
-        // Move out
-        const pieceKey = `${currentPlayer}-${pieceId}`;
+        const movingPlayerIndex = currentPlayer;
+        const pieceKey = `${movingPlayerIndex}-${pieceId}`;
         recentMovesRef.current.set(pieceKey, {
           toSteps: 1,
           timestamp: Date.now(),
         });
 
-        const updated = players.map((p) => ({
+        // CRITICAL: Update state synchronously to the moved position FIRST so
+        // capture checks below see an accurate, already-moved board (this
+        // avoids the previous bug where captures were computed AFTER the move
+        // was already broadcast, which meant captures were silently dropped
+        // for every other client when a remote player made the move).
+        const sourcePlayersForMoveOut =
+          playersRef.current && Array.isArray(playersRef.current)
+            ? playersRef.current
+            : players;
+        const movedPlayers = sourcePlayersForMoveOut.map((p) => ({
           ...p,
-          pieces: p.pieces.map((pc) => ({ ...pc })),
+          pieces: Array.isArray(p.pieces)
+            ? p.pieces.map((pc) => ({ ...pc }))
+            : [],
         }));
-        updated[currentPlayer].pieces[pieceId] = {
+        movedPlayers[movingPlayerIndex].pieces[pieceId] = {
+          ...movedPlayers[movingPlayerIndex].pieces[pieceId],
           ...piece,
           isHome: false,
           isInPlay: true,
           steps: 1,
         };
-        setPlayers(updated);
-        // Update ref immediately to ensure protection logic sees the new state
-        playersRef.current = updated;
+        playersRef.current = movedPlayers;
 
-        // Broadcast move immediately for real-time sync
+        // Compute captures synchronously (state already reflects the move)
+        const newPosition = getPositionOnPath(movingPlayerIndex, 1);
+        const capturedPieces = checkForCapture(
+          movingPlayerIndex,
+          newPosition,
+          1,
+        );
+        const finalCaptures = Array.isArray(capturedPieces)
+          ? capturedPieces
+          : [];
+        const didCaptureOnMoveOut = finalCaptures.length > 0;
+
+        // Apply move + captures together in a single, consistent state update
+        const finalPlayers = movedPlayers.map((p) => ({
+          ...p,
+          pieces: p.pieces.map((pc) => ({ ...pc })),
+        }));
+        finalCaptures.forEach(({ playerIndex, pieceIndex }) => {
+          if (finalPlayers[playerIndex]?.pieces?.[pieceIndex]) {
+            finalPlayers[playerIndex].pieces[pieceIndex] = {
+              ...finalPlayers[playerIndex].pieces[pieceIndex],
+              isHome: true,
+              isInPlay: false,
+              steps: 0,
+            };
+            const captureKey = `${playerIndex}-${pieceIndex}`;
+            recentMovesRef.current.set(captureKey, {
+              toSteps: 0,
+              timestamp: Date.now(),
+              isCapture: true,
+            });
+          }
+        });
+
+        setPlayers(finalPlayers);
+        playersRef.current = finalPlayers;
+
+        if (didCaptureOnMoveOut) {
+          playSound("capture");
+        }
+
+        // Broadcast move + captures together so every client (host and
+        // remaining players) applies the exact same result instead of
+        // guessing or waiting on a later, potentially incomplete snapshot.
         if (onlineMode && socketRef.current && gameId) {
           try {
             console.log("[MOVE] Broadcasting move out of home", {
-              playerIndex: currentPlayer,
+              playerIndex: movingPlayerIndex,
               pieceIndex: pieceId,
               toSteps: 1,
               fromSteps: 0,
               rolled: 6,
+              captures: finalCaptures,
             });
             socketRef.current.emit("ludo:move", {
               gameId,
               by: myProfile?._id,
-              playerIndex: currentPlayer,
+              playerIndex: movingPlayerIndex,
               pieceIndex: pieceId,
               toSteps: 1,
               fromSteps: 0,
               rolled: 6,
+              captures: finalCaptures,
             });
           } catch (_e) {}
         }
@@ -3773,22 +3873,6 @@ const LudoGame = () => {
         setTimeout(() => {
           recentMovesRef.current.delete(pieceKey);
         }, 5000);
-
-        // Capture at start position
-        const newPosition = getPositionOnPath(currentPlayer, 1);
-        const capturedPieces = checkForCapture(currentPlayer, newPosition, 1);
-        const didCaptureOnMoveOut =
-          Array.isArray(capturedPieces) && capturedPieces.length > 0;
-        capturedPieces.forEach(({ playerIndex, pieceIndex }) => {
-          // Track capture to prevent it from being overwritten
-          const captureKey = `${playerIndex}-${pieceIndex}`;
-          recentMovesRef.current.set(captureKey, {
-            toSteps: 0,
-            timestamp: Date.now(),
-            isCapture: true,
-          });
-          captureToken(playerIndex, pieceIndex);
-        });
 
         isMovingRef.current = false; // Reset moving flag
         isAutoMovingRef.current = false; // Clear auto-moving flag
@@ -3804,36 +3888,60 @@ const LudoGame = () => {
         const keepTurnOnMoveOut =
           rolledValueForMoveOut === 6 || didCaptureOnMoveOut; // Rolling 6 or capturing gives another turn
 
-        if (keepTurnOnMoveOut) {
-          // CRITICAL: Add a small delay before allowing next roll to ensure all state is synchronized
-          // This prevents the player from rolling twice in the same turn due to race conditions
-          setTimeout(() => {
-            // Double-check that it's still the same player's turn and dice is 0
-            if (
-              currentPlayerRef.current === currentPlayer &&
-              diceValueRef.current === 0
-            ) {
-              setCanRollDice(true); // keep turn on 6 (traditional Ludo rule)
-            }
-          }, 200); // Small delay to ensure state propagation
-        } else {
-          // No capture, advance turn
-          setTimeout(() => {
-            const nextPlayer = getNextActivePlayer(currentPlayer);
-            playSound("turnChange");
-            setCurrentPlayer(nextPlayer);
-            currentPlayerRef.current = nextPlayer;
-            lastTurnAdvanceTimeRef.current = Date.now();
+        // CRITICAL: Only the host (or an offline/vs-computer game) is allowed
+        // to locally mutate currentPlayer in online mode. If a non-host remote
+        // player also mutated its own turn state here, it would race against
+        // the host's authoritative decision made in onMove for this exact
+        // same move (both use the same rolled/capture rule, but on different
+        // timers), which was causing the host to sometimes never get its turn
+        // back and the remote player's tokens to visibly "blink"/flicker as
+        // the two conflicting turn decisions fought each other. Non-host
+        // online players simply wait for the host's ludo:players snapshot to
+        // update currentPlayer/canRollDice.
+        const isTurnAuthorityLocal = !onlineMode || myPlayerIndex === 0;
 
+        if (isTurnAuthorityLocal) {
+          if (keepTurnOnMoveOut) {
+            // CRITICAL: Add a small delay before allowing next roll to ensure all state is synchronized
+            // This prevents the player from rolling twice in the same turn due to race conditions
             setTimeout(() => {
+              // Double-check that it's still the same player's turn and dice is 0
               if (
-                currentPlayerRef.current === nextPlayer &&
+                currentPlayerRef.current === currentPlayer &&
                 diceValueRef.current === 0
               ) {
-                setCanRollDice(true);
+                setCanRollDice(true); // keep turn on 6 (traditional Ludo rule)
               }
+            }, 200); // Small delay to ensure state propagation
+          } else {
+            // No capture, advance turn
+            setTimeout(() => {
+              const nextPlayer = getNextActivePlayer(currentPlayerRef.current);
+              playSound("turnChange");
+              setCurrentPlayer(nextPlayer);
+              currentPlayerRef.current = nextPlayer;
+              lastTurnAdvanceTimeRef.current = Date.now();
+
+              setTimeout(() => {
+                if (
+                  currentPlayerRef.current === nextPlayer &&
+                  diceValueRef.current === 0
+                ) {
+                  setCanRollDice(true);
+                }
+              }, 200);
             }, 200);
-          }, 200);
+          }
+        } else {
+          // Prevent a double-roll window: keep dice disabled locally until
+          // the host's authoritative snapshot confirms the actual next turn.
+          if (!keepTurnOnMoveOut) {
+            setCanRollDice(false);
+          }
+          console.log(
+            "[MOVE_PIECE] Remote move out of home - waiting for host's authoritative turn update",
+            { movingPlayerIndex: currentPlayer, keepTurnOnMoveOut },
+          );
         }
 
         // Save and emit state after move and captures are processed (moves out of home)
@@ -3847,150 +3955,141 @@ const LudoGame = () => {
         // Play piece move sound
         playSound("pieceMove");
 
+        const movingPlayerIndex = currentPlayer;
         const oldSteps = piece.steps;
-        const oldPosition = getPositionOnPath(currentPlayer, oldSteps);
+        const oldPosition = getPositionOnPath(movingPlayerIndex, oldSteps);
         const newSteps = piece.steps + effectiveDiceValue;
         if (newSteps <= maxSteps) {
-          // Broadcast move immediately for real-time sync
-          if (onlineMode && socketRef.current && gameId) {
-            try {
-              // Broadcasting regular move
-              socketRef.current.emit("ludo:move", {
-                gameId,
-                by: myProfile?._id,
-                playerIndex: currentPlayer,
-                pieceIndex: pieceId,
-                toSteps: newSteps,
-                fromSteps: oldSteps,
-                rolled: lastDiceValueRef.current, // Include the dice value that was rolled
-              });
-            } catch (_e) {}
+          // CRITICAL: Use the rolled dice value that was captured at the start of the move
+          const capturedRolledValue = rolledDiceValue;
+          const pieceKey = `${movingPlayerIndex}-${pieceId}`;
+
+          // CRITICAL: Update state synchronously to the moved position FIRST so
+          // capture checks below see an accurate, already-moved board. Previously
+          // captures were computed AFTER the move was already broadcast (inside
+          // the animation-complete callback), which meant captures were
+          // silently dropped for every other client whenever a remote player
+          // made the move - this is what caused token positions to diverge
+          // between players in online mode.
+          const sourcePlayersForMove =
+            playersRef.current && Array.isArray(playersRef.current)
+              ? playersRef.current
+              : players;
+          const movedPlayers = sourcePlayersForMove.map((p) => ({
+            ...p,
+            pieces: Array.isArray(p.pieces)
+              ? p.pieces.map((pc) => ({ ...pc }))
+              : [],
+          }));
+          movedPlayers[movingPlayerIndex].pieces[pieceId] = {
+            ...movedPlayers[movingPlayerIndex].pieces[pieceId],
+            steps: newSteps,
+            isHome: false,
+            isInPlay: newSteps > 0 && newSteps < maxSteps,
+          };
+          playersRef.current = movedPlayers;
+
+          // Compute captures synchronously (state already reflects the move)
+          let finalCaptures = [];
+          if (newSteps < maxSteps) {
+            const newPosition = getPositionOnPath(movingPlayerIndex, newSteps);
+            const capturedPieces = checkForCapture(
+              movingPlayerIndex,
+              newPosition,
+              newSteps,
+            );
+            if (Array.isArray(capturedPieces)) {
+              finalCaptures.push(...capturedPieces);
+            }
+
+            // Check for captures at the old position (when token moves away)
+            // This handles the case where friend has double tokens and moves
+            // one away, leaving a single token that should be captured
+            if (oldSteps > 0 && oldSteps < maxSteps) {
+              const capturedAfterMoveAway = checkForCaptureAfterMoveAway(
+                movingPlayerIndex,
+                oldPosition,
+              );
+              if (Array.isArray(capturedAfterMoveAway)) {
+                finalCaptures.push(...capturedAfterMoveAway);
+              }
+            }
           }
+
+          // Dedupe captures defensively (same piece could theoretically be
+          // flagged by both capture checks above)
+          const dedupedCaptureMap = new Map();
+          finalCaptures.forEach((c) => {
+            dedupedCaptureMap.set(`${c.playerIndex}-${c.pieceIndex}`, c);
+          });
+          finalCaptures = Array.from(dedupedCaptureMap.values());
+          const didCapture = finalCaptures.length > 0;
+
+          // Apply move + captures together in a single, consistent state update
+          const finalPlayers = movedPlayers.map((p) => ({
+            ...p,
+            pieces: p.pieces.map((pc) => ({ ...pc })),
+          }));
+          finalCaptures.forEach(({ playerIndex, pieceIndex }) => {
+            if (finalPlayers[playerIndex]?.pieces?.[pieceIndex]) {
+              finalPlayers[playerIndex].pieces[pieceIndex] = {
+                ...finalPlayers[playerIndex].pieces[pieceIndex],
+                steps: 0,
+                isHome: true,
+                isInPlay: false,
+              };
+              const captureKey = `${playerIndex}-${pieceIndex}`;
+              recentMovesRef.current.set(captureKey, {
+                toSteps: 0,
+                timestamp: Date.now(),
+                isCapture: true,
+              });
+            }
+          });
+
+          setPlayers(finalPlayers);
+          playersRef.current = finalPlayers;
+
+          if (didCapture) {
+            playSound("capture");
+          }
+
           // Track this move
-          const pieceKey = `${currentPlayer}-${pieceId}`;
           recentMovesRef.current.set(pieceKey, {
             toSteps: newSteps,
             timestamp: Date.now(),
           });
 
-          // Capture the current player index to avoid stale closure
-          const movingPlayerIndex = currentPlayer;
+          // Broadcast move + captures together so every client (host and
+          // remaining players) applies the exact same result instead of
+          // guessing or waiting on a later, potentially incomplete snapshot.
+          if (onlineMode && socketRef.current && gameId) {
+            try {
+              socketRef.current.emit("ludo:move", {
+                gameId,
+                by: myProfile?._id,
+                playerIndex: movingPlayerIndex,
+                pieceIndex: pieceId,
+                toSteps: newSteps,
+                fromSteps: oldSteps,
+                rolled: lastDiceValueRef.current, // Include the dice value that was rolled
+                captures: finalCaptures,
+              });
+            } catch (_e) {}
+          }
 
-          // CRITICAL: Use the rolled dice value that was captured at the start of the move
-          // This ensures turn advancement uses the actual rolled value, not the current dice state
-          const capturedRolledValue = rolledDiceValue;
-
-          // CRITICAL: Update state and ref immediately so UI shows the move and protection logic sees it
-          // This prevents broadcasts from overwriting the move before animation completes
-          setPlayers((prev) => {
-            const updated = prev.map((p) => ({
-              ...p,
-              pieces: p.pieces.map((pc) => ({ ...pc })),
-            }));
-            updated[movingPlayerIndex].pieces[pieceId].steps = newSteps;
-            updated[movingPlayerIndex].pieces[pieceId].isHome = false;
-            updated[movingPlayerIndex].pieces[pieceId].isInPlay =
-              newSteps > 0 && newSteps < maxSteps;
-            // Update ref immediately to ensure protection logic sees the new state
-            playersRef.current = updated;
-            return updated;
-          });
-
-          // Animate the visual movement (state is already at target, animation provides visual feedback)
-          // Pass oldSteps so animation knows where to start from visually
+          // Animate the visual movement (state is already at target; this is
+          // purely a visual/cosmetic slide for the local mover).
           animateTokenMovement(
             movingPlayerIndex,
             pieceId,
             newSteps,
             oldSteps,
             () => {
-              // After animation, run capture/win checks
-              let updatedState = null;
-              setPlayers((prev) => {
-                const updatedPlayers = prev.map((p) => ({
-                  ...p,
-                  pieces: p.pieces.map((pc) => ({ ...pc })),
-                }));
-                updatedPlayers[movingPlayerIndex].pieces[pieceId].steps =
-                  newSteps;
-                updatedPlayers[movingPlayerIndex].pieces[pieceId].isHome =
-                  false;
-                updatedPlayers[movingPlayerIndex].pieces[pieceId].isInPlay =
-                  newSteps > 0 && newSteps < maxStepsRef.current;
-
-                console.log("[MOVE] Updated piece position", {
-                  playerIndex: movingPlayerIndex,
-                  pieceIndex: pieceId,
-                  newSteps: newSteps,
-                  isHome:
-                    updatedPlayers[movingPlayerIndex].pieces[pieceId].isHome,
-                  isInPlay:
-                    updatedPlayers[movingPlayerIndex].pieces[pieceId].isInPlay,
-                });
-
-                // Update ref immediately to ensure broadcasts use current state
-                playersRef.current = updatedPlayers; // Update ref
-                updatedState = updatedPlayers; // Update captured state
-                return updatedPlayers;
-              });
-
               // Keep move protected for 2 seconds after completion
               setTimeout(() => {
                 recentMovesRef.current.delete(pieceKey);
               }, 2000);
-
-              let didCapture = false;
-              if (newSteps < maxSteps) {
-                const newPosition = getPositionOnPath(
-                  movingPlayerIndex,
-                  newSteps,
-                );
-
-                // Check for captures at the new position
-                // Pass newSteps to ensure the moving piece is counted correctly
-                const capturedPieces = checkForCapture(
-                  movingPlayerIndex,
-                  newPosition,
-                  newSteps,
-                );
-                didCapture =
-                  Array.isArray(capturedPieces) && capturedPieces.length > 0;
-                capturedPieces.forEach(({ playerIndex, pieceIndex }) => {
-                  // Track capture to prevent it from being overwritten
-                  const captureKey = `${playerIndex}-${pieceIndex}`;
-                  recentMovesRef.current.set(captureKey, {
-                    toSteps: 0,
-                    timestamp: Date.now(),
-                    isCapture: true,
-                  });
-                  captureToken(playerIndex, pieceIndex);
-                });
-
-                // Check for captures at the old position (when token moves away)
-                // This handles the case where friend has double tokens and moves one away,
-                // leaving a single token that should be captured
-                if (oldSteps > 0 && oldSteps < maxSteps) {
-                  const capturedAfterMoveAway = checkForCaptureAfterMoveAway(
-                    movingPlayerIndex,
-                    oldPosition,
-                  );
-                  if (capturedAfterMoveAway.length > 0) {
-                    didCapture = true; // Count this as a capture for turn purposes
-                    capturedAfterMoveAway.forEach(
-                      ({ playerIndex, pieceIndex }) => {
-                        // Track capture to prevent it from being overwritten
-                        const captureKey = `${playerIndex}-${pieceIndex}`;
-                        recentMovesRef.current.set(captureKey, {
-                          toSteps: 0,
-                          timestamp: Date.now(),
-                          isCapture: true,
-                        });
-                        captureToken(playerIndex, pieceIndex);
-                      },
-                    );
-                  }
-                }
-              }
 
               if (newSteps === maxSteps) {
                 setPlayers((prev) => {
@@ -4025,29 +4124,7 @@ const LudoGame = () => {
                     }
                   }
                   playersRef.current = updatedPlayers; // Update ref
-                  updatedState = updatedPlayers; // Update captured state
                   return updatedPlayers;
-                });
-              }
-
-              // Verify final state before completing
-              const finalState =
-                playersRef.current[movingPlayerIndex]?.pieces[pieceId];
-
-              // If state doesn't match, force update one more time
-              if (finalState?.steps !== newSteps) {
-                setPlayers((prev) => {
-                  const corrected = prev.map((p) => ({
-                    ...p,
-                    pieces: p.pieces.map((pc) => ({ ...pc })),
-                  }));
-                  corrected[movingPlayerIndex].pieces[pieceId].steps = newSteps;
-                  corrected[movingPlayerIndex].pieces[pieceId].isHome = false;
-                  corrected[movingPlayerIndex].pieces[pieceId].isInPlay =
-                    newSteps > 0 && newSteps < maxStepsRef.current;
-                  playersRef.current = corrected; // Update ref
-                  updatedState = corrected; // Update captured state
-                  return corrected;
                 });
               }
 
@@ -4088,6 +4165,17 @@ const LudoGame = () => {
                 }, 500); // Small delay to ensure all state updates are complete
               }
 
+              // CRITICAL: Only the host (or an offline/vs-computer game) is
+              // allowed to locally mutate currentPlayer in online mode. A
+              // non-host remote mover must not also decide/advance the turn
+              // here - the host already makes this exact decision (using the
+              // same rolled/capture rule) inside onMove when it receives this
+              // move. Letting both sides mutate currentPlayer independently
+              // was the root cause of the host sometimes never regaining its
+              // turn and of remote tokens visibly "blinking" from the two
+              // conflicting decisions overwriting each other.
+              const isTurnAuthorityLocal = !onlineMode || myPlayerIndex === 0;
+
               if (keepTurn) {
                 // Player keeps turn (rolled 6 or captured) - don't advance
                 console.log("[MOVE_PIECE] Player keeps turn", {
@@ -4105,7 +4193,7 @@ const LudoGame = () => {
                     emitPlayersStateAfterSave(false);
                   }, 200);
                 }
-              } else {
+              } else if (isTurnAuthorityLocal) {
                 // CRITICAL: Advance to next player - this MUST happen for non-6, non-capture moves
                 const nextPlayer = getNextActivePlayer(movingPlayerIndex);
 
@@ -4167,6 +4255,16 @@ const LudoGame = () => {
 
                 // Don't manually set canRollDice - let the useEffect handle it after state settles
                 // The useEffect will detect the turn change and update canRollDice accordingly
+              } else {
+                // Prevent a double-roll window: keep dice disabled locally
+                // until the host's authoritative snapshot confirms the
+                // actual next turn (currentPlayer is intentionally left
+                // unchanged here - the host owns that decision).
+                setCanRollDice(false);
+                console.log(
+                  "[MOVE_PIECE] Remote move consumed - waiting for host's authoritative turn update",
+                  { movingPlayerIndex, rolledValue, hasCapture },
+                );
               }
             },
           );
@@ -4199,7 +4297,16 @@ const LudoGame = () => {
         // Ignore our own moves
         if (payload.by === myProfile?._id) return;
 
-        // Apply move immediately for real-time synchronization
+        const incomingCaptures = Array.isArray(payload.captures)
+          ? payload.captures
+          : [];
+
+        // Apply remote move AND any captures together, so every client's
+        // board matches exactly what the mover computed. Previously captures
+        // were never included in this payload, so a capture made by a remote
+        // player was silently dropped here - the captured piece stayed on the
+        // board for the host/other clients while it was already sent home on
+        // the mover's own screen, causing token positions to diverge.
         setPlayers((prev) => {
           const updated = prev.map((p) => ({
             ...p,
@@ -4212,200 +4319,97 @@ const LudoGame = () => {
             piece.isHome = payload.toSteps === 0;
             piece.isInPlay =
               payload.toSteps > 0 && payload.toSteps < maxStepsRef.current;
-
-            // Updated piece position
           }
+          incomingCaptures.forEach(({ playerIndex, pieceIndex }) => {
+            if (updated[playerIndex]?.pieces?.[pieceIndex]) {
+              updated[playerIndex].pieces[pieceIndex] = {
+                ...updated[playerIndex].pieces[pieceIndex],
+                steps: 0,
+                isHome: true,
+                isInPlay: false,
+              };
+            }
+          });
+          playersRef.current = updated;
           return updated;
         });
 
-        // CRITICAL: Handle captures for remote players
-        // This ensures all players see the same capture results
-        setTimeout(() => {
-          const movingPlayerIndex = payload.playerIndex;
-          const newSteps = payload.toSteps;
-          const oldSteps = payload.fromSteps;
-          let didCapture = false; // Track if any captures occurred
+        if (incomingCaptures.length > 0) {
+          playSound("capture");
+        }
 
-          // Only check captures if the piece is on the board (not home)
-          if (newSteps > 0 && newSteps < maxStepsRef.current) {
-            const newPosition = getPositionOnPath(movingPlayerIndex, newSteps);
-
-            // Check for captures at the new position
-            const capturedPieces = checkForCapture(
-              movingPlayerIndex,
-              newPosition,
-              newSteps,
-            );
-            if (Array.isArray(capturedPieces) && capturedPieces.length > 0) {
-              console.log("[ON_MOVE] Remote capture detected", {
-                movingPlayer: movingPlayerIndex,
-                newPosition,
-                capturedPieces,
-              });
-
-              didCapture = true; // Mark that capture occurred
-              capturedPieces.forEach(({ playerIndex, pieceIndex }) => {
-                // Track capture to prevent it from being overwritten
-                const captureKey = `${playerIndex}-${pieceIndex}`;
-                recentMovesRef.current.set(captureKey, {
-                  toSteps: 0,
-                  timestamp: Date.now(),
-                  isCapture: true,
-                });
-                captureToken(playerIndex, pieceIndex);
-              });
-            }
-
-            // Check for captures at the old position (when token moves away)
-            if (oldSteps > 0 && oldSteps < maxStepsRef.current) {
-              const oldPosition = getPositionOnPath(
-                movingPlayerIndex,
-                oldSteps,
-              );
-              const capturedAfterMoveAway = checkForCaptureAfterMoveAway(
-                movingPlayerIndex,
-                oldPosition,
-              );
-              if (capturedAfterMoveAway.length > 0) {
-                console.log(
-                  "[ON_MOVE] Remote capture after move away detected",
-                  {
-                    movingPlayer: movingPlayerIndex,
-                    oldPosition,
-                    capturedAfterMoveAway,
-                  },
-                );
-
-                didCapture = true; // Mark that capture occurred
-                capturedAfterMoveAway.forEach(({ playerIndex, pieceIndex }) => {
-                  // Track capture to prevent it from being overwritten
-                  const captureKey = `${playerIndex}-${pieceIndex}`;
-                  recentMovesRef.current.set(captureKey, {
-                    toSteps: 0,
-                    timestamp: Date.now(),
-                    isCapture: true,
-                  });
-                  captureToken(playerIndex, pieceIndex);
-                });
-              }
-            }
-          }
-
-          // CRITICAL: Now handle turn advancement considering captures
-          const isMovingPlayer =
-            payload.playerIndex === currentPlayerRef.current;
-          const rolledSix = payload.rolled === 6;
-          const movedOutOfHome = payload.fromSteps === 0 && payload.toSteps > 0;
-
-          // Player keeps turn if they rolled 6 OR captured a token (traditional Ludo rule)
-          const keepTurn = rolledSix || didCapture;
-
-          console.log("[ON_MOVE] Turn advancement decision", {
-            isMovingPlayer,
-            rolledSix,
-            didCapture,
-            keepTurn,
-            payload: {
-              playerIndex: payload.playerIndex,
-              rolled: payload.rolled,
-              fromSteps: payload.fromSteps,
-              toSteps: payload.toSteps,
-            },
-            currentPlayer: currentPlayerRef.current,
-            lastDiceValue: lastDiceValueRef.current,
+        // Track the recent remote move (and captures) briefly so a
+        // slightly-late snapshot does not visually revert them before the
+        // authoritative players state arrives.
+        const pieceKey = `${payload.playerIndex}-${payload.pieceIndex}`;
+        recentMovesRef.current.set(pieceKey, {
+          toSteps: payload.toSteps,
+          timestamp: Date.now(),
+        });
+        incomingCaptures.forEach(({ playerIndex, pieceIndex }) => {
+          const captureKey = `${playerIndex}-${pieceIndex}`;
+          recentMovesRef.current.set(captureKey, {
+            toSteps: 0,
+            timestamp: Date.now(),
+            isCapture: true,
           });
-
-          if (isMovingPlayer && !keepTurn) {
-            // Regular move with no capture and no 6 - advance turn
-            setTimeout(() => {
-              const nextPlayer = getNextActivePlayer(payload.playerIndex);
-              console.log("[ON_MOVE] Advancing turn (no capture, no 6)", {
-                from: payload.playerIndex,
-                to: nextPlayer,
-                reason: "regular move completed",
-              });
-              setCurrentPlayer(nextPlayer);
-              currentPlayerRef.current = nextPlayer;
-              lastTurnAdvanceTimeRef.current = Date.now();
-              setDiceValueImmediate(0);
-
-              // CRITICAL: Reset consecutive 6s for the player who lost their turn
-              if (consecutiveSixesRef.current[payload.playerIndex] > 0) {
-                setConsecutiveSixes((prev) => ({
-                  ...prev,
-                  [payload.playerIndex]: 0,
-                }));
-                consecutiveSixesRef.current[payload.playerIndex] = 0;
-              }
-
-              // CRITICAL: Allow next player to roll dice
-              setTimeout(() => {
-                if (
-                  currentPlayerRef.current === nextPlayer &&
-                  diceValueRef.current === 0
-                ) {
-                  setCanRollDice(true);
-                }
-              }, 100);
-
-              // Save and emit state if host
-              if (myPlayerIndex === 0 && onlineMode && gameId) {
-                setTimeout(() => {
-                  emitPlayersStateAfterSave(false);
-                }, 100);
-              }
-            }, 200); // Small delay to ensure capture processing completes
-          } else if (isMovingPlayer && keepTurn) {
-            // Player keeps turn (rolled 6 or captured) - reset dice and allow roll again
-            console.log(
-              "[ON_MOVE] Player should keep turn - preparing to allow roll again",
-              {
-                playerIndex: payload.playerIndex,
-                rolledSix,
-                didCapture,
-                currentPlayerBefore: currentPlayerRef.current,
-              },
-            );
-
-            setTimeout(() => {
-              setDiceValueImmediate(0);
-              // Allow same player to roll again
-              setCanRollDice(true);
-              console.log("[ON_MOVE] Player keeps turn (6 or capture)", {
-                playerIndex: payload.playerIndex,
-                rolledSix,
-                didCapture,
-                currentPlayerAfter: currentPlayerRef.current,
-                canRollDice: true,
-              });
-
-              // CRITICAL: Force update canRollDice after a short delay to ensure it's set correctly
-              // This fixes the issue where multiple 6s don't work for remote players
-              setTimeout(() => {
-                if (
-                  currentPlayerRef.current === payload.playerIndex &&
-                  diceValueRef.current === 0
-                ) {
-                  setCanRollDice(true);
-                  console.log(
-                    "[ON_MOVE] Force update canRollDice for multiple 6s - completed",
-                  );
-                }
-              }, 50);
-            }, 200);
-          } else {
-            // This case shouldn't happen, but let's log it for debugging
-            console.log("[ON_MOVE] Unexpected turn advancement case", {
-              isMovingPlayer,
-              keepTurn,
-              payload: {
-                playerIndex: payload.playerIndex,
-                rolled: payload.rolled,
-              },
-              currentPlayer: currentPlayerRef.current,
-            });
+        });
+        setTimeout(() => {
+          const tracked = recentMovesRef.current.get(pieceKey);
+          if (
+            tracked &&
+            tracked.toSteps === payload.toSteps &&
+            Date.now() - tracked.timestamp >= 2500
+          ) {
+            recentMovesRef.current.delete(pieceKey);
           }
-        }, 100); // Small delay to ensure the move is processed first
+        }, 2600);
+
+        // Host must publish the authoritative post-move snapshot even when the
+        // move was made by a remote player, otherwise the next turn never reaches
+        // the other clients. Capturing a token also keeps the turn, matching
+        // the same rule the mover's own client uses.
+        if (myPlayerIndexRef.current === 0 && onlineMode && gameId) {
+          const rolledValue = Number(payload.rolled || 0);
+          const hasCapture = incomingCaptures.length > 0;
+          const keepTurn = rolledValue === 6 || hasCapture;
+
+          if (!keepTurn) {
+            const nextPlayer = getNextActivePlayer(payload.playerIndex);
+            currentPlayerRef.current = nextPlayer;
+            lastTurnAdvanceTimeRef.current = Date.now();
+            setCurrentPlayer(nextPlayer);
+            setDiceValueImmediate(0);
+            lastLocalDiceRollTimeRef.current = 0;
+
+            setTimeout(() => {
+              console.log(
+                "[ON_MOVE][HOST] Emitting authoritative turn change",
+                {
+                  fromPlayer: payload.playerIndex,
+                  toPlayer: nextPlayer,
+                  rolledValue,
+                  hasCapture,
+                  gameId,
+                },
+              );
+              emitPlayersStateAfterSave(false);
+            }, 120);
+          } else {
+            setTimeout(() => {
+              console.log(
+                "[ON_MOVE][HOST] Emitting authoritative keep-turn state",
+                {
+                  playerIndex: payload.playerIndex,
+                  rolledValue,
+                  hasCapture,
+                  gameId,
+                },
+              );
+              emitPlayersStateAfterSave(false);
+            }, 120);
+          }
+        }
       } catch (_e) {
         console.error("[ON_MOVE] Error processing move:", _e);
       }
@@ -4763,6 +4767,22 @@ const LudoGame = () => {
     const onPlayers = (payload) => {
       try {
         if (!payload) return;
+        const payloadSeq = Number(payload.playersSeq || 0);
+        if (
+          payloadSeq > 0 &&
+          latestAppliedPlayersSeqRef.current > 0 &&
+          payloadSeq < latestAppliedPlayersSeqRef.current
+        ) {
+          console.log("[ON_PLAYERS] Ignoring stale players snapshot", {
+            payloadSeq,
+            latestApplied: latestAppliedPlayersSeqRef.current,
+            gameId: payload.gameId,
+          });
+          return;
+        }
+        if (payloadSeq > 0) {
+          latestAppliedPlayersSeqRef.current = payloadSeq;
+        }
         // Accept if gameId matches current or saved game state (for reconnection)
         const currentGid = gameId || savedGameStateRef.current?.gameId;
         if (payload.gameId !== currentGid) return;
@@ -4868,6 +4888,12 @@ const LudoGame = () => {
 
         // Don't ignore broadcasts - always process them to keep state in sync
         // But protect dice value if we recently rolled locally
+        const incomingCurrentPlayer =
+          typeof payload.currentPlayer === "number"
+            ? payload.currentPlayer
+            : currentPlayerRef.current;
+        const incomingDiceValue =
+          typeof payload.diceValue === "number" ? payload.diceValue : 0;
         const isMyTurn = currentPlayerRef.current === myPlayerIndex;
         const hasActiveDice = diceValueRef.current > 0;
         const timeSinceLocalRoll =
@@ -4876,6 +4902,25 @@ const LudoGame = () => {
           timeSinceLocalRoll < 5000 && lastLocalDiceRollTimeRef.current > 0;
         const shouldProtectDiceValue =
           isMyTurn && (hasActiveDice || recentlyRolledLocally);
+
+        // Snapshot is authoritative for turn/dice resolution in online games.
+        // If the turn changed or the host says there is no active dice value,
+        // clear any stale local rolling/moving locks so the next player can act.
+        if (onlineMode) {
+          const turnChanged =
+            incomingCurrentPlayer !== currentPlayerRef.current;
+          const snapshotClearsDice = incomingDiceValue === 0;
+          if (turnChanged || snapshotClearsDice) {
+            isRollingRef.current = false;
+            if (snapshotClearsDice) {
+              lastLocalDiceRollTimeRef.current = 0;
+              setDiceValueImmediate(0);
+            }
+            if (turnChanged) {
+              isAutoMovingRef.current = false;
+            }
+          }
+        }
 
         if (Array.isArray(payload.players)) {
           const next = payload.players.map((p, pIdx) => {
@@ -4954,19 +4999,37 @@ const LudoGame = () => {
                 (p) => p && p.profileId && String(p.profileId) === String(myId),
               );
 
-            // If user successfully joined, dismiss all other pending invites
-            if (
-              isUserInPlayers &&
-              socketRef.current &&
-              socketRef.current.connected
-            ) {
-              try {
-                // Request invites to dismiss them
-                socketRef.current.emit("ludo:invites:get", {});
-                // Set flag to dismiss all other invites when received
-                localStorage.setItem("ludo_dismiss_all_other_invites", "true");
-              } catch (_e) {
-                // Ignore errors
+            // If user successfully joined, clear any pending invite UI for this game
+            // and dismiss all other invite notifications as well.
+            if (isUserInPlayers) {
+              setPendingInvites((prev) =>
+                prev.filter(
+                  (inv) => String(inv.gameId) !== String(payload.gameId),
+                ),
+              );
+              setIncomingInviteRequest((prev) =>
+                prev && String(prev.gameId) === String(payload.gameId)
+                  ? null
+                  : prev,
+              );
+              setIncomingInvite((prev) =>
+                prev && String(prev.gameId) === String(payload.gameId)
+                  ? null
+                  : prev,
+              );
+
+              if (socketRef.current && socketRef.current.connected) {
+                try {
+                  // Request invites to dismiss them
+                  socketRef.current.emit("ludo:invites:get", {});
+                  // Set flag to dismiss all other invites when received
+                  localStorage.setItem(
+                    "ludo_dismiss_all_other_invites",
+                    "true",
+                  );
+                } catch (_e) {
+                  // Ignore errors
+                }
               }
             }
 
@@ -5636,6 +5699,77 @@ const LudoGame = () => {
     diceValue,
   ]);
 
+  // Self-healing safety net #1: the effect above can occasionally skip an
+  // update because of its anti-flicker throttle (MIN_UPDATE_INTERVAL), and
+  // if no other dependency changes afterwards, canRollDice would stay wrong
+  // forever - forcing the player to click "Reload" to unblock the dice
+  // button after an opponent's move. Reconcile straight from refs on a
+  // short interval so this always self-corrects within a fraction of a
+  // second, with no user action required.
+  useEffect(() => {
+    if (!onlineMode || !gameStarted || gameEnded || waitingForPlayers) return;
+
+    const interval = setInterval(() => {
+      const isMyTurnNow = myPlayerIndexRef.current === currentPlayerRef.current;
+      const isIdle =
+        !isRollingRef.current &&
+        !isMovingRef.current &&
+        !isAutoMovingRef.current &&
+        moveTimersRef.current.length === 0;
+      const shouldEnable = isMyTurnNow && diceValueRef.current === 0 && isIdle;
+
+      setCanRollDice((prev) => {
+        if (prev === shouldEnable) return prev;
+        lastCanRollDiceUpdateRef.current = {
+          value: shouldEnable,
+          timestamp: Date.now(),
+          reason: "self-heal reconcile",
+        };
+        console.log("[CAN_ROLL_DICE] Self-heal reconcile", {
+          from: prev,
+          to: shouldEnable,
+          myPlayerIndex: myPlayerIndexRef.current,
+          currentPlayer: currentPlayerRef.current,
+        });
+        return shouldEnable;
+      });
+    }, 600);
+
+    return () => clearInterval(interval);
+  }, [onlineMode, gameStarted, gameEnded, waitingForPlayers]);
+
+  // Self-healing safety net #2: periodically pull the authoritative players
+  // snapshot from the server while an online game is in progress. This
+  // guarantees a client recovers automatically within a few seconds if a
+  // real-time "ludo:move"/"ludo:players" broadcast is ever missed (e.g. a
+  // brief network hiccup on either side), instead of leaving the player
+  // stuck needing to manually click "Reload" to unblock their dice button.
+  useEffect(() => {
+    if (!onlineMode || !gameId || !gameStarted || gameEnded) return;
+
+    const interval = setInterval(() => {
+      const s = socketRef.current;
+      if (!s || !s.connected) return;
+
+      const now = Date.now();
+      const lastRequest = selfHealPlayersGetRequestRef.current;
+      const timeSinceLastRequest = now - lastRequest.timestamp;
+      const MIN_REQUEST_INTERVAL = 3000;
+
+      if (
+        lastRequest.gameId !== gameId ||
+        timeSinceLastRequest >= MIN_REQUEST_INTERVAL
+      ) {
+        selfHealPlayersGetRequestRef.current = { gameId, timestamp: now };
+        try {
+          s.emit("ludo:players:get", { gameId });
+        } catch (_e) {}
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [onlineMode, gameId, gameStarted, gameEnded]);
+
   // CPU opponent turns in local vs-computer mode
   useEffect(() => {
     if (
@@ -6226,6 +6360,7 @@ const LudoGame = () => {
       }
       localStorage.removeItem("ludo_game_state");
       clearActiveLudoGameId();
+      clearHandledLudoInvites();
       savedGameStateRef.current = null;
       console.log("[EXIT_GAME] Cleared localStorage game state");
     } catch (_e) {
@@ -6322,6 +6457,8 @@ const LudoGame = () => {
     hasProcessedReconnectionStateRef.current = false;
     isRestoringFromServerRef.current = false;
     currentPlayerUpdatedFromServerRef.current = false;
+    latestSentPlayersSeqRef.current = 0;
+    latestAppliedPlayersSeqRef.current = 0;
     isSavingGameStateRef.current = false;
     isRollingRef.current = false;
     isMovingRef.current = false;
@@ -6868,6 +7005,9 @@ const LudoGame = () => {
       // Clear saved game state when game fully ends
       clearGameState();
     }
+
+    clearActiveLudoGameId();
+    clearHandledLudoInvites();
   };
 
   // Debug: trigger celebration modal
@@ -6924,6 +7064,9 @@ const LudoGame = () => {
     // Reset invite tracking
     setInvitedStatusByFriendId({});
     setInvitedSlotByFriendId({});
+    clearHandledLudoInvites();
+    latestSentPlayersSeqRef.current = 0;
+    latestAppliedPlayersSeqRef.current = 0;
 
     setIncomingInviteRequest(null);
 
@@ -7922,14 +8065,43 @@ const LudoGame = () => {
           onCancel={() => setShowPlayerSelection(false)}
           onConfirmPlayerCount={confirmPlayerCount}
           onJoinGame={(game) => {
-            setGameId(game.gameId);
+            if (!game?.gameId) return;
+            setShowPlayerSelection(false);
+            setShowWinnerModal(false);
+            setWinner(null);
             setOnlineMode(true);
+            setWaitingForPlayers(false);
+            setIsReconnecting(false);
+            setShowReconnectModal(false);
+            setGameId(game.gameId);
+
+            const gameStartedFromList = Boolean(game?.lastPlayers?.gameStarted);
+            const playerCountFromList = [2, 3, 4].includes(game?.playerCount)
+              ? game.playerCount
+              : selectedPlayerCount;
+            setSelectedPlayerCount(playerCountFromList);
+
+            if (gameStartedFromList) {
+              setGameStarted(true);
+              gameStartedRef.current = true;
+            }
+
             ensureSocketConnected();
-            if (socketRef.current) {
-              socketRef.current.emit("ludo:join", { gameId: game.gameId });
-              socketRef.current.emit("ludo:players:get", {
-                gameId: game.gameId,
-              });
+
+            const joinAndLoad = () => {
+              try {
+                if (!socketRef.current) return;
+                socketRef.current.emit("ludo:join", { gameId: game.gameId });
+                socketRef.current.emit("ludo:players:get", {
+                  gameId: game.gameId,
+                });
+              } catch (_e) {}
+            };
+
+            if (socketRef.current?.connected) {
+              joinAndLoad();
+            } else if (socketRef.current) {
+              socketRef.current.once("connect", joinAndLoad);
             }
           }}
         />
