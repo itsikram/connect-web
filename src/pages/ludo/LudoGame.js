@@ -269,6 +269,8 @@ const LudoGame = () => {
 
   const socketRef = useRef(null);
   const socketCreatingRef = useRef(false);
+  const socketEventsAttachedRef = useRef(false);
+  const pendingConnectActionsRef = useRef(new Map());
   const savedGameStateRef = useRef(null);
   const hasProcessedReconnectionStateRef = useRef(false);
   const isRestoringFromServerRef = useRef(false);
@@ -521,11 +523,11 @@ const LudoGame = () => {
         doEmit();
         return true;
       }
-      const onConnect = () => {
-        doEmit();
-        s.off("connect", onConnect);
-      };
-      s.on("connect", onConnect);
+
+      const key = `${event}:${JSON.stringify(payload || {})}`;
+      if (!pendingConnectActionsRef.current.has(key)) {
+        pendingConnectActionsRef.current.set(key, doEmit);
+      }
       return true;
     } catch (_e) {
       return false;
@@ -546,10 +548,14 @@ const LudoGame = () => {
         socketRef.current.close();
         socketRef.current = null;
       }
+      pendingConnectActionsRef.current.clear();
+      socketEventsAttachedRef.current = false;
       // Reset guard flag
       socketCreatingRef.current = false;
     } catch (_e) {
       socketRef.current = null;
+      pendingConnectActionsRef.current.clear();
+      socketEventsAttachedRef.current = false;
       socketCreatingRef.current = false;
     }
   }, []);
@@ -558,9 +564,25 @@ const LudoGame = () => {
   // Must be defined before ensureSocketConnected
   const attachSocketListeners = useCallback(
     (socket) => {
-      if (!socket) return;
+      if (!socket || socketEventsAttachedRef.current) return;
+
+      socketEventsAttachedRef.current = true;
 
       socket.on("error", (err) => {});
+
+      socket.on("connect", () => {
+        try {
+          socket.emit("ludo:invites:get");
+        } catch (_e) {}
+        try {
+          for (const [key, action] of pendingConnectActionsRef.current.entries()) {
+            try {
+              action();
+            } catch (_e) {}
+            pendingConnectActionsRef.current.delete(key);
+          }
+        } catch (_e) {}
+      });
 
       socket.on("disconnect", (reason) => {
         // If we were in an online game, show reconnect option
@@ -738,14 +760,9 @@ const LudoGame = () => {
 
       const newSocket = io(socketBaseUrl, opts);
       socketRef.current = newSocket;
+      socketEventsAttachedRef.current = false;
 
       try {
-        newSocket.on("connect", () => {
-          try {
-            newSocket?.emit("ludo:invites:get");
-          } catch (_e) {}
-        });
-
         newSocket.on("connect_error", (err) => {
           // Fallbacks: try window.origin if different; then try :4000 if on :3000
           try {
@@ -773,6 +790,7 @@ const LudoGame = () => {
               // Create new socket with fallback URL
               const fallbackSocket = io(origin, opts);
               socketRef.current = fallbackSocket;
+              socketEventsAttachedRef.current = false;
               // Re-attach event listeners to new socket
               attachSocketListeners(fallbackSocket);
               // Clear guard flag after fallback
@@ -794,6 +812,7 @@ const LudoGame = () => {
               // Create new socket with fallback URL
               const fallbackSocket = io(alt4000, opts);
               socketRef.current = fallbackSocket;
+              socketEventsAttachedRef.current = false;
               // Re-attach event listeners to new socket
               attachSocketListeners(fallbackSocket);
               // Clear guard flag after fallback
@@ -840,7 +859,7 @@ const LudoGame = () => {
     if (socketRef.current?.connected) {
       emitGamesGet();
     } else if (socketRef.current) {
-      socketRef.current.once("connect", emitGamesGet);
+      pendingConnectActionsRef.current.set("ludo:games:get", emitGamesGet);
     }
   }, [myProfile?._id, ensureSocketConnected]);
 
@@ -4804,6 +4823,16 @@ const LudoGame = () => {
               );
               return updated;
             });
+            if (typeof payload.slotIndex === "number") {
+              setInvitedSlotByFriendId((prev) => ({
+                ...prev,
+                [friendIdStr]: payload.slotIndex,
+              }));
+              invitedSlotByFriendIdRef.current = {
+                ...invitedSlotByFriendIdRef.current,
+                [friendIdStr]: payload.slotIndex,
+              };
+            }
           } else {
             console.log(
               `[onAccepted] Ignoring accept event - slot doesn't match (expected ${expectedSlot}, got ${payload.slotIndex})`,
@@ -4836,7 +4865,10 @@ const LudoGame = () => {
               copy[slot].profileId =
                 payload.friend?._id || copy[slot].profileId;
               copy[slot].isActive = true;
+              copy[slot].isOffline = false;
+              copy[slot].offlineSince = undefined;
             }
+            playersRef.current = copy;
             return copy;
           });
 
@@ -4856,6 +4888,42 @@ const LudoGame = () => {
             }
             // Update lobby state based on new join
             recomputeWaitingState();
+
+            // Acceptance is authoritative for the reserved slot. If every
+            // required seat is now occupied, auto-start immediately instead of
+            // waiting for a later snapshot/effect cycle that can occasionally lag.
+            const maxPlayers = Math.max(
+              2,
+              Math.min(4, selectedPlayerCountRef.current),
+            );
+            const currentPlayers =
+              playersRef.current && Array.isArray(playersRef.current)
+                ? playersRef.current
+                : [];
+            const allSeatsFilled = Array.from({ length: maxPlayers - 1 }).every(
+              (_, idx) => Boolean(currentPlayers[idx + 1]?.profileId),
+            );
+
+            if (
+              myPlayerIndex === 0 &&
+              !gameStartedRef.current &&
+              !autoStartTriggeredRef.current &&
+              allSeatsFilled &&
+              gameIdRef.current
+            ) {
+              autoStartTriggeredRef.current = true;
+              setGameStarted(true);
+              gameStartedRef.current = true;
+              setCurrentPlayer(0);
+              currentPlayerRef.current = 0;
+              setDiceValueImmediate(0);
+              setWaitingForPlayers(false);
+              setCanRollDice(false);
+
+              setTimeout(() => {
+                emitPlayersStateAfterSave(false);
+              }, 150);
+            }
           }, 200);
         } else {
           // If no slot index, still clear reconnecting and recompute
@@ -5621,18 +5689,72 @@ const LudoGame = () => {
       } catch (_e) {}
     };
 
+    const onPlayerLeft = (payload) => {
+      try {
+        if (!payload || payload.gameId !== gameId) return;
+        const pid = String(payload.profileId || "");
+        if (!pid) return;
+
+        setPlayers((prev) => {
+          const updated = prev.map((p, idx) => {
+            if (!p?.profileId || String(p.profileId) !== pid) return p;
+            return {
+              ...p,
+              profileId: undefined,
+              isActive: false,
+              isOffline: false,
+              offlineSince: undefined,
+              name: idx === 0 ? p.name : playerNames[idx] || p.name,
+            };
+          });
+          playersRef.current = updated;
+          return updated;
+        });
+
+        setDisconnectedPlayers((prev) => {
+          const next = new Set(prev);
+          next.delete(pid);
+          return next;
+        });
+      } catch (_e) {}
+    };
+
+    const onGameRemoved = (payload) => {
+      try {
+        if (!payload || payload.gameId !== gameId) return;
+        setJoinedGames((prev) =>
+          prev.filter((g) => String(g.gameId) !== String(payload.gameId)),
+        );
+        if (String(gameIdRef.current) === String(payload.gameId)) {
+          setGameId(null);
+          gameIdRef.current = null;
+          setOnlineMode(false);
+          setGameStarted(false);
+          gameStartedRef.current = false;
+          setWaitingForPlayers(false);
+          setCanRollDice(false);
+          setIsReconnecting(false);
+          setShowReconnectModal(false);
+        }
+      } catch (_e) {}
+    };
+
     s.off("ludo:roll", onRoll);
     s.off("ludo:accepted", onAccepted);
     s.off("ludo:players", onPlayers);
     s.off("ludo:move", onMove);
     s.off("ludo:player:offline", onPlayerOffline);
     s.off("ludo:player:online", onPlayerOnline);
+    s.off("ludo:player:left", onPlayerLeft);
+    s.off("ludo:game:removed", onGameRemoved);
     s.on("ludo:roll", onRoll);
     s.on("ludo:accepted", onAccepted);
     s.on("ludo:players", onPlayers);
     s.on("ludo:move", onMove);
     s.on("ludo:player:offline", onPlayerOffline);
     s.on("ludo:player:online", onPlayerOnline);
+    s.on("ludo:player:left", onPlayerLeft);
+    s.on("ludo:game:removed", onGameRemoved);
     const onJoined = (payload) => {};
     s.off("ludo:joined", onJoined);
     s.on("ludo:joined", onJoined);
@@ -5643,6 +5765,8 @@ const LudoGame = () => {
       s.off("ludo:move", onMove);
       s.off("ludo:player:offline", onPlayerOffline);
       s.off("ludo:player:online", onPlayerOnline);
+      s.off("ludo:player:left", onPlayerLeft);
+      s.off("ludo:game:removed", onGameRemoved);
       s.off("ludo:joined", onJoined);
     };
   }, [onlineMode, gameId, myProfile?._id]);
@@ -6929,12 +7053,15 @@ const LudoGame = () => {
                   console.log(
                     "[CONFIRM_PLAYER_COUNT] Socket not connected, waiting for connection...",
                   );
-                  socketRef.current.once("connect", () => {
-                    console.log(
-                      "[CONFIRM_PLAYER_COUNT] Socket connected, sending invites",
-                    );
-                    sendInvitesToFriends();
-                  });
+                  pendingConnectActionsRef.current.set(
+                    "send-ludo-invites",
+                    () => {
+                      console.log(
+                        "[CONFIRM_PLAYER_COUNT] Socket connected, sending invites",
+                      );
+                      sendInvitesToFriends();
+                    },
+                  );
                   return;
                 }
 
@@ -7391,6 +7518,7 @@ const LudoGame = () => {
         });
       } catch (_e) {}
       setOnlineMode(true);
+      setWaitingForPlayers(true);
       setGameId(payload.gameId);
       setSelectedPlayerCount(
         [2, 3, 4].includes(payload.playerCount)
@@ -7497,12 +7625,15 @@ const LudoGame = () => {
           }, 500);
         } else if (socketRef.current) {
           // Socket exists but not connected, wait for connection
-          socketRef.current.once("connect", () => {
-            console.log(
-              "[ACCEPT_INVITE] Socket connected, proceeding with join",
-            );
-            waitForSocketConnected();
-          });
+          pendingConnectActionsRef.current.set(
+            `accept-invite:${payload.gameId}`,
+            () => {
+              console.log(
+                "[ACCEPT_INVITE] Socket connected, proceeding with join",
+              );
+              waitForSocketConnected();
+            },
+          );
         } else {
           // Socket doesn't exist yet, retry
           setTimeout(waitForSocketConnected, 100);
