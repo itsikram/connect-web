@@ -2212,6 +2212,7 @@ const LudoGame = () => {
           name: p.name,
           color: p.color,
           avatar: p.avatar,
+          cover: p.cover,
           profileId: p.profileId,
           isActive: p.isActive !== undefined ? p.isActive : true,
           pieces: Array.isArray(p.pieces)
@@ -2902,6 +2903,12 @@ const LudoGame = () => {
                   console.log(
                     `[RE_INVITE] Skipping invite to ${friendIdStr} - already in game`,
                   );
+                  if (currentStatus !== "joined") {
+                    setInvitedStatusByFriendId((prev) => ({
+                      ...prev,
+                      [friendIdStr]: "joined",
+                    }));
+                  }
                   return;
                 }
 
@@ -2944,9 +2951,9 @@ const LudoGame = () => {
             // CRITICAL: Check if player has already joined (status might be 'joined' even if marked offline)
             const currentStatus =
               invitedStatusByFriendIdRef.current[playerIdStr];
-            if (currentStatus === "joined") {
+            if (currentStatus === "joined" || !player.isOffline) {
               console.log(
-                `[RE_INVITE] Skipping re-invite to ${playerIdStr} - already joined (status: joined)`,
+                `[RE_INVITE] Skipping re-invite to ${playerIdStr} - already joined or online`,
               );
               return;
             }
@@ -4715,7 +4722,11 @@ const LudoGame = () => {
               copy[slot].name = payload.friend?.fullName || copy[slot].name;
               copy[slot].avatar =
                 payload.friend?.profilePic || copy[slot].avatar;
-              copy[slot].cover = payload.friend?.coverPic || copy[slot].cover;
+              copy[slot].cover =
+                payload.friend?.coverPic ||
+                payload.friend?.cover ||
+                payload.friend?.profileCover ||
+                copy[slot].cover;
               copy[slot].profileId =
                 payload.friend?._id || copy[slot].profileId;
               copy[slot].isActive = true;
@@ -4910,6 +4921,7 @@ const LudoGame = () => {
             }
             return {
               ...p,
+              cover: p.cover || p.coverPic || p.profileCover || undefined,
               color: playerColor,
               pieces,
             };
@@ -6445,7 +6457,11 @@ const LudoGame = () => {
             // Set name/avatar for UI display (so host can see who they invited)
             copy[slot].name = friend.fullName || copy[slot].name;
             copy[slot].avatar = friend.profilePic || copy[slot].avatar;
-            copy[slot].cover = friend.coverPic || copy[slot].cover;
+            copy[slot].cover =
+              friend.coverPic ||
+              friend.cover ||
+              friend.profileCover ||
+              copy[slot].cover;
 
             // CRITICAL: Only set profileId if friend has already accepted (status === 'joined')
             // Otherwise, DON'T set profileId - this prevents the server from thinking they've joined
@@ -7294,7 +7310,11 @@ const LudoGame = () => {
       const innerW = CELL_SIZE * 4;
       const innerH = CELL_SIZE * 4;
       // Background cover image
-      const coverUrl = players[idx]?.cover || players[idx]?.coverPic;
+      const coverUrl =
+        players[idx]?.cover ||
+        players[idx]?.coverPic ||
+        players[idx]?.profileCover ||
+        undefined;
       if (coverUrl && idx < selectedPlayerCount) {
         elems.push(
           <image
