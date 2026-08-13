@@ -566,15 +566,17 @@ const LudoGame = () => {
         // If we were in an online game, show reconnect option
         // CRITICAL: Only show reconnection if we were actually in a started game
         // Don't show it if we're just joining (accepting invite) - check if game was actually started
-        // Also don't show if we're waiting for players (lobby state)
+        // Also don't show it if we're waiting for players (lobby state)
+        const activeGameId = gameIdRef.current || gameId;
         const wasInActiveGame =
           onlineMode &&
-          gameId &&
+          activeGameId &&
           gameStarted &&
           !gameEnded &&
-          gameStartedRef.current;
+          gameStartedRef.current &&
+          !isJoiningViaInviteRef.current;
         const isInLobby =
-          onlineMode && gameId && !gameStarted && waitingForPlayers;
+          onlineMode && activeGameId && !gameStarted && waitingForPlayers;
 
         if (wasInActiveGame && !isInLobby) {
           console.log(
@@ -602,8 +604,11 @@ const LudoGame = () => {
       socket.on("reconnect", (attemptNumber) => {
         setIsReconnecting(false);
         setShowReconnectModal(false);
+        if (isJoiningViaInviteRef.current) {
+          return;
+        }
         // Auto-rejoin game if we have one - check both current gameId and saved state
-        const gidToRejoin = gameId || savedGameStateRef.current?.gameId;
+        const gidToRejoin = gameIdRef.current || gameId || savedGameStateRef.current?.gameId;
         if (gidToRejoin) {
           // Prevent multiple join requests
           const now = Date.now();
@@ -654,13 +659,19 @@ const LudoGame = () => {
       });
 
       socket.on("reconnect_attempt", (attemptNumber) => {
+        if (isJoiningViaInviteRef.current) {
+          setIsReconnecting(false);
+          setShowReconnectModal(false);
+          return;
+        }
         // Only set reconnecting if we were actually in a started game
         // Don't set if we're in lobby waiting for players
+        const activeGameId = gameIdRef.current || gameId;
         const isInLobby =
-          onlineMode && gameId && !gameStarted && waitingForPlayers;
+          onlineMode && activeGameId && !gameStarted && waitingForPlayers;
         if (
           onlineMode &&
-          gameId &&
+          activeGameId &&
           gameStarted &&
           gameStartedRef.current &&
           !isInLobby
@@ -678,7 +689,7 @@ const LudoGame = () => {
 
       socket.on("reconnect_failed", () => {
         setIsReconnecting(false);
-        if (onlineMode && gameId && gameStarted) {
+        if (!isJoiningViaInviteRef.current && onlineMode && (gameIdRef.current || gameId) && gameStarted) {
           setShowReconnectModal(true);
         }
       });
@@ -2700,8 +2711,9 @@ const LudoGame = () => {
             setGameStarted(true);
             gameStartedRef.current = true; // Update ref immediately
             setCurrentPlayer(0);
+            currentPlayerRef.current = 0;
             setDiceValueImmediate(0);
-            setCanRollDice(true);
+            setCanRollDice(false);
             setWaitingForPlayers(false);
 
             // Save and emit game start state to all players
@@ -4544,12 +4556,27 @@ const LudoGame = () => {
       console.log("[ON_ROLL] ✅ Processing remote roll (server validated)");
 
       const value = payload.value;
+      const rollingPlayer =
+        typeof payload.currentPlayer === "number"
+          ? payload.currentPlayer
+          : currentPlayerRef.current;
+      const isHostAuthority = myPlayerIndexRef.current === 0;
+
+      // Align the local turn pointer with the validated roll sender before we
+      // process dice/counter state. This prevents us from attributing the roll
+      // to the wrong player when snapshots are slightly behind.
+      if (typeof rollingPlayer === "number") {
+        currentPlayerRef.current = rollingPlayer;
+        setCurrentPlayer((prev) =>
+          prev === rollingPlayer ? prev : rollingPlayer,
+        );
+      }
 
       // CRITICAL: Track consecutive 6s for remote players and handle limit
       const currentSixCount =
-        consecutiveSixesRef.current[currentPlayerRef.current] || 0;
+        consecutiveSixesRef.current[rollingPlayer] || 0;
       console.log("[ON_ROLL] Tracking consecutive 6s", {
-        player: currentPlayerRef.current,
+        player: rollingPlayer,
         currentSixCount,
         diceValue: value,
         isSix: value === 6,
@@ -4560,12 +4587,12 @@ const LudoGame = () => {
         const newSixCount = currentSixCount + 1;
         setConsecutiveSixes((prev) => ({
           ...prev,
-          [currentPlayerRef.current]: newSixCount,
+          [rollingPlayer]: newSixCount,
         }));
-        consecutiveSixesRef.current[currentPlayerRef.current] = newSixCount;
+        consecutiveSixesRef.current[rollingPlayer] = newSixCount;
 
         console.log("[ON_ROLL] Updated consecutive 6s", {
-          player: currentPlayerRef.current,
+          player: rollingPlayer,
           previousCount: currentSixCount,
           newCount: newSixCount,
         });
@@ -4575,7 +4602,7 @@ const LudoGame = () => {
           console.log(
             "[ON_ROLL] Remote player reached 6s limit, advancing turn",
             {
-              player: currentPlayerRef.current,
+              player: rollingPlayer,
               consecutiveSixes: newSixCount,
               reachedLimit: payload.reachedSixLimit,
             },
@@ -4584,40 +4611,31 @@ const LudoGame = () => {
           // Reset consecutive 6s count for this player
           setConsecutiveSixes((prev) => ({
             ...prev,
-            [currentPlayerRef.current]: 0,
+            [rollingPlayer]: 0,
           }));
-          consecutiveSixesRef.current[currentPlayerRef.current] = 0;
+          consecutiveSixesRef.current[rollingPlayer] = 0;
 
-          // Advance turn immediately for remote player who reached limit
-          setTimeout(() => {
-            const nextPlayer = getNextActivePlayer(currentPlayerRef.current);
-            console.log("[ON_ROLL] Advancing turn (6s limit reached)", {
-              from: currentPlayerRef.current,
-              to: nextPlayer,
-            });
-            setCurrentPlayer(nextPlayer);
-            currentPlayerRef.current = nextPlayer;
-            lastTurnAdvanceTimeRef.current = Date.now();
-            setDiceValueImmediate(0);
-            lastLocalDiceRollTimeRef.current = 0;
+          // Only the host should publish the authoritative next turn in online mode.
+          // Other clients wait for the next ludo:players snapshot to avoid split-brain.
+          setDiceValueImmediate(value);
+          lastDiceValueRef.current = value;
+          isRollingRef.current = false;
 
-            // Allow next player to roll
+          if (isHostAuthority && onlineMode && gameId) {
             setTimeout(() => {
-              if (
-                currentPlayerRef.current === nextPlayer &&
-                diceValueRef.current === 0
-              ) {
-                setCanRollDice(true);
-              }
-            }, 150);
-
-            // Save and emit game state when turn changes (host only)
-            if (myPlayerIndex === 0 && onlineMode && gameId) {
-              setTimeout(() => {
-                emitPlayersStateAfterSave(false);
-              }, 100);
-            }
-          }, 1000); // Give time to see the 6, then advance turn
+              const nextPlayer = getNextActivePlayer(rollingPlayer);
+              console.log("[ON_ROLL] Host advancing turn (6s limit reached)", {
+                from: rollingPlayer,
+                to: nextPlayer,
+              });
+              setCurrentPlayer(nextPlayer);
+              currentPlayerRef.current = nextPlayer;
+              lastTurnAdvanceTimeRef.current = Date.now();
+              setDiceValueImmediate(0);
+              lastLocalDiceRollTimeRef.current = 0;
+              emitPlayersStateAfterSave(false);
+            }, 500);
+          }
 
           return; // Exit early - don't proceed with normal move logic
         }
@@ -4625,14 +4643,14 @@ const LudoGame = () => {
         // Reset consecutive 6s count if non-6 is rolled
         if (currentSixCount > 0) {
           console.log("[ON_ROLL] Resetting consecutive 6s (non-6 rolled)", {
-            player: currentPlayerRef.current,
+            player: rollingPlayer,
             previousCount: currentSixCount,
           });
           setConsecutiveSixes((prev) => ({
             ...prev,
-            [currentPlayerRef.current]: 0,
+            [rollingPlayer]: 0,
           }));
-          consecutiveSixesRef.current[currentPlayerRef.current] = 0;
+          consecutiveSixesRef.current[rollingPlayer] = 0;
         }
       }
 
@@ -4640,7 +4658,7 @@ const LudoGame = () => {
       lastDiceValueRef.current = value;
       isRollingRef.current = false; // Clear rolling flag
 
-      const currentPlayerData = playersRef.current[currentPlayerRef.current];
+      const currentPlayerData = playersRef.current[rollingPlayer];
 
       // Check if current player can move
       const canMove = currentPlayerData?.pieces?.some((piece) => {
@@ -4652,35 +4670,21 @@ const LudoGame = () => {
 
       if (!canMove) {
         // No moves available - advance turn after a short delay
-        setTimeout(() => {
-          const nextPlayer = getNextActivePlayer(currentPlayerRef.current);
-          console.log("[ON_ROLL] No moves available, advancing turn", {
-            from: currentPlayerRef.current,
-            to: nextPlayer,
-          });
-          setCurrentPlayer(nextPlayer);
-          currentPlayerRef.current = nextPlayer;
-          lastTurnAdvanceTimeRef.current = Date.now();
-          setDiceValueImmediate(0);
-          lastLocalDiceRollTimeRef.current = 0;
-
-          // CRITICAL: Save and emit game state when turn changes (host only)
-          if (myPlayerIndex === 0 && onlineMode && gameId) {
-            setTimeout(() => {
-              emitPlayersStateAfterSave(false);
-            }, 100); // Reduced delay for faster sync
-          }
-
-          // Allow next player to roll after state sync
+        if (isHostAuthority && onlineMode && gameId) {
           setTimeout(() => {
-            if (
-              currentPlayerRef.current === nextPlayer &&
-              diceValueRef.current === 0
-            ) {
-              setCanRollDice(true);
-            }
-          }, 150); // Reduced delay
-        }, 400); // Reduced delay for faster gameplay
+            const nextPlayer = getNextActivePlayer(rollingPlayer);
+            console.log("[ON_ROLL] Host advancing turn - no moves available", {
+              from: rollingPlayer,
+              to: nextPlayer,
+            });
+            setCurrentPlayer(nextPlayer);
+            currentPlayerRef.current = nextPlayer;
+            lastTurnAdvanceTimeRef.current = Date.now();
+            setDiceValueImmediate(0);
+            lastLocalDiceRollTimeRef.current = 0;
+            emitPlayersStateAfterSave(false);
+          }, 250);
+        }
       } else {
         // Remote player has moves available - they should be able to make a move
         // CRITICAL: If they rolled a 6, they should keep their turn after moving
@@ -5617,6 +5621,12 @@ const LudoGame = () => {
       } catch (_e) {}
     };
 
+    s.off("ludo:roll", onRoll);
+    s.off("ludo:accepted", onAccepted);
+    s.off("ludo:players", onPlayers);
+    s.off("ludo:move", onMove);
+    s.off("ludo:player:offline", onPlayerOffline);
+    s.off("ludo:player:online", onPlayerOnline);
     s.on("ludo:roll", onRoll);
     s.on("ludo:accepted", onAccepted);
     s.on("ludo:players", onPlayers);
@@ -5624,6 +5634,7 @@ const LudoGame = () => {
     s.on("ludo:player:offline", onPlayerOffline);
     s.on("ludo:player:online", onPlayerOnline);
     const onJoined = (payload) => {};
+    s.off("ludo:joined", onJoined);
     s.on("ludo:joined", onJoined);
     return () => {
       s.off("ludo:roll", onRoll);
@@ -7421,6 +7432,7 @@ const LudoGame = () => {
           setTimeout(() => {
             try {
               if (socketRef.current && socketRef.current.connected) {
+                socketRef.current.emit("ludo:join", { gameId: payload.gameId });
                 socketRef.current.emit("ludo:accept", {
                   gameId: payload.gameId,
                   slotIndex: payload.slotIndex,
@@ -7431,6 +7443,9 @@ const LudoGame = () => {
                     coverPic: myProfile?.coverPic,
                   },
                   from: payload.from,
+                });
+                socketRef.current.emit("ludo:players:get", {
+                  gameId: payload.gameId,
                 });
                 socketRef.current.emit("ludo:invites:dismiss", {
                   gameId: payload.gameId,
