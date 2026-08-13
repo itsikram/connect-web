@@ -4910,6 +4910,25 @@ const LudoGame = () => {
               copy[slot].isOffline = false;
               copy[slot].offlineSince = undefined;
             }
+            // Ensure no other non-host seat keeps the same accepted profileId.
+            copy.forEach((player, idx) => {
+              if (
+                idx !== 0 &&
+                idx !== slot &&
+                player?.profileId &&
+                payload.friend?._id &&
+                String(player.profileId) === String(payload.friend._id)
+              ) {
+                copy[idx] = {
+                  ...player,
+                  profileId: undefined,
+                  isActive: false,
+                  isOffline: false,
+                  offlineSince: undefined,
+                  name: playerNames[idx] || player.name,
+                };
+              }
+            });
             playersRef.current = copy;
             return copy;
           });
@@ -5194,32 +5213,17 @@ const LudoGame = () => {
             };
           });
 
-          // Invitee-side guard: ensure seat 0 is inviter, and my slot is me
+          // Invitee-side guard: reconcile host/my identity without overwriting a
+          // newer authoritative snapshot from the host.
           try {
-            // Always enforce seat 0 = host (inviter) on invitee devices
-            if (myPlayerIndex !== 0 && next[0] && lastInviter?.id) {
-              next[0].profileId = lastInviter.id;
-              if (lastInviter.name) next[0].name = lastInviter.name;
-              if (lastInviter.avatar) next[0].avatar = lastInviter.avatar;
-              if (lastInviter.cover) next[0].cover = lastInviter.cover;
-            } else if (myPlayerIndex !== 0 && next[0]) {
-              // If inviter not known yet but seat 0 equals me, clear mistaken identity to avoid showing me as host
-              const looksLikeMe =
-                next[0].profileId &&
-                myProfile?._id &&
-                String(next[0].profileId) === String(myProfile._id);
-              if (looksLikeMe) {
-                next[0].profileId = next[0].profileId || undefined;
-                // keep name/avatar as-is; host snapshot should correct soon
-              }
-            }
-            // Check if current user successfully joined the game
             const myId = myProfile?._id;
-            const isUserInPlayers =
-              myId &&
-              next.some(
-                (p) => p && p.profileId && String(p.profileId) === String(myId),
-              );
+            const foundIdx = myId
+              ? next.findIndex(
+                  (p) =>
+                    p && p.profileId && String(p.profileId) === String(myId),
+                )
+              : -1;
+            const isUserInPlayers = foundIdx >= 0;
 
             // If user successfully joined, clear any pending invite UI for this game
             // and dismiss all other invite notifications as well.
@@ -5243,9 +5247,7 @@ const LudoGame = () => {
 
               if (socketRef.current && socketRef.current.connected) {
                 try {
-                  // Request invites to dismiss them
                   socketRef.current.emit("ludo:invites:get", {});
-                  // Set flag to dismiss all other invites when received
                   localStorage.setItem(
                     "ludo_dismiss_all_other_invites",
                     "true",
@@ -5256,33 +5258,34 @@ const LudoGame = () => {
               }
             }
 
-            // Resolve my slot from snapshot by matching my profileId; fall back to current myPlayerIndex
-            let resolvedMyIndex = undefined;
-            if (myId) {
-              const foundIdx = next.findIndex(
-                (p) => p && p.profileId && String(p.profileId) === String(myId),
-              );
-              if (foundIdx >= 0) {
-                resolvedMyIndex = foundIdx;
-                if (foundIdx !== myPlayerIndex) setMyPlayerIndex(foundIdx);
+            // Only apply seat correction if the snapshot does NOT already contain me.
+            // This avoids the previous bug where we overwrote the host seat or
+            // duplicate-filled both seats with the invitee identity.
+            if (!isUserInPlayers && myPlayerIndex !== 0) {
+              if (next[0] && lastInviter?.id) {
+                next[0].profileId = lastInviter.id;
+                if (lastInviter.name) next[0].name = lastInviter.name;
+                if (lastInviter.avatar) next[0].avatar = lastInviter.avatar;
+                if (lastInviter.cover) next[0].cover = lastInviter.cover;
+              }
+
+              if (typeof myPlayerIndex === "number" && next[myPlayerIndex]) {
+                next[myPlayerIndex].profileId =
+                  myProfile?._id || next[myPlayerIndex].profileId;
+                next[myPlayerIndex].name =
+                  myProfile?.fullName || next[myPlayerIndex].name;
+                next[myPlayerIndex].avatar =
+                  myProfile?.profilePic || next[myPlayerIndex].avatar;
+                const myCover =
+                  myProfile?.coverPic ||
+                  myProfile?.cover ||
+                  myProfile?.profileCover;
+                if (myCover) next[myPlayerIndex].cover = myCover;
               }
             }
-            if (resolvedMyIndex == null && typeof myPlayerIndex === "number") {
-              resolvedMyIndex = myPlayerIndex;
-            }
-            if (typeof resolvedMyIndex === "number" && next[resolvedMyIndex]) {
-              next[resolvedMyIndex].profileId =
-                myProfile?._id || next[resolvedMyIndex].profileId;
-              next[resolvedMyIndex].name =
-                myProfile?.fullName || next[resolvedMyIndex].name;
-              next[resolvedMyIndex].avatar =
-                myProfile?.profilePic || next[resolvedMyIndex].avatar;
-              // Prefer an actual cover image over avatar when available
-              const myCover =
-                myProfile?.coverPic ||
-                myProfile?.cover ||
-                myProfile?.profileCover;
-              if (myCover) next[resolvedMyIndex].cover = myCover;
+
+            if (foundIdx >= 0 && foundIdx !== myPlayerIndex) {
+              setMyPlayerIndex(foundIdx);
             }
           } catch (_e) {}
           // Merge with previous known seats to avoid wiping already joined players if snapshot is momentarily incomplete
