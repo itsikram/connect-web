@@ -33,6 +33,7 @@ export const PlayerSelectionModal = ({
   onCancel,
   onConfirmPlayerCount,
   onJoinGame,
+  onDeleteLiveGame,
 }) => {
   if (!show) return null;
 
@@ -396,55 +397,90 @@ export const PlayerSelectionModal = ({
                       ? "Finished"
                       : "In Progress"
                     : "Waiting";
+                  const isHost =
+                    game?.lastPlayers?.players?.[0]?.profileId &&
+                    myProfile?._id &&
+                    String(game.lastPlayers.players[0].profileId) ===
+                      String(myProfile._id);
                   return (
-                    <button
+                    <div
                       key={game.gameId}
-                      type="button"
                       className="ludo-seat"
-                      onClick={() => onJoinGame(game)}
                       style={{
-                        cursor: "pointer",
                         width: "100%",
-                        color: "inherit",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
                       }}
                     >
-                      <div
-                        className="ludo-seat__avatar"
+                      <button
+                        type="button"
+                        onClick={() => onJoinGame(game)}
                         style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 10,
-                          background:
-                            "linear-gradient(135deg, #2ec4b6, #3ec6ff)",
+                          cursor: "pointer",
+                          width: "100%",
+                          color: "inherit",
+                          background: "transparent",
+                          border: 0,
+                          padding: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          textAlign: "left",
                         }}
                       >
-                        <span
+                        <div
+                          className="ludo-seat__avatar"
                           style={{
-                            fontSize: 12,
-                            fontWeight: 800,
-                            color: "#06241f",
+                            width: 36,
+                            height: 36,
+                            borderRadius: 10,
+                            background:
+                              "linear-gradient(135deg, #2ec4b6, #3ec6ff)",
                           }}
                         >
-                          L
-                        </span>
-                      </div>
-                      <div
-                        className="ludo-seat__name"
-                        style={{ whiteSpace: "normal" }}
-                      >
-                        <div style={{ fontWeight: 700 }}>
-                          Game #{game.gameId?.slice(-6) || "Unknown"}
+                          <span
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 800,
+                              color: "#06241f",
+                            }}
+                          >
+                            L
+                          </span>
                         </div>
-                        <div className="ludo-muted">
-                          {game.playerCount} Players · {gameStatus}
+                        <div
+                          className="ludo-seat__name"
+                          style={{ whiteSpace: "normal", flex: 1 }}
+                        >
+                          <div style={{ fontWeight: 700 }}>
+                            Game #{game.gameId?.slice(-6) || "Unknown"}
+                          </div>
+                          <div className="ludo-muted">
+                            {game.playerCount} Players · {gameStatus}
+                          </div>
                         </div>
-                      </div>
-                      <div
-                        className={`ludo-seat__badge ${game.isOnline ? "ludo-seat__badge--joined" : "ludo-seat__badge--waiting"}`}
-                      >
-                        {game.isOnline ? "Online" : "Offline"}
-                      </div>
-                    </button>
+                        <div
+                          className={`ludo-seat__badge ${game.isOnline ? "ludo-seat__badge--joined" : "ludo-seat__badge--waiting"}`}
+                        >
+                          {game.isOnline ? "Online" : "Offline"}
+                        </div>
+                      </button>
+                      {isHost && onDeleteLiveGame ? (
+                        <button
+                          type="button"
+                          className="ludo-btn ludo-btn--sm ludo-btn--ghost"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onPlaySound("buttonClick");
+                            onDeleteLiveGame(game);
+                          }}
+                          style={{ color: "#ff6b6b", borderColor: "rgba(255,107,107,0.35)" }}
+                        >
+                          Delete
+                        </button>
+                      ) : null}
+                    </div>
                   );
                 })}
               </div>

@@ -949,6 +949,7 @@ const Main = () => {
           playerCount: invite.playerCount,
           ts: Date.now(),
           autoAccept: true,
+          source: "notification-menu",
         };
         localStorage.setItem("ludo_pending_invite", JSON.stringify(inviteData));
         // Notify an already-mounted LudoGame page (e.g. user is currently on
