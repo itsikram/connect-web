@@ -70,6 +70,7 @@ import {
   setActiveLudoGameId,
   clearActiveLudoGameId,
   clearHandledLudoInvites,
+  resolveLudoInviteNotifications,
 } from "../../utils/ludoInviteUtils";
 
 /**
@@ -275,6 +276,28 @@ const LudoGame = () => {
   const inviteAcceptTimestampRef = useRef(0);
   const lastJoinRequestRef = useRef({ gameId: null, timestamp: 0 });
   const acceptIncomingInviteRef = useRef(null);
+  const HIDDEN_BOARD_GAME_KEY = "ludo_hidden_board_game_id";
+
+  const setHiddenBoardGameId = useCallback((gid) => {
+    if (!gid) return;
+    try {
+      sessionStorage.setItem(HIDDEN_BOARD_GAME_KEY, String(gid));
+    } catch (_e) {}
+  }, []);
+
+  const getHiddenBoardGameId = useCallback(() => {
+    try {
+      return sessionStorage.getItem(HIDDEN_BOARD_GAME_KEY) || "";
+    } catch (_e) {
+      return "";
+    }
+  }, []);
+
+  const clearHiddenBoardGameId = useCallback(() => {
+    try {
+      sessionStorage.removeItem(HIDDEN_BOARD_GAME_KEY);
+    } catch (_e) {}
+  }, []);
 
   // ============================================================================
   // SECTION 8: DICE & ANIMATION STATE
@@ -790,6 +813,25 @@ const LudoGame = () => {
     cleanupSocket,
     attachSocketListeners,
   ]);
+
+  const requestJoinedGames = useCallback(() => {
+    if (!myProfile?._id) return;
+
+    ensureSocketConnected();
+
+    const emitGamesGet = () => {
+      try {
+        socketRef.current?.emit("ludo:games:get");
+        console.log("[LUDO] Requested joined games");
+      } catch (_e) {}
+    };
+
+    if (socketRef.current?.connected) {
+      emitGamesGet();
+    } else if (socketRef.current) {
+      socketRef.current.once("connect", emitGamesGet);
+    }
+  }, [myProfile?._id, ensureSocketConnected]);
 
   useEffect(() => {
     playersRef.current = players;
@@ -1490,8 +1532,22 @@ const LudoGame = () => {
       // First try loading from localStorage
       const savedState = loadGameState();
 
-      // CRITICAL: Check if this game was explicitly exited by the user
+      // CRITICAL: Check if this game was intentionally hidden from the board.
       if (savedState && savedState.gameId) {
+        const hiddenBoardGameId = getHiddenBoardGameId();
+        if (
+          hiddenBoardGameId &&
+          String(hiddenBoardGameId) === String(savedState.gameId) &&
+          !isReconnecting
+        ) {
+          console.log(
+            "[RECONNECT] Skipping reconnection - board was intentionally closed:",
+            savedState.gameId,
+          );
+          return;
+        }
+
+        // CRITICAL: Check if this game was explicitly exited by the user
         try {
           const exitedGames = JSON.parse(
             localStorage.getItem("ludo_exited_games") || "[]",
@@ -1731,7 +1787,13 @@ const LudoGame = () => {
 
     attemptReconnection();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myProfile?._id, loadGameState, ensureSocketConnected]);
+  }, [
+    myProfile?._id,
+    loadGameState,
+    ensureSocketConnected,
+    getHiddenBoardGameId,
+    isReconnecting,
+  ]);
 
   // Handle visibility change (iPhone lock/unlock) - sync game state when page becomes visible
   useEffect(() => {
@@ -5002,6 +5064,7 @@ const LudoGame = () => {
             // If user successfully joined, clear any pending invite UI for this game
             // and dismiss all other invite notifications as well.
             if (isUserInPlayers) {
+              resolveLudoInviteNotifications(payload.gameId);
               setPendingInvites((prev) =>
                 prev.filter(
                   (inv) => String(inv.gameId) !== String(payload.gameId),
@@ -6054,11 +6117,13 @@ const LudoGame = () => {
             () => {
               markInviteHandled(payload.gameId, payload.by);
               setActiveLudoGameId(payload.gameId);
+              resolveLudoInviteNotifications(payload.gameId, payload.by);
               setIncomingInviteRequest(inv);
               setTimeout(() => acceptIncomingInvite(), 0);
             },
             () => {
               markInviteHandled(payload.gameId, payload.by);
+              resolveLudoInviteNotifications(payload.gameId, payload.by);
               if (socketRef.current) {
                 try {
                   socketRef.current.emit("ludo:invites:dismiss", {
@@ -6143,11 +6208,19 @@ const LudoGame = () => {
               () => {
                 markInviteHandled(firstNewInvite.gameId, firstNewInvite.from);
                 setActiveLudoGameId(firstNewInvite.gameId);
+                resolveLudoInviteNotifications(
+                  firstNewInvite.gameId,
+                  firstNewInvite.from,
+                );
                 setIncomingInviteRequest(firstNewInvite);
                 setTimeout(() => acceptIncomingInvite(), 0);
               },
               () => {
                 markInviteHandled(firstNewInvite.gameId, firstNewInvite.from);
+                resolveLudoInviteNotifications(
+                  firstNewInvite.gameId,
+                  firstNewInvite.from,
+                );
                 if (socketRef.current) {
                   try {
                     socketRef.current.emit("ludo:invites:dismiss", {
@@ -6212,22 +6285,16 @@ const LudoGame = () => {
 
   // Fetch joined games when socket connects
   useEffect(() => {
-    if (!socketRef.current || !myProfile?._id) return;
-    try {
-      socketRef.current.emit("ludo:games:get");
-      console.log("[LUDO] Requested joined games");
-    } catch (_e) {}
-  }, [myProfile?._id, socketRef.current]);
+    requestJoinedGames();
+  }, [requestJoinedGames]);
 
   // Refresh joined games when game state changes
   useEffect(() => {
-    if (socketRef.current && onlineMode && myProfile?._id) {
-      try {
-        socketRef.current.emit("ludo:games:get");
-        console.log("[LUDO] Refreshed joined games due to state change");
-      } catch (_e) {}
+    if (myProfile?._id && (onlineMode || joinedGamesRef.current.length > 0)) {
+      requestJoinedGames();
+      console.log("[LUDO] Refreshed joined games due to state change");
     }
-  }, [gameId, onlineMode, gameStarted]);
+  }, [gameId, onlineMode, gameStarted, myProfile?._id, requestJoinedGames]);
 
   // Cleanup socket on unmount
   useEffect(() => {
@@ -6270,11 +6337,69 @@ const LudoGame = () => {
     setShowPlayerSelection(true);
   };
 
+  const handleJoinGame = useCallback(
+    (game) => {
+      if (!game?.gameId) return;
+
+      clearHiddenBoardGameId();
+      setActiveLudoGameId(game.gameId);
+      setShowPlayerSelection(false);
+      setShowWinnerModal(false);
+      setWinner(null);
+      setGameEnded(false);
+      setOnlineMode(true);
+      setWaitingForPlayers(false);
+      setIsReconnecting(false);
+      setShowReconnectModal(false);
+      setGameId(game.gameId);
+
+      const gameStartedFromList = Boolean(game?.lastPlayers?.gameStarted);
+      const playerCountFromList = [2, 3, 4].includes(game?.playerCount)
+        ? game.playerCount
+        : selectedPlayerCount;
+      setSelectedPlayerCount(playerCountFromList);
+
+      if (gameStartedFromList) {
+        setGameStarted(true);
+        gameStartedRef.current = true;
+      } else {
+        setGameStarted(false);
+        gameStartedRef.current = false;
+      }
+
+      ensureSocketConnected();
+
+      const joinAndLoad = () => {
+        try {
+          if (!socketRef.current) return;
+          socketRef.current.emit("ludo:join", { gameId: game.gameId });
+          socketRef.current.emit("ludo:players:get", {
+            gameId: game.gameId,
+          });
+          requestJoinedGames();
+        } catch (_e) {}
+      };
+
+      if (socketRef.current?.connected) {
+        joinAndLoad();
+      } else if (socketRef.current) {
+        socketRef.current.once("connect", joinAndLoad);
+      }
+    },
+    [
+      clearHiddenBoardGameId,
+      selectedPlayerCount,
+      ensureSocketConnected,
+      requestJoinedGames,
+    ],
+  );
+
   // Start a new game (cancel reconnection and clear saved state)
   const startNewGame = () => {
     // Clear reconnecting state
     setIsReconnecting(false);
     setShowReconnectModal(false);
+    clearHiddenBoardGameId();
     // Clear saved game state
     clearGameState();
     // Clear exited games flag to allow new games
@@ -6298,13 +6423,80 @@ const LudoGame = () => {
     setShowPlayerSelection(true);
   };
 
-  // Exit game - completely clear all game state and localStorage
+  // Exit game - online matches become resumable, offline matches clear state
   const exitGame = () => {
-    // Confirm exit
+    const isResumableOnlineGame = Boolean(
+      onlineMode && gameId && myProfile?._id,
+    );
+
     const confirmed = window.confirm(
-      "Are you sure you want to exit the game? All progress will be lost.",
+      isResumableOnlineGame
+        ? "Leave the board? Your live online game will stay available on this page so you can rejoin it any time."
+        : "Are you sure you want to exit the game? All progress will be lost.",
     );
     if (!confirmed) return;
+
+    if (isResumableOnlineGame) {
+      try {
+        setHiddenBoardGameId(gameId);
+      } catch (_e) {}
+
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+        searchTimeoutRef.current = null;
+      }
+
+      moveTimersRef.current.forEach((t) => {
+        if (typeof t === "number") {
+          clearTimeout(t);
+        } else if (t && typeof t === "object" && t.timestamp) {
+          if (t.timeoutId) clearTimeout(t.timeoutId);
+        }
+      });
+      moveTimersRef.current = [];
+
+      setGameId(null);
+      gameIdRef.current = null;
+      setOnlineMode(false);
+      setGameStarted(false);
+      gameStartedRef.current = false;
+      setGameEnded(false);
+      gameEndedRef.current = false;
+      setCurrentPlayer(0);
+      currentPlayerRef.current = 0;
+      setDiceValueImmediate(0);
+      lastDiceValueRef.current = 0;
+      setCanRollDice(false);
+      setWinner(null);
+      setWinners([]);
+      winnersRef.current = [];
+      setShowWinnerModal(false);
+      setShowPlayerSelection(false);
+      setWaitingForPlayers(false);
+      setIsReconnecting(false);
+      setShowReconnectModal(false);
+      setMyPlayerIndex(0);
+      myPlayerIndexRef.current = 0;
+      setDisconnectedPlayers(new Set());
+      setSelectedFriends([]);
+      setInvitedStatusByFriendId({});
+      invitedStatusByFriendIdRef.current = {};
+      setInvitedSlotByFriendId({});
+      invitedSlotByFriendIdRef.current = {};
+      setFriendSearchQuery("");
+      setSearchResults([]);
+      setLoadingSearch(false);
+      currentPlayerUpdatedFromServerRef.current = false;
+      isRollingRef.current = false;
+      isMovingRef.current = false;
+      isAutoMovingRef.current = false;
+      lastTurnAdvanceTimeRef.current = 0;
+      lastLocalDiceRollTimeRef.current = 0;
+      lastRollTimeRef.current = 0;
+      recentMovesRef.current.clear();
+      requestJoinedGames();
+      return;
+    }
 
     console.log("[EXIT_GAME] Starting complete cleanup of all game state");
 
@@ -6359,6 +6551,7 @@ const LudoGame = () => {
         }
       }
       localStorage.removeItem("ludo_game_state");
+      clearHiddenBoardGameId();
       clearActiveLudoGameId();
       clearHandledLudoInvites();
       savedGameStateRef.current = null;
@@ -6481,6 +6674,7 @@ const LudoGame = () => {
   };
 
   const confirmPlayerCount = () => {
+    clearHiddenBoardGameId();
     console.log("[CONFIRM_PLAYER_COUNT] Called", {
       onlineMode,
       selectedPlayerCount,
@@ -6986,6 +7180,7 @@ const LudoGame = () => {
   };
 
   const endGame = () => {
+    clearHiddenBoardGameId();
     setShowWinnerModal(false);
     setGameEnded(true);
     gameEndedRef.current = true;
@@ -7117,8 +7312,10 @@ const LudoGame = () => {
       hasProcessedReconnectionStateRef.current = true; // Mark as processed to prevent reconnection logic
       isJoiningViaInviteRef.current = true; // Mark that we're joining via invite
       inviteAcceptTimestampRef.current = Date.now(); // Track when we accepted invite to prevent reconnection
+      clearHiddenBoardGameId();
       markInviteHandled(payload.gameId, payload.from);
       setActiveLudoGameId(payload.gameId);
+      resolveLudoInviteNotifications(payload.gameId, payload.from);
 
       // CRITICAL: Clear saved game state to prevent reconnection logic from triggering
       // This is a new join, not a reconnection
@@ -7320,6 +7517,9 @@ const LudoGame = () => {
     if (!payload) return;
 
     try {
+      markInviteHandled(payload.gameId, payload.from);
+      resolveLudoInviteNotifications(payload.gameId, payload.from);
+
       // Emit dismiss event to socket
       if (socketRef.current) {
         try {
@@ -8064,46 +8264,7 @@ const LudoGame = () => {
           onPlaySound={playSound}
           onCancel={() => setShowPlayerSelection(false)}
           onConfirmPlayerCount={confirmPlayerCount}
-          onJoinGame={(game) => {
-            if (!game?.gameId) return;
-            setShowPlayerSelection(false);
-            setShowWinnerModal(false);
-            setWinner(null);
-            setOnlineMode(true);
-            setWaitingForPlayers(false);
-            setIsReconnecting(false);
-            setShowReconnectModal(false);
-            setGameId(game.gameId);
-
-            const gameStartedFromList = Boolean(game?.lastPlayers?.gameStarted);
-            const playerCountFromList = [2, 3, 4].includes(game?.playerCount)
-              ? game.playerCount
-              : selectedPlayerCount;
-            setSelectedPlayerCount(playerCountFromList);
-
-            if (gameStartedFromList) {
-              setGameStarted(true);
-              gameStartedRef.current = true;
-            }
-
-            ensureSocketConnected();
-
-            const joinAndLoad = () => {
-              try {
-                if (!socketRef.current) return;
-                socketRef.current.emit("ludo:join", { gameId: game.gameId });
-                socketRef.current.emit("ludo:players:get", {
-                  gameId: game.gameId,
-                });
-              } catch (_e) {}
-            };
-
-            if (socketRef.current?.connected) {
-              joinAndLoad();
-            } else if (socketRef.current) {
-              socketRef.current.once("connect", joinAndLoad);
-            }
-          }}
+          onJoinGame={handleJoinGame}
         />
         <PlayerEditorModal
           show={showPlayerEditor}
@@ -8177,6 +8338,35 @@ const LudoGame = () => {
         : effectiveDiceForUi > 0
           ? "Tap a glowing piece"
           : "Wait…";
+
+  const getJoinedGameStatus = (game) => {
+    if (!game?.gameId) return "Unknown";
+    if (game?.lastPlayers?.gameEnded || game?.lastPlayers?.winner) {
+      return "Finished";
+    }
+    return game?.lastPlayers?.gameStarted ? "In Progress" : "Waiting";
+  };
+
+  const hiddenBoardGameId = getHiddenBoardGameId();
+  const liveJoinedGames = (
+    Array.isArray(joinedGames)
+      ? joinedGames.filter((game) => getJoinedGameStatus(game) !== "Finished")
+      : []
+  ).sort((a, b) => {
+    const aHidden =
+      hiddenBoardGameId && String(a?.gameId) === String(hiddenBoardGameId)
+        ? 1
+        : 0;
+    const bHidden =
+      hiddenBoardGameId && String(b?.gameId) === String(hiddenBoardGameId)
+        ? 1
+        : 0;
+    if (aHidden !== bHidden) return bHidden - aHidden;
+
+    const aTime = new Date(a?.createdAt || 0).getTime() || 0;
+    const bTime = new Date(b?.createdAt || 0).getTime() || 0;
+    return bTime - aTime;
+  });
 
   return (
     <div
@@ -8655,13 +8845,81 @@ const LudoGame = () => {
           <div className="ludo-idle__copy">
             Start a local match or invite friends for an online game.
           </div>
-          <button
-            type="button"
-            className="ludo-btn ludo-btn--primary"
-            onClick={startGame}
-          >
-            Start Game
-          </button>
+          <div className="ludo-idle__actions">
+            <button
+              type="button"
+              className="ludo-btn ludo-btn--primary"
+              onClick={startGame}
+            >
+              Start Game
+            </button>
+            {liveJoinedGames.length > 0 && (
+              <button
+                type="button"
+                className="ludo-btn ludo-btn--ghost"
+                onClick={requestJoinedGames}
+              >
+                Refresh Live Games
+              </button>
+            )}
+          </div>
+
+          {liveJoinedGames.length > 0 && (
+            <div className="ludo-live-games">
+              <div className="ludo-live-games__header">
+                <div>
+                  <div className="ludo-live-games__title">Your Live Games</div>
+                  <div className="ludo-live-games__copy">
+                    Rejoin any waiting or in-progress online match.
+                  </div>
+                </div>
+              </div>
+
+              <div className="ludo-live-games__list">
+                {liveJoinedGames.map((game) => {
+                  const gameStatus = getJoinedGameStatus(game);
+                  const isHiddenBoardGame =
+                    hiddenBoardGameId &&
+                    String(game?.gameId) === String(hiddenBoardGameId);
+
+                  return (
+                    <button
+                      key={game.gameId}
+                      type="button"
+                      className="ludo-live-game"
+                      onClick={() => handleJoinGame(game)}
+                    >
+                      <div className="ludo-live-game__badge-wrap">
+                        <div className="ludo-live-game__icon">🎲</div>
+                        <div
+                          className={`ludo-seat__badge ${gameStatus === "In Progress" ? "ludo-seat__badge--joined" : "ludo-seat__badge--waiting"}`}
+                        >
+                          {gameStatus}
+                        </div>
+                      </div>
+                      <div className="ludo-live-game__meta">
+                        <div className="ludo-live-game__title-row">
+                          <div className="ludo-live-game__name">
+                            Game #{game.gameId?.slice(-6) || "Unknown"}
+                          </div>
+                          {isHiddenBoardGame && (
+                            <div className="ludo-live-game__hint">
+                              Last opened
+                            </div>
+                          )}
+                        </div>
+                        <div className="ludo-live-game__sub">
+                          {game.playerCount} Players ·{" "}
+                          {game.isOnline ? "Connected" : "Offline"}
+                        </div>
+                      </div>
+                      <span className="ludo-live-game__cta">Resume</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

@@ -24,6 +24,7 @@ import {
   markInviteHandled,
   setActiveLudoGameId,
   shouldShowLudoInviteAlert,
+  resolveLudoInviteNotifications,
 } from "../utils/ludoInviteUtils";
 import { getNotificationLink } from "../utils/notificationUtils";
 import "react-toastify/dist/ReactToastify.css";
@@ -927,6 +928,7 @@ const Main = () => {
         markInviteHandled(invite.gameId, invite.from);
         setActiveLudoGameId(invite.gameId);
         removePendingInvite(invite.gameId, invite.from);
+        resolveLudoInviteNotifications(invite.gameId, invite.from);
 
         try {
           if (socket && socket.connected) {
@@ -960,6 +962,7 @@ const Main = () => {
       try {
         markInviteHandled(invite.gameId, invite.from);
         removePendingInvite(invite.gameId, invite.from);
+        resolveLudoInviteNotifications(invite.gameId, invite.from);
         if (socket && socket.connected) {
           socket.emit("ludo:invites:dismiss", {
             gameId: invite.gameId,
@@ -1245,6 +1248,7 @@ const Main = () => {
           if (isUserInPlayers) {
             setActiveLudoGameId(payload.gameId);
             markInviteHandled(payload.gameId, payload.from);
+            resolveLudoInviteNotifications(payload.gameId, payload.from);
             setPendingLudoInvites([]);
 
             dismissInviteToast();

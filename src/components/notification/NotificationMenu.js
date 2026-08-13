@@ -112,6 +112,16 @@ const NotificationMenu = ({
         item?.data?.from ||
         item?.linkData?.inviterId;
 
+      // Once the invite has been accepted/declined, or the user has already
+      // joined this game, stop showing it entirely - invitation alerts and
+      // notifications should only ever be visible before the invite is
+      // resolved.
+      if (gameId && !shouldShowLudoInviteAlert(gameId, from)) {
+        return false;
+      }
+
+      // Otherwise avoid showing it twice: once via the richer ludoInviteFeed
+      // treatment, and again as a plain generic notification.
       return !inviteKeys.has(`${gameId || ""}:${from || ""}`);
     });
 

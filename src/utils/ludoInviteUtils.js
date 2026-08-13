@@ -1,3 +1,5 @@
+import api from "../api/api";
+
 const HANDLED_KEY = "ludo_handled_invites";
 const ACTIVE_GAME_KEY = "ludo_active_game_id";
 
@@ -90,4 +92,22 @@ export const shouldShowLudoInviteAlert = (gameId, from) => {
   if (isInviteHandled(gameId, from)) return false;
   if (isUserInLudoGame(gameId)) return false;
   return true;
+};
+
+// Once an invite has been accepted or declined, remove the persisted
+// database notification(s) for it too, so "X invited you to play Ludo"
+// never resurfaces (e.g. in the notification bell, on another device, or
+// after clearing session storage). Invitation alerts/notifications should
+// only ever be visible before the invite is resolved.
+export const resolveLudoInviteNotifications = async (gameId, inviterId) => {
+  if (!gameId) return;
+  try {
+    await api.post("/notification/resolve-ludo-invite", {
+      gameId,
+      inviterId,
+    });
+  } catch (_e) {
+    // Non-critical - the client-side handled/active-game checks already
+    // hide the invite locally even if this cleanup call fails.
+  }
 };
