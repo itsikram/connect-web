@@ -951,6 +951,17 @@ const Main = () => {
           autoAccept: true,
         };
         localStorage.setItem("ludo_pending_invite", JSON.stringify(inviteData));
+        // Notify an already-mounted LudoGame page (e.g. user is currently on
+        // /ludo-game) so it picks up the invite immediately. If the page is
+        // not mounted yet, the navigate() below will mount it fresh and it
+        // will read the invite from localStorage on mount.
+        try {
+          window.dispatchEvent(
+            new CustomEvent("ludo:pendingInviteUpdated", {
+              detail: inviteData,
+            }),
+          );
+        } catch (_e) {}
         navigate("/ludo-game");
       } catch (error) {
         console.error("[LUDO_INVITE] Error accepting invite:", error);

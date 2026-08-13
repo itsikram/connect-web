@@ -1429,63 +1429,99 @@ const LudoGame = () => {
     }
   }, [myProfile?._id, ensureSocketConnected]);
 
-  // Check for pending invite from global handler (Main.js) and auto-accept if needed
-  useEffect(() => {
-    if (!myProfile?._id) return;
+  // Check for pending invite from global handler (Main.js) and auto-accept if needed.
+  // This is shared by two triggers:
+  //  1. Mount-time check (localStorage may already have an invite if the page
+  //     was just navigated to from the notification menu).
+  //  2. A "ludo:pendingInviteUpdated" window event fired by Main.js, which is
+  //     needed when this component is already mounted (e.g. the user is
+  //     already on /ludo-game) so navigate("/ludo-game") is a no-op and would
+  //     never re-trigger a mount-only effect.
+  const processPendingInviteFromStorage = useCallback(
+    (inviteFromEvent) => {
+      if (!myProfile?._id) return;
 
-    try {
-      const pendingInviteStr = localStorage.getItem("ludo_pending_invite");
-      if (!pendingInviteStr) return;
+      try {
+        let pendingInvite = inviteFromEvent || null;
+        if (!pendingInvite) {
+          const pendingInviteStr = localStorage.getItem("ludo_pending_invite");
+          if (!pendingInviteStr) return;
+          pendingInvite = JSON.parse(pendingInviteStr);
+        }
 
-      const pendingInvite = JSON.parse(pendingInviteStr);
-      if (!pendingInvite || !pendingInvite.autoAccept) {
-        // Not an auto-accept invite, clear it
-        localStorage.removeItem("ludo_pending_invite");
-        return;
-      }
-
-      // Clear the pending invite from localStorage immediately to prevent re-processing
-      localStorage.removeItem("ludo_pending_invite");
-
-      // Wait a bit for socket to be ready, then set the invite request
-      const setPendingInvite = () => {
-        if (!socketRef.current) {
-          // Socket not ready yet, retry
-          setTimeout(setPendingInvite, 200);
+        if (!pendingInvite || !pendingInvite.autoAccept) {
+          // Not an auto-accept invite, clear it
+          localStorage.removeItem("ludo_pending_invite");
           return;
         }
 
-        // Set the invite request - this will trigger the auto-accept effect below
-        setIncomingInviteRequest(pendingInvite);
-      };
+        // Clear the pending invite from localStorage immediately to prevent re-processing
+        localStorage.removeItem("ludo_pending_invite");
 
-      // Wait for socket connection before setting invite
-      if (socketRef.current && socketRef.current.connected) {
-        setPendingInvite();
-      } else {
-        // Wait for socket to connect
-        const onConnect = () => {
-          if (socketRef.current) {
-            socketRef.current.off("connect", onConnect);
+        // Wait a bit for socket to be ready, then set the invite request
+        const setPendingInvite = () => {
+          if (!socketRef.current) {
+            // Socket not ready yet, retry
+            setTimeout(setPendingInvite, 200);
+            return;
           }
-          setPendingInvite();
+
+          // Set the invite request - this will trigger the auto-accept effect below
+          setIncomingInviteRequest(pendingInvite);
         };
-        if (socketRef.current) {
-          socketRef.current.once("connect", onConnect);
+
+        // Wait for socket connection before setting invite
+        if (socketRef.current && socketRef.current.connected) {
+          setPendingInvite();
         } else {
-          // Socket doesn't exist yet, wait a bit
-          setTimeout(setPendingInvite, 500);
+          // Wait for socket to connect
+          const onConnect = () => {
+            if (socketRef.current) {
+              socketRef.current.off("connect", onConnect);
+            }
+            setPendingInvite();
+          };
+          if (socketRef.current) {
+            socketRef.current.once("connect", onConnect);
+          } else {
+            // Socket doesn't exist yet, wait a bit
+            setTimeout(setPendingInvite, 500);
+          }
+        }
+      } catch (error) {
+        console.error("[LUDO] Error processing pending invite:", error);
+        try {
+          localStorage.removeItem("ludo_pending_invite");
+        } catch (_e) {
+          // Ignore
         }
       }
-    } catch (error) {
-      console.error("[LUDO] Error processing pending invite:", error);
-      try {
-        localStorage.removeItem("ludo_pending_invite");
-      } catch (_e) {
-        // Ignore
-      }
-    }
-  }, [myProfile?._id]);
+    },
+    [myProfile?._id],
+  );
+
+  useEffect(() => {
+    processPendingInviteFromStorage();
+  }, [processPendingInviteFromStorage]);
+
+  // Listen for invite acceptances triggered while this page is already
+  // mounted (e.g. accepted from the notification bell dropdown while the
+  // user is already on the Ludo page).
+  useEffect(() => {
+    const onPendingInviteUpdated = (e) => {
+      processPendingInviteFromStorage(e?.detail);
+    };
+    window.addEventListener(
+      "ludo:pendingInviteUpdated",
+      onPendingInviteUpdated,
+    );
+    return () => {
+      window.removeEventListener(
+        "ludo:pendingInviteUpdated",
+        onPendingInviteUpdated,
+      );
+    };
+  }, [processPendingInviteFromStorage]);
 
   // Auto-accept invite if it has the autoAccept flag (from global handler)
   useEffect(() => {
