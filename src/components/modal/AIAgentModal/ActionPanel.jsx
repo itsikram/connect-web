@@ -299,7 +299,47 @@ const ACTIONS = [
     ],
   },
 
-  // ── Create ────────────────────────────────────────────────────────────────────
+  // ── Videos ────────────────────────────────────────────────────────────────────────────────
+  {
+    category: "videos",
+    icon: "fa-play-circle",
+    label: "Videos",
+    color: "#ef4444",
+    items: [
+      {
+        id: "vid_search",
+        label: "Search Videos",
+        icon: "fa-search",
+        prompt: "play ",
+      },
+      {
+        id: "vid_action",
+        label: "Action Videos",
+        icon: "fa-film",
+        prompt: "play action",
+      },
+      {
+        id: "vid_comedy",
+        label: "Comedy Videos",
+        icon: "fa-laugh",
+        prompt: "play comedy",
+      },
+      {
+        id: "vid_music",
+        label: "Music Videos",
+        icon: "fa-music",
+        prompt: "play music",
+      },
+      {
+        id: "vid_watch",
+        label: "Go to Watch Page",
+        icon: "fa-tv",
+        prompt: "go to watch",
+      },
+    ],
+  },
+
+  // ── Create & Assist ────────────────────────────────────────────────────────────────
   {
     category: "create",
     icon: "fa-plus-circle",

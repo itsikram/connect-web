@@ -29,6 +29,11 @@ const SUGGESTIONS = [
   "Play Ludo",
   "Invite [friend name] to Ludo",
   "Play Chess",
+  // Videos
+  "Play [video name]",
+  "Play action",
+  "Find videos about music",
+  "Search for comedy video",
   // Other
   "Block [name]",
   "Unblock [name]",

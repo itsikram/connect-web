@@ -26,6 +26,7 @@ export const executeAction = async ({
   targetRoute,
   subPath,
   label,
+  searchQuery,
   myProfile,
   navigate,
   onClose,
@@ -39,6 +40,36 @@ export const executeAction = async ({
 
   try {
     switch (action) {
+      // ── Search / Play Video ────────────────────────────────────────────────────
+      case "SEARCH_VIDEO": {
+        const query = (searchQuery || "").trim();
+        if (!query) {
+          return {
+            success: false,
+            message: "What video would you like to search for?",
+          };
+        }
+        try {
+          const res = await api.get("/search", { params: { input: query } });
+          const videos = Array.isArray(res.data?.videos) ? res.data.videos : [];
+          return {
+            success: true,
+            type: "video-results",
+            videos,
+            query,
+            message:
+              videos.length > 0
+                ? `Found ${videos.length} video${videos.length === 1 ? "" : "s"} for "${query}":`
+                : `No videos found for "${query}".`,
+          };
+        } catch (err) {
+          return {
+            success: false,
+            message: `Search failed: ${err?.message || "Unknown error"}`,
+          };
+        }
+      }
+
       // ── Navigation: static / my-profile routes ──────────────────────────────
       case "NAVIGATE": {
         const dest = label || targetRoute || "page";

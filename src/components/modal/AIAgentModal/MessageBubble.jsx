@@ -1,6 +1,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import FriendResultCard from "./FriendResultCard";
+import VideoResultCard from "./VideoResultCard";
 
 /**
  * MessageBubble
@@ -15,6 +16,7 @@ const MessageBubble = ({ message, userProfilePic }) => {
   const isUser = message.type === "user";
   const isFriendPicker = message.type === "friend-picker";
   const isActionResult = message.type === "action-result";
+  const isVideoResults = message.type === "video-results";
 
   // Determine avatar
   const agentAvatar = (
@@ -113,7 +115,47 @@ const MessageBubble = ({ message, userProfilePic }) => {
     );
   }
 
-  // ── Action result bubble ───────────────────────────────────────────────────────
+  // ── Video results bubble ────────────────────────────────────────────────────
+  if (isVideoResults) {
+    const { videos, onPlay, content } = message;
+    const isMultiple = videos && videos.length > 1;
+    return (
+      <motion.div
+        className="ai-agent-message agent-message"
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ type: "spring", stiffness: 120 }}
+      >
+        <div
+          className="ai-agent-bubble agent-bubble"
+          style={{ maxWidth: "96%" }}
+        >
+          {agentAvatar}
+          <div
+            className="message-content"
+            style={{ maxWidth: "100%", minWidth: 0 }}
+          >
+            <p>{content}</p>
+            {videos && videos.length > 0 && (
+              <div className="friend-picker-cards">
+                {videos.map((video) => (
+                  <VideoResultCard
+                    key={video._id}
+                    video={video}
+                    onPlay={onPlay}
+                    compact={isMultiple && videos.length > 3}
+                  />
+                ))}
+              </div>
+            )}
+            <span className="message-time">{timestamp}</span>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
+  // ── Action result bubble ────────────────────────────────────────────────────
   if (isActionResult) {
     const successColor = message.success ? "#10b981" : "#ef4444";
     return (

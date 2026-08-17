@@ -28,6 +28,7 @@ export const NO_FRIEND_ACTIONS = new Set([
   "OPEN_MESSAGES",
   "OPEN_FRIENDS",
   "NAVIGATE", // navigate to a static/my-profile route
+  "SEARCH_VIDEO", // search for a video to play
 ]);
 
 // ── Static route map ─────────────────────────────────────────────────────────
@@ -238,9 +239,43 @@ const STATIC_ROUTE_MAP = [
     route: "/downloads",
     label: "Saved Videos",
   },
-  { keys: ["notes", "note", "my notes"], route: "/notes", label: "Notes" },
   {
-    keys: ["tasks", "task", "to do", "todo", "to-do list", "my tasks"],
+    keys: [
+      "notes",
+      "note",
+      "my notes",
+      // Action phrases — "create note" should navigate to /notes
+      "create note",
+      "create a note",
+      "new note",
+      "add note",
+      "add a note",
+      "write note",
+      "write a note",
+      "make note",
+      "make a note",
+      "open notes",
+      "go to notes",
+    ],
+    route: "/notes",
+    label: "Notes",
+  },
+  {
+    keys: [
+      "tasks",
+      "task",
+      "to do",
+      "todo",
+      "to-do list",
+      "my tasks",
+      "create task",
+      "create a task",
+      "new task",
+      "add task",
+      "add a task",
+      "write task",
+      "make task",
+    ],
     route: "/tasks",
     label: "Tasks",
   },
@@ -331,12 +366,13 @@ const NON_NAME_WORDS = new Set([
 
 /**
  * Friend profile sub-page patterns.
- * IMPORTANT: all patterns require possessive 's (apostrophe) so that
- * "go to my profile" never matches — only "John's profile" does.
- * Overly-broad catch-alls have been removed.
+ * Possessive patterns (John's profile) are tried first.
+ * Non-possessive patterns (go to atik profile, open atik friends) follow.
+ * ALL captured names pass through detectProfileSubNav's NON_NAME_WORDS guard
+ * so pronouns like "my", "your", "the" are always rejected.
  */
 const PROFILE_SUB_PATTERNS = [
-  // Possessive sub-pages (John's friends / photos / videos / about / posts)
+  // ── Possessive sub-pages (require apostrophe 's) ──────────────────────────
   {
     regex: /(.+?)'s\s+friends(?:\s+list)?/i,
     subPath: "/friends",
@@ -351,13 +387,53 @@ const PROFILE_SUB_PATTERNS = [
   { regex: /(.+?)'s\s+about/i, subPath: "/about", subLabel: "About" },
   { regex: /(.+?)'s\s+posts?/i, subPath: "", subLabel: "Posts" },
   { regex: /(.+?)'s\s+profile/i, subPath: "", subLabel: "Profile" },
-  // "go to X's page" — still requires possessive
+  // "go to X's page" (possessive)
   {
     regex: /(?:go\s+to|view|open|visit)\s+(.+?)'s\s*(?:page|profile)/i,
     subPath: "",
     subLabel: "Profile",
   },
-  // "profile of X" / "profile for X" — no possessive needed but no nav verb capture
+
+  // ── Non-possessive sub-pages ──────────────────────────────────────────────
+  // "go to atik profile", "open atik friends", "view atik photos", etc.
+  // These fire AFTER findStaticRoute has already rejected the message, so
+  // static routes like /friends/ and /watch are never reached from here.
+  {
+    regex:
+      /(?:go\s+to|visit|open|view|show(?:\s+me)?|take\s+me\s+to)\s+(.+?)\s+profile$/i,
+    subPath: "",
+    subLabel: "Profile",
+  },
+  {
+    regex: /(?:go\s+to|visit|open|view)\s+(.+?)\s+friends(?:\s+list)?$/i,
+    subPath: "/friends",
+    subLabel: "Friends",
+  },
+  {
+    regex:
+      /(?:go\s+to|visit|open|view)\s+(.+?)\s+(?:photos|images|pictures|gallery)$/i,
+    subPath: "/images",
+    subLabel: "Photos",
+  },
+  {
+    regex: /(?:go\s+to|visit|open|view)\s+(.+?)\s+videos?$/i,
+    subPath: "/videos",
+    subLabel: "Videos",
+  },
+  {
+    regex: /(?:go\s+to|visit|open|view)\s+(.+?)\s+about$/i,
+    subPath: "/about",
+    subLabel: "About",
+  },
+
+  // Bare "X profile" (no nav verb) — single/double word names only
+  {
+    regex: /^([\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+)?)\s+profile$/i,
+    subPath: "",
+    subLabel: "Profile",
+  },
+
+  // "profile of X" / "profile for X"
   { regex: /profile\s+(?:of|for)\s+(.+)/i, subPath: "", subLabel: "Profile" },
 ];
 
@@ -382,33 +458,33 @@ const INTENT_PATTERNS = [
     patterns: [
       /(?:voice|audio|phone)\s+call\s+(.+)/i,
       /call\s+(.+?)\s+(?:via|on|using)\s+(?:voice|audio|phone)/i,
-      /ring\s+(.+)/i,
+      /^ring\s+(.+)/i,
       /(?:make|start|place)\s+(?:a\s+)?call\s+(?:to\s+)?(.+)/i,
-      /call\s+(.+)/i,
+      /^call\s+(.+)/i, // anchored: prevents mid-sentence “to call” matches
     ],
   },
 
-  // ── Send Message ───────────────────────────────────────────────────────────
+  // ── Send Message ─────────────────────────────────────────────────────────────
   {
     action: "SEND_MESSAGE",
     patterns: [
       /(?:send\s+(?:a\s+)?message|dm|text)\s+(?:to\s+)?(.+)/i,
-      /message\s+(.+)/i,
+      /^message\s+(.+)/i, // anchored: “message John” but not “a message about”
       /chat\s+with\s+(.+)/i,
       /open\s+chat\s+with\s+(.+)/i,
-      /talk\s+to\s+(.+)/i,
-      /write\s+to\s+(.+)/i,
+      /^talk\s+to\s+(.+)/i,
+      /^write\s+to\s+(.+)/i,
       /start\s+(?:a\s+)?(?:chat|conversation)\s+(?:with\s+)?(.+)/i,
     ],
   },
 
-  // ── Bump ───────────────────────────────────────────────────────────────────
+  // ── Bump ──────────────────────────────────────────────────────────────────────────────────
   {
     action: "BUMP",
     patterns: [
-      /bump\s+(.+)/i,
-      /poke\s+(.+)/i,
-      /nudge\s+(.+)/i,
+      /^bump\s+(.+)/i,
+      /^poke\s+(.+)/i,
+      /^nudge\s+(.+)/i,
       /send\s+(?:a\s+)?bump\s+(?:to\s+)?(.+)/i,
     ],
   },
@@ -436,11 +512,29 @@ const INTENT_PATTERNS = [
     ],
   },
 
-  // ── Block ──────────────────────────────────────────────────────────────────
-  { action: "BLOCK", patterns: [/block\s+(.+)/i] },
+  // ── Search / Play Video ──────────────────────────────────────────────────
+  // ALL patterns anchored to ^ so mid-sentence keywords like
+  // “create note to play football” never trigger a video search.
+  // “play ludo” is caught by CREATE_LUDO earlier, so “play <other>” safely
+  // reaches here as a video search.
+  {
+    action: "SEARCH_VIDEO",
+    searchCapture: true,
+    patterns: [
+      /^play\s+(.+?)\s+(?:from|on|in)\s+(?:watch|video(?:s)?)/i, // "play X from watch"
+      /^play\s+(.+)/i, // "play X"
+      /^watch\s+(.+?(?:video|movie|film|clip|episode))/i, // "watch X video"
+      /^(?:i\s+(?:want|wanna|would\s+like)\s+to\s+(?:play|watch))\s+(.+)/i, // "i want to play X"
+      /^find\s+(?:a\s+)?video(?:s)?\s+(?:about|of|for|on)\s+(.+)/i,
+      /^search\s+(?:for\s+)?(?:a\s+)?video(?:s)?(?:\s+(?:about|of|for|on))?\s+(.+)/i,
+      /^show\s+(?:me\s+)?(?:a\s+)?video(?:s)?\s+(?:about|of|for|on)\s+(.+)/i,
+      /^look\s+(?:for|up)\s+(.+?)\s+video(?:s)?/i,
+    ],
+  },
 
-  // ── Unblock ────────────────────────────────────────────────────────────────
-  { action: "UNBLOCK", patterns: [/unblock\s+(.+)/i] },
+  // ── Block / Unblock ──────────────────────────────────────────────────────────────────
+  { action: "BLOCK", patterns: [/^block\s+(.+)/i] },
+  { action: "UNBLOCK", patterns: [/^unblock\s+(.+)/i] },
 
   // ── View Profile (pure, no sub-page) ──────────────────────────────────────
   // Requires possessive 's so "view my profile" goes to the static route map
@@ -453,14 +547,14 @@ const INTENT_PATTERNS = [
     ],
   },
 
-  // ── Get Location ───────────────────────────────────────────────────────────
+  // ── Get Location ──────────────────────────────────────────────────────────────────
   {
     action: "GET_LOCATION",
     patterns: [
       /where\s+is\s+(.+?)(?:\s+(?:now|right\s+now|located|at))?[?]?$/i,
       /(?:find|get|show|check|see)\s+(.+?)'?s?\s+location/i,
       /(.+?)'?s?\s+location/i,
-      /(?:locate|find)\s+(.+)/i,
+      // Removed the too-broad /(?:locate|find)\s+(.+)/i — "find a restaurant" would fire
     ],
   },
 
@@ -539,12 +633,17 @@ const findStaticRoute = (query) => {
   }
   if (bestMatch) return { route: bestMatch.route, label: bestMatch.label };
 
-  // Partial / "contains" pass
+  // Partial / "contains" pass.
+  // The key must cover at least 60 % of the query length to avoid accidental
+  // matches like "friends" (7) hitting "atik friends" (12) → 58 % < 60 %.
   for (const entry of STATIC_ROUTE_MAP) {
     for (const key of entry.keys) {
       if (q.includes(key) && key.length > bestLength) {
-        bestMatch = entry;
-        bestLength = key.length;
+        const ratio = key.length / q.length;
+        if (ratio >= 0.6) {
+          bestMatch = entry;
+          bestLength = key.length;
+        }
       }
     }
   }
@@ -597,10 +696,34 @@ export const parseIntent = (message) => {
   const trimmed = message.trim();
 
   // ── 1. Try primary action intents ─────────────────────────────────────────
-  for (const { action, patterns, noCapture } of INTENT_PATTERNS) {
+  // ── 1. Try primary action intents ────────────────────────────────────────────────────────────
+  for (const {
+    action,
+    patterns,
+    noCapture,
+    searchCapture,
+  } of INTENT_PATTERNS) {
     for (const pattern of patterns) {
       const match = trimmed.match(pattern);
       if (match) {
+        // SEARCH_VIDEO: capture group is a search query, not a friend name
+        if (searchCapture && match[1]) {
+          const searchQuery = match[1]
+            .trim()
+            .replace(/[?.!,;:]+$/, "")
+            .replace(/\s+(please|for\s+me|now)$/i, "")
+            .trim();
+          return {
+            action,
+            targetName: null,
+            searchQuery: searchQuery || null,
+            targetRoute: null,
+            subPath: null,
+            label: null,
+            params: {},
+          };
+        }
+
         let targetName = null;
         if (!noCapture && match[1]) {
           targetName = match[1]
@@ -613,6 +736,7 @@ export const parseIntent = (message) => {
         return {
           action,
           targetName,
+          searchQuery: null,
           targetRoute: null,
           subPath: null,
           label: null,

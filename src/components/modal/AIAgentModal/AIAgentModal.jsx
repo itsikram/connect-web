@@ -97,7 +97,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       try {
         const intent = parseIntent(text);
 
-        // 1. No-friend navigation / creation actions
+        // 1. No-friend navigation / creation / video-search actions
         if (intent && NO_FRIEND_ACTIONS.has(intent.action)) {
           const result = await executeAction({
             action: intent.action,
@@ -105,15 +105,32 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             targetRoute: intent.targetRoute,
             subPath: intent.subPath,
             label: intent.label,
+            searchQuery: intent.searchQuery,
             myProfile,
             navigate,
             onClose,
           });
-          addMessage({
-            type: "action-result",
-            content: result.message,
-            success: result.success,
-          });
+
+          // Video search returns a special result type
+          if (result.type === "video-results") {
+            addMessage({
+              type: "video-results",
+              content: result.message,
+              videos: result.videos,
+              success: result.success,
+              onPlay: (video) => {
+                navigate(`/watch/${video._id}`);
+                if (onClose) onClose();
+              },
+            });
+          } else {
+            addMessage({
+              type: "action-result",
+              content: result.message,
+              success: result.success,
+            });
+          }
+
           setIsLoading(false);
           return;
         }
