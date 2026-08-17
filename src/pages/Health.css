@@ -476,6 +476,897 @@
     background: #10b981;
 }
 
+/* Calorie Tracking Section */
+.health-calorie-section {
+    margin-bottom: 20px;
+}
+
+.health-calorie-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: clamp(14px, 3.5vw, 22px);
+}
+
+.health-calorie-card.health-calorie-setup {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: clamp(28px, 5vw, 40px) clamp(14px, 3.5vw, 22px);
+}
+
+.health-calorie-description {
+    margin: 8px 0 20px;
+    color: #94a3b8;
+    font-size: clamp(0.85rem, 3.5vw, 0.9rem);
+    line-height: 1.5;
+}
+
+.health-calorie-start-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    min-height: 44px;
+    border-radius: 12px;
+    border: none;
+    background: linear-gradient(135deg, #ea580c, #f97316);
+    color: white;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.health-calorie-start-btn:active {
+    transform: scale(0.98);
+}
+
+.health-calorie-info {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.health-calorie-row {
+    display: flex;
+    flex-direction: column;
+    padding: 12px;
+    border-radius: 10px;
+    background: rgba(249, 115, 22, 0.08);
+    border: 1px solid rgba(249, 115, 22, 0.15);
+}
+
+.health-calorie-row span {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.health-calorie-row strong {
+    font-size: clamp(1rem, 4vw, 1.3rem);
+    color: #fb923c;
+    font-weight: 700;
+}
+
+.health-calorie-row strong.over-limit {
+    color: #ef4444;
+}
+
+.health-calorie-progress {
+    text-align: center;
+    font-size: 0.875rem;
+    color: #94a3b8;
+    margin: 0 0 16px;
+}
+
+.health-meal-list {
+    margin-bottom: 16px;
+    padding: 12px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.health-meal-list h3 {
+    margin: 0 0 10px;
+    font-size: 0.9rem;
+    color: #cbd5e1;
+    font-weight: 600;
+}
+
+.health-meal-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    font-size: 0.85rem;
+}
+
+.health-meal-item:last-child {
+    border-bottom: none;
+}
+
+.health-meal-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+}
+
+.health-meal-name {
+    color: #f1f5f9;
+    font-weight: 500;
+}
+
+.health-meal-type {
+    font-size: 0.75rem;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.health-meal-details {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.health-meal-calories {
+    color: #fb923c;
+    font-weight: 600;
+}
+
+.health-meal-macro {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    background: rgba(255, 255, 255, 0.04);
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.health-meal-remove {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: none;
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.health-meal-remove:active {
+    background: rgba(239, 68, 68, 0.2);
+}
+
+.health-calorie-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.health-calorie-add-btn {
+    padding: 11px 14px;
+    min-height: 44px;
+    border-radius: 10px;
+    border: none;
+    background: linear-gradient(135deg, rgba(249, 115, 22, 0.2), rgba(249, 115, 22, 0.1));
+    color: #fb923c;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    border: 1px solid rgba(249, 115, 22, 0.3);
+}
+
+.health-calorie-add-btn:active {
+    transform: scale(0.98);
+}
+
+.health-meal-input-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.health-meal-text-input {
+    padding: 10px 12px;
+    min-height: 40px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: #e2e8f0;
+    font-size: 0.85rem;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
+}
+
+.health-meal-text-input::placeholder {
+    color: #64748b;
+}
+
+.health-meal-text-input:focus {
+    outline: none;
+    border-color: rgba(249, 115, 22, 0.5);
+    background: rgba(249, 115, 22, 0.08);
+}
+
+.health-meal-input-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.health-meal-number-input,
+.health-meal-type-select {
+    padding: 10px 12px;
+    min-height: 40px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: #e2e8f0;
+    font-size: 0.85rem;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
+}
+
+.health-meal-number-input::placeholder {
+    color: #64748b;
+}
+
+.health-meal-number-input:focus,
+.health-meal-type-select:focus {
+    outline: none;
+    border-color: rgba(249, 115, 22, 0.5);
+    background: rgba(249, 115, 22, 0.08);
+}
+
+.health-meal-type-select {
+    cursor: pointer;
+}
+
+.health-meal-macros-detail {
+    cursor: pointer;
+}
+
+.health-meal-macros-detail summary {
+    padding: 8px;
+    color: #94a3b8;
+    font-size: 0.8rem;
+    font-weight: 500;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.02);
+    transition: all 0.2s ease;
+}
+
+.health-meal-macros-detail summary:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.health-meal-macros-detail[open] summary {
+    background: rgba(249, 115, 22, 0.08);
+    color: #fb923c;
+}
+
+.health-meal-macro-inputs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.health-meal-macro-input {
+    padding: 10px 12px;
+    min-height: 40px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: #e2e8f0;
+    font-size: 0.8rem;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
+}
+
+.health-meal-macro-input::placeholder {
+    color: #64748b;
+}
+
+.health-meal-macro-input:focus {
+    outline: none;
+    border-color: rgba(249, 115, 22, 0.5);
+    background: rgba(249, 115, 22, 0.08);
+}
+
+.health-meal-input-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.health-meal-save-btn,
+.health-meal-suggest-btn,
+.health-meal-cancel-btn {
+    flex: 1;
+    min-width: 80px;
+    padding: 10px 12px;
+    min-height: 40px;
+    border-radius: 8px;
+    border: none;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.health-meal-save-btn {
+    background: linear-gradient(135deg, #ea580c, #f97316);
+    color: white;
+}
+
+.health-meal-save-btn:active {
+    transform: scale(0.98);
+}
+
+.health-meal-suggest-btn {
+    background: rgba(249, 115, 22, 0.15);
+    color: #fb923c;
+    border: 1px solid rgba(249, 115, 22, 0.3);
+}
+
+.health-meal-suggest-btn:active {
+    transform: scale(0.98);
+}
+
+.health-meal-suggest-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.health-meal-cancel-btn {
+    background: rgba(255, 255, 255, 0.04);
+    color: #94a3b8;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.health-meal-cancel-btn:active {
+    transform: scale(0.98);
+}
+
+.health-error-message {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    color: #fca5a5;
+    font-size: 0.8rem;
+    margin-top: 8px;
+}
+
+.health-suggestions-panel {
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 10px;
+    background: rgba(249, 115, 22, 0.05);
+    border: 1px solid rgba(249, 115, 22, 0.15);
+}
+
+.health-suggestions-panel h4 {
+    margin: 0 0 10px;
+    font-size: 0.9rem;
+    color: #fb923c;
+    font-weight: 600;
+}
+
+.health-suggestion-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.health-suggestion-item {
+    padding: 10px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(249, 115, 22, 0.2);
+}
+
+.health-suggestion-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 6px;
+}
+
+.health-suggestion-header h5 {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #f1f5f9;
+    font-weight: 600;
+    flex: 1;
+}
+
+.health-suggestion-calories {
+    font-size: 0.8rem;
+    color: #fb923c;
+    font-weight: 700;
+    white-space: nowrap;
+    margin-left: 8px;
+}
+
+.health-suggestion-desc {
+    margin: 6px 0;
+    font-size: 0.8rem;
+    color: #cbd5e1;
+    line-height: 1.4;
+}
+
+.health-suggestion-macros {
+    display: flex;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: #94a3b8;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+
+.health-suggestion-macros span {
+    background: rgba(255, 255, 255, 0.04);
+    padding: 3px 6px;
+    border-radius: 4px;
+}
+
+.health-use-suggestion-btn {
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: none;
+    background: rgba(249, 115, 22, 0.2);
+    color: #fb923c;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.health-use-suggestion-btn:active {
+    background: rgba(249, 115, 22, 0.3);
+}
+
+.health-suggestions-tips {
+    border-top: 1px solid rgba(249, 115, 22, 0.15);
+    padding-top: 10px;
+}
+
+.health-suggestions-tips h5 {
+    margin: 0 0 8px;
+    font-size: 0.8rem;
+    color: #fb923c;
+    font-weight: 600;
+}
+
+.health-suggestions-tips ul {
+    margin: 0;
+    padding-left: 16px;
+    list-style-type: disc;
+}
+
+.health-suggestions-tips li {
+    font-size: 0.75rem;
+    color: #cbd5e1;
+    margin-bottom: 4px;
+    line-height: 1.4;
+}
+
+.health-calorie-edit-btn {
+    margin-top: 12px;
+    padding: 10px 14px;
+    min-height: 40px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: #94a3b8;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    width: 100%;
+}
+
+.health-calorie-edit-btn:active {
+    transform: scale(0.98);
+}
+
+.health-form-select {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: #e2e8f0;
+    font-size: 0.9rem;
+    box-sizing: border-box;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.health-form-select:focus {
+    outline: none;
+    border-color: rgba(249, 115, 22, 0.5);
+    background: rgba(249, 115, 22, 0.08);
+}
+
+.health-form-select option {
+    background: #0f172a;
+    color: #e2e8f0;
+}
+
+/* Weight Tracking Section */
+.health-weight-section {
+    margin-bottom: 20px;
+}
+
+.health-weight-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: clamp(14px, 3.5vw, 22px);
+}
+
+.health-weight-card.health-weight-setup {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: clamp(28px, 5vw, 40px) clamp(14px, 3.5vw, 22px);
+}
+
+.health-weight-description {
+    margin: 8px 0 20px;
+    color: #94a3b8;
+    font-size: clamp(0.85rem, 3.5vw, 0.9rem);
+    line-height: 1.5;
+}
+
+.health-weight-start-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    min-height: 44px;
+    border-radius: 12px;
+    border: none;
+    background: linear-gradient(135deg, #059669, #10b981);
+    color: white;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.health-weight-start-btn:active {
+    transform: scale(0.98);
+}
+
+.health-weight-info {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.health-weight-row {
+    display: flex;
+    flex-direction: column;
+    padding: 12px;
+    border-radius: 10px;
+    background: rgba(16, 185, 129, 0.08);
+    border: 1px solid rgba(16, 185, 129, 0.15);
+}
+
+.health-weight-row span {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.health-weight-row strong {
+    font-size: clamp(1rem, 4vw, 1.3rem);
+    color: #34d399;
+    font-weight: 700;
+}
+
+.health-weight-progress {
+    text-align: center;
+    font-size: 0.875rem;
+    color: #94a3b8;
+    margin: 0 0 16px;
+}
+
+.health-weight-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.health-weight-input {
+    padding: 12px 14px;
+    min-height: 44px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: #e2e8f0;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    box-sizing: border-box;
+}
+
+.health-weight-input::placeholder {
+    color: #64748b;
+}
+
+.health-weight-input:focus {
+    outline: none;
+    border-color: rgba(16, 185, 129, 0.5);
+    background: rgba(16, 185, 129, 0.08);
+}
+
+.health-notif-btn,
+.health-weight-edit-btn {
+    padding: 11px 14px;
+    min-height: 44px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: #94a3b8;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.health-notif-btn.is-active {
+    background: rgba(16, 185, 129, 0.15);
+    border-color: rgba(16, 185, 129, 0.35);
+    color: #34d399;
+}
+
+.health-notif-btn:active,
+.health-weight-edit-btn:active {
+    transform: scale(0.98);
+}
+
+/* Modal */
+.health-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 1000;
+    padding: 0 max(12px, env(safe-area-inset-right, 0px)) max(24px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+    animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.health-modal {
+    background: #0f172a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px 20px 0 0;
+    padding: clamp(20px, 4vw, 28px);
+    width: 100%;
+    max-width: 500px;
+    max-height: 85vh;
+    overflow-y: auto;
+    position: relative;
+    animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(100%);
+    }
+    to {
+        transform: translateY(0);
+    }
+}
+
+.health-modal-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.08);
+    color: #94a3b8;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.health-modal-close:active {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.health-modal h2 {
+    margin: 0 0 20px;
+    font-size: clamp(1.1rem, 4vw, 1.3rem);
+    font-weight: 700;
+    color: #f1f5f9;
+}
+
+.health-form-group {
+    margin-bottom: 20px;
+}
+
+.health-form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #cbd5e1;
+}
+
+.health-form-group input[type="number"],
+.health-form-group input[type="text"] {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: #e2e8f0;
+    font-size: 0.9rem;
+    box-sizing: border-box;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.health-form-group input[type="number"]:focus,
+.health-form-group input[type="text"]:focus {
+    outline: none;
+    border-color: rgba(16, 185, 129, 0.5);
+    background: rgba(16, 185, 129, 0.08);
+}
+
+.health-radio-group {
+    display: flex;
+    gap: 12px;
+}
+
+.health-radio-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.02);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.health-radio-item input[type="radio"] {
+    accent-color: #10b981;
+    cursor: pointer;
+}
+
+.health-radio-item input[type="radio"]:checked + span {
+    color: #34d399;
+}
+
+.health-radio-item input[type="radio"]:checked {
+    border-color: rgba(16, 185, 129, 0.35);
+}
+
+.health-radio-item input[type="radio"]:checked ~ * {
+    color: #34d399;
+}
+
+.health-radio-item span {
+    font-size: 0.9rem;
+    color: #cbd5e1;
+}
+
+.health-form-submit {
+    width: 100%;
+    padding: 14px 20px;
+    min-height: 48px;
+    border-radius: 12px;
+    border: none;
+    background: linear-gradient(135deg, #059669, #10b981);
+    color: white;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    margin-top: 8px;
+}
+
+.health-form-submit:active {
+    transform: scale(0.98);
+}
+
 /* Tablet+ */
 @media (min-width: 768px) {
     .health-page {
@@ -530,21 +1421,90 @@
         color: #34d399;
         border-color: rgba(16, 185, 129, 0.35);
     }
+
+    .health-notif-btn:hover,
+    .health-weight-edit-btn:hover {
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .health-notif-btn.is-active:hover {
+        background: rgba(16, 185, 129, 0.2);
+        border-color: rgba(16, 185, 129, 0.4);
+    }
+
+    .health-weight-input:hover {
+        background: rgba(255, 255, 255, 0.06);
+    }
+
+    .health-weight-start-btn:hover {
+        background: linear-gradient(135deg, #047857, #059669);
+    }
+
+    .health-form-submit:hover {
+        background: linear-gradient(135deg, #047857, #059669);
+    }
+
+    .health-modal {
+        border-radius: 16px;
+    }
 }
 
 @media (min-width: 900px) {
-    .health-grid {
-        grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+    .health-modal-overlay {
+        align-items: center;
+        justify-content: center;
     }
 
-    .health-main {
-        order: 0;
+    .health-modal {
+        border-radius: 16px;
+        max-height: 90vh;
     }
 
-    .health-sidebar {
-        order: 0;
+    .health-calorie-start-btn:hover {
+        background: linear-gradient(135deg, #c2410c, #ea580c);
+    }
+
+    .health-calorie-add-btn:hover {
+        background: linear-gradient(135deg, rgba(249, 115, 22, 0.25), rgba(249, 115, 22, 0.15));
+    }
+
+    .health-meal-save-btn:hover {
+        background: linear-gradient(135deg, #c2410c, #ea580c);
+    }
+
+    .health-meal-suggest-btn:hover:not(:disabled) {
+        background: rgba(249, 115, 22, 0.2);
+        border-color: rgba(249, 115, 22, 0.5);
+    }
+
+    .health-meal-cancel-btn:hover {
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .health-use-suggestion-btn:hover {
+        background: rgba(249, 115, 22, 0.3);
+    }
+
+    .health-meal-remove:hover {
+        background: rgba(239, 68, 68, 0.15);
+    }
+
+    .health-calorie-edit-btn:hover {
+        background: rgba(255, 255, 255, 0.06);
+    }
+
+    .health-meal-input-form {
+        padding: 14px;
+    }
+
+    .health-meal-list {
+        padding: 14px;
     }
 }
+
+
 
 /* Very small phones */
 @media (max-width: 359px) {

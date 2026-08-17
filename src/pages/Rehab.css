@@ -1,0 +1,1203 @@
+/* Recovery & Rehab Page - Mobile First */
+
+.rehab-page {
+    min-height: calc(100dvh - var(--site-header-height, 56px));
+    background: linear-gradient(165deg, #0a1628 0%, #0f172a 45%, #0c1220 100%);
+    color: #e2e8f0;
+    padding: max(12px, env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px))
+        max(24px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px));
+    box-sizing: border-box;
+    overflow-x: hidden;
+}
+
+.rehab-container {
+    width: 100%;
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+/* Header */
+.rehab-header {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.rehab-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #94a3b8;
+    text-decoration: none;
+    font-size: 0.9rem;
+    margin-bottom: 16px;
+    padding: 8px 4px;
+    min-height: 44px;
+    transition: color 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.rehab-back-link:hover {
+    color: #ec4899;
+}
+
+.rehab-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: rgba(236, 72, 153, 0.15);
+    color: #f472b6;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+}
+
+.rehab-title {
+    margin: 0 0 8px;
+    font-size: clamp(1.5rem, 6vw, 2.5rem);
+    font-weight: 700;
+    background: linear-gradient(135deg, #f0f9ff 0%, #ec4899 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.rehab-subtitle {
+    margin: 0 auto;
+    max-width: 560px;
+    color: #94a3b8;
+    font-size: clamp(0.875rem, 3.5vw, 1.05rem);
+    line-height: 1.55;
+}
+
+.rehab-disclaimer {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    margin-bottom: 18px;
+    border-radius: 12px;
+    background: rgba(236, 72, 153, 0.08);
+    border: 1px solid rgba(236, 72, 153, 0.25);
+    color: #f472b6;
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+.rehab-disclaimer i {
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+/* Setup Section */
+.rehab-setup-section {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+    padding: 20px;
+}
+
+.rehab-setup-card {
+    text-align: center;
+    padding: 40px 20px;
+    background: rgba(236, 72, 153, 0.05);
+    border: 1px solid rgba(236, 72, 153, 0.15);
+    border-radius: 16px;
+}
+
+.rehab-setup-card h2 {
+    font-size: 1.8rem;
+    margin-bottom: 10px;
+    color: #f472b6;
+}
+
+.rehab-setup-card p {
+    color: #cbd5e1;
+    margin-bottom: 25px;
+    font-size: 1rem;
+}
+
+/* Stats */
+.rehab-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 18px;
+}
+
+.rehab-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 8px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    min-width: 0;
+}
+
+.rehab-stat-value {
+    font-size: clamp(1.1rem, 4.5vw, 1.8rem);
+    font-weight: 700;
+    color: #ec4899;
+    line-height: 1.2;
+}
+
+.rehab-stat-label {
+    font-size: clamp(0.62rem, 2.8vw, 0.75rem);
+    color: #64748b;
+    margin-top: 4px;
+    text-align: center;
+}
+
+/* Quote Section */
+.rehab-quote-section {
+    margin-bottom: 18px;
+}
+
+.rehab-quote {
+    margin: 0;
+    padding: 14px;
+    border-left: 3px solid #ec4899;
+    background: rgba(236, 72, 153, 0.06);
+    border-radius: 0 10px 10px 0;
+    font-size: clamp(0.9rem, 3.5vw, 1.05rem);
+    line-height: 1.6;
+    color: #cbd5e1;
+    font-style: italic;
+    text-align: center;
+}
+
+/* Tabs */
+.rehab-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+
+.rehab-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.rehab-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 14px;
+    min-height: 40px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.03);
+    color: #94a3b8;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.rehab-tab:active {
+    transform: scale(0.98);
+}
+
+.rehab-tab.is-active {
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.35), rgba(244, 114, 182, 0.2));
+    border-color: rgba(236, 72, 153, 0.5);
+    color: #f472b6;
+}
+
+/* Panel */
+.rehab-panel {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: clamp(14px, 3.5vw, 22px);
+}
+
+.rehab-panel h2 {
+    margin: 0 0 16px;
+    font-size: clamp(1.1rem, 4vw, 1.5rem);
+    font-weight: 700;
+    color: #f1f5f9;
+}
+
+.rehab-panel h3 {
+    margin: 20px 0 12px;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #cbd5e1;
+}
+
+.rehab-panel h4 {
+    margin: 12px 0 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #cbd5e1;
+}
+
+/* Buttons */
+.rehab-btn-primary,
+.rehab-btn-secondary,
+.rehab-btn-success,
+.rehab-action-btn {
+    padding: 11px 16px;
+    min-height: 44px;
+    border-radius: 10px;
+    border: none;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.rehab-btn-primary {
+    background: linear-gradient(135deg, #ec4899, #f472b6);
+    color: white;
+    width: 100%;
+}
+
+.rehab-btn-primary:active {
+    transform: scale(0.98);
+}
+
+.rehab-btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.rehab-btn-secondary {
+    background: rgba(255, 255, 255, 0.04);
+    color: #94a3b8;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    width: 100%;
+}
+
+.rehab-btn-secondary:active {
+    transform: scale(0.98);
+}
+
+.rehab-btn-success {
+    background: linear-gradient(135deg, #10b981, #34d399);
+    color: white;
+    width: 100%;
+}
+
+.rehab-btn-success:active {
+    transform: scale(0.98);
+}
+
+.rehab-btn-large {
+    padding: 14px 24px;
+    min-height: 48px;
+    font-size: 1rem;
+}
+
+.rehab-action-btn {
+    flex: 1;
+    padding: 10px 12px;
+    min-height: 44px;
+    background: rgba(236, 72, 153, 0.15);
+    color: #f472b6;
+    border: 1px solid rgba(236, 72, 153, 0.3);
+}
+
+.rehab-action-btn.active {
+    background: rgba(236, 72, 153, 0.25);
+    border-color: rgba(236, 72, 153, 0.5);
+}
+
+/* Forms */
+.rehab-form-card {
+    background: rgba(236, 72, 153, 0.05);
+    border: 1px solid rgba(236, 72, 153, 0.15);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 16px;
+}
+
+.rehab-form-group {
+    margin-bottom: 14px;
+}
+
+.rehab-form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #cbd5e1;
+}
+
+.rehab-input,
+.rehab-select,
+.rehab-input-large,
+.rehab-select-large,
+.rehab-textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: #e2e8f0;
+    font-size: 0.9rem;
+    box-sizing: border-box;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.rehab-input:focus,
+.rehab-select:focus,
+.rehab-input-large:focus,
+.rehab-select-large:focus,
+.rehab-textarea:focus {
+    outline: none;
+    border-color: rgba(236, 72, 153, 0.5);
+    background: rgba(236, 72, 153, 0.08);
+}
+
+.rehab-input-large,
+.rehab-select-large {
+    padding: 12px 14px;
+    min-height: 44px;
+    font-size: 1rem;
+    margin-bottom: 12px;
+}
+
+.rehab-textarea {
+    resize: vertical;
+    min-height: 100px;
+    font-family: inherit;
+}
+
+.rehab-select,
+.rehab-select-large {
+    cursor: pointer;
+}
+
+.rehab-select option,
+.rehab-select-large option {
+    background: #0f172a;
+    color: #e2e8f0;
+}
+
+/* Slider */
+.rehab-slider-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.rehab-slider {
+    flex: 1;
+    height: 6px;
+    border-radius: 999px;
+    background: linear-gradient(to right, rgba(236, 72, 153, 0.3), rgba(236, 72, 153, 0.6));
+    -webkit-appearance: none;
+    appearance: none;
+    cursor: pointer;
+}
+
+.rehab-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #ec4899;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(236, 72, 153, 0.4);
+}
+
+.rehab-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #ec4899;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 8px rgba(236, 72, 153, 0.4);
+}
+
+.rehab-slider-value {
+    min-width: 45px;
+    text-align: right;
+    font-weight: 700;
+    color: #ec4899;
+}
+
+/* Craving Logging */
+.rehab-craving-history {
+    margin-top: 16px;
+}
+
+.rehab-craving-item {
+    background: rgba(236, 72, 153, 0.06);
+    border: 1px solid rgba(236, 72, 153, 0.15);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 10px;
+}
+
+.rehab-craving-header {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+    font-size: 0.8rem;
+}
+
+.rehab-intensity {
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-weight: 600;
+}
+
+.rehab-intensity.intensity-1,
+.rehab-intensity.intensity-2,
+.rehab-intensity.intensity-3 {
+    background: rgba(34, 197, 94, 0.15);
+    color: #86efac;
+}
+
+.rehab-intensity.intensity-4,
+.rehab-intensity.intensity-5,
+.rehab-intensity.intensity-6 {
+    background: rgba(249, 115, 22, 0.15);
+    color: #fb923c;
+}
+
+.rehab-intensity.intensity-7,
+.rehab-intensity.intensity-8,
+.rehab-intensity.intensity-9,
+.rehab-intensity.intensity-10 {
+    background: rgba(239, 68, 68, 0.15);
+    color: #fca5a5;
+}
+
+.rehab-mood {
+    background: rgba(139, 92, 246, 0.15);
+    color: #ddd6fe;
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+
+.rehab-time {
+    color: #64748b;
+    margin-left: auto;
+}
+
+.rehab-trigger,
+.rehab-notes {
+    margin: 6px 0;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.rehab-trigger strong,
+.rehab-notes strong {
+    color: #f1f5f9;
+}
+
+/* Strategies */
+.rehab-strategies-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.rehab-strategy-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.rehab-strategy-card:active {
+    transform: scale(0.98);
+}
+
+.rehab-strategy-card.selected {
+    background: rgba(236, 72, 153, 0.1);
+    border-color: rgba(236, 72, 153, 0.3);
+}
+
+.rehab-strategy-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.rehab-strategy-header i {
+    font-size: 1.2rem;
+    color: #ec4899;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.rehab-strategy-header h4 {
+    margin: 0;
+    font-size: 0.9rem;
+    flex: 1;
+}
+
+.rehab-strategy-card p {
+    margin: 0 0 8px;
+    font-size: 0.8rem;
+    line-height: 1.4;
+}
+
+.rehab-strategy-card .rehab-duration {
+    display: block;
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+
+.rehab-strategy-details {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(236, 72, 153, 0.15);
+}
+
+.rehab-strategy-details h5 {
+    margin: 0 0 6px;
+    font-size: 0.85rem;
+}
+
+.rehab-strategy-details ol {
+    margin: 0;
+    padding-left: 20px;
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+
+.rehab-strategy-details li {
+    margin-bottom: 4px;
+}
+
+/* Suggestions */
+.rehab-suggestions {
+    background: rgba(236, 72, 153, 0.08);
+    border: 1px solid rgba(236, 72, 153, 0.2);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 16px;
+}
+
+.rehab-encouragement {
+    color: #f472b6;
+    font-style: italic;
+    margin-bottom: 12px;
+}
+
+.rehab-emergency {
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    border-radius: 8px;
+    padding: 10px;
+    margin-top: 12px;
+}
+
+.rehab-emergency h4 {
+    margin: 0 0 6px;
+    color: #fca5a5;
+}
+
+.rehab-emergency p {
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+/* Triggers */
+.rehab-trigger-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 10px;
+}
+
+.rehab-trigger-card h4 {
+    color: #ec4899;
+    margin-bottom: 6px;
+}
+
+.rehab-trigger-card p {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+/* Chat */
+.rehab-chat-intro {
+    font-size: 0.9rem;
+    color: #cbd5e1;
+    margin-bottom: 12px;
+}
+
+.rehab-chat-box {
+    display: flex;
+    flex-direction: column;
+    height: 500px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 14px;
+}
+
+.rehab-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    -webkit-overflow-scrolling: touch;
+}
+
+.rehab-empty-chat {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #64748b;
+    text-align: center;
+}
+
+.rehab-message {
+    padding: 10px 12px;
+    border-radius: 10px;
+    max-width: 85%;
+    word-wrap: break-word;
+    font-size: 0.9rem;
+}
+
+.rehab-message.user-msg {
+    align-self: flex-end;
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.3), rgba(236, 72, 153, 0.2));
+    border: 1px solid rgba(236, 72, 153, 0.3);
+}
+
+.rehab-message.ai-msg {
+    align-self: flex-start;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.rehab-message-content {
+    line-height: 1.5;
+}
+
+.rehab-message-time {
+    display: block;
+    font-size: 0.7rem;
+    color: #64748b;
+    margin-top: 4px;
+}
+
+.rehab-input-area {
+    display: flex;
+    gap: 8px;
+    padding: 10px 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.rehab-chat-input {
+    flex: 1;
+    padding: 10px 12px;
+    min-height: 40px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: #e2e8f0;
+    font-size: 0.9rem;
+    resize: none;
+    max-height: 100px;
+    font-family: inherit;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.rehab-chat-input:focus {
+    outline: none;
+    border-color: rgba(236, 72, 153, 0.5);
+    background: rgba(236, 72, 153, 0.08);
+}
+
+.rehab-chat-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.rehab-btn-send {
+    width: 40px;
+    height: 40px;
+    min-height: 40px;
+    padding: 0;
+    background: linear-gradient(135deg, #ec4899, #f472b6);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.rehab-btn-send:active {
+    transform: scale(0.95);
+}
+
+.rehab-btn-send:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Therapy */
+.rehab-therapy-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+}
+
+.rehab-therapy-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 12px;
+}
+
+.rehab-therapy-card h4 {
+    color: #ec4899;
+    margin-top: 0;
+}
+
+.rehab-therapy-card p {
+    font-size: 0.85rem;
+    line-height: 1.5;
+    margin: 6px 0;
+}
+
+.rehab-effectiveness {
+    color: #94a3b8;
+    font-size: 0.8rem;
+}
+
+/* Resources */
+.rehab-resources-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.rehab-resource-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 12px;
+}
+
+.rehab-resource-card.resource-helpline {
+    border-left: 3px solid #ec4899;
+}
+
+.rehab-resource-card.resource-crisis {
+    border-left: 3px solid #ef4444;
+}
+
+.rehab-resource-card.resource-support-group {
+    border-left: 3px solid #10b981;
+}
+
+.rehab-resource-card h3 {
+    margin: 0 0 6px;
+    font-size: 0.95rem;
+    color: #f1f5f9;
+}
+
+.rehab-resource-desc {
+    font-size: 0.8rem;
+    color: #cbd5e1;
+    margin-bottom: 8px;
+    line-height: 1.4;
+}
+
+.rehab-resource-phone,
+.rehab-resource-website,
+.rehab-resource-available {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    margin: 4px 0;
+}
+
+.rehab-resource-phone a,
+.rehab-resource-website a {
+    color: #ec4899;
+    text-decoration: none;
+    word-break: break-all;
+}
+
+.rehab-resource-phone a:hover,
+.rehab-resource-website a:hover {
+    text-decoration: underline;
+}
+
+.rehab-resource-available {
+    color: #94a3b8;
+}
+
+/* Relapse Prevention */
+.rehab-relapse-prevention {
+    margin-top: 20px;
+}
+
+.rehab-prevention-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 14px;
+}
+
+.rehab-prevention-card {
+    background: rgba(236, 72, 153, 0.06);
+    border: 1px solid rgba(236, 72, 153, 0.15);
+    border-radius: 10px;
+    padding: 12px;
+}
+
+.rehab-prevention-card h4 {
+    color: #ec4899;
+    margin-top: 0;
+}
+
+.rehab-prevention-card ul {
+    margin: 0;
+    padding-left: 20px;
+    list-style: disc;
+}
+
+.rehab-prevention-card li {
+    font-size: 0.85rem;
+    color: #cbd5e1;
+    margin-bottom: 4px;
+    line-height: 1.4;
+}
+
+/* Timeline */
+.rehab-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.rehab-timeline-item {
+    display: flex;
+    gap: 12px;
+    padding: 10px;
+    background: rgba(236, 72, 153, 0.06);
+    border-radius: 8px;
+    border-left: 3px solid rgba(236, 72, 153, 0.3);
+}
+
+.rehab-timeline-time {
+    font-weight: 600;
+    color: #ec4899;
+    min-width: 80px;
+    flex-shrink: 0;
+}
+
+.rehab-timeline-benefit {
+    color: #cbd5e1;
+    font-size: 0.9rem;
+}
+
+/* Milestones */
+.rehab-milestone-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px;
+}
+
+.rehab-milestone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    text-align: center;
+}
+
+.rehab-milestone.completed {
+    background: rgba(236, 72, 153, 0.1);
+    border-color: rgba(236, 72, 153, 0.3);
+}
+
+.rehab-milestone-check {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(236, 72, 153, 0.15);
+    color: #ec4899;
+    font-weight: 700;
+}
+
+.rehab-milestone.completed .rehab-milestone-check {
+    background: rgba(236, 72, 153, 0.25);
+    color: #f472b6;
+}
+
+.rehab-milestone-title {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    font-weight: 500;
+}
+
+.rehab-milestone.completed .rehab-milestone-title {
+    color: #cbd5e1;
+}
+
+/* Withdrawal Info */
+.rehab-withdrawal {
+    background: rgba(239, 68, 68, 0.06);
+    border: 1px solid rgba(239, 68, 68, 0.15);
+    border-radius: 12px;
+    padding: 12px;
+    margin-top: 16px;
+}
+
+.rehab-symptom-list {
+    margin: 10px 0;
+    padding-left: 0;
+    list-style: none;
+}
+
+.rehab-symptom-list li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    color: #cbd5e1;
+    margin-bottom: 6px;
+}
+
+.rehab-symptom-list i {
+    color: #fca5a5;
+}
+
+.rehab-note {
+    margin: 10px 0 0;
+    font-size: 0.8rem;
+    color: #fca5a5;
+    line-height: 1.5;
+}
+
+/* Error */
+.rehab-error {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    border-radius: 8px;
+    color: #fca5a5;
+    font-size: 0.9rem;
+    margin-bottom: 12px;
+}
+
+.rehab-error i {
+    flex-shrink: 0;
+}
+
+/* Form Buttons */
+.rehab-form-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+}
+
+/* Modal */
+.rehab-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    z-index: 1000;
+    padding: 0 max(12px, env(safe-area-inset-right, 0px)) max(24px, env(safe-area-inset-bottom, 0px))
+        max(12px, env(safe-area-inset-left, 0px));
+}
+
+.rehab-modal {
+    background: #0f172a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px 20px 0 0;
+    padding: clamp(20px, 4vw, 28px);
+    width: 100%;
+    max-width: 500px;
+    max-height: 85vh;
+    overflow-y: auto;
+    position: relative;
+}
+
+.rehab-modal-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(255, 255, 255, 0.08);
+    color: #94a3b8;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.rehab-modal-close:active {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.rehab-modal h2 {
+    margin: 0 0 20px;
+    font-size: clamp(1.1rem, 4vw, 1.3rem);
+    color: #f1f5f9;
+}
+
+/* Bottom Actions */
+.rehab-bottom-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 12px 0;
+    margin-top: 20px;
+    position: sticky;
+    bottom: 0;
+    background: linear-gradient(to top, rgba(10, 22, 40, 0.95), transparent);
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+}
+
+/* Responsive */
+@media (min-width: 768px) {
+    .rehab-page {
+        padding: max(16px, env(safe-area-inset-top, 0px)) max(20px, env(safe-area-inset-right, 0px))
+            max(28px, env(safe-area-inset-bottom, 0px)) max(20px, env(safe-area-inset-left, 0px));
+    }
+
+    .rehab-stats {
+        gap: 12px;
+    }
+
+    .rehab-strategies-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .rehab-tab:hover {
+        background: rgba(255, 255, 255, 0.06);
+    }
+
+    .rehab-tab.is-active:hover {
+        background: linear-gradient(135deg, rgba(236, 72, 153, 0.4), rgba(244, 114, 182, 0.25));
+    }
+
+    .rehab-btn-primary:hover,
+    .rehab-btn-success:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 16px rgba(236, 72, 153, 0.2);
+    }
+
+    .rehab-strategy-card:hover {
+        border-color: rgba(236, 72, 153, 0.3);
+        background: rgba(236, 72, 153, 0.05);
+    }
+
+    .rehab-chat-box {
+        height: 600px;
+    }
+
+    .rehab-action-btn {
+        flex: auto;
+    }
+
+    .rehab-action-btn:hover {
+        background: rgba(236, 72, 153, 0.2);
+        border-color: rgba(236, 72, 153, 0.4);
+    }
+
+    .rehab-modal {
+        border-radius: 16px;
+        max-height: 90vh;
+    }
+}
+
+@media (min-width: 900px) {
+    .rehab-modal-overlay {
+        align-items: center;
+    }
+
+    .rehab-strategies-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .rehab-resources-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .rehab-prevention-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+/* Very small phones */
+@media (max-width: 359px) {
+    .rehab-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .rehab-strategies-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .rehab-message {
+        max-width: 95%;
+    }
+}

@@ -112,6 +112,16 @@ export const MENU_APPS = [
     colorB: "#10B981",
   },
   {
+    key: "rehab",
+    name: "Recovery Support",
+    desc: "24/7 addiction recovery support with AI counseling",
+    icon: "🤝",
+    faIcon: "fa-hand-holding-heart",
+    href: "/rehab",
+    colorA: "#EC4899",
+    colorB: "#F43F5E",
+  },
+  {
     key: "settings",
     name: "Settings",
     desc: "Manage your profile, privacy, notifications, and preferences",

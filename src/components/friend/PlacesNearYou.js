@@ -6,8 +6,6 @@ import api from "../../api/api";
 
 const DEFAULT_CENTER = { lat: 40.7128, lng: -74.006 };
 const NEARBY_RADIUS_M = 2000;
-const PLACE_TYPES = ["restaurant", "cafe", "park"];
-const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
     const R = 6371;
@@ -84,18 +82,6 @@ const buildDivIcon = ({
     });
 };
 
-const mapPlaceTypeToOverpassTag = (type) => {
-    switch (type) {
-        case "restaurant":
-            return '["amenity"="restaurant"]';
-        case "cafe":
-            return '["amenity"="cafe"]';
-        case "park":
-            return '["leisure"="park"]';
-        default:
-            return "";
-    }
-};
 
 const PlacesNearYou = () => {
     const mapRef = useRef(null);
@@ -130,48 +116,22 @@ const PlacesNearYou = () => {
         clearMarkers(placeMarkersRef);
 
         try {
-            const aroundClauses = PLACE_TYPES.map((type) => {
-                const tag = mapPlaceTypeToOverpassTag(type);
-                return `
-                    node${tag}(around:${NEARBY_RADIUS_M},${location.lat},${location.lng});
-                    way${tag}(around:${NEARBY_RADIUS_M},${location.lat},${location.lng});
-                    relation${tag}(around:${NEARBY_RADIUS_M},${location.lat},${location.lng});
-                `;
-            }).join("\n");
-
-            const query = `
-                [out:json][timeout:15];
-                (
-                    ${aroundClauses}
-                );
-                out center tags;
-            `;
-
-            const response = await fetch(OVERPASS_URL, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "text/plain;charset=UTF-8",
+            const response = await api.get("/profile/nearby-places", {
+                params: {
+                    latitude: location.lat,
+                    longitude: location.lng,
+                    radius: NEARBY_RADIUS_M,
                 },
-                body: query,
             });
 
-            if (!response.ok) {
-                throw new Error(`Nearby places request failed with status ${response.status}`);
+            if (!response.data.success) {
+                throw new Error(response.data.message || "Failed to fetch nearby places");
             }
 
-            const data = await response.json();
-            const seenPlaceIds = new Set();
+            const places = response.data.places || [];
 
-            (data.elements || []).forEach((place) => {
-                const lat = place.lat ?? place.center?.lat;
-                const lng = place.lon ?? place.center?.lon;
-                if (typeof lat !== "number" || typeof lng !== "number") return;
-
-                const placeKey = `${place.type}-${place.id}`;
-                if (seenPlaceIds.has(placeKey)) return;
-                seenPlaceIds.add(placeKey);
-
-                const marker = L.circleMarker([lat, lng], {
+            places.forEach((place) => {
+                const marker = L.circleMarker([place.lat, place.lng], {
                     radius: 7,
                     color: "#a16207",
                     fillColor: "#facc15",
@@ -179,21 +139,11 @@ const PlacesNearYou = () => {
                     weight: 2,
                 }).addTo(mapInstance);
 
-                const name = place.tags?.name || place.tags?.brand || "Place";
-                const address = [
-                    place.tags?.["addr:housenumber"],
-                    place.tags?.["addr:street"],
-                ]
-                    .filter(Boolean)
-                    .join(" ");
-                const category =
-                    place.tags?.amenity || place.tags?.leisure || place.tags?.tourism || "";
-
                 marker.bindPopup(`
                     <div style="padding:8px;max-width:220px;color:#111">
-                        <strong style="font-size:14px">${escapeHtml(name)}</strong>
-                        ${category ? `<p style="margin:6px 0 0;color:#555;font-size:12px;text-transform:capitalize">${escapeHtml(category.replace(/_/g, " "))}</p>` : ""}
-                        ${address ? `<p style="margin:6px 0 0;color:#555;font-size:12px">${escapeHtml(address)}</p>` : ""}
+                        <strong style="font-size:14px">${escapeHtml(place.name)}</strong>
+                        ${place.category ? `<p style="margin:6px 0 0;color:#555;font-size:12px;text-transform:capitalize">${escapeHtml(place.category.replace(/_/g, " "))}</p>` : ""}
+                        ${place.address ? `<p style="margin:6px 0 0;color:#555;font-size:12px">${escapeHtml(place.address)}</p>` : ""}
                     </div>
                 `);
 

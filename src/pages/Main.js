@@ -125,6 +125,7 @@ import Flashcards from "./Flashcards.js";
 import Calendar from "./Calendar.js";
 import Habits from "./Habits.js";
 import Health from "./Health.js";
+import Rehab from "./Rehab.js";
 
 // import MicRecorder from 'mic-recorder-to-mp3';
 // const recorder = new MicRecorder({ bitRate: 128 });
@@ -1663,6 +1664,16 @@ const Main = () => {
               element={
                 <ProtectedRoute>
                   <Health />
+                </ProtectedRoute>
+              }
+            >
+              {" "}
+            </Route>
+            <Route
+              path="/rehab"
+              element={
+                <ProtectedRoute>
+                  <Rehab />
                 </ProtectedRoute>
               }
             >
