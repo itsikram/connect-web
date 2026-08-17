@@ -387,12 +387,12 @@
 .ai-agent-bubble {
     display: flex;
     gap: 7px;
-    align-items: flex-end;
+    align-items: center;
     max-width: 88%;
 }
 
 .ai-agent-message.user-message .ai-agent-bubble {
-    flex-direction: row-reverse;
+    /*flex-direction: row-reverse;*/
 }
 
 /* Wider on desktop */

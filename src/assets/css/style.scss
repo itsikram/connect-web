@@ -9040,6 +9040,14 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
     min-height: 16px !important;
 }
 
+@media (min-width: 1024px) {
+    #header .header-container .header-left .header-app-menu-container  {
+        height: 50px;
+        width: 50px;
+    }
+}
+
+
 /* Mobile specific adjustments */
 @media (max-width: 768px) {
     #header.sticky-header .hr-mega-menu {
