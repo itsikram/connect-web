@@ -328,7 +328,7 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
       const message = String(payload.message || "");
       speechLog("Server error message:", message);
       const fatal =
-        /Unauthorized|Missing auth token|Invalid or expired token|Whisper worker is not running|Failed to import/i.test(
+        /Unauthorized|Missing auth token|Invalid or expired token|Deepgram client is not initialized|DEEPGRAM_API_KEY|Failed to initialize Deepgram/i.test(
           message,
         );
 
