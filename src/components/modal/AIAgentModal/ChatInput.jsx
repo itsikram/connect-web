@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
+import { getSocketUrl } from "../../../utils/offlineUtils";
 
 const SUGGESTIONS = [
   // Navigation
@@ -40,6 +41,8 @@ const SUGGESTIONS = [
   "What can you help with?",
 ];
 
+const AUDIO_TIMESLICE_MS = 800;
+
 const appendTranscript = (baseText, transcript) => {
   const nextTranscript = transcript.trim();
 
@@ -51,49 +54,96 @@ const appendTranscript = (baseText, transcript) => {
     : `${baseText} ${nextTranscript}`;
 };
 
-const BENGALI_CHAR_REGEX = /[\u0980-\u09FF]/;
+const pickSupportedMimeType = () => {
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4",
+    "audio/ogg;codecs=opus",
+  ];
 
-const resolveSpeechLanguage = (inputText = "") => {
-  if (BENGALI_CHAR_REGEX.test(inputText || "")) {
-    return "bn-BD";
-  }
-
-  if (typeof navigator !== "undefined") {
-    const browserLanguages = [
-      navigator.language,
-      ...(navigator.languages || []).filter(Boolean),
-    ].filter(Boolean);
-
-    const hasBanglaLocale = browserLanguages.some((lang) =>
-      /^bn(-|$)/i.test(lang),
-    );
-
-    if (hasBanglaLocale) {
-      return "bn-BD";
+  for (let i = 0; i < candidates.length; i += 1) {
+    const mimeType = candidates[i];
+    if (
+      typeof window !== "undefined" &&
+      window.MediaRecorder &&
+      window.MediaRecorder.isTypeSupported &&
+      window.MediaRecorder.isTypeSupported(mimeType)
+    ) {
+      return mimeType;
     }
-
-    return browserLanguages[0] || "en-US";
   }
 
-  return "en-US";
+  return "";
+};
+
+const speechLog = (...args) => {
+  // eslint-disable-next-line no-console
+  console.log("[speech-client]", ...args);
+};
+
+const getSpeechWebSocketUrl = () => {
+  const base = getSocketUrl();
+  const url = new URL(base);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = "/ws/speech";
+
+  try {
+    const rawUser = localStorage.getItem("user") || "{}";
+    const user = JSON.parse(rawUser);
+    const token = user?.accessToken;
+    if (token) {
+      url.searchParams.set("token", token);
+    }
+  } catch {
+    // noop
+  }
+
+  return url.toString();
 };
 
 const ChatInput = ({ value, onChange, onSend, isLoading }) => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [isSpeechSupported, setIsSpeechSupported] = useState(false);
+  // "bn" -> Node.js + local Whisper pipeline (streamed over WebSocket)
+  // "en" -> browser's native SpeechRecognition (fast, free, no server round-trip)
+  const [voiceMode, setVoiceMode] = useState("bn");
+  const [isBanglaSupported, setIsBanglaSupported] = useState(false);
+  const [isEnglishSupported, setIsEnglishSupported] = useState(false);
 
   const inputRef = useRef(null);
   const onChangeRef = useRef(onChange);
-  const recognitionRef = useRef(null);
+  const isListeningRef = useRef(false);
+  const wsRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const mediaStreamRef = useRef(null);
   const listeningBaseTextRef = useRef("");
   const finalTranscriptRef = useRef("");
+  const stopTimeoutRef = useRef(null);
+  const recognitionRef = useRef(null);
+  const activeStopRef = useRef(() => {});
 
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
 
+  useEffect(() => {
+    isListeningRef.current = isListening;
+  }, [isListening]);
+
+  // ── Bangla support check (WebSocket + MediaRecorder + mic pipeline) ──────
+  useEffect(() => {
+    const supported =
+      typeof window !== "undefined" &&
+      !!window.WebSocket &&
+      !!window.MediaRecorder &&
+      !!navigator?.mediaDevices?.getUserMedia;
+
+    setIsBanglaSupported(supported);
+  }, []);
+
+  // ── English support + setup: browser's native SpeechRecognition ─────────
   useEffect(() => {
     const SpeechRecognition =
       typeof window !== "undefined"
@@ -101,16 +151,16 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
         : null;
 
     if (!SpeechRecognition) {
-      setIsSpeechSupported(false);
+      setIsEnglishSupported(false);
       return;
     }
 
-    setIsSpeechSupported(true);
+    setIsEnglishSupported(true);
 
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = resolveSpeechLanguage();
+    recognition.lang = "en-US";
 
     recognition.onresult = (event) => {
       let interimTranscript = "";
@@ -136,11 +186,13 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
       onChangeRef.current(appendTranscript(withFinal, interimTranscript));
     };
 
-    recognition.onerror = () => {
+    recognition.onerror = (err) => {
+      speechLog("Browser SpeechRecognition error", err?.error || err);
       setIsListening(false);
     };
 
     recognition.onend = () => {
+      speechLog("Browser SpeechRecognition ended");
       const withFinal = appendTranscript(
         listeningBaseTextRef.current,
         finalTranscriptRef.current,
@@ -164,11 +216,358 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
     };
   }, []);
 
+  const clearStopTimeout = () => {
+    if (stopTimeoutRef.current) {
+      clearTimeout(stopTimeoutRef.current);
+      stopTimeoutRef.current = null;
+    }
+  };
+
+  const closeWebSocket = () => {
+    if (!wsRef.current) return;
+    try {
+      wsRef.current.close();
+    } catch {
+      // noop
+    }
+    wsRef.current = null;
+  };
+
+  const stopMediaRecorder = () => {
+    if (!mediaRecorderRef.current) return;
+
+    try {
+      if (mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
+    } catch {
+      // noop
+    }
+
+    mediaRecorderRef.current = null;
+  };
+
+  const stopMediaStream = () => {
+    if (!mediaStreamRef.current) return;
+
+    mediaStreamRef.current.getTracks().forEach((track) => {
+      try {
+        track.stop();
+      } catch {
+        // noop
+      }
+    });
+
+    mediaStreamRef.current = null;
+  };
+
+  const stopListeningLocal = () => {
+    stopMediaRecorder();
+    stopMediaStream();
+    setIsListening(false);
+  };
+
+  const finalizeWithText = (text = "") => {
+    const withFinal = appendTranscript(listeningBaseTextRef.current, text);
+    onChangeRef.current(withFinal);
+  };
+
+  const handleSocketMessage = (event) => {
+    let payload;
+
+    try {
+      payload = JSON.parse(event.data);
+    } catch (err) {
+      speechLog("Failed to parse WS message", event.data, err);
+      return;
+    }
+
+    speechLog("WS message received", payload);
+
+    if (payload.type === "ready") {
+      speechLog("Server confirmed stream ready");
+      return;
+    }
+
+    if (payload.type === "partial") {
+      const partial = (payload.text || "").trim();
+      speechLog("Partial transcript:", partial);
+      const withPartial = appendTranscript(
+        listeningBaseTextRef.current,
+        partial,
+      );
+      onChangeRef.current(withPartial);
+      return;
+    }
+
+    if (payload.type === "final") {
+      const finalText = (payload.text || "").trim();
+      speechLog("Final transcript:", finalText);
+      finalTranscriptRef.current = finalText;
+      finalizeWithText(finalText);
+      clearStopTimeout();
+      closeWebSocket();
+      setIsListening(false);
+      return;
+    }
+
+    if (payload.type === "error") {
+      const message = String(payload.message || "");
+      speechLog("Server error message:", message);
+      const fatal =
+        /Unauthorized|Missing auth token|Invalid or expired token|Whisper worker is not running|Failed to import/i.test(
+          message,
+        );
+
+      if (fatal) {
+        speechLog("Fatal error, stopping voice session");
+        clearStopTimeout();
+        closeWebSocket();
+        stopListeningLocal();
+        const fallbackFinal = finalTranscriptRef.current || value;
+        finalizeWithText(fallbackFinal);
+      } else {
+        speechLog("Non-fatal error, continuing session");
+      }
+
+      return;
+    }
+  };
+
+  // ── Bangla voice input: mic -> WebSocket -> Node.js -> local Whisper ────
+  const startBanglaVoiceInput = async () => {
+    if (!isBanglaSupported || isLoading || isListeningRef.current) {
+      speechLog("startBanglaVoiceInput blocked", {
+        isBanglaSupported,
+        isLoading,
+        isListening: isListeningRef.current,
+      });
+      return;
+    }
+
+    listeningBaseTextRef.current = value;
+    finalTranscriptRef.current = "";
+    setShowSuggestions(false);
+
+    try {
+      speechLog("Requesting microphone permission...");
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      });
+      mediaStreamRef.current = stream;
+      speechLog("Microphone permission granted");
+
+      const socketUrl = getSpeechWebSocketUrl();
+      speechLog("Connecting to speech WebSocket:", socketUrl);
+      const ws = new WebSocket(socketUrl);
+      wsRef.current = ws;
+
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error("Speech socket timeout")),
+          8000,
+        );
+
+        const handleOpen = () => {
+          clearTimeout(timer);
+          ws.removeEventListener("open", handleOpen);
+          ws.removeEventListener("error", handleBootError);
+          speechLog("WebSocket connected");
+          resolve();
+        };
+
+        const handleBootError = (err) => {
+          clearTimeout(timer);
+          ws.removeEventListener("open", handleOpen);
+          ws.removeEventListener("error", handleBootError);
+          speechLog("WebSocket connect error", err);
+          reject(new Error("Unable to connect to speech server"));
+        };
+
+        ws.addEventListener("open", handleOpen);
+        ws.addEventListener("error", handleBootError);
+      });
+
+      ws.onmessage = handleSocketMessage;
+      ws.onerror = (err) => {
+        speechLog("WebSocket error during session", err);
+        closeWebSocket();
+        stopListeningLocal();
+      };
+      ws.onclose = (event) => {
+        speechLog("WebSocket closed", event.code, event.reason);
+        wsRef.current = null;
+        if (isListeningRef.current) {
+          stopListeningLocal();
+        }
+      };
+
+      const mimeType = pickSupportedMimeType();
+      speechLog(
+        "Using MediaRecorder mimeType:",
+        mimeType || "(browser default)",
+      );
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+
+      let chunkIndex = 0;
+
+      recorder.addEventListener("dataavailable", async (ev) => {
+        if (!ev.data || ev.data.size === 0 || !wsRef.current) {
+          speechLog("dataavailable skipped", {
+            size: ev.data?.size,
+            hasSocket: !!wsRef.current,
+          });
+          return;
+        }
+
+        chunkIndex += 1;
+
+        try {
+          const audioBuffer = await ev.data.arrayBuffer();
+          if (wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(audioBuffer);
+            speechLog(
+              `Sent audio chunk #${chunkIndex} bytes=${audioBuffer.byteLength}`,
+            );
+          } else {
+            speechLog(
+              `Skipped sending chunk #${chunkIndex}, socket not open (state=${wsRef.current.readyState})`,
+            );
+          }
+        } catch (err) {
+          speechLog("Failed to send audio chunk", err);
+        }
+      });
+
+      recorder.addEventListener("error", (err) => {
+        speechLog("MediaRecorder error", err);
+        stopListeningLocal();
+        closeWebSocket();
+      });
+
+      mediaRecorderRef.current = recorder;
+
+      const startPayload = {
+        type: "start",
+        language: "bn",
+        mimeType: mimeType || "audio/webm",
+        chunkDurationMs: AUDIO_TIMESLICE_MS,
+      };
+      speechLog("Sending start payload", startPayload);
+      ws.send(JSON.stringify(startPayload));
+
+      recorder.start(AUDIO_TIMESLICE_MS);
+      speechLog(
+        "MediaRecorder started with timeslice(ms)=",
+        AUDIO_TIMESLICE_MS,
+      );
+      setIsListening(true);
+      inputRef.current?.focus();
+    } catch (err) {
+      speechLog("startBanglaVoiceInput failed", err);
+      stopListeningLocal();
+      closeWebSocket();
+    }
+  };
+
+  const stopBanglaVoiceInput = async () => {
+    if (!isListeningRef.current) return;
+
+    speechLog("stopBanglaVoiceInput called");
+
+    stopMediaRecorder();
+    stopMediaStream();
+
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      try {
+        speechLog("Sending stop payload");
+        wsRef.current.send(JSON.stringify({ type: "stop" }));
+      } catch (err) {
+        speechLog("Failed to send stop payload", err);
+      }
+
+      clearStopTimeout();
+      stopTimeoutRef.current = setTimeout(() => {
+        speechLog("Stop timeout reached, finalizing locally");
+        finalizeWithText(finalTranscriptRef.current || value);
+        closeWebSocket();
+        setIsListening(false);
+      }, 2500);
+    } else {
+      speechLog("No open socket on stop; finalizing immediately");
+      setIsListening(false);
+    }
+  };
+
+  // ── English voice input: browser's native SpeechRecognition ─────────────
+  const startEnglishRecognition = () => {
+    if (
+      !isEnglishSupported ||
+      isLoading ||
+      isListeningRef.current ||
+      !recognitionRef.current
+    ) {
+      speechLog("startEnglishRecognition blocked", {
+        isEnglishSupported,
+        isLoading,
+        isListening: isListeningRef.current,
+      });
+      return;
+    }
+
+    listeningBaseTextRef.current = value;
+    finalTranscriptRef.current = "";
+    setShowSuggestions(false);
+
+    try {
+      recognitionRef.current.start();
+      speechLog("Browser SpeechRecognition started (en-US)");
+      setIsListening(true);
+      inputRef.current?.focus();
+    } catch (err) {
+      speechLog("startEnglishRecognition failed", err);
+      setIsListening(false);
+    }
+  };
+
+  const stopEnglishRecognition = () => {
+    if (!isListeningRef.current) return;
+
+    speechLog("stopEnglishRecognition called");
+
+    try {
+      recognitionRef.current?.stop();
+    } catch (err) {
+      speechLog("Failed to stop browser SpeechRecognition", err);
+      setIsListening(false);
+    }
+  };
+
+  activeStopRef.current =
+    voiceMode === "en" ? stopEnglishRecognition : stopBanglaVoiceInput;
+
   useEffect(() => {
     if (isLoading && isListening) {
-      recognitionRef.current?.stop();
+      activeStopRef.current();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, isListening]);
+
+  useEffect(() => {
+    return () => {
+      clearStopTimeout();
+      stopMediaRecorder();
+      stopMediaStream();
+      closeWebSocket();
+      try {
+        recognitionRef.current?.stop();
+      } catch {
+        // noop
+      }
+    };
+  }, []);
 
   const handleKeyPress = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -186,41 +585,35 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
   }, [value]);
 
   const handleSuggestionClick = (s) => {
-    // Strip placeholder brackets, position cursor at end
     onChange(s.replace(/\[.*?\]/g, ""));
     setShowSuggestions(false);
     setTimeout(() => inputRef.current?.focus(), 50);
   };
 
   const toggleVoiceInput = () => {
-    if (!isSpeechSupported || isLoading || !recognitionRef.current) return;
-
     if (isListening) {
-      recognitionRef.current.stop();
-      return;
+      activeStopRef.current();
+    } else if (voiceMode === "en") {
+      startEnglishRecognition();
+    } else {
+      startBanglaVoiceInput();
     }
+  };
 
-    listeningBaseTextRef.current = value;
-    finalTranscriptRef.current = "";
-    setShowSuggestions(false);
-    setIsListening(true);
-
-    recognitionRef.current.lang = resolveSpeechLanguage(value);
-
-    try {
-      recognitionRef.current.start();
-      inputRef.current?.focus();
-    } catch {
-      setIsListening(false);
-    }
+  const toggleVoiceMode = () => {
+    if (isListening || isLoading) return;
+    setVoiceMode((mode) => (mode === "bn" ? "en" : "bn"));
   };
 
   const handleTextChange = (nextValue) => {
     if (isListening) {
-      recognitionRef.current?.stop();
+      activeStopRef.current();
     }
     onChange(nextValue);
   };
+
+  const isSpeechSupported =
+    voiceMode === "en" ? isEnglishSupported : isBanglaSupported;
 
   return (
     <motion.div
@@ -229,7 +622,6 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.15 }}
     >
-      {/* Suggestions */}
       {showSuggestions && !value && (
         <motion.div
           className="ai-agent-suggestions"
@@ -260,8 +652,24 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
         </motion.div>
       )}
 
-      {/* Input wrapper */}
       <div className={`ai-agent-input-wrapper ${isFocused ? "focused" : ""}`}>
+        <motion.button
+          className="ai-agent-voice-lang-toggle"
+          onClick={toggleVoiceMode}
+          disabled={isListening || isLoading}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          type="button"
+          title={
+            voiceMode === "bn"
+              ? "Voice input language: Bangla (tap to switch to English)"
+              : "Voice input language: English (tap to switch to Bangla)"
+          }
+          aria-label="Toggle voice input language"
+        >
+          {voiceMode === "bn" ? "বাং" : "EN"}
+        </motion.button>
+
         <motion.button
           className={`ai-agent-voice-btn ${isListening ? "listening" : ""}`}
           onClick={toggleVoiceInput}
@@ -273,11 +681,17 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
             isSpeechSupported
               ? isListening
                 ? "Stop voice input"
-                : "Start voice input"
+                : voiceMode === "bn"
+                  ? "Start Bangla voice input"
+                  : "Start English voice input"
               : "Voice input is not supported in this browser"
           }
           aria-label={
-            isListening ? "Stop voice recognition" : "Start voice recognition"
+            isListening
+              ? "Stop voice recognition"
+              : voiceMode === "bn"
+                ? "Start Bangla voice recognition"
+                : "Start English voice recognition"
           }
         >
           <i className={`fas ${isListening ? "fa-stop" : "fa-microphone"}`} />
@@ -298,7 +712,9 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
           }}
           placeholder={
             isListening
-              ? "Listening... speak naturally"
+              ? voiceMode === "bn"
+                ? "Listening in Bangla... speak naturally"
+                : "Listening in English... speak naturally"
               : "Try: 'go to settings', 'call John', 'open my profile'…"
           }
           className="ai-agent-input"
