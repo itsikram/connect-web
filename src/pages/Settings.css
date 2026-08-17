@@ -1,145 +1,155 @@
 /* ===== Settings Page ===== */
 
 .setting-page {
-  --set-bg: #0b0d11;
-  --set-panel: rgba(22, 24, 28, 0.96);
-  --set-border: rgba(255, 255, 255, 0.08);
-  --set-text: #f2f4f7;
-  --set-muted: #a8b0bb;
-  --set-accent: #00d4ff;
-  --set-accent-soft: rgba(0, 212, 255, 0.12);
-  --set-hover: rgba(255, 255, 255, 0.05);
-  --set-radius: 16px;
-  min-height: calc(100dvh - 70px);
-  padding: 16px 0 40px;
-  background:
-    radial-gradient(ellipse 70% 45% at 8% 0%, rgba(0, 212, 255, 0.07), transparent 55%),
-    radial-gradient(ellipse 50% 35% at 95% 8%, rgba(255, 255, 255, 0.03), transparent 50%),
-    var(--set-bg);
-  color: var(--set-text);
+    --set-bg: #0b0d11;
+    --set-panel: rgba(22, 24, 28, 0.96);
+    --set-border: rgba(255, 255, 255, 0.08);
+    --set-text: #f2f4f7;
+    --set-muted: #a8b0bb;
+    --set-accent: #00d4ff;
+    --set-accent-soft: rgba(0, 212, 255, 0.12);
+    --set-hover: rgba(255, 255, 255, 0.05);
+    --set-radius: 16px;
+    min-height: calc(100dvh - 70px);
+    padding: 16px 0 40px;
+    background:
+        radial-gradient(
+            ellipse 70% 45% at 8% 0%,
+            rgba(0, 212, 255, 0.07),
+            transparent 55%
+        ),
+        radial-gradient(
+            ellipse 50% 35% at 95% 8%,
+            rgba(255, 255, 255, 0.03),
+            transparent 50%
+        ),
+        var(--set-bg);
+    color: var(--set-text);
 }
 
 .setting-page .settings-shell {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 0 14px;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 14px;
 }
 
 .setting-page .settings-header {
-  margin-bottom: 16px;
+    margin-bottom: 16px;
 }
 
 .setting-page .settings-header h1 {
-  margin: 0 0 4px;
-  font-size: 1.55rem;
-  font-weight: 750;
-  letter-spacing: -0.02em;
-  color: var(--set-text);
+    margin: 0 0 4px;
+    font-size: 1.55rem;
+    font-weight: 750;
+    letter-spacing: -0.02em;
+    color: var(--set-text);
 }
 
 .setting-page .settings-header p {
-  margin: 0;
-  color: var(--set-muted);
-  font-size: 0.92rem;
+    margin: 0;
+    color: var(--set-muted);
+    font-size: 0.92rem;
 }
 
 .setting-page .settings-layout {
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-  gap: 14px;
-  align-items: start;
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 14px;
+    align-items: start;
 }
 
 .setting-page .settings-nav-panel,
 .setting-page .settings-content-panel {
-  background: var(--set-panel);
-  border: 1px solid var(--set-border);
-  border-radius: var(--set-radius);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.24);
+    background: var(--set-panel);
+    border: 1px solid var(--set-border);
+    border-radius: var(--set-radius);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.24);
 }
 
 .setting-page .settings-nav-panel {
-  position: sticky;
-  top: 72px;
-  padding: 10px;
-  overflow: hidden;
+    position: sticky;
+    top: 72px;
+    padding: 10px;
+    overflow: hidden;
 }
 
 .setting-page .setting-groups {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
 
 .setting-page .setting-groups-item {
-  margin: 0;
+    margin: 0;
 }
 
 .setting-page .setting-groups-item a {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  text-decoration: none;
-  color: var(--set-muted);
-  font-size: 0.95rem;
-  font-weight: 550;
-  padding: 10px 12px;
-  border-radius: 12px;
-  transition: background 0.15s ease, color 0.15s ease;
-  min-height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    color: var(--set-muted);
+    font-size: 0.95rem;
+    font-weight: 550;
+    padding: 10px 12px;
+    border-radius: 12px;
+    transition:
+        background 0.15s ease,
+        color 0.15s ease;
+    min-height: 44px;
 }
 
 .setting-page .setting-groups-item a:hover {
-  background: var(--set-hover);
-  color: var(--set-text);
+    background: var(--set-hover);
+    color: var(--set-text);
 }
 
 .setting-page .setting-groups-item a.active,
 .setting-page .setting-groups-item.active a {
-  background: var(--set-accent-soft);
-  color: var(--set-text);
-  font-weight: 650;
+    background: var(--set-accent-soft);
+    color: var(--set-text);
+    font-weight: 650;
 }
 
 .setting-page .setting-nav-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--set-accent);
-  flex-shrink: 0;
-  font-size: 0.85rem;
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--set-accent);
+    flex-shrink: 0;
+    font-size: 0.85rem;
 }
 
 .setting-page .setting-groups-item a.active .setting-nav-icon,
 .setting-page .setting-groups-item.active a .setting-nav-icon {
-  background: rgba(0, 212, 255, 0.18);
+    background: rgba(0, 212, 255, 0.18);
 }
 
 .setting-page .setting-nav-label {
-  flex: 1;
-  min-width: 0;
-  line-height: 1.2;
+    flex: 1;
+    min-width: 0;
+    line-height: 1.2;
 }
 
 .setting-page .setting-nav-chevron {
-  font-size: 0.75rem;
-  opacity: 0.55;
+    font-size: 0.75rem;
+    opacity: 0.55;
 }
 
 .setting-page .settings-content-panel {
-  padding: 18px 18px 22px;
-  min-height: 420px;
+    padding: 18px 18px 22px;
+    min-height: 420px;
 }
 
 .setting-page .settings-content-panel > * {
-  max-width: 640px;
+    max-width: 640px;
 }
 
 /* Shared form polish */
@@ -147,350 +157,358 @@
 .setting-page .profile-setting h3,
 .setting-page .message-setting h3,
 .setting-page h3.text-center {
-  text-align: left !important;
-  font-size: 1.2rem !important;
-  font-weight: 700 !important;
-  margin: 0 0 6px !important;
-  color: var(--set-text) !important;
+    text-align: left !important;
+    font-size: 1.2rem !important;
+    font-weight: 700 !important;
+    margin: 0 0 6px !important;
+    color: var(--set-text) !important;
 }
 
 .setting-page .setting-field-container > p,
 .setting-page .setting-section-desc {
-  color: var(--set-muted);
-  font-size: 0.88rem;
-  margin-bottom: 16px;
+    color: var(--set-muted);
+    font-size: 0.88rem;
+    margin-bottom: 16px;
 }
 
 .setting-page .form-group,
 .setting-page .form-check {
-  margin-bottom: 14px !important;
+    margin-bottom: 14px !important;
 }
 
 .setting-page label,
 .setting-page .form-label,
 .setting-page .form-check-label {
-  color: var(--set-text) !important;
-  font-weight: 600;
-  font-size: 0.9rem;
-  margin-bottom: 6px;
+    color: var(--set-text) !important;
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 6px;
 }
 
 .setting-page .form-text,
 .setting-page .form-text.text-muted,
 .setting-page small.form-text {
-  color: var(--set-muted) !important;
-  font-size: 0.8rem !important;
+    color: var(--set-muted) !important;
+    font-size: 0.8rem !important;
 }
 
 .setting-page .form-control,
 .setting-page .form-select {
-  background: rgba(255, 255, 255, 0.04) !important;
-  border: 1px solid var(--set-border) !important;
-  color: var(--set-text) !important;
-  border-radius: 12px !important;
-  min-height: 44px;
-  padding: 10px 12px !important;
-  font-size: 0.95rem !important;
-  box-shadow: none !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid var(--set-border) !important;
+    color: var(--set-text) !important;
+    border-radius: 12px !important;
+    min-height: 44px;
+    padding: 10px 12px !important;
+    font-size: 0.95rem !important;
+    box-shadow: none !important;
 }
 
 .setting-page .form-control:focus,
 .setting-page .form-select:focus {
-  border-color: rgba(0, 212, 255, 0.45) !important;
-  box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.12) !important;
-  background: rgba(255, 255, 255, 0.06) !important;
+    border-color: rgba(0, 212, 255, 0.45) !important;
+    box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.12) !important;
+    background: rgba(255, 255, 255, 0.06) !important;
 }
 
 .setting-page .form-control::placeholder {
-  color: #7f8794 !important;
+    color: #7f8794 !important;
 }
 
 .setting-page .input-group {
-  flex-wrap: nowrap;
+    flex-wrap: nowrap;
 }
 
 .setting-page .input-group-text {
-  background: rgba(255, 255, 255, 0.06) !important;
-  border: 1px solid var(--set-border) !important;
-  border-right: 0 !important;
-  color: var(--set-muted) !important;
-  border-radius: 12px 0 0 12px !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+    border: 1px solid var(--set-border) !important;
+    border-right: 0 !important;
+    color: var(--set-muted) !important;
+    border-radius: 12px 0 0 12px !important;
 }
 
 .setting-page .input-group .form-control {
-  border-top-left-radius: 0 !important;
-  border-bottom-left-radius: 0 !important;
+    border-top-left-radius: 0 !important;
+    border-bottom-left-radius: 0 !important;
 }
 
 .setting-page .form-check.form-switch {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 12px 12px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid transparent;
-  margin-bottom: 10px !important;
-  min-height: auto;
-  overflow: visible;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid transparent;
+    margin-bottom: 10px !important;
+    min-height: auto;
+    overflow: visible;
 }
 
 .setting-page .form-check.form-switch:hover {
-  border-color: var(--set-border);
-  background: rgba(255, 255, 255, 0.045);
+    border-color: var(--set-border);
+    background: rgba(255, 255, 255, 0.045);
 }
 
 .setting-page .form-check-input {
-  width: 2.4em;
-  height: 1.25em;
-  margin-top: 0;
-  margin-right: 0;
-  cursor: pointer;
-  background-color: rgba(255, 255, 255, 0.18);
-  border-color: transparent;
-  flex-shrink: 0;
+    width: 2.4em;
+    height: 1.25em;
+    margin-top: 0;
+    margin-right: 0;
+    cursor: pointer;
+    background-color: rgba(255, 255, 255, 0.18);
+    border-color: transparent;
+    flex-shrink: 0;
 }
 
 .setting-page .form-check-input:checked {
-  background-color: var(--set-accent);
-  border-color: var(--set-accent);
+    background-color: var(--set-accent);
+    border-color: var(--set-accent);
 }
 
 .setting-page .form-check-label {
-  flex: 1;
-  margin-bottom: 0;
-  cursor: pointer;
-  min-width: 0;
-  word-break: break-word;
+    flex: 1;
+    margin-bottom: 0;
+    cursor: pointer;
+    min-width: 0;
+    word-break: break-word;
 }
 
+[data-theme="dark"] .text-muted {
+    color: #f6f6f6 !important;
+}
+
+.react-confirm-alert-body h1 {
+    color: #000 !important;
+}
 .setting-page .form-check small,
 .setting-page .form-check .form-text {
-  flex: 0 1 100%;
-  margin-left: 0 !important;
-  margin-top: 4px !important;
-  padding-left: calc(2.4em + 10px);
-  display: none;
+    flex: 0 1 100%;
+    margin-left: 0 !important;
+    margin-top: 4px !important;
+    padding-left: 0;
+    display: none;
 }
 
 .setting-page .form-check.form-switch small,
 .setting-page .form-check.form-switch .form-text {
-  display: block;
+    display: block;
 }
 
 .setting-page .btn-primary {
-  background: linear-gradient(135deg, #00d4ff, #0099cc) !important;
-  border: none !important;
-  border-radius: 12px !important;
-  font-weight: 650;
-  min-height: 44px;
-  padding: 10px 18px;
+    background: linear-gradient(135deg, #00d4ff, #0099cc) !important;
+    border: none !important;
+    border-radius: 12px !important;
+    font-weight: 650;
+    min-height: 44px;
+    padding: 10px 18px;
 }
 
 .setting-page .btn-secondary {
-  background: rgba(255, 255, 255, 0.08) !important;
-  border: 1px solid var(--set-border) !important;
-  color: var(--set-text) !important;
-  border-radius: 12px !important;
-  min-height: 42px;
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid var(--set-border) !important;
+    color: var(--set-text) !important;
+    border-radius: 12px !important;
+    min-height: 42px;
 }
 
 .setting-page .btn-danger {
-  border-radius: 12px !important;
-  min-height: 44px;
-  font-weight: 600;
+    border-radius: 12px !important;
+    min-height: 44px;
+    font-weight: 600;
 }
 
 .setting-page hr {
-  border-color: var(--set-border);
-  opacity: 1;
-  margin: 20px 0;
+    border-color: var(--set-border);
+    opacity: 1;
+    margin: 20px 0;
 }
 
 .setting-page .multiple-input-container {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--set-border);
-  border-radius: 14px;
-  padding: 14px !important;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--set-border);
+    border-radius: 14px;
+    padding: 14px !important;
 }
 
 .setting-page .multiple-input-container h4 {
-  text-align: left !important;
-  font-size: 1rem;
-  font-weight: 700;
-  margin-bottom: 12px;
+    text-align: left !important;
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 12px;
 }
 
 .setting-page .multiple-input-container .row {
-  margin: 0 0 10px !important;
-  padding: 10px !important;
-  border-radius: 12px !important;
-  border-color: var(--set-border) !important;
-  background: rgba(0, 0, 0, 0.15);
+    margin: 0 0 10px !important;
+    padding: 10px !important;
+    border-radius: 12px !important;
+    border-color: var(--set-border) !important;
+    background: rgba(0, 0, 0, 0.15);
 }
 
 /* Form check label group - prevents overflow */
 .setting-page .form-check-label-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-  flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    flex: 1;
 }
 
 .setting-page .form-check-label-group .form-check-label {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .setting-page .form-check-label-group .form-text {
-  display: block;
-  font-size: 0.8rem;
-  color: var(--set-muted);
-  margin: 0;
+    display: block;
+    font-size: 0.8rem;
+    color: var(--set-muted);
+    margin: 0;
 }
 
 .setting-page .notification-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
 /* Form switch improvements for settings */
 .setting-page .form-check.form-switch .form-check-input {
-  order: 1;
-  flex-shrink: 0;
-  margin-top: 2px;
+    order: 1;
+    flex-shrink: 0;
+    margin-top: 2px;
+    margin-left: 0px;
 }
 
 .setting-page .form-check.form-switch .form-check-label-group {
-  order: 2;
-  flex: 1 1 auto;
-  min-width: 0;
+    order: 2;
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 /* Mobile */
 @media (max-width: 991px) {
-  .setting-page {
-    padding: 10px 0 28px;
-  }
+    .setting-page {
+        padding: 10px 0 28px;
+    }
 
-  .setting-page .settings-shell {
-    padding: 0 10px;
-  }
+    .setting-page .settings-shell {
+        padding: 0 10px;
+    }
 
-  .setting-page .settings-header h1 {
-    font-size: 1.3rem;
-  }
+    .setting-page .settings-header h1 {
+        font-size: 1.3rem;
+    }
 
-  .setting-page .settings-layout {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
+    .setting-page .settings-layout {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
 
-  .setting-page .settings-nav-panel {
-    position: relative;
-    top: auto;
-    padding: 8px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }
+    .setting-page .settings-nav-panel {
+        position: relative;
+        top: auto;
+        padding: 8px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
 
-  .setting-page .settings-nav-panel::-webkit-scrollbar {
-    display: none;
-  }
+    .setting-page .settings-nav-panel::-webkit-scrollbar {
+        display: none;
+    }
 
-  .setting-page .setting-groups {
-    flex-direction: row;
-    gap: 6px;
-    width: max-content;
-    min-width: 100%;
-    padding-bottom: 2px;
-  }
+    .setting-page .setting-groups {
+        flex-direction: row;
+        gap: 6px;
+        width: max-content;
+        min-width: 100%;
+        padding-bottom: 2px;
+    }
 
-  .setting-page .setting-groups-item a {
-    flex-direction: column;
-    justify-content: center;
-    gap: 6px;
-    min-width: 86px;
-    padding: 10px 8px;
-    text-align: center;
-    font-size: 0.78rem;
-  }
+    .setting-page .setting-groups-item a {
+        flex-direction: column;
+        justify-content: center;
+        gap: 6px;
+        min-width: 86px;
+        padding: 10px 8px;
+        text-align: center;
+        font-size: 0.78rem;
+    }
 
-  .setting-page .setting-nav-label {
-    white-space: nowrap;
-  }
+    .setting-page .setting-nav-label {
+        white-space: nowrap;
+    }
 
-  .setting-page .setting-nav-chevron {
-    display: none;
-  }
+    .setting-page .setting-nav-chevron {
+        display: none;
+    }
 
-  .setting-page .settings-content-panel {
-    padding: 14px 12px 18px;
-    min-height: 0;
-  }
+    .setting-page .settings-content-panel {
+        padding: 14px 12px 18px;
+        min-height: 0;
+    }
 
-  .setting-page .form-control,
-  .setting-page .form-select,
-  .setting-page .form-control:focus {
-    font-size: 16px !important; /* prevent iOS zoom */
-  }
+    .setting-page .form-control,
+    .setting-page .form-select,
+    .setting-page .form-control:focus {
+        font-size: 16px !important; /* prevent iOS zoom */
+    }
 
-  .setting-page .form-check small,
-  .setting-page .form-check .form-text {
-    padding-left: 0;
-  }
+    .setting-page .form-check small,
+    .setting-page .form-check .form-text {
+        padding-left: 0;
+    }
 
-  .setting-page .form-check.form-switch {
-    flex-wrap: wrap;
-    min-height: auto;
-    gap: 8px;
-    padding: 10px 10px;
-  }
+    .setting-page .form-check.form-switch {
+        flex-wrap: wrap;
+        min-height: auto;
+        gap: 8px;
+        padding: 10px 10px;
+    }
 
-  .setting-page .form-check.form-switch .form-check-input {
-    order: 1;
-    flex-shrink: 0;
-  }
+    .setting-page .form-check.form-switch .form-check-input {
+        order: 1;
+        flex-shrink: 0;
+    }
 
-  .setting-page .form-check.form-switch .form-check-label-group {
-    order: 2;
-    flex: 1 1 100%;
-    min-width: 0;
-  }
+    .setting-page .form-check.form-switch .form-check-label-group {
+        order: 2;
+        flex: 1 1 100%;
+        min-width: 0;
+    }
 
-  .setting-page .form-check-label-group .form-check-label {
-    white-space: normal;
-  }
+    .setting-page .form-check-label-group .form-check-label {
+        white-space: normal;
+    }
 
-  .setting-page .multiple-input-container .row > .col {
-    flex: 0 0 100%;
-    max-width: 100%;
-  }
+    .setting-page .multiple-input-container .row > .col {
+        flex: 0 0 100%;
+        max-width: 100%;
+    }
 
-  .setting-page .form-check-label-group .form-text {
-    margin-top: 6px !important;
-  }
+    .setting-page .form-check-label-group .form-text {
+        margin-top: 6px !important;
+    }
 
-  .setting-page .btn-primary,
-  .setting-page .btn-danger {
-    width: 100%;
-  }
+    .setting-page .btn-primary,
+    .setting-page .btn-danger {
+        width: 100%;
+    }
 }
 
 @media (max-width: 480px) {
-  .setting-page .setting-groups-item a {
-    min-width: 78px;
-  }
+    .setting-page .setting-groups-item a {
+        min-width: 78px;
+    }
 
-  .setting-page .setting-nav-icon {
-    width: 30px;
-    height: 30px;
-  }
+    .setting-page .setting-nav-icon {
+        width: 30px;
+        height: 30px;
+    }
 }

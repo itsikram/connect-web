@@ -19,6 +19,7 @@ export const FRIEND_REQUIRED_ACTIONS = new Set([
   "ADD_FRIEND",
   "UNFRIEND",
   "NAVIGATE_PROFILE", // go to a friend's profile / sub-page
+  "SEND_MESSAGE_TO_USER", // send a message to a specific user
 ]);
 
 /** Actions that do NOT need a friend target */
@@ -29,6 +30,14 @@ export const NO_FRIEND_ACTIONS = new Set([
   "OPEN_FRIENDS",
   "NAVIGATE", // navigate to a static/my-profile route
   "SEARCH_VIDEO", // search for a video to play
+  "CREATE_NOTE", // create a new note
+  "EDIT_NOTE", // edit an existing note
+  "DELETE_NOTE", // delete a note
+  "CREATE_TASK", // create a new task
+  "EDIT_TASK", // edit an existing task
+  "DELETE_TASK", // delete a task
+  "ADD_RECOVERY_DATA", // add recovery/backup data
+  "UPDATE_LANGUAGE_SETTINGS", // update language/language prompt settings
 ]);
 
 // ── Static route map ─────────────────────────────────────────────────────────
@@ -440,6 +449,123 @@ const PROFILE_SUB_PATTERNS = [
 // ── Primary intent patterns ───────────────────────────────────────────────────
 
 const INTENT_PATTERNS = [
+  // ── Create Note ───────────────────────────────────────────────────────────
+  {
+    action: "CREATE_NOTE",
+    searchCapture: true,
+    patterns: [
+      /(?:create|write|add|make)\s+(?:a\s+)?note(?:\s+about|\s+saying)?\s+(.+)/i,
+      /(?:create|write|add)\s+note\s+(?:with|containing)\s+(.+)/i,
+      /note\s+(?:down|about)\s+(.+)/i,
+      /^note\s+(?:to\s+)?(?:myself|me)\s*:\s+(.+)/i,
+      // Bengali patterns
+      /(?:নোট|টিপস)\s+(?:তৈরি|লেখ|যোগ)\s+করুন\s+(.+)/,
+      /(?:আমার|নিজের)\s+নোট\s+(.+)/,
+    ],
+  },
+
+  // ── Edit Note ──────────────────────────────────────────────────────────
+  {
+    action: "EDIT_NOTE",
+    searchCapture: true,
+    patterns: [
+      /(?:edit|update|modify)\s+(?:my\s+)?note(?:\s+to|\s+saying)?\s+(.+)/i,
+      /(?:change|update)\s+note\s+(?:to|containing)\s+(.+)/i,
+      // Bengali patterns
+      /(?:নোট|টিপস)\s+(?:আপডেট|সম্পাদনা|বদল)\s+করুন\s+(.+)/,
+      /(.+)\s+এ\s+নোট\s+পরিবর্তন\s+করুন/,
+    ],
+  },
+
+  // ── Delete Note ────────────────────────────────────────────────────
+  {
+    action: "DELETE_NOTE",
+    patterns: [
+      /(?:delete|remove|clear)\s+(?:my\s+)?(?:note|notes)(?:\s+about\s+(.+))?/i,
+      // Bengali patterns
+      /(?:নোট|টিপস)\s+(?:মুছুন|অপসারণ|ডিলিট)\s+করুন/,
+      /আমার\s+(?:নোট|টিপস)\s+মুছে\s+দিন/,
+    ],
+  },
+
+  // ── Create Task ────────────────────────────────────────────────────
+  {
+    action: "CREATE_TASK",
+    searchCapture: true,
+    patterns: [
+      /(?:create|add|make|assign)\s+(?:a\s+)?(?:task|todo|to-do)(?:\s+(?:to|about|for))?\s+(.+)/i,
+      /(?:create|add)\s+task\s+(?:with|containing)\s+(.+)/i,
+      /^task\s+(?:to\s+)?(?:myself|me)\s*:\s+(.+)/i,
+      // Bengali patterns
+      /(?:কাজ|টাস্ক)\s+(?:তৈরি|যোগ)\s+করুন\s+(.+)/,
+      /(?:আমার|নিজের)\s+(?:কাজ|টাস্ক)\s+(.+)/,
+    ],
+  },
+
+  // ── Edit Task ──────────────────────────────────────────────────────
+  {
+    action: "EDIT_TASK",
+    searchCapture: true,
+    patterns: [
+      /(?:edit|update|modify)\s+(?:my\s+)?task(?:\s+to|\s+(?:to|saying))?\s+(.+)/i,
+      /(?:change|update)\s+task\s+(?:to|containing)\s+(.+)/i,
+      // Bengali patterns
+      /(?:কাজ|টাস্ক)\s+(?:আপডেট|সম্পাদনা|বদল)\s+করুন\s+(.+)/,
+      /(.+)\s+এ\s+(?:কাজ|টাস্ক)\s+পরিবর্তন\s+করুন/,
+    ],
+  },
+
+  // ── Delete Task ────────────────────────────────────────────────────
+  {
+    action: "DELETE_TASK",
+    patterns: [
+      /(?:delete|remove|clear|complete)\s+(?:my\s+)?(?:task|tasks|todo|to-do)(?:\s+about\s+(.+))?/i,
+      // Bengali patterns
+      /(?:কাজ|টাস্ক)\s+(?:মুছুন|অপসারণ|ডিলিট)\s+করুন/,
+      /আমার\s+(?:কাজ|টাস্ক)\s+(?:শেষ|সম্পন্ন)\s+করুন/,
+    ],
+  },
+
+  // ── Add Recovery Data ──────────────────────────────────────────────
+  {
+    action: "ADD_RECOVERY_DATA",
+    searchCapture: true,
+    patterns: [
+      /(?:add|save|backup)\s+(?:my\s+)?recovery\s+(?:data|information|code)(?:\s+as)?\s+(.+)/i,
+      /recovery\s+(?:data|code)\s*:\s+(.+)/i,
+      // Bengali patterns
+      /(?:রিকভারি|ব্যাকআপ)\s+(?:কোড|ডেটা)\s+(?:সংরক্ষণ|সেভ)\s+করুন\s+(.+)/,
+      /(.+)\s+রিকভারি\s+কোড\s+হিসাবে\s+সংরক্ষণ\s+করুন/,
+    ],
+  },
+
+  // ── Update Language Settings ──────────────────────────────────────────
+  {
+    action: "UPDATE_LANGUAGE_SETTINGS",
+    searchCapture: true,
+    patterns: [
+      /(?:change|set|update)\s+(?:my\s+)?(?:language|lang)\s+(?:to|as)\s+(.+)/i,
+      /set\s+language\s+preference\s+(?:to|as)\s+(.+)/i,
+      /prefer\s+(?:to\s+use\s+)?(.+)(?:\s+language)?/i,
+      // Bengali patterns for language settings
+      /(?:ভাষা|লাঙ্গুয়েজ)\s+(?:বদল|পরিবর্তন|সেট)\s+করুন\s+(?:থেকে|পর্যন্ত)?\s+(.+)/,
+      /(?:আমার\s+)?ভাষা\s+(.+)\s+করুন/,
+    ],
+  },
+
+  // ── Send Message to User (Bengali support) ────────────────────────────
+  {
+    action: "SEND_MESSAGE_TO_USER",
+    searchCapture: true,
+    patterns: [
+      /(?:send|write)\s+(?:a\s+)?message\s+(?:to\s+)?(.+)/i,
+      // Bengali patterns
+      /(?:বার্তা|মেসেজ)\s+পাঠান\s+(?:থেকে)?\s+(.+)/,
+      /(.+)\s+কে\s+(?:বার্তা|মেসেজ)\s+পাঠান/,
+    ],
+  },
+
+  // Original patterns follow
   // ── Video Call ─────────────────────────────────────────────────────────────
   {
     action: "VIDEO_CALL",
@@ -802,6 +928,80 @@ export const parseIntent = (message) => {
 
 // ── Friend search ──────────────────────────────────────────────────────────────
 
+const FRIEND_NAME_MATCH_THRESHOLD = 0.4; // Lowered to catch more matches (surnames, partial names)
+const MIN_FRIEND_NAME_QUERY_LENGTH = 3;
+
+const normalizeFriendName = (value = "") =>
+  String(value)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\u0980-\u09FF]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const levenshteinDistance = (left, right) => {
+  if (left === right) return 0;
+  if (!left) return right.length;
+  if (!right) return left.length;
+
+  let previous = Array.from({ length: right.length + 1 }, (_, i) => i);
+
+  for (let i = 1; i <= left.length; i += 1) {
+    const current = [i];
+    for (let j = 1; j <= right.length; j += 1) {
+      current[j] = Math.min(
+        current[j - 1] + 1,
+        previous[j] + 1,
+        previous[j - 1] + (left[i - 1] === right[j - 1] ? 0 : 1),
+      );
+    }
+    previous = current;
+  }
+
+  return previous[right.length];
+};
+
+const getNameSimilarity = (query, candidate) => {
+  if (!query || !candidate) return 0;
+  if (query === candidate) return 1;
+
+  const queryTokens = query.split(" ").filter(Boolean);
+  const candidateTokens = candidate.split(" ").filter(Boolean);
+  const candidateTokenSet = new Set(candidateTokens);
+  const sharedTokens = queryTokens.filter((token) =>
+    candidateTokenSet.has(token),
+  ).length;
+  const tokenDice =
+    (2 * sharedTokens) /
+    Math.max(1, queryTokens.length + candidateTokens.length);
+
+  const containsScore =
+    candidate.includes(query) || query.includes(candidate)
+      ? Math.min(query.length, candidate.length) /
+        Math.max(query.length, candidate.length)
+      : 0;
+
+  const editScore =
+    1 -
+    levenshteinDistance(query, candidate) /
+      Math.max(query.length, candidate.length);
+
+  const bestTokenEdit = Math.max(
+    0,
+    ...queryTokens.flatMap((queryToken) =>
+      candidateTokens.map(
+        (candidateToken) =>
+          1 -
+          levenshteinDistance(queryToken, candidateToken) /
+            Math.max(queryToken.length, candidateToken.length),
+      ),
+    ),
+  );
+
+  return Math.max(tokenDice, containsScore, editScore, bestTokenEdit);
+};
+
 /**
  * Search a friend list by name (partial / full / nickname).
  * @param {Array} friends  – myProfile.friends array
@@ -811,41 +1011,136 @@ export const parseIntent = (message) => {
 export const searchFriendsByName = (friends, query) => {
   if (!friends || !Array.isArray(friends) || !query) return [];
 
-  const lower = query.toLowerCase().trim();
-  const exact = [];
-  const partial = [];
+  const normalizedQuery = normalizeFriendName(query);
+  const queryCharacterCount = normalizedQuery.replace(/\s/g, "").length;
+  if (queryCharacterCount < MIN_FRIEND_NAME_QUERY_LENGTH) return [];
+
+  const matches = [];
+  const queryTokens = normalizedQuery.split(/\s+/).filter(Boolean);
 
   for (const friend of friends) {
     if (!friend) continue;
 
-    const firstName = (friend.user?.firstName || "").toLowerCase();
-    const surname = (friend.user?.surname || "").toLowerCase();
-    const fullName = `${firstName} ${surname}`.trim();
-    const nickname = (friend.nickname || "").toLowerCase();
-    const username = (friend.username || "").toLowerCase();
-    const storedFull = (friend.fullName || "").toLowerCase();
+    const firstName = friend.user?.firstName || friend.firstName || "";
+    const surname = friend.user?.surname || friend.surname || "";
+    const displayName = friend.user?.displayName || friend.displayName || "";
+    const nickname = friend.user?.nickname || friend.nickname || "";
+    const banglaName = friend.banglaName || "";
+    const username = friend.user?.username || friend.username || "";
+    const composedFullName = `${firstName} ${surname}`.trim();
 
-    const isExact =
-      firstName === lower ||
-      surname === lower ||
-      fullName === lower ||
-      nickname === lower ||
-      username === lower ||
-      storedFull === lower;
+    // Primary fields for 3+ character matching: Name, DisplayName, Nickname, BanglaName
+    const primaryFields = [
+      firstName,
+      surname,
+      composedFullName,
+      displayName,
+      nickname,
+      banglaName,
+      username,
+      friend.name,
+      friend.user?.name,
+      friend.fullName,
+      friend.user?.fullName,
+    ];
 
-    const isPartial =
-      firstName.startsWith(lower) ||
-      surname.startsWith(lower) ||
-      fullName.includes(lower) ||
-      nickname.includes(lower) ||
-      username.includes(lower) ||
-      storedFull.includes(lower);
+    const candidateNames = primaryFields
+      .map(normalizeFriendName)
+      .filter(Boolean);
 
-    if (isExact) exact.push(friend);
-    else if (isPartial) partial.push(friend);
+    // Calculate best match score
+    let bestScore = 0;
+
+    // Check each candidate name
+    for (const candidate of candidateNames) {
+      // Exact match: highest priority (full string match)
+      if (candidate === normalizedQuery) {
+        bestScore = Math.max(bestScore, 1.0);
+        continue;
+      }
+
+      // For single-word queries, prioritize exact token matches first
+      if (queryTokens.length === 1) {
+        const queryToken = queryTokens[0];
+        const candidateTokens = candidate.split(/\s+/).filter(Boolean);
+
+        // Exact token match - highest priority for single words
+        for (const token of candidateTokens) {
+          if (token === queryToken) {
+            bestScore = Math.max(bestScore, 1.0);
+            break;
+          }
+        }
+
+        // Only if no exact token match, check partial token matches
+        if (bestScore < 1.0) {
+          for (const token of candidateTokens) {
+            // Token starts with query (e.g., "atik" matches "atik*")
+            // But prevent "atik" matching "akter" by requiring at least 80% match
+            if (token.startsWith(queryToken)) {
+              const matchRatio = queryToken.length / token.length;
+              if (matchRatio >= 0.8) {
+                bestScore = Math.max(bestScore, 0.98);
+                break;
+              }
+            }
+            // DO NOT do substring matching if tokens have different lengths by more than 1
+            // This prevents "atik" from matching "akter"
+            // Only allow substring match if they're almost the same length
+            if (
+              token.includes(queryToken) &&
+              Math.abs(token.length - queryToken.length) <= 1
+            ) {
+              // Exact match length: high score
+              if (token.length === queryToken.length) {
+                bestScore = Math.max(bestScore, 0.98);
+              } else {
+                // Very close match: medium score
+                bestScore = Math.max(bestScore, 0.9);
+              }
+            }
+          }
+        }
+      } else {
+        // Multi-word query: check for substring match in full name
+        if (candidate.includes(normalizedQuery)) {
+          bestScore = Math.max(bestScore, 0.99);
+          continue;
+        }
+
+        // Check token-by-token matching for multi-word queries
+        const candidateTokens = candidate.split(/\s+/).filter(Boolean);
+        let tokenMatches = 0;
+        for (const queryToken of queryTokens) {
+          if (candidateTokens.some((t) => t === queryToken)) {
+            tokenMatches++;
+          }
+        }
+        if (tokenMatches > 0) {
+          const tokenMatchScore =
+            0.85 + (tokenMatches / queryTokens.length) * 0.1;
+          bestScore = Math.max(bestScore, tokenMatchScore);
+        }
+      }
+
+      // Use similarity algorithm only as fallback if no good matches yet
+      if (bestScore < 0.85) {
+        const similarityScore = getNameSimilarity(normalizedQuery, candidate);
+        // Only accept similarity score if it's reasonably high
+        if (similarityScore >= 0.6) {
+          bestScore = Math.max(bestScore, similarityScore);
+        }
+      }
+    }
+
+    // Lower threshold slightly for better matching
+    const threshold = 0.4; // Changed from 0.5 to catch more matches
+    if (bestScore >= threshold) {
+      matches.push({ friend, score: bestScore });
+    }
   }
 
-  return [...exact, ...partial];
+  return matches.sort((a, b) => b.score - a.score).map(({ friend }) => friend);
 };
 
 /**
@@ -854,16 +1149,31 @@ export const searchFriendsByName = (friends, query) => {
 export const getFriendDisplayName = (friend) => {
   if (!friend) return "Unknown";
   if (friend.fullName) return friend.fullName;
-  const first = friend.user?.firstName || "";
-  const last = friend.user?.surname || "";
+  if (friend.user?.fullName) return friend.user.fullName;
+  const first = friend.user?.firstName || friend.firstName || "";
+  const last = friend.user?.surname || friend.surname || "";
   const full = `${first} ${last}`.trim();
-  return full || friend.username || friend.nickname || "Unknown";
+  return (
+    full ||
+    friend.username ||
+    friend.displayName ||
+    friend.user?.displayName ||
+    friend.nickname ||
+    friend.user?.nickname ||
+    friend.name ||
+    friend.user?.name ||
+    friend.username ||
+    friend.user?.username ||
+    "Unknown"
+  );
 };
 
-export default {
+const agentIntentParser = {
   parseIntent,
   searchFriendsByName,
   getFriendDisplayName,
   FRIEND_REQUIRED_ACTIONS,
   NO_FRIEND_ACTIONS,
 };
+
+export default agentIntentParser;

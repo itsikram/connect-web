@@ -6,7 +6,10 @@ import "./AIAgentModal.css";
 import ChatArea from "./ChatArea";
 import ActionPanel from "./ActionPanel";
 import ModalHeader from "./ModalHeader";
-import { sendToGemini } from "../../../services/geminiService";
+import {
+  sendToGemini,
+  translateBanglaToEnglish,
+} from "../../../services/geminiService";
 import {
   parseIntent,
   searchFriendsByName,
@@ -15,6 +18,7 @@ import {
   NO_FRIEND_ACTIONS,
 } from "./agentIntentParser";
 import { executeAction, getActionMeta } from "./agentActions";
+import api from "../../../api/api";
 
 const createId = () => Date.now() + Math.random();
 
@@ -95,7 +99,24 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       setIsLoading(true);
 
       try {
-        const intent = parseIntent(text);
+        let agentText = text.trim();
+
+        if (/[\u0980-\u09FF]/.test(agentText)) {
+          try {
+            agentText = await translateBanglaToEnglish(agentText);
+            console.log("[AIAgentModal] Bangla command translated:", {
+              original: text,
+              translated: agentText,
+            });
+          } catch (translationError) {
+            console.warn(
+              "[AIAgentModal] Bangla translation failed; using original text:",
+              translationError,
+            );
+          }
+        }
+
+        const intent = parseIntent(agentText);
 
         // 1. No-friend navigation / creation / video-search actions
         if (intent && NO_FRIEND_ACTIONS.has(intent.action)) {
@@ -151,7 +172,27 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             return;
           }
 
-          const matched = searchFriendsByName(friends, intent.targetName);
+          let matched = searchFriendsByName(friends, intent.targetName);
+
+          // Redux may contain only friend IDs or a stale populated list. Retry
+          // against the authoritative populated endpoint before reporting that
+          // the friend does not exist.
+          if (matched.length === 0 && myProfile?._id) {
+            try {
+              const response = await api.get("/friend/getFriends", {
+                params: { profile: myProfile._id },
+              });
+              const freshFriends = Array.isArray(response.data)
+                ? response.data
+                : [];
+              matched = searchFriendsByName(freshFriends, intent.targetName);
+            } catch (friendListError) {
+              console.warn(
+                "[AIAgentModal] Could not refresh friend profiles:",
+                friendListError,
+              );
+            }
+          }
 
           if (matched.length === 0) {
             addMessage({
@@ -190,7 +231,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
           role: m.type === "user" ? "user" : "assistant",
           content: typeof m.content === "string" ? m.content : "",
         }));
-        const result = await sendToGemini(text, history);
+        const result = await sendToGemini(agentText, history);
         addMessage({
           type: "agent",
           content: result.response,

@@ -282,10 +282,253 @@ export const executeAction = async ({
         return { success: true, message: "👥 Opening friends page…" };
       }
 
-      // ── Open Messages ──────────────────────────────────────────────────────
+      // ── Open Messages ──────────────────────────────────────────────────
       case "OPEN_MESSAGES": {
         go("/message");
         return { success: true, message: "💬 Opening messages…" };
+      }
+
+      // ── Create Note ────────────────────────────────────────────────────
+      case "CREATE_NOTE": {
+        const noteContent = label || searchQuery || "";
+        if (!noteContent.trim()) {
+          return {
+            success: false,
+            message: "What would you like to note?",
+          };
+        }
+        try {
+          await api.post("/notes", {
+            title: noteContent.substring(0, 100),
+            content: noteContent,
+            createdBy: myProfile._id,
+          });
+          return {
+            success: true,
+            message: `📝 Note created: "${noteContent.substring(0, 50)}${noteContent.length > 50 ? "..." : ""}"`,
+          };
+        } catch (err) {
+          return {
+            success: false,
+            message: `Failed to create note: ${err?.message || "Unknown error"}`,
+          };
+        }
+      }
+
+      // ── Edit Note ──────────────────────────────────────────────────────
+      case "EDIT_NOTE": {
+        const newContent = label || searchQuery || "";
+        if (!newContent.trim()) {
+          return {
+            success: false,
+            message: "What should the note say?",
+          };
+        }
+        try {
+          // This would need a note ID, typically from context
+          // For now, we'll update the most recent note
+          await api.put("/notes/latest", {
+            content: newContent,
+            updatedAt: new Date(),
+          });
+          return {
+            success: true,
+            message: `📝 Note updated: "${newContent.substring(0, 50)}${newContent.length > 50 ? "..." : ""}"`,
+          };
+        } catch (err) {
+          return {
+            success: false,
+            message: `Failed to edit note: ${err?.message || "Unknown error"}`,
+          };
+        }
+      }
+
+      // ── Delete Note ────────────────────────────────────────────────────
+      case "DELETE_NOTE": {
+        try {
+          await api.delete("/notes/latest");
+          return {
+            success: true,
+            message: "🗑️ Note deleted.",
+          };
+        } catch (err) {
+          return {
+            success: false,
+            message: `Failed to delete note: ${err?.message || "Unknown error"}`,
+          };
+        }
+      }
+
+      // ── Create Task ────────────────────────────────────────────────────
+      case "CREATE_TASK": {
+        const taskContent = label || searchQuery || "";
+        if (!taskContent.trim()) {
+          return {
+            success: false,
+            message: "What task would you like to create?",
+          };
+        }
+        try {
+          await api.post("/tasks", {
+            title: taskContent.substring(0, 100),
+            description: taskContent,
+            status: "pending",
+            createdBy: myProfile._id,
+          });
+          return {
+            success: true,
+            message: `✓ Task created: "${taskContent.substring(0, 50)}${taskContent.length > 50 ? "..." : ""}"`,
+          };
+        } catch (err) {
+          return {
+            success: false,
+            message: `Failed to create task: ${err?.message || "Unknown error"}`,
+          };
+        }
+      }
+
+      // ── Edit Task ──────────────────────────────────────────────────────
+      case "EDIT_TASK": {
+        const newTaskContent = label || searchQuery || "";
+        if (!newTaskContent.trim()) {
+          return {
+            success: false,
+            message: "What should the task be?",
+          };
+        }
+        try {
+          await api.put("/tasks/latest", {
+            description: newTaskContent,
+            updatedAt: new Date(),
+          });
+          return {
+            success: true,
+            message: `✓ Task updated: "${newTaskContent.substring(0, 50)}${newTaskContent.length > 50 ? "..." : ""}"`,
+          };
+        } catch (err) {
+          return {
+            success: false,
+            message: `Failed to edit task: ${err?.message || "Unknown error"}`,
+          };
+        }
+      }
+
+      // ── Delete Task ────────────────────────────────────────────────────
+      case "DELETE_TASK": {
+        try {
+          await api.delete("/tasks/latest");
+          return {
+            success: true,
+            message: "🗑️ Task deleted.",
+          };
+        } catch (err) {
+          return {
+            success: false,
+            message: `Failed to delete task: ${err?.message || "Unknown error"}`,
+          };
+        }
+      }
+
+      // ── Add Recovery Data ──────────────────────────────────────────────
+      case "ADD_RECOVERY_DATA": {
+        const recoveryData = label || searchQuery || "";
+        if (!recoveryData.trim()) {
+          return {
+            success: false,
+            message: "Please provide recovery data or code.",
+          };
+        }
+        try {
+          await api.post("/profile/recovery-data", {
+            recoveryCode: recoveryData,
+            userId: myProfile._id,
+            addedAt: new Date(),
+          });
+          return {
+            success: true,
+            message: `🔐 Recovery data saved securely.`,
+          };
+        } catch (err) {
+          return {
+            success: false,
+            message: `Failed to save recovery data: ${err?.message || "Unknown error"}`,
+          };
+        }
+      }
+
+      // ── Update Language Settings ────────────────────────────────────────
+      case "UPDATE_LANGUAGE_SETTINGS": {
+        const language = (label || searchQuery || "").trim().toLowerCase();
+        const supportedLanguages = [
+          "english",
+          "bengali",
+          "spanish",
+          "french",
+          "hindi",
+        ];
+
+        if (
+          !language ||
+          !supportedLanguages.some((lang) => language.includes(lang))
+        ) {
+          return {
+            success: false,
+            message: `Supported languages: ${supportedLanguages.join(", ")}. Which would you prefer?`,
+          };
+        }
+
+        try {
+          const selectedLang = supportedLanguages.find((lang) =>
+            language.includes(lang),
+          );
+          await api.put("/profile/language-settings", {
+            preferredLanguage: selectedLang,
+            userId: myProfile._id,
+          });
+          return {
+            success: true,
+            message: `🌐 Language preference updated to ${selectedLang}.`,
+          };
+        } catch (err) {
+          return {
+            success: false,
+            message: `Failed to update language settings: ${err?.message || "Unknown error"}`,
+          };
+        }
+      }
+
+      // ── Send Message to User ──────────────────────────────────────────
+      case "SEND_MESSAGE_TO_USER": {
+        const messageContent = label || searchQuery || "";
+        if (!messageContent.trim()) {
+          return {
+            success: false,
+            message: "What message would you like to send?",
+          };
+        }
+        if (!friend) {
+          return {
+            success: false,
+            message: "Please specify which user to send the message to.",
+          };
+        }
+        try {
+          await api.post("/messages", {
+            to: friend._id,
+            from: myProfile._id,
+            content: messageContent,
+            timestamp: new Date(),
+          });
+          return {
+            success: true,
+            message: `💬 Message sent to ${friendName}: "${messageContent.substring(0, 40)}${messageContent.length > 40 ? "..." : ""}"`,
+          };
+        } catch (err) {
+          return {
+            success: false,
+            message: `Failed to send message: ${err?.message || "Unknown error"}`,
+          };
+        }
       }
 
       default:
@@ -334,6 +577,31 @@ export const getActionMeta = (action) => {
     LIST_FRIENDS: { label: "Friends Page", icon: "fa-users", color: "#6366f1" },
     OPEN_MESSAGES: { label: "Messages", icon: "fa-envelope", color: "#3b82f6" },
     OPEN_FRIENDS: { label: "Friends Page", icon: "fa-users", color: "#6366f1" },
+    CREATE_NOTE: {
+      label: "Create Note",
+      icon: "fa-sticky-note",
+      color: "#f59e0b",
+    },
+    EDIT_NOTE: { label: "Edit Note", icon: "fa-edit", color: "#f59e0b" },
+    DELETE_NOTE: { label: "Delete Note", icon: "fa-trash", color: "#ef4444" },
+    CREATE_TASK: { label: "Create Task", icon: "fa-tasks", color: "#3b82f6" },
+    EDIT_TASK: { label: "Edit Task", icon: "fa-edit", color: "#3b82f6" },
+    DELETE_TASK: { label: "Delete Task", icon: "fa-trash", color: "#ef4444" },
+    ADD_RECOVERY_DATA: {
+      label: "Add Recovery Data",
+      icon: "fa-shield-alt",
+      color: "#10b981",
+    },
+    UPDATE_LANGUAGE_SETTINGS: {
+      label: "Change Language",
+      icon: "fa-globe",
+      color: "#6366f1",
+    },
+    SEND_MESSAGE_TO_USER: {
+      label: "Send Message",
+      icon: "fa-paper-plane",
+      color: "#3b82f6",
+    },
   };
   return map[action] || { label: action, icon: "fa-bolt", color: "#6366f1" };
 };

@@ -527,14 +527,15 @@ select {
 
             .header-logo-container {
                 float: left;
+                min-width: 40px !important;
 
             }
 
             .header-app-menu-container {
                 padding: 10px;
                 border-radius: 50px;
-                height: 40px;
-                width: 40px;
+                height: 45px;
+                width: 45px;
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -9041,7 +9042,16 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="
 
 /* Mobile specific adjustments */
 @media (max-width: 768px) {
-    input[type="text"],
+    #header.sticky-header .hr-mega-menu {
+        left: unset !important;
+        right: -100px !important;
+    }
+
+    #header .header-container .header-left .header-app-menu-container,#header .header-container .header-left .header-search-container  {
+        height: 42px;
+        width: 42px;
+    }
+
     input[type="email"],
     input[type="password"],
     input[type="search"],

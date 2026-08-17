@@ -36,6 +36,60 @@ Always be warm, direct, and helpful. Never list steps for app actions — just c
  *   automatically because Gemini requires the first turn to be a user turn).
  * @returns {Promise<{response: string, suggestedAction: string|null, success: boolean}>}
  */
+const extractGeminiText = (data) =>
+  data?.candidates?.[0]?.content?.parts
+    ?.map((part) => part?.text || "")
+    .join("")
+    .trim() || "";
+
+export const translateBanglaToEnglish = async (text) => {
+  const sourceText = String(text || "").trim();
+  if (!sourceText || !/[\u0980-\u09FF]/.test(sourceText)) {
+    return sourceText;
+  }
+
+  if (!GEMINI_API_KEY) {
+    throw new Error("Gemini API key is not configured");
+  }
+
+  const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      systemInstruction: {
+        parts: [
+          {
+            text: `Translate the user's Bangla text into concise, natural English for an app command parser. Preserve people's names by transliterating them into Latin letters. Preserve the user's exact intent, destination, action, and search terms. Return only the English translation with no quotes, labels, notes, or explanation.`,
+          },
+        ],
+      },
+      contents: [{ role: "user", parts: [{ text: sourceText }] }],
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 256,
+      },
+    }),
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(
+      data?.error?.message || `Translation failed with HTTP ${response.status}`,
+    );
+  }
+
+  const translation = extractGeminiText(data)
+    .replace(/^English(?: translation)?:\s*/i, "")
+    .replace(/^["“]|["”]$/g, "")
+    .trim();
+
+  if (!translation) {
+    throw new Error("Gemini returned an empty translation");
+  }
+
+  return translation;
+};
+
 export const sendToGemini = async (message, conversationHistory = []) => {
   if (!GEMINI_API_KEY) {
     return {
@@ -135,7 +189,7 @@ export const sendToGemini = async (message, conversationHistory = []) => {
     }
 
     const responseText =
-      candidate.content?.parts?.[0]?.text ||
+      extractGeminiText(data) ||
       "Sorry, I couldn't generate a response. Please try again.";
 
     const suggestedAction = extractSuggestedAction(responseText);
@@ -222,5 +276,10 @@ export const getModelInfo = () => ({
   description: "Fast, intelligent model for conversational AI (free tier)",
 });
 
-const geminiService = { sendToGemini, getAICapabilities, getModelInfo };
+const geminiService = {
+  sendToGemini,
+  translateBanglaToEnglish,
+  getAICapabilities,
+  getModelInfo,
+};
 export default geminiService;
