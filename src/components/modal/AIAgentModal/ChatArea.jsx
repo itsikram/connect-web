@@ -11,6 +11,7 @@ const ChatArea = ({
   onInputChange,
   messagesEndRef,
   userProfilePic,
+  autoRunActions,
 }) => {
   return (
     <div className="ai-agent-chat-area">
@@ -46,6 +47,7 @@ const ChatArea = ({
         onChange={onInputChange}
         onSend={onSendMessage}
         isLoading={isLoading}
+        autoRunActions={autoRunActions}
       />
     </div>
   );

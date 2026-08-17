@@ -102,7 +102,13 @@ const getSpeechWebSocketUrl = () => {
   return url.toString();
 };
 
-const ChatInput = ({ value, onChange, onSend, isLoading }) => {
+const ChatInput = ({
+  value,
+  onChange,
+  onSend,
+  isLoading,
+  autoRunActions = false,
+}) => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -116,6 +122,7 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
 
   const inputRef = useRef(null);
   const onChangeRef = useRef(onChange);
+  const onSendRef = useRef(onSend);
   const isListeningRef = useRef(false);
   const wsRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -126,14 +133,42 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
   const recognitionRef = useRef(null);
   const activeStopRef = useRef(() => {});
   const modelLoadingRef = useRef(false);
+  const autoSendTimeoutRef = useRef(null);
 
   useEffect(() => {
     onChangeRef.current = onChange;
-  }, [onChange]);
+    onSendRef.current = onSend;
+  }, [onChange, onSend]);
 
   useEffect(() => {
     isListeningRef.current = isListening;
   }, [isListening]);
+
+  // Clear auto-send timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSendTimeoutRef.current) {
+        clearTimeout(autoSendTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Helper to trigger auto-send if enabled
+  const scheduleAutoSend = (finalText) => {
+    if (!autoRunActions || !finalText || !finalText.trim()) return;
+
+    // Clear any existing timeout
+    if (autoSendTimeoutRef.current) {
+      clearTimeout(autoSendTimeoutRef.current);
+    }
+
+    speechLog(`[auto-run] Scheduled auto-send in 5s, text: "${finalText}"`);
+    autoSendTimeoutRef.current = setTimeout(() => {
+      speechLog(`[auto-run] Sending after 5s delay: "${finalText}"`);
+      autoSendTimeoutRef.current = null;
+      onSendRef.current(finalText);
+    }, 5000);
+  };
 
   // ── Bangla support check (WebSocket + MediaRecorder + mic pipeline) ──────
   useEffect(() => {
@@ -321,6 +356,8 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
       setIsListening(false);
       setIsFinalizing(false);
       setVoiceStatusMessage("");
+      // Schedule auto-send if enabled
+      scheduleAutoSend(finalText);
       return;
     }
 

@@ -481,6 +481,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
                   onInputChange={setInputValue}
                   messagesEndRef={messagesEndRef}
                   userProfilePic={myProfile?.profilePic}
+                  autoRunActions={autoRunActions}
                 />
               </div>
             </div>
