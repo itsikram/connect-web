@@ -48,6 +48,16 @@ export const executeAction = async ({
     if (onClose) onClose();
   };
 
+  const buildProfilePath = (profile, nestedPath = "") => {
+    const profileIdentifier = profile?._id;
+    if (!profileIdentifier) return null;
+    if (!nestedPath) return `/${profileIdentifier}/`;
+    const normalizedNestedPath = nestedPath.startsWith("/")
+      ? nestedPath
+      : `/${nestedPath}`;
+    return `/${profileIdentifier}${normalizedNestedPath}`;
+  };
+
   try {
     switch (action) {
       // ── Search / Play Video ────────────────────────────────────────────────────
@@ -115,8 +125,14 @@ export const executeAction = async ({
 
       // ── Navigation: friend profile / sub-page ───────────────────────────────
       case "NAVIGATE_PROFILE": {
-        const path = `/${friend._id}${subPath || ""}`;
+        const path = buildProfilePath(friend, subPath || "");
         const sub = subPath ? subPath.replace("/", "") : "profile";
+        if (!path) {
+          return {
+            success: false,
+            message: `I couldn't determine ${friendName || "that user's"} profile link.`,
+          };
+        }
         go(path);
         return {
           success: true,
@@ -231,7 +247,14 @@ export const executeAction = async ({
 
       // ── View Profile ───────────────────────────────────────────────────────
       case "VIEW_PROFILE": {
-        go(`/${friend._id}`);
+        const path = buildProfilePath(friend);
+        if (!path) {
+          return {
+            success: false,
+            message: `I couldn't determine ${friendName || "that user's"} profile link.`,
+          };
+        }
+        go(path);
         return {
           success: true,
           message: `👤 Opening ${friendName}'s profile…`,
@@ -264,6 +287,20 @@ export const executeAction = async ({
           success: false,
           message: `📍 ${friendName}'s location is not available.`,
           location: null,
+        };
+      }
+
+      // ── Get Bio / VIO ──────────────────────────────────────────────────────
+      case "GET_BIO": {
+        if (friend.bio && friend.bio.trim()) {
+          return {
+            success: true,
+            message: `📝 ${friendName}'s bio: "${friend.bio}"`,
+          };
+        }
+        return {
+          success: false,
+          message: `📝 ${friendName} hasn't added a bio yet.`,
         };
       }
 
@@ -538,10 +575,15 @@ export const executeAction = async ({
             parent: false,
             messageType: "text",
           });
+
+          // Add a small delay to ensure the message is processed on the backend
+          // before opening the chat, so the message appears immediately when chat opens
+          await new Promise((resolve) => setTimeout(resolve, 300));
+
           openStickyChat(friend._id);
           return {
             success: true,
-            message: `💬 Message sent to ${friendName}: "${messageContent.substring(0, 40)}${messageContent.length > 40 ? "..." : ""}"`,
+            message: `✅ Message sent to ${friendName}. Opening chat…`,
           };
         } catch (err) {
           return {
@@ -590,6 +632,11 @@ export const getActionMeta = (action) => {
       label: "Get Location",
       icon: "fa-map-marker-alt",
       color: "#f97316",
+    },
+    GET_BIO: {
+      label: "Get Bio",
+      icon: "fa-file-alt",
+      color: "#8b5cf6",
     },
     ADD_FRIEND: { label: "Add Friend", icon: "fa-user-plus", color: "#3b82f6" },
     UNFRIEND: { label: "Unfriend", icon: "fa-user-times", color: "#ef4444" },

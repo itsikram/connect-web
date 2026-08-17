@@ -16,6 +16,7 @@ export const FRIEND_REQUIRED_ACTIONS = new Set([
   "UNBLOCK",
   "VIEW_PROFILE",
   "GET_LOCATION",
+  "GET_BIO", // get and display a friend's bio/vio
   "ADD_FRIEND",
   "UNFRIEND",
   "NAVIGATE_PROFILE", // go to a friend's profile / sub-page
@@ -39,6 +40,36 @@ export const NO_FRIEND_ACTIONS = new Set([
   "ADD_RECOVERY_DATA", // add recovery/backup data
   "UPDATE_LANGUAGE_SETTINGS", // update language/language prompt settings
 ]);
+
+/**
+ * How the agent should respond when it confidently understands the user's intent.
+ * - reply: answer in text immediately
+ * - navigate: perform navigation immediately
+ * - confirm: show an action button / confirmation UI first
+ */
+export const ACTION_RESPONSE_MODE = {
+  GET_BIO: "reply",
+  GET_LOCATION: "reply",
+  VIEW_PROFILE: "navigate",
+  NAVIGATE_PROFILE: "navigate",
+  NAVIGATE: "navigate",
+  OPEN_MESSAGES: "navigate",
+  OPEN_FRIENDS: "navigate",
+  LIST_FRIENDS: "navigate",
+  SEND_MESSAGE_TO_USER: "confirm",
+  SEND_MESSAGE: "confirm",
+  VIDEO_CALL: "confirm",
+  AUDIO_CALL: "confirm",
+  BUMP: "confirm",
+  INVITE_LUDO: "confirm",
+  BLOCK: "confirm",
+  UNBLOCK: "confirm",
+  ADD_FRIEND: "confirm",
+  UNFRIEND: "confirm",
+};
+
+export const getActionResponseMode = (action) =>
+  ACTION_RESPONSE_MODE[action] || "confirm";
 
 // ── Static route map ─────────────────────────────────────────────────────────
 /**
@@ -468,7 +499,7 @@ const cleanCapturedSegment = (value = "") =>
   String(value)
     .trim()
     .replace(/^["'`“”‘’]+|["'`“”‘’]+$/g, "")
-    .replace(/[?.!,;:]+$/, "")
+    .replace(/[?.!,;:।]+$/, "")
     .trim();
 
 const buildSendMessageIntent = ({ targetName, messageText }) => ({
@@ -487,6 +518,18 @@ const isGenericMessageText = (value = "") =>
 
 const parseDirectSendMessageIntent = (message) => {
   const patterns = [
+    {
+      regex:
+        /^(?:send|text|message)\s+(?:a\s+)?message\s+to\s+(.+?)\s+(?:and\s+)?(?:saying|say)\s+["'`“”‘’]?(.+?)["'`“”‘’]?$/i,
+      messageIndex: 2,
+      targetIndex: 1,
+    },
+    {
+      regex:
+        /^(?:send|text|message)\s+(?:a\s+)?message\s+to\s+(.+?)\s*[:,-]\s*["'`“”‘’]?(.+?)["'`“”‘’]?$/i,
+      messageIndex: 2,
+      targetIndex: 1,
+    },
     {
       regex:
         /^["'`“”‘’](.+?)["'`“”‘’]\s+(?:send|text|message)\s+(?:this\s+)?message\s+to\s+(.+)$/i,
@@ -512,13 +555,25 @@ const parseDirectSendMessageIntent = (message) => {
     },
     {
       regex:
-        /^(.+?)\s+কে\s+["'`“”‘’](.+?)["'`“”‘’]\s+(?:বার্তা|মেসেজ)\s+পাঠ(?:াও|ান)$/,
+        /^(.+?)\s*কে\s+["'`“”‘’](.+?)["'`“”‘’]\s+(?:বার্তা|মেসেজ)\s+পাঠ(?:াও|ান)$/,
       messageIndex: 2,
       targetIndex: 1,
     },
     {
       regex:
-        /^(.+?)\s+কে\s+(?:বার্তা|মেসেজ)\s+পাঠ(?:াও|ান)\s+["'`“”‘’](.+?)["'`“”‘’]$/,
+        /^(.+?)\s*কে\s+(?:বার্তা|মেসেজ)\s+পাঠ(?:াও|ান)\s+["'`“”‘’](.+?)["'`“”‘’]$/,
+      messageIndex: 2,
+      targetIndex: 1,
+    },
+    {
+      regex:
+        /^(.+?)\s*কে\s+(?:বার্তা|মেসেজ)\s+পাঠ(?:িয়ে|িয়ে|াও|ান)\s+(?:বলো|বলুন)\s+(.+)$/,
+      messageIndex: 2,
+      targetIndex: 1,
+    },
+    {
+      regex:
+        /^(?:বার্তা|মেসেজ)\s+পাঠ(?:িয়ে|িয়ে|াও|ান)\s+(.+?)\s*কে\s+(?:বলো|বলুন)\s+(.+)$/,
       messageIndex: 2,
       targetIndex: 1,
     },
@@ -765,6 +820,17 @@ const INTENT_PATTERNS = [
       /(?:find|get|show|check|see)\s+(.+?)'?s?\s+location/i,
       /(.+?)'?s?\s+location/i,
       // Removed the too-broad /(?:locate|find)\s+(.+)/i — "find a restaurant" would fire
+    ],
+  },
+
+  // ── Get Bio / VIO ───────────────────────────────────────────────────────────────
+  {
+    action: "GET_BIO",
+    patterns: [
+      /what\s+is\s+(?:the\s+)?(?:vio|bio|biography|description)\s+(?:of|for)\s+(.+)/i,
+      /(?:vio|bio|biography|description)\s+(?:of|for)\s+(.+)/i,
+      /(?:what\s+is|what's|tell\s+me|get|show|see)\s+(.+?)'?s?\s+(?:vio|bio|biography|about|description)/i,
+      /tell\s+me\s+about\s+(.+)/i,
     ],
   },
 

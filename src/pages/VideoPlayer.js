@@ -161,17 +161,16 @@ const VideoPlayer = () => {
         .catch(() => setIsPlaying(false));
     };
 
-    if (video.src !== currentVideo.url) {
+    if (video.getAttribute("src") !== currentVideo.url) {
       video.src = currentVideo.url;
+      video.load();
     }
-    video.loop = isLooping;
-    video.load();
     video.addEventListener("canplay", onCanPlay, { once: true });
 
     return () => {
       video.removeEventListener("canplay", onCanPlay);
     };
-  }, [currentTrackKey, currentVideo?.url, isLooping, isThisPip]);
+  }, [currentTrackKey, currentVideo?.url, isThisPip]);
 
   useEffect(() => {
     const video = videoRef.current;

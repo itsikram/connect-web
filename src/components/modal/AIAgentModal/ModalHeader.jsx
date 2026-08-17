@@ -1,7 +1,13 @@
 import React from "react";
 import { motion } from "framer-motion";
 
-const ModalHeader = ({ onClose, onMenuToggle, isSidebarOpen }) => {
+const ModalHeader = ({
+  onClose,
+  onMenuToggle,
+  isSidebarOpen,
+  autoRunActions,
+  onToggleAutoRun,
+}) => {
   return (
     <div className="ai-agent-modal-header">
       {/* ── Single compact row ─────────────────────────────────────── */}
@@ -32,6 +38,20 @@ const ModalHeader = ({ onClose, onMenuToggle, isSidebarOpen }) => {
             <span className="ai-agent-status-text">Ready to assist</span>
           </div>
         </div>
+
+        <label
+          className="ai-agent-auto-run-toggle"
+          title="Automatically run single-match actions without needing a button click"
+        >
+          <input
+            type="checkbox"
+            checked={autoRunActions}
+            onChange={onToggleAutoRun}
+            aria-label="Toggle auto-run actions"
+          />
+          <span className="ai-agent-auto-run-slider" />
+          <span className="ai-agent-auto-run-label">Auto-run</span>
+        </label>
 
         {/* Close button */}
         <button

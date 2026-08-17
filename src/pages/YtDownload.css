@@ -1,27 +1,31 @@
 .yt-download-page {
     min-height: calc(100vh - 200px);
     padding: clamp(16px, 4vw, 20px) 0;
-    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    background: linear-gradient(165deg, #0a1628 0%, #0f172a 45%, #0c1220 100%);
+    color: #e2e8f0;
 }
 
 .yt-download-card {
-    background: #ffffff;
+    background: #111827;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 16px;
     padding: clamp(20px, 5vw, 40px);
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    transition:
+        transform 0.3s ease,
+        box-shadow 0.3s ease;
     margin: 0 clamp(12px, 3vw, 20px);
 }
 
 .yt-download-card:hover {
     transform: translateY(-5px);
-    box-shadow: 0 15px 50px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 15px 50px rgba(0, 0, 0, 0.4);
 }
 
 .yt-download-title {
     font-size: clamp(1.8rem, 5vw, 2.5rem);
     font-weight: 700;
-    color: #2c3e50;
+    color: #f8fafc;
     margin-bottom: clamp(8px, 2vw, 10px);
     display: flex;
     align-items: center;
@@ -30,7 +34,7 @@
 
 .yt-download-subtitle {
     text-align: center;
-    color: #7f8c8d;
+    color: #94a3b8;
     font-size: clamp(0.9rem, 2.5vw, 1.1rem);
     margin-bottom: clamp(20px, 5vw, 30px);
 }
@@ -45,7 +49,7 @@
 
 .yt-download-form label {
     font-weight: 600;
-    color: #34495e;
+    color: #e2e8f0;
     margin-bottom: 8px;
     display: block;
     font-size: clamp(0.85rem, 2.5vw, 0.95rem);
@@ -55,11 +59,21 @@
 .yt-quality-select {
     width: 100%;
     padding: clamp(10px, 2.5vw, 12px) clamp(12px, 3vw, 16px);
-    border: 2px solid #e0e0e0;
+    border: 2px solid #334155;
     border-radius: 8px;
+    color: #f8fafc;
     font-size: clamp(0.9rem, 2.5vw, 1rem);
     transition: all 0.3s ease;
-    background-color: #ffffff;
+    background-color: #0f172a;
+}
+
+.yt-url-input::placeholder {
+    color: #64748b;
+}
+
+.yt-quality-select option {
+    background-color: #0f172a;
+    color: #f8fafc;
 }
 
 .yt-url-textarea {
@@ -83,7 +97,7 @@
 .yt-active-downloads-header h3 {
     margin: 0;
     font-size: clamp(1rem, 3vw, 1.15rem);
-    color: #2c3e50;
+    color: #f8fafc;
     font-weight: 600;
 }
 
@@ -120,7 +134,7 @@
 
 .yt-url-input:disabled,
 .yt-quality-select:disabled {
-    background-color: #f5f5f5;
+    background-color: #1e293b;
     cursor: not-allowed;
     opacity: 0.7;
 }
@@ -128,9 +142,9 @@
 .download-progress-container {
     margin: clamp(16px, 4vw, 25px) 0;
     padding: clamp(12px, 3vw, 20px);
-    background: #f8f9fa;
+    background: #0f172a;
     border-radius: 8px;
-    border: 1px solid #e9ecef;
+    border: 1px solid #334155;
 }
 
 .progress-info {
@@ -148,13 +162,13 @@
 
 .progress-percentage {
     font-weight: 700;
-    color: #2c3e50;
+    color: #f8fafc;
 }
 
 .progress-bar-wrapper {
     width: 100%;
     height: 12px;
-    background-color: #e9ecef;
+    background-color: #334155;
     border-radius: 6px;
     overflow: hidden;
     position: relative;
@@ -170,7 +184,7 @@
 }
 
 .progress-bar-fill::after {
-    content: '';
+    content: "";
     position: absolute;
     top: 0;
     left: 0;
@@ -258,13 +272,13 @@
 .download-history {
     margin-top: clamp(24px, 6vw, 40px);
     padding-top: clamp(20px, 5vw, 30px);
-    border-top: 2px solid #e9ecef;
+    border-top: 2px solid #334155;
 }
 
 .history-title {
     font-size: clamp(1.2rem, 4vw, 1.5rem);
     font-weight: 600;
-    color: #2c3e50;
+    color: #f8fafc;
     margin-bottom: clamp(12px, 3vw, 20px);
 }
 
@@ -279,14 +293,14 @@
     justify-content: space-between;
     align-items: center;
     padding: clamp(10px, 2.5vw, 15px);
-    background: #f8f9fa;
+    background: #0f172a;
     border-radius: 8px;
-    border: 1px solid #e9ecef;
+    border: 1px solid #334155;
     transition: all 0.3s ease;
 }
 
 .history-item:hover {
-    background: #e9ecef;
+    background: #1e293b;
     transform: translateX(5px);
 }
 
@@ -298,7 +312,7 @@
 }
 
 .history-item-name {
-    color: #2c3e50;
+    color: #e2e8f0;
     font-weight: 500;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -313,6 +327,10 @@
     transition: all 0.3s ease;
     flex-shrink: 0;
     font-size: clamp(0.8rem, 2.5vw, 0.9rem);
+}
+
+.yt-download-form .form-text.text-muted {
+    color: #94a3b8 !important;
 }
 
 .history-download-link:hover {
@@ -354,7 +372,8 @@
 
 /* Loading animation */
 @keyframes pulse {
-    0%, 100% {
+    0%,
+    100% {
         opacity: 1;
     }
     50% {
@@ -365,6 +384,3 @@
 /* .yt-download-btn:disabled {
     animation: pulse 2s infinite;
 } */
-
-
-

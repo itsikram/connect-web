@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import ModalContainer from "./ModalContainer";
 import axios from "axios";
 import { openIosProfile } from "../../utils/iosProfile";
+import { getServerAddress } from "../../utils/offlineUtils";
 
 const StoreButton = ({
   href,
@@ -72,9 +73,8 @@ const DownloadAppModal = ({ isOpen, onClose }) => {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const res = await axios.get(
-          process.env.REACT_APP_SERVER_ADDR + "/api/connect"
-        );
+        const serverBase = getServerAddress();
+        const res = await axios.get(`${serverBase}/api/connect`);
         if (res.status === 200) {
           setConnectData((prev) => ({
             ...prev,

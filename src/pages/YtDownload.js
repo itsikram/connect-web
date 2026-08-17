@@ -829,7 +829,7 @@ const YtDownload = () => {
                         <div className="history-item-info">
                           <i
                             className={`fas ${item.audioOnly ? "fa-music" : "fa-video"}`}
-                            style={{ marginRight: "10px", color: "#666" }}
+                            style={{ marginRight: "10px", color: "#94a3b8" }}
                           ></i>
                           <span className="history-item-name">
                             {item.fileName}

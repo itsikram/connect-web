@@ -14,6 +14,7 @@ import {
   parseIntent,
   searchFriendsByName,
   getFriendDisplayName,
+  getActionResponseMode,
   FRIEND_REQUIRED_ACTIONS,
   NO_FRIEND_ACTIONS,
 } from "./agentIntentParser";
@@ -30,6 +31,17 @@ const INITIAL_MESSAGE = {
   timestamp: new Date(),
 };
 
+const AUTO_RUN_ACTIONS_STORAGE_KEY = "ai_agent_auto_run_actions";
+
+const getInitialAutoRunActions = () => {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(AUTO_RUN_ACTIONS_STORAGE_KEY) === "true";
+  } catch (_) {
+    return false;
+  }
+};
+
 const AIAgentModal = ({ isOpen, onClose }) => {
   const myProfile = useSelector((state) => state.profile);
   const navigate = useNavigate();
@@ -38,6 +50,9 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); // closed by default — especially on mobile
+  const [autoRunActions, setAutoRunActions] = useState(
+    getInitialAutoRunActions,
+  );
   const messagesEndRef = useRef(null);
 
   // Detect mobile to keep sidebar closed by default
@@ -56,6 +71,15 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        AUTO_RUN_ACTIONS_STORAGE_KEY,
+        String(autoRunActions),
+      );
+    } catch (_) {}
+  }, [autoRunActions]);
 
   // ── Message helpers ─────────────────────────────────────────────────────────
   const addMessage = useCallback((msg) => {
@@ -101,17 +125,20 @@ const AIAgentModal = ({ isOpen, onClose }) => {
 
       try {
         const originalText = text.trim();
+        const hasBanglaText = /[\u0980-\u09FF]/.test(originalText);
         let agentText = originalText;
+        let translatedText = "";
         let intent = parseIntent(originalText);
 
-        if (!intent && /[\u0980-\u09FF]/.test(agentText)) {
+        if (!intent && hasBanglaText) {
           try {
-            agentText = await translateBanglaToEnglish(agentText);
+            translatedText = await translateBanglaToEnglish(originalText);
+            agentText = translatedText;
             console.log("[AIAgentModal] Bangla command translated:", {
               original: text,
-              translated: agentText,
+              translated: translatedText,
             });
-            intent = parseIntent(agentText);
+            intent = parseIntent(translatedText);
           } catch (translationError) {
             console.warn(
               "[AIAgentModal] Bangla translation failed; using original text:",
@@ -183,7 +210,9 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             return;
           }
 
-          let matched = searchFriendsByName(friends, intent.targetName);
+          let resolvedIntent = intent;
+          let matched = searchFriendsByName(friends, resolvedIntent.targetName);
+          let searchableFriends = friends;
 
           // Redux may contain only friend IDs or a stale populated list. Retry
           // against the authoritative populated endpoint before reporting that
@@ -193,14 +222,50 @@ const AIAgentModal = ({ isOpen, onClose }) => {
               const response = await api.get("/friend/getFriends", {
                 params: { profile: myProfile._id },
               });
-              const freshFriends = Array.isArray(response.data)
+              searchableFriends = Array.isArray(response.data)
                 ? response.data
                 : [];
-              matched = searchFriendsByName(freshFriends, intent.targetName);
+              matched = searchFriendsByName(
+                searchableFriends,
+                resolvedIntent.targetName,
+              );
             } catch (friendListError) {
               console.warn(
                 "[AIAgentModal] Could not refresh friend profiles:",
                 friendListError,
+              );
+            }
+          }
+
+          if (matched.length === 0 && hasBanglaText) {
+            try {
+              if (!translatedText) {
+                translatedText = await translateBanglaToEnglish(originalText);
+              }
+              const translatedIntent = parseIntent(translatedText);
+              if (
+                translatedIntent?.action === resolvedIntent.action &&
+                translatedIntent?.targetName
+              ) {
+                const translatedMatches = searchFriendsByName(
+                  searchableFriends,
+                  translatedIntent.targetName,
+                );
+                if (translatedMatches.length > 0) {
+                  matched = translatedMatches;
+                  resolvedIntent = {
+                    ...resolvedIntent,
+                    targetName: translatedIntent.targetName,
+                    messageText:
+                      resolvedIntent.messageText ||
+                      translatedIntent.messageText,
+                  };
+                }
+              }
+            } catch (translationRetryError) {
+              console.warn(
+                "[AIAgentModal] Bangla friend matching fallback failed:",
+                translationRetryError,
               );
             }
           }
@@ -214,33 +279,49 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             return;
           }
 
-          const meta = getActionMeta(intent.action);
+          const responseMode = getActionResponseMode(resolvedIntent.action);
+          const shouldAutoExecuteSingleMatch =
+            matched.length === 1 &&
+            (responseMode !== "confirm" || autoRunActions);
+
+          if (shouldAutoExecuteSingleMatch) {
+            await handleFriendAction(
+              matched[0],
+              resolvedIntent.action,
+              resolvedIntent,
+            );
+            setIsLoading(false);
+            return;
+          }
+
+          const meta = getActionMeta(resolvedIntent.action);
           const cardLabel =
-            intent.action === "NAVIGATE_PROFILE"
-              ? `Go to ${intent.subPath?.replace("/", "") || "profile"}`
+            resolvedIntent.action === "NAVIGATE_PROFILE"
+              ? `Go to ${resolvedIntent.subPath?.replace("/", "") || "profile"}`
               : meta.label;
 
-          const previewText = intent.messageText
-            ? intent.messageText.length > 100
-              ? `${intent.messageText.slice(0, 100)}…`
-              : intent.messageText
+          const previewText = resolvedIntent.messageText
+            ? resolvedIntent.messageText.length > 100
+              ? `${resolvedIntent.messageText.slice(0, 100)}…`
+              : resolvedIntent.messageText
             : null;
 
           addMessage({
             type: "friend-picker",
             content:
-              intent.action === "SEND_MESSAGE_TO_USER"
+              resolvedIntent.action === "SEND_MESSAGE_TO_USER"
                 ? matched.length === 1
                   ? `Ready to send "${previewText}" to ${getFriendDisplayName(matched[0])}. Click below to send it.`
-                  : `Found ${matched.length} people matching "${intent.targetName}". Choose who should receive "${previewText}".`
+                  : `Found ${matched.length} people matching "${resolvedIntent.targetName}". Choose who should receive "${previewText}".`
                 : matched.length === 1
                   ? `Found ${getFriendDisplayName(matched[0])}! Click below.`
-                  : `Found ${matched.length} people named "${intent.targetName}". Which one?`,
+                  : `Found ${matched.length} people named "${resolvedIntent.targetName}". Which one?`,
             friends: matched,
-            action: intent.action,
+            action: resolvedIntent.action,
             actionLabel: cardLabel,
-            intent,
-            onAction: (f) => handleFriendAction(f, intent.action, intent),
+            intent: resolvedIntent,
+            onAction: (f) =>
+              handleFriendAction(f, resolvedIntent.action, resolvedIntent),
           });
 
           setIsLoading(false);
@@ -276,6 +357,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       onClose,
       addMessage,
       handleFriendAction,
+      autoRunActions,
     ],
   );
 
@@ -319,6 +401,8 @@ const AIAgentModal = ({ isOpen, onClose }) => {
               onClose={onClose}
               onMenuToggle={toggleSidebar}
               isSidebarOpen={isSidebarOpen}
+              autoRunActions={autoRunActions}
+              onToggleAutoRun={() => setAutoRunActions((value) => !value)}
             />
 
             {/* Body */}

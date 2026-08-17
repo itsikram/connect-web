@@ -21,15 +21,29 @@ const WatchPipPlayer = () => {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
+  const pipTrackKey = pip
+    ? `${pip.source}:${pip.watchId || pip.libraryVideoId}:${pip.videoUrl}`
+    : "";
+  const initialPlaybackRef = useRef(null);
+
+  if (pip && initialPlaybackRef.current?.trackKey !== pipTrackKey) {
+    initialPlaybackRef.current = {
+      trackKey: pipTrackKey,
+      currentTime: pip.currentTime || 0,
+      muted: !!pip.muted,
+      playing: pip.playing !== false,
+    };
+  }
 
   useEffect(() => {
-    if (!pip || !videoRef.current) return;
+    if (!pipTrackKey || !videoRef.current) return;
     const video = videoRef.current;
+    const initialPlayback = initialPlaybackRef.current;
     const onReady = () => {
       try {
-        video.currentTime = pip.currentTime || 0;
-        video.muted = !!pip.muted;
-        if (pip.playing !== false) {
+        video.currentTime = initialPlayback?.currentTime || 0;
+        video.muted = !!initialPlayback?.muted;
+        if (initialPlayback?.playing !== false) {
           video.play().catch(() => setPaused(true));
         } else {
           setPaused(true);
@@ -43,10 +57,10 @@ const WatchPipPlayer = () => {
     else video.addEventListener("loadedmetadata", onReady, { once: true });
 
     return () => video.removeEventListener("loadedmetadata", onReady);
-  }, [pip]);
+  }, [pipTrackKey]);
 
   useEffect(() => {
-    if (!pip) return undefined;
+    if (!pipTrackKey) return undefined;
     const video = videoRef.current;
     if (!video) return undefined;
 
@@ -60,22 +74,22 @@ const WatchPipPlayer = () => {
         Number.isFinite(nextDuration) ? Math.max(0, nextDuration) : 0,
       );
       setPlaybackRate(Number.isFinite(nextRate) && nextRate > 0 ? nextRate : 1);
-
-      updatePip({
-        currentTime: video.currentTime,
-        playing: !video.paused,
-        muted: video.muted,
-      });
     };
 
     const onPlay = () => {
       setPaused(false);
       sync();
+      updatePip({ playing: true, muted: video.muted });
     };
 
     const onPause = () => {
       setPaused(true);
       sync();
+      updatePip({
+        currentTime: video.currentTime,
+        playing: false,
+        muted: video.muted,
+      });
     };
 
     sync();
@@ -95,7 +109,7 @@ const WatchPipPlayer = () => {
       video.removeEventListener("play", onPlay);
       video.removeEventListener("pause", onPause);
     };
-  }, [pip, updatePip]);
+  }, [pipTrackKey, updatePip]);
 
   const playCurrent = useCallback(() => {
     const video = videoRef.current;

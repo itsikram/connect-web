@@ -1,14 +1,17 @@
 import axios from "axios";
+import { getServerAddress } from "../utils/offlineUtils";
 
 /**
  * Create an axios instance that uses authentication token from context
  * This should be used in components that have access to AuthContext
  */
 export const createAuthenticatedApi = (getToken) => {
+  const serverBase = getServerAddress();
+
   // Create axios instance WITHOUT token in initial setup
   // Token will be added dynamically via interceptor for each request
   const api = axios.create({
-    baseURL: process.env.REACT_APP_SERVER_ADDR + "/api/",
+    baseURL: `${serverBase}/api/`,
     headers: {
       "Access-Control-Allow-Origin": "*",
     },
@@ -111,10 +114,12 @@ export const createAuthenticatedApi = (getToken) => {
  * This is for backward compatibility with existing code
  */
 export const createApiFromStorage = () => {
+  const serverBase = getServerAddress();
+
   // Create axios instance WITHOUT token in initial setup
   // Token will be added dynamically via interceptor for each request
   const api = axios.create({
-    baseURL: process.env.REACT_APP_SERVER_ADDR + "/api/",
+    baseURL: `${serverBase}/api/`,
     headers: {
       "Access-Control-Allow-Origin": "*",
     },
