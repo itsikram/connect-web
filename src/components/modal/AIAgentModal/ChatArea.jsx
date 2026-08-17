@@ -1,7 +1,7 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import MessageBubble from './MessageBubble';
-import ChatInput from './ChatInput';
+import React from "react";
+import { motion } from "framer-motion";
+import MessageBubble from "./MessageBubble";
+import ChatInput from "./ChatInput";
 
 const ChatArea = ({
   messages,
@@ -10,6 +10,7 @@ const ChatArea = ({
   inputValue,
   onInputChange,
   messagesEndRef,
+  userProfilePic,
 }) => {
   return (
     <div className="ai-agent-chat-area">
@@ -19,9 +20,9 @@ const ChatArea = ({
             key={msg.id}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.05 }}
+            transition={{ delay: Math.min(index * 0.03, 0.3) }}
           >
-            <MessageBubble message={msg} />
+            <MessageBubble message={msg} userProfilePic={userProfilePic} />
           </motion.div>
         ))}
 
@@ -31,9 +32,9 @@ const ChatArea = ({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
-            <div className="typing-dot"></div>
-            <div className="typing-dot"></div>
-            <div className="typing-dot"></div>
+            <div className="typing-dot" />
+            <div className="typing-dot" />
+            <div className="typing-dot" />
           </motion.div>
         )}
 

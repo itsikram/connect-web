@@ -597,7 +597,10 @@ const LudoGame = () => {
           socket.emit("ludo:invites:get");
         } catch (_e) {}
         try {
-          for (const [key, action] of pendingConnectActionsRef.current.entries()) {
+          for (const [
+            key,
+            action,
+          ] of pendingConnectActionsRef.current.entries()) {
             try {
               action();
             } catch (_e) {}
@@ -612,10 +615,12 @@ const LudoGame = () => {
         // Don't show it if we're just joining (accepting invite) - check if game was actually started
         // Also don't show it if we're waiting for players (lobby state)
         const activeGameId = gameIdRef.current;
-        const timeSinceInviteAccept = Date.now() - inviteAcceptTimestampRef.current;
+        const timeSinceInviteAccept =
+          Date.now() - inviteAcceptTimestampRef.current;
         const inviteJoinGracePeriodActive =
           isJoiningViaInviteRef.current ||
-          (inviteAcceptTimestampRef.current > 0 && timeSinceInviteAccept < 15000);
+          (inviteAcceptTimestampRef.current > 0 &&
+            timeSinceInviteAccept < 15000);
 
         const wasInActiveGame =
           activeGameId &&
@@ -746,7 +751,10 @@ const LudoGame = () => {
         setIsReconnecting(false);
         if (
           !isJoiningViaInviteRef.current &&
-          !(inviteAcceptTimestampRef.current > 0 && Date.now() - inviteAcceptTimestampRef.current < 15000) &&
+          !(
+            inviteAcceptTimestampRef.current > 0 &&
+            Date.now() - inviteAcceptTimestampRef.current < 15000
+          ) &&
           onlineMode &&
           (gameIdRef.current || gameId) &&
           gameStarted
@@ -952,7 +960,7 @@ const LudoGame = () => {
     setDiceValue(value);
     diceValueRef.current = value;
   }, []);
-  
+
   const setCurrentPlayerImmediate = useCallback((value) => {
     setCurrentPlayer(value);
     currentPlayerRef.current = value;
@@ -966,7 +974,7 @@ const LudoGame = () => {
     // The previous player's count stays until their next turn
     // Note: We don't reset here anymore since 6s reset happens in onRoll handler
   }, []);
-  
+
   useEffect(() => {
     gameStartedRef.current = gameStarted;
   }, [gameStarted]);
@@ -1663,7 +1671,9 @@ const LudoGame = () => {
     // CRITICAL: Skip reconnection if we already have a gameId and we're in online mode
     // This prevents reconnection logic from running when we've already joined a game via invite
     if (gameId && onlineMode) {
-      console.log("[RECONNECTION] Skipping - already have gameId and in online mode");
+      console.log(
+        "[RECONNECTION] Skipping - already have gameId and in online mode",
+      );
       return;
     }
 
@@ -2908,8 +2918,7 @@ const LudoGame = () => {
       ts: Date.now(),
       gameId: gid,
       playerCount: selectedPlayerCount,
-      slotIndex:
-        typeof slotIndex === "number" ? slotIndex : undefined,
+      slotIndex: typeof slotIndex === "number" ? slotIndex : undefined,
     };
     return btoa(JSON.stringify(payload));
   };
@@ -4139,7 +4148,9 @@ const LudoGame = () => {
         isMovingRef.current = false; // Reset moving flag
         isAutoMovingRef.current = false; // Clear auto-moving flag
         // Remove the move timer
-        moveTimersRef.current = moveTimersRef.current.filter(t => t !== moveTimerId);
+        moveTimersRef.current = moveTimersRef.current.filter(
+          (t) => t !== moveTimerId,
+        );
         // Reset dice value
         setDiceValueImmediate(0);
         lastLocalDiceRollTimeRef.current = 0;
@@ -4725,8 +4736,7 @@ const LudoGame = () => {
       }
 
       // CRITICAL: Track consecutive 6s for remote players and handle limit
-      const currentSixCount =
-        consecutiveSixesRef.current[rollingPlayer] || 0;
+      const currentSixCount = consecutiveSixesRef.current[rollingPlayer] || 0;
       console.log("[ON_ROLL] Tracking consecutive 6s", {
         player: rollingPlayer,
         currentSixCount,
@@ -5244,9 +5254,32 @@ const LudoGame = () => {
           const snapshotClearsDice = incomingDiceValue === 0;
           if (turnChanged || snapshotClearsDice) {
             isRollingRef.current = false;
-            if (snapshotClearsDice) {
+            // CRITICAL FIX: Only clear dice when the turn has changed (authoritative)
+            // or when the player has NOT recently rolled locally. This prevents a
+            // stale ludo:players broadcast (diceValue=0) from wiping the local dice
+            // value of a player who just rolled but hasn't moved yet — which was
+            // causing "Roll dice" to appear instead of movable tokens for remote players.
+            if (
+              snapshotClearsDice &&
+              (turnChanged || !shouldProtectDiceValue)
+            ) {
               lastLocalDiceRollTimeRef.current = 0;
               setDiceValueImmediate(0);
+            } else if (
+              snapshotClearsDice &&
+              shouldProtectDiceValue &&
+              !turnChanged
+            ) {
+              console.log(
+                "[ON_PLAYERS] 🛡️ Protected dice from stale snapshot clear",
+                {
+                  diceValue: diceValueRef.current,
+                  recentlyRolledLocally,
+                  hasActiveDice,
+                  currentPlayer: currentPlayerRef.current,
+                  myPlayerIndex: myPlayerIndexRef.current,
+                },
+              );
             }
             if (turnChanged) {
               isAutoMovingRef.current = false;
@@ -5439,12 +5472,12 @@ const LudoGame = () => {
 
           // Simplified protection logic - focus on preventing backward movement only
           const now = Date.now();
-          
+
           // CRITICAL: Clean stale move timers first (timers older than 3 seconds are stale)
           moveTimersRef.current = moveTimersRef.current.filter(
-            (t) => typeof t === "number" && now - t < 3000
+            (t) => typeof t === "number" && now - t < 3000,
           );
-          
+
           const isMoveInProgress =
             isMovingRef.current ||
             moveTimersRef.current.length > 0 ||
@@ -6736,7 +6769,9 @@ const LudoGame = () => {
       if (!confirmed) return;
 
       try {
-        const res = await api.delete(`/ludo/delete?gameId=${encodeURIComponent(gid)}`);
+        const res = await api.delete(
+          `/ludo/delete?gameId=${encodeURIComponent(gid)}`,
+        );
         if (!res?.success) {
           window.alert(res?.message || "Failed to delete live game.");
           return;
@@ -6773,7 +6808,12 @@ const LudoGame = () => {
         window.alert("Failed to delete live game.");
       }
     },
-    [myProfile?._id, requestJoinedGames, clearHiddenBoardGameId, setDiceValueImmediate],
+    [
+      myProfile?._id,
+      requestJoinedGames,
+      clearHiddenBoardGameId,
+      setDiceValueImmediate,
+    ],
   );
 
   const startNewGame = () => {
@@ -7697,7 +7737,7 @@ const LudoGame = () => {
       isJoiningViaInviteRef.current = true; // Mark that we're joining via invite
       hasProcessedReconnectionStateRef.current = true; // Mark as processed to prevent reconnection logic
       inviteAcceptTimestampRef.current = Date.now(); // Track when we accepted invite to prevent reconnection
-      
+
       // CRITICAL: Clear reconnecting state immediately and only once
       // This prevents the reconnection modal from showing when joining a new game
       setIsReconnecting(false);
@@ -7832,8 +7872,6 @@ const LudoGame = () => {
               // Silent fail for dismiss - non-critical
             }
           }, 400);
-
-
         } else if (socketRef.current) {
           // Socket exists but not connected, wait for connection
           pendingConnectActionsRef.current.set(
@@ -7901,7 +7939,13 @@ const LudoGame = () => {
       // Don't clear incomingInviteRequest here - it will be cleared by state update in catch block
       // This ensures the guard in reconnection effect continues to work
     }
-  }, [incomingInviteRequest, myProfile?._id, myProfile?.fullName, myProfile?.profilePic, myProfile?.coverPic]);
+  }, [
+    incomingInviteRequest,
+    myProfile?._id,
+    myProfile?.fullName,
+    myProfile?.profilePic,
+    myProfile?.coverPic,
+  ]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   // Note: selectedPlayerCount, initializeGame, ensureSocketConnected, clearHiddenBoardGameId are not included
   // in dependencies to avoid circular dependencies and excessive re-renders. These functions are stable enough.
