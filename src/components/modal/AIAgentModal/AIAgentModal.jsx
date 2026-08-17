@@ -42,6 +42,24 @@ const getInitialAutoRunActions = () => {
   }
 };
 
+const getSingleMessageAction = (message) => {
+  if (message?.type === "friend-picker" && message.friends?.length === 1) {
+    return () => message.onAction?.(message.friends[0]);
+  }
+
+  if (message?.type === "video-results" && message.videos?.length === 1) {
+    return () => message.onPlay?.(message.videos[0]);
+  }
+
+  if (message?.actions?.length === 1) {
+    const [action] = message.actions;
+    const handler = action?.onClick || action?.onAction;
+    if (typeof handler === "function") return handler;
+  }
+
+  return null;
+};
+
 const AIAgentModal = ({ isOpen, onClose }) => {
   const myProfile = useSelector((state) => state.profile);
   const navigate = useNavigate();
@@ -54,6 +72,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
     getInitialAutoRunActions,
   );
   const messagesEndRef = useRef(null);
+  const autoRunMessageIdsRef = useRef(new Set());
 
   // Detect mobile to keep sidebar closed by default
   useEffect(() => {
@@ -90,6 +109,15 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   }, []);
 
   // ── Execute after friend resolved ───────────────────────────────────────────
+  const handlePlayVideo = useCallback(
+    (video) => {
+      if (!video?._id) return;
+      navigate(`/watch/${video._id}`, { state: { autoplay: true } });
+      if (onClose) onClose();
+    },
+    [navigate, onClose],
+  );
+
   const handleFriendAction = useCallback(
     async (friend, action, intent) => {
       const result = await executeAction({
@@ -168,10 +196,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
               content: result.message,
               videos: result.videos,
               success: result.success,
-              onPlay: (video) => {
-                navigate(`/watch/${video._id}`);
-                if (onClose) onClose();
-              },
+              onPlay: handlePlayVideo,
             });
           } else {
             addMessage({
@@ -281,8 +306,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
 
           const responseMode = getActionResponseMode(resolvedIntent.action);
           const shouldAutoExecuteSingleMatch =
-            matched.length === 1 &&
-            (responseMode !== "confirm" || autoRunActions);
+            matched.length === 1 && responseMode !== "confirm";
 
           if (shouldAutoExecuteSingleMatch) {
             await handleFriendAction(
@@ -357,9 +381,24 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       onClose,
       addMessage,
       handleFriendAction,
-      autoRunActions,
+      handlePlayVideo,
     ],
   );
+
+  useEffect(() => {
+    if (!isOpen || !autoRunActions || messages.length === 0) return;
+
+    const latestMessage = messages[messages.length - 1];
+    if (autoRunMessageIdsRef.current.has(latestMessage.id)) return;
+
+    const action = getSingleMessageAction(latestMessage);
+    if (!action) return;
+
+    autoRunMessageIdsRef.current.add(latestMessage.id);
+    Promise.resolve(action()).catch((error) => {
+      console.error("[AIAgentModal] Auto-run action failed:", error);
+    });
+  }, [messages, autoRunActions, isOpen]);
 
   // ── Sidebar action panel clicks ─────────────────────────────────────────────
   const handleActionClick = useCallback(

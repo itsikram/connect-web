@@ -45,22 +45,36 @@ const SinglePost = (watch) => {
         loadData()
     }, [postId, watchId])
 
-    // Resume from picture-in-picture expand
+    // Resume picture-in-picture playback or autoplay AI-selected videos.
     useEffect(() => {
         const resumeAt = location.state?.resumeAt;
-        if (resumeAt == null || !displayedWatch.current || !watchUrl) return;
+        const shouldAutoplay =
+            location.state?.autoplay === true ||
+            (resumeAt != null && location.state?.autoplay !== false);
+        if ((!shouldAutoplay && resumeAt == null) || !displayedWatch.current || !watchUrl) return;
+
         const video = displayedWatch.current;
-        const apply = () => {
+        const apply = async () => {
             try {
-                video.currentTime = resumeAt;
-                if (location.state?.autoplay !== false) {
-                    video.play().catch(() => {});
+                if (resumeAt != null) video.currentTime = resumeAt;
+                if (shouldAutoplay) {
+                    try {
+                        await video.play();
+                    } catch (error) {
+                        if (error?.name === "NotAllowedError") {
+                            video.muted = true;
+                            await video.play().catch(() => {});
+                        }
+                    }
                 }
             } catch (_) {}
         };
+
         if (video.readyState >= 1) apply();
         else video.addEventListener("loadedmetadata", apply, { once: true });
         watchPip?.closePip?.();
+
+        return () => video.removeEventListener("loadedmetadata", apply);
     }, [watchUrl, location.state, watchPip]);
 
     const getPipMeta = useCallback(() => ({
