@@ -349,7 +349,7 @@ const SinglePost = (watch) => {
     let [match, setMatch] = useState(window.matchMedia('(max-width: 768px)').matches)
 
     useEffect(() => {
-        // window width 
+        // window width
         window.matchMedia("(max-width:768px)").addEventListener('change', (e) => {
             setMatch(e.matches)
         })
@@ -359,6 +359,7 @@ const SinglePost = (watch) => {
         if (myProfile?.id && watchData?.author && watchData?.author._id) {
             setIsAuthor(myProfile._id === watchData.author._id)
         }
+
     }, [myProfile, watchData])
 
 
@@ -442,9 +443,9 @@ const SinglePost = (watch) => {
 
                                         </div>
                                         <div className="body">
-                                            <div className="caption" style={{ display: 'flex', alignItems: 'center', justifyContent: 'start' }}>
+                                            <div className="caption" style={{ display: 'flex', flexDirection:'column', alignItems: 'center', justifyContent: 'start' }}>
                                                 {isAuthor && isEditCaption && <>
-                                                    <textarea style={{ width: '90%' }} ref={captionTextarea} />
+                                                    <textarea style={{ width: '100%', marginBottom: 10, borderRadius: 10 }} value={watchData?.caption} onChange={(e) => { setWatchData({ ...watchData, caption: e.target.value }) }} ref={captionTextarea} />
 
                                                 </>}
                                                 {!isEditCaption && <p style={{ margin: 0, marginRight: 20 }}>{watchData.caption}</p>}

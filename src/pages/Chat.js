@@ -12,16 +12,64 @@ import { seenMessage } from "../services/actions/messageActions";
 import ChatHeader from '../components/Message/ChatHeader';
 import ChatFooter from '../components/Message/ChatFooter';
 import SingleMsgSkleton from '../skletons/message/SingleMsgSkleton';
+import defaultChatBackground from '../assets/images/default-chat-bg.svg';
 
 const NEAR_BOTTOM_PX = 100;
+
+// Function to calculate image brightness
+const getImageBrightness = async (imageUrl) => {
+    return new Promise((resolve) => {
+        try {
+            if (!imageUrl) {
+                resolve(128);
+                return;
+            }
+            const img = new Image();
+            img.crossOrigin = 'Anonymous';
+            img.onload = () => {
+                try {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    const maxSize = 100;
+                    const width = Math.min(img.width, maxSize);
+                    const height = Math.min(img.height, maxSize);
+                    canvas.width = width;
+                    canvas.height = height;
+                    ctx.drawImage(img, 0, 0, width, height);
+                    const imageData = ctx.getImageData(0, 0, width, height);
+                    const data = imageData.data;
+                    let totalBrightness = 0;
+                    const pixelCount = data.length / 4;
+                    for (let i = 0; i < data.length; i += 4) {
+                        const r = data[i];
+                        const g = data[i + 1];
+                        const b = data[i + 2];
+                        const brightness = (0.299 * r + 0.587 * g + 0.114 * b);
+                        totalBrightness += brightness;
+                    }
+                    const averageBrightness = totalBrightness / pixelCount;
+                    resolve(averageBrightness);
+                } catch (error) {
+                    resolve(128);
+                }
+            };
+            img.onerror = () => resolve(128);
+            img.src = imageUrl;
+        } catch (error) {
+            resolve(128);
+        }
+    });
+};
 
 const Chat = ({ }) => {
     const dispatch = useDispatch();
     const profile = useSelector(state => state.profile)
+    const settings = useSelector(state => state.setting)
     const userId = profile._id
     const [friendProfile, setFriendProfile] = useState({})
     const [isBlockedMe, setIsBlockedMe] = useState(false)
     const [lastSeen, setLastSeen] = useState(false);
+    const [isDarkBackground, setIsDarkBackground] = useState(false);
 
     const [room, setRoom] = useState('');
     const [isActive, setIsActive] = useState(false);
@@ -558,6 +606,25 @@ const Chat = ({ }) => {
         return () => vv.removeEventListener('resize', anchorIfNearBottom);
     }, [friendId]);
 
+    // Detect if background is dark and apply light text
+    useEffect(() => {
+        const detectBackgroundBrightness = async () => {
+            const backgroundUrl = settings?.chatBackground || defaultChatBackground;
+            if (!backgroundUrl) {
+                setIsDarkBackground(false);
+                return;
+            }
+            try {
+                const brightness = await getImageBrightness(backgroundUrl);
+                // If brightness is less than 140 (on a scale of 0-255), consider it dark
+                setIsDarkBackground(brightness < 140);
+            } catch (error) {
+                setIsDarkBackground(false);
+            }
+        };
+        detectBackgroundBrightness();
+    }, [settings?.chatBackground]);
+
     return (
         <div className="message-chat-root">
             <div id="chatBox" className="message-chat-box">
@@ -565,7 +632,12 @@ const Chat = ({ }) => {
                     <ChatHeader friendProfile={friendProfile} friendProfilePic={friendProfile.profilePic} isActive={isActive} lastSeen={lastSeen} room={room} />
 
                 </div>
-                <div className='chat-body'>
+                <div className={`chat-body ${isDarkBackground ? 'dark-background' : ''}`} style={{
+                    backgroundImage: `url('${settings?.chatBackground || defaultChatBackground}')`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
+                    backgroundAttachment: 'fixed'
+                }}>
                     <div className='chat-message-list' id='chatMessageList' ref={msgListRef} >
 
                         {

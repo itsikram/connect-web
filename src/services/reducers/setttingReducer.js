@@ -22,6 +22,7 @@ const initialState = {
     newFriendPostEmail: false,
     newFriendStoryEmail: false,
     newFriendWatchEmail: false,
+    chatBackground: null,
 };
 
 const settingReducer = (state = initialState, action) => {

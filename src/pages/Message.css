@@ -73,45 +73,45 @@
   --msg-primary: #00D4FF;
   --msg-primary-light: #33E0FF;
   --msg-primary-dark: #0099CC;
-  
+
   /* Background Colors - Site's Dark Theme */
   --msg-bg-primary: #0A0A0B;
   --msg-bg-secondary: #161718;
   --msg-bg-tertiary: #1C1D1F;
-  
+
   /* Glass Effects */
   --msg-glass-bg: rgba(255, 255, 255, 0.08);
   --msg-glass-border: rgba(255, 255, 255, 0.15);
   --msg-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-  
+
   /* Text Colors - Site's Typography with Better Contrast */
   --msg-text-primary: #FFFFFF;
   --msg-text-secondary: #E4E6EA;
   --msg-text-muted: #B0B3B8;
-  
+
   /* Success/Error Colors - Site's Colors */
   --msg-success: #00C851;
   --msg-error: #FF4444;
   --msg-warning: #FF8800;
-  
+
   /* Spacing */
   --msg-spacing-xs: 0.25rem;
   --msg-spacing-sm: 0.5rem;
   --msg-spacing-md: 1rem;
   --msg-spacing-lg: 1.5rem;
   --msg-spacing-xl: 2rem;
-  
+
   /* Border Radius */
   --msg-radius-sm: 8px;
   --msg-radius-md: 12px;
   --msg-radius-lg: 16px;
   --msg-radius-xl: 20px;
-  
+
   /* Transitions */
   --msg-transition-fast: 0.15s ease-out;
   --msg-transition-normal: 0.3s ease-out;
   --msg-transition-slow: 0.5s ease-out;
-  
+
   /* Typography */
   --msg-font-family: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
 }
@@ -153,7 +153,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: 
+  background:
     radial-gradient(circle at 20% 80%, rgba(0, 212, 255, 0.1) 0%, transparent 50%),
     radial-gradient(circle at 80% 20%, rgba(51, 224, 255, 0.1) 0%, transparent 50%),
     radial-gradient(circle at 40% 40%, rgba(0, 153, 204, 0.05) 0%, transparent 50%);
@@ -193,8 +193,8 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: linear-gradient(180deg, 
-    rgba(255, 255, 255, 0.05) 0%, 
+  background: linear-gradient(180deg,
+    rgba(255, 255, 255, 0.05) 0%,
     transparent 100%);
   pointer-events: none;
 }
@@ -559,7 +559,7 @@
     max-height: 100%;
     min-height: 0;
   }
-  
+
   .mobile-nav-toggle {
     display: block;
     top: 8px;
@@ -570,7 +570,7 @@
     width: 40px;
     height: 40px;
   }
-  
+
   .message-sidebar.left-sidebar {
     position: fixed;
     top: 0;
@@ -585,15 +585,15 @@
     padding-top: env(safe-area-inset-top, 0px);
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
-  
+
   .message-sidebar.left-sidebar.mobile-active {
     transform: translateX(0);
   }
-  
+
   .message-sidebar.left-sidebar.mobile-hidden {
     transform: translateX(-100%);
   }
-  
+
   .message-main-content.mobile-full {
     flex: 1;
     width: 100%;
@@ -604,7 +604,7 @@
     margin: 0;
     border: none;
   }
-  
+
   .sidebar-content {
     padding-top: calc(var(--msg-spacing-xl) + 44px);
   }
@@ -620,7 +620,7 @@
     max-width: none;
     border-radius: 0;
   }
-  
+
   .message-main-content.mobile-full {
     margin: 0;
   }
@@ -642,7 +642,7 @@
     width: 280px;
     min-width: 280px;
   }
-  
+
   .right-sidebar {
     width: 240px;
     min-width: 240px;
@@ -900,7 +900,7 @@
   flex: 1;
   overflow-y: auto;
   min-height: 0;
-  
+
 }
 
 /* Contact List Scrollbar - Matches Message Page Style */
@@ -1196,24 +1196,24 @@
   .modern-message-header {
     padding: var(--msg-spacing-md);
   }
-  
+
   .modern-title {
     font-size: 1.25rem;
   }
-  
+
   .contact-name {
     max-width: 120px;
   }
-  
+
   .chat-item-content {
     padding: var(--msg-spacing-sm) var(--msg-spacing-md);
   }
-  
+
   .avatar-container {
     width: 44px;
     height: 44px;
   }
-  
+
   .hover-actions {
     display: none;
   }
@@ -1225,11 +1225,11 @@
     align-items: flex-start;
     gap: var(--msg-spacing-sm);
   }
-  
+
   .contact-name {
     max-width: 100px;
   }
-  
+
   .message-text {
     max-width: 150px;
   }
@@ -1419,7 +1419,7 @@
   }
 
   .modern-message-container #chatBox .chat-header-action-btn-container {
-    gap: 1px;
+    gap: 4px;
   }
 
   .modern-message-container #chatBox .chat-header-action .action-button {
@@ -1556,6 +1556,22 @@
   background: transparent;
   position: relative;
   overflow: hidden;
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+}
+
+.chat-body::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  z-index: 0;
+  backdrop-filter: blur(0px);
 }
 
 .modern-chat-list .modern-chat-item .chat-header {
@@ -1574,6 +1590,8 @@
   /* Keep auto — smooth CSS scroll fights history restore / user scroll */
   scroll-behavior: auto;
   min-height: 0;
+  position: relative;
+  z-index: 1;
 }
 
 /* Chat Message List Scrollbar */
@@ -2515,7 +2533,7 @@
   .modern-message-container #chatBox .chat-body .chat-message-list .chat-message-container .chat-message {
     max-width: calc(100% - 46px) !important;
   }
-  
+
   .modern-message-container #chatBox .chat-message-list {
     padding: 12px 8px 16px;
     gap: 8px;
@@ -2625,7 +2643,7 @@
   display: flex;
   align-items: center;
   gap: var(--msg-spacing-sm);
-  
+
 }
 
 .media-title i {
@@ -3036,29 +3054,29 @@
   .media-sidebar-header {
     padding: var(--msg-spacing-md) var(--msg-spacing-sm);
   }
-  
+
   .media-title {
     font-size: 1rem;
   }
-  
+
   .filter-tab {
     padding: var(--msg-spacing-sm);
     font-size: 0.7rem;
   }
-  
+
   .filter-tab i {
     font-size: 0.8rem;
   }
-  
+
   .modern-media-grid {
     padding: var(--msg-spacing-sm);
   }
-  
+
   .quick-action-btn {
     padding: var(--msg-spacing-xs);
     font-size: 0.75rem;
   }
-  
+
   .quick-action-btn span {
     display: none;
   }
@@ -3068,16 +3086,16 @@
   .media-filter-tabs {
     grid-template-columns: repeat(2, 1fr);
   }
-  
+
   .filter-tab {
     border-bottom: 1px solid var(--msg-glass-border);
   }
-  
+
   .filter-tab:nth-child(1),
   .filter-tab:nth-child(2) {
     border-bottom: 2px solid transparent;
   }
-  
+
   .filter-tab.active:nth-child(1),
   .filter-tab.active:nth-child(2) {
     border-bottom-color: var(--msg-primary);
@@ -3671,7 +3689,7 @@
   :root {
     --msg-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   }
-  
+
   .skeleton {
     background: linear-gradient(
       90deg,
@@ -3688,7 +3706,7 @@
     background: white;
     color: black;
   }
-  
+
   .message-backdrop,
   .mobile-nav-toggle,
   .mobile-overlay,
@@ -3696,7 +3714,7 @@
   .notification-badge {
     display: none;
   }
-  
+
   .skeleton,
   .loading-spinner,
   .loading-dots-container {
@@ -3812,4 +3830,177 @@
   justify-content: center;
   padding: 24px 0;
   color: #6b7280;
+}
+
+/* Dark Background Mode - Light Text */
+.chat-body.dark-background::before {
+  background: rgba(0, 0, 0, 0.68) !important;
+  backdrop-filter: blur(0px);
+}
+
+/* Message container styling for dark backgrounds */
+.chat-body.dark-background .chat-message-container {
+  background: transparent;
+}
+
+/* Ensure sent messages have good contrast on dark backgrounds */
+.chat-body.dark-background .message-sent .chat-message {
+  background: rgba(0, 212, 255, 0.25) !important;
+  border-color: rgba(0, 212, 255, 0.4) !important;
+}
+
+.chat-body.dark-background .message-sent .chat-message::before {
+  background: rgba(0, 212, 255, 0.25) !important;
+  border-color: rgba(0, 212, 255, 0.4) !important;
+  color: #ffffff !important;
+}
+
+/* Universal text color for dark backgrounds - ensure ALL text is white */
+.chat-body.dark-background {
+  color: #ffffff !important;
+}
+
+.chat-body.dark-background * {
+  color: #ffffff !important;
+}
+
+/* Message text colors for dark backgrounds */
+.chat-body.dark-background .message-text {
+  color: #ffffff !important;
+}
+
+/* Message containers */
+.chat-body.dark-background .message-container {
+  color: #ffffff !important;
+}
+
+.chat-body.dark-background .chat-message-container {
+  color: #ffffff !important;
+}
+
+/* Received messages */
+.chat-body.dark-background .message-receive .chat-message {
+  background: rgba(0, 0, 0, 0.3) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+.chat-body.dark-background .message-receive .chat-message::before {
+  background: rgba(0, 0, 0, 0.3) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Sent messages */
+.chat-body.dark-background .message-sent .chat-message {
+  background: rgba(0, 212, 255, 0.25) !important;
+  color: #ffffff !important;
+  border-color: rgba(0, 212, 255, 0.4) !important;
+}
+
+.chat-body.dark-background .message-sent .chat-message::before {
+  background: rgba(0, 212, 255, 0.25) !important;
+  border-color: rgba(0, 212, 255, 0.4) !important;
+  color: #ffffff !important;
+}
+
+/* Message meta (timestamp) for dark backgrounds */
+.chat-body.dark-background .message-meta {
+  color: #e0e0e0 !important;
+}
+
+.chat-body.dark-background .message-time {
+  color: #e0e0e0 !important;
+}
+
+/* Typing indicator for dark backgrounds */
+.chat-body.dark-background .message-typing {
+  color: #ffffff !important;
+}
+
+.chat-body.dark-background .message-typing .typing-indicator {
+  color: #ffffff !important;
+}
+
+.chat-body.dark-background .typing-dots {
+  background-color: #ffffff !important;
+}
+
+/* Hover effects for dark backgrounds */
+.chat-body.dark-background .message-receive .chat-message:hover {
+  background: rgba(0, 0, 0, 0.4) !important;
+  border-color: rgba(255, 255, 255, 0.25) !important;
+}
+
+.chat-body.dark-background .message-sent .chat-message:hover {
+  opacity: 0.9;
+}
+
+/* Attachment text for dark backgrounds */
+.chat-body.dark-background .message-attachment {
+  color: #ffffff !important;
+}
+
+.chat-body.dark-background .message-attachment:hover {
+  color: #ffffff !important;
+}
+
+/* Parent message (reply) for dark backgrounds */
+.chat-body.dark-background .parent-message-container {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-left-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.chat-body.dark-background .parent-message-container span {
+  color: #ffffff !important;
+}
+
+.chat-body.dark-background .parent-message-container p {
+  color: #ffffff !important;
+}
+
+/* Message options for dark backgrounds */
+.chat-body.dark-background .chat-message-option {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.chat-body.dark-background .chat-message-option:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
+  color: #ffffff !important;
+}
+
+/* Message seen status for dark backgrounds */
+.chat-body.dark-background .message-seen-check {
+  opacity: 0.9;
+}
+
+/* Emoji reactions for dark backgrounds */
+.chat-body.dark-background .message-react {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Profile picture badge for dark backgrounds */
+.chat-body.dark-background .chat-message-profilePic {
+  filter: brightness(1.1);
+}
+
+/* User info and header text for dark backgrounds */
+.chat-body.dark-background .chat-message-container .message-text span {
+  color: #ffffff !important;
+}
+
+/* Links in messages on dark backgrounds */
+.chat-body.dark-background a {
+  color: #87ceeb !important;
+}
+
+.chat-body.dark-background a:hover {
+  color: #ffffff !important;
+}
+
+
+.call-dropdown-menu {
+    background-color: #202122 !important;
 }

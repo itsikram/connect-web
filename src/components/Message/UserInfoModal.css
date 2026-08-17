@@ -104,6 +104,8 @@
 
 .user-info-card {
     display: flex;
+    width: 100%;
+    flex-direction: column;
     align-items: center;
     gap: 16px;
     padding: 18px;
@@ -135,6 +137,7 @@
 .user-info-card-icon.location {
     background: rgba(33, 150, 243, 0.1);
     color: #2196F3;
+    margin-right: 20px;
 }
 
 .user-info-card-icon.active {
@@ -250,4 +253,3 @@
         width: 100%;
     }
 }
-

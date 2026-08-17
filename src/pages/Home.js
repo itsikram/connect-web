@@ -11,6 +11,7 @@ import { setLoading } from "../services/actions/optionAction";
 import PostSkeleton from "../skletons/post/PostSkeleton";
 import StoryListSkleton from "../skletons/story/StoryListSkleton";
 import { loadPosts } from "../services/actions/postActions"
+import { getCachedProfile, getProfileSuccess } from "../services/actions/profileActions"
 
 const Home = () => {
 
@@ -38,6 +39,28 @@ const Home = () => {
     const [pageNumber, setPageNumber] = useState(0)
     const myProfile = useSelector(state => state.profile)
     const newsFeedPosts = useSelector(state => state.post)
+
+    const fetchProfileWithFallback = async () => {
+        try {
+            const user = JSON.parse(localStorage.getItem('user') || '{}')
+            const profileId = user?.profile
+
+            if (!profileId) return
+
+            const profileRes = await api.post('/profile', { profile: profileId })
+            if (profileRes.status === 200 && profileRes.data) {
+                dispatch(getProfileSuccess(profileRes.data))
+                return
+            }
+        } catch (error) {
+            console.error('Error fetching live profile:', error)
+        }
+
+        const cachedProfile = getCachedProfile()
+        if (cachedProfile) {
+            dispatch(getProfileSuccess(cachedProfile))
+        }
+    }
 
     const loadData = async () => {
 
@@ -113,13 +136,20 @@ const Home = () => {
     useEffect(() => {
         dispatch(setLoading(false))
 
-        // window width 
-        window.matchMedia("(max-width:768px)").addEventListener('change', (e) => {
+        const mediaQuery = window.matchMedia("(max-width:768px)")
+        const handleMediaChange = (e) => {
             setMatch(e.matches)
-        })
+        }
+
+        mediaQuery.addEventListener('change', handleMediaChange)
         setHasNewPosts(true)
         setLoadNewPosts(true)
         fetchStories()
+        fetchProfileWithFallback()
+
+        return () => {
+            mediaQuery.removeEventListener('change', handleMediaChange)
+        }
     }, [])
 
     useEffect(() => {
@@ -132,7 +162,7 @@ const Home = () => {
 
     useEffect(() => {
         if (newsFeedPosts.length > 0) {
-            const pageNumber = Math.floor(newsFeedPosts.length / 3)
+            const pageNumber = Math.ceil(newsFeedPosts.length / 10)
             setPageNumber(pageNumber)
             // alert(pageNumber)
         }

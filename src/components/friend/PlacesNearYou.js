@@ -1,50 +1,13 @@
 import React, { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import { useSelector } from "react-redux";
 import api from "../../api/api";
 
-const DEFAULT_CENTER = { lat: 40.7128, lng: -74.0060 };
-const MAPS_LOAD_TIMEOUT_MS = 12000;
+const DEFAULT_CENTER = { lat: 40.7128, lng: -74.006 };
 const NEARBY_RADIUS_M = 2000;
 const PLACE_TYPES = ["restaurant", "cafe", "park"];
-
-const loadGoogleMapsScript = (apiKey) => {
-    if (window.google?.maps) {
-        return Promise.resolve();
-    }
-
-    const existing = document.querySelector('script[src*="maps.googleapis.com"]');
-    if (existing) {
-        return new Promise((resolve, reject) => {
-            if (window.google?.maps) {
-                resolve();
-                return;
-            }
-            existing.addEventListener("load", () => resolve(), { once: true });
-            existing.addEventListener("error", () => reject(new Error("script-error")), { once: true });
-
-            const started = Date.now();
-            const poll = setInterval(() => {
-                if (window.google?.maps) {
-                    clearInterval(poll);
-                    resolve();
-                } else if (Date.now() - started > MAPS_LOAD_TIMEOUT_MS) {
-                    clearInterval(poll);
-                    reject(new Error("timeout"));
-                }
-            }, 100);
-        });
-    }
-
-    return new Promise((resolve, reject) => {
-        const script = document.createElement("script");
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,marker&loading=async`;
-        script.async = true;
-        script.defer = true;
-        script.onload = () => resolve();
-        script.onerror = () => reject(new Error("script-error"));
-        document.head.appendChild(script);
-    });
-};
+const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
     const R = 6371;
@@ -88,12 +51,58 @@ const createCircularImage = (imageUrl, size = 40) =>
         img.src = imageUrl;
     });
 
+const escapeHtml = (value) =>
+    String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+
+const buildDivIcon = ({
+    size = 40,
+    borderColor = "#fff",
+    imageUrl = null,
+    background = "#ef4444",
+    label = "",
+}) => {
+    const safeLabel = escapeHtml(label);
+    const imageMarkup = imageUrl
+        ? `<img src="${escapeHtml(imageUrl)}" alt="${safeLabel}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;display:block" />`
+        : `<div style="width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center;background:${background};color:#fff;font-weight:700;font-size:12px">${safeLabel.slice(0, 2).toUpperCase() || "U"}</div>`;
+
+    return L.divIcon({
+        html: `
+            <div style="width:${size}px;height:${size}px;border-radius:50%;overflow:hidden;border:2px solid ${borderColor};box-shadow:0 2px 8px rgba(0,0,0,.35);background:#fff">
+                ${imageMarkup}
+            </div>
+        `,
+        className: "places-leaflet-marker",
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
+        popupAnchor: [0, -size / 2],
+    });
+};
+
+const mapPlaceTypeToOverpassTag = (type) => {
+    switch (type) {
+        case "restaurant":
+            return '["amenity"="restaurant"]';
+        case "cafe":
+            return '["amenity"="cafe"]';
+        case "park":
+            return '["leisure"="park"]';
+        default:
+            return "";
+    }
+};
+
 const PlacesNearYou = () => {
     const mapRef = useRef(null);
     const mapInstanceRef = useRef(null);
     const placeMarkersRef = useRef([]);
     const friendMarkersRef = useRef([]);
-    const infoWindowRef = useRef(null);
+    const userMarkerRef = useRef(null);
     const initAttemptedRef = useRef(false);
 
     const [isLoading, setIsLoading] = useState(true);
@@ -108,346 +117,226 @@ const PlacesNearYou = () => {
     const clearMarkers = (markersRef) => {
         markersRef.current.forEach((marker) => {
             if (!marker) return;
-            if (typeof marker.setMap === "function") {
-                marker.setMap(null);
-            } else {
-                marker.map = null;
+            if (typeof marker.remove === "function") {
+                marker.remove();
             }
         });
         markersRef.current = [];
     };
 
-    const openInfoWindow = useCallback((mapInstance, marker, content) => {
-        if (!infoWindowRef.current) {
-            infoWindowRef.current = new window.google.maps.InfoWindow();
-        }
-        infoWindowRef.current.setContent(content);
+    const searchNearbyPlaces = useCallback(async (mapInstance, location) => {
+        if (!mapInstance || !location) return;
 
-        const isAdvanced =
-            window.google.maps.marker?.AdvancedMarkerElement &&
-            marker instanceof window.google.maps.marker.AdvancedMarkerElement;
+        clearMarkers(placeMarkersRef);
 
-        if (isAdvanced) {
-            infoWindowRef.current.open({ anchor: marker, map: mapInstance });
-        } else {
-            infoWindowRef.current.open(mapInstance, marker);
+        try {
+            const aroundClauses = PLACE_TYPES.map((type) => {
+                const tag = mapPlaceTypeToOverpassTag(type);
+                return `
+                    node${tag}(around:${NEARBY_RADIUS_M},${location.lat},${location.lng});
+                    way${tag}(around:${NEARBY_RADIUS_M},${location.lat},${location.lng});
+                    relation${tag}(around:${NEARBY_RADIUS_M},${location.lat},${location.lng});
+                `;
+            }).join("\n");
+
+            const query = `
+                [out:json][timeout:15];
+                (
+                    ${aroundClauses}
+                );
+                out center tags;
+            `;
+
+            const response = await fetch(OVERPASS_URL, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "text/plain;charset=UTF-8",
+                },
+                body: query,
+            });
+
+            if (!response.ok) {
+                throw new Error(`Nearby places request failed with status ${response.status}`);
+            }
+
+            const data = await response.json();
+            const seenPlaceIds = new Set();
+
+            (data.elements || []).forEach((place) => {
+                const lat = place.lat ?? place.center?.lat;
+                const lng = place.lon ?? place.center?.lon;
+                if (typeof lat !== "number" || typeof lng !== "number") return;
+
+                const placeKey = `${place.type}-${place.id}`;
+                if (seenPlaceIds.has(placeKey)) return;
+                seenPlaceIds.add(placeKey);
+
+                const marker = L.circleMarker([lat, lng], {
+                    radius: 7,
+                    color: "#a16207",
+                    fillColor: "#facc15",
+                    fillOpacity: 0.95,
+                    weight: 2,
+                }).addTo(mapInstance);
+
+                const name = place.tags?.name || place.tags?.brand || "Place";
+                const address = [
+                    place.tags?.["addr:housenumber"],
+                    place.tags?.["addr:street"],
+                ]
+                    .filter(Boolean)
+                    .join(" ");
+                const category =
+                    place.tags?.amenity || place.tags?.leisure || place.tags?.tourism || "";
+
+                marker.bindPopup(`
+                    <div style="padding:8px;max-width:220px;color:#111">
+                        <strong style="font-size:14px">${escapeHtml(name)}</strong>
+                        ${category ? `<p style="margin:6px 0 0;color:#555;font-size:12px;text-transform:capitalize">${escapeHtml(category.replace(/_/g, " "))}</p>` : ""}
+                        ${address ? `<p style="margin:6px 0 0;color:#555;font-size:12px">${escapeHtml(address)}</p>` : ""}
+                    </div>
+                `);
+
+                placeMarkersRef.current.push(marker);
+            });
+        } catch (err) {
+            console.error("Error loading nearby places:", err);
+            setError((prev) =>
+                prev ||
+                "Map loaded, but nearby places could not be fetched right now from OpenStreetMap data."
+            );
         }
     }, []);
 
-    const createLegacyFriendMarker = async (mapInstance, position, person) => {
-        const defaultIcon = person.isFriend
-            ? "https://maps.google.com/mapfiles/ms/icons/green-dot.png"
-            : "https://maps.google.com/mapfiles/ms/icons/red-dot.png";
+    const loadFriendsOnMap = useCallback(async (mapInstance, location, profiles) => {
+        if (!mapInstance || !location) return;
 
-        let iconUrl = defaultIcon;
-        if (person.profilePic) {
-            const circularImage = await createCircularImage(person.profilePic, 40);
-            if (circularImage) iconUrl = circularImage;
-        }
+        clearMarkers(friendMarkersRef);
 
-        return new window.google.maps.Marker({
-            position,
-            map: mapInstance,
-            title: person.fullName,
-            icon: {
-                url: iconUrl,
-                scaledSize: new window.google.maps.Size(40, 40),
-                anchor: new window.google.maps.Point(20, 20),
-            },
-        });
-    };
+        if (!profiles?.length) return;
 
-    const searchNearbyPlaces = useCallback(
-        (mapInstance, location) => {
-            if (!mapInstance || !window.google?.maps?.places) return;
+        const newMarkers = [];
 
-            const service = new window.google.maps.places.PlacesService(mapInstance);
-            clearMarkers(placeMarkersRef);
-
-            const useAdvancedMarker =
-                Boolean(window.google.maps.marker?.AdvancedMarkerElement) &&
-                Boolean(process.env.REACT_APP_GOOGLE_MAPS_MAP_ID);
-            const mapId = process.env.REACT_APP_GOOGLE_MAPS_MAP_ID;
-            const seenPlaceIds = new Set();
-
-            const handleResults = (results, status) => {
-                if (status === window.google.maps.places.PlacesServiceStatus.REQUEST_DENIED) {
-                    setError((prev) =>
-                        prev ||
-                        "Places API request denied. Check API key permissions and billing."
-                    );
-                    return;
-                }
-                if (status === window.google.maps.places.PlacesServiceStatus.OVER_QUERY_LIMIT) {
-                    setError((prev) =>
-                        prev || "Places API quota exceeded. Check billing and quota limits."
-                    );
-                    return;
-                }
-                if (status !== window.google.maps.places.PlacesServiceStatus.OK || !results) {
-                    return;
-                }
-
-                results.forEach((place) => {
-                    if (!place.geometry?.location) return;
-                    const placeKey = place.place_id || place.name;
-                    if (seenPlaceIds.has(placeKey)) return;
-                    seenPlaceIds.add(placeKey);
-
-                    let marker;
-                    if (useAdvancedMarker && mapId) {
-                        try {
-                            marker = new window.google.maps.marker.AdvancedMarkerElement({
-                                map: mapInstance,
-                                position: place.geometry.location,
-                                title: place.name,
-                            });
-                        } catch {
-                            marker = new window.google.maps.Marker({
-                                position: place.geometry.location,
-                                map: mapInstance,
-                                title: place.name,
-                            });
-                        }
-                    } else {
-                        marker = new window.google.maps.Marker({
-                            position: place.geometry.location,
-                            map: mapInstance,
-                            title: place.name,
-                            icon: {
-                                url: "https://maps.google.com/mapfiles/ms/icons/yellow-dot.png",
-                            },
-                        });
-                    }
-
-                    const content = `
-                        <div style="padding:8px;max-width:220px;color:#111">
-                            <strong style="font-size:14px">${place.name || "Place"}</strong>
-                            ${place.vicinity ? `<p style="margin:6px 0 0;color:#555;font-size:12px">${place.vicinity}</p>` : ""}
-                            ${place.rating ? `<p style="margin:6px 0 0;color:#b45309;font-size:12px">★ ${place.rating} (${place.user_ratings_total || 0})</p>` : ""}
-                        </div>
-                    `;
-
-                    marker.addListener("click", () => {
-                        openInfoWindow(mapInstance, marker, content);
-                    });
-
-                    placeMarkersRef.current.push(marker);
-                });
-            };
-
-            // Places nearbySearch accepts only one `type` string — query a few types.
-            PLACE_TYPES.forEach((type) => {
-                service.nearbySearch(
-                    {
-                        location,
-                        radius: NEARBY_RADIUS_M,
-                        type,
-                    },
-                    handleResults
-                );
-            });
-        },
-        [openInfoWindow]
-    );
-
-    const loadFriendsOnMap = useCallback(
-        async (mapInstance, location, profiles) => {
-            if (!mapInstance || !window.google?.maps || !location) return;
-
-            clearMarkers(friendMarkersRef);
-
-            if (!profiles?.length) return;
-
-            const useAdvancedMarker =
-                Boolean(window.google.maps.marker?.AdvancedMarkerElement) &&
-                Boolean(process.env.REACT_APP_GOOGLE_MAPS_MAP_ID);
-            const mapId = process.env.REACT_APP_GOOGLE_MAPS_MAP_ID;
-            const newMarkers = [];
-
-            for (const person of profiles) {
-                if (!person.location?.lat || !person.location?.lng) continue;
-
-                const profilePosition = {
-                    lat: person.location.lat,
-                    lng: person.location.lng,
-                };
-
-                const distance =
-                    person.distance ??
-                    calculateDistance(
-                        location.lat,
-                        location.lng,
-                        person.location.lat,
-                        person.location.lng
-                    );
-
-                let marker;
-                if (useAdvancedMarker && mapId) {
-                    try {
-                        const circularImage = person.profilePic
-                            ? await createCircularImage(person.profilePic, 40)
-                            : null;
-
-                        if (circularImage) {
-                            const markerElement = document.createElement("div");
-                            markerElement.style.cssText =
-                                "width:40px;height:40px;border-radius:50%;overflow:hidden;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35)";
-                            const img = document.createElement("img");
-                            img.src = circularImage;
-                            img.alt = person.fullName || "User";
-                            img.style.cssText = "width:100%;height:100%;object-fit:cover";
-                            markerElement.appendChild(img);
-
-                            marker = new window.google.maps.marker.AdvancedMarkerElement({
-                                map: mapInstance,
-                                position: profilePosition,
-                                title: person.fullName,
-                                content: markerElement,
-                            });
-                        } else {
-                            marker = new window.google.maps.marker.AdvancedMarkerElement({
-                                map: mapInstance,
-                                position: profilePosition,
-                                title: person.fullName,
-                            });
-                        }
-                    } catch {
-                        marker = await createLegacyFriendMarker(
-                            mapInstance,
-                            profilePosition,
-                            person
-                        );
-                    }
-                } else {
-                    marker = await createLegacyFriendMarker(
-                        mapInstance,
-                        profilePosition,
-                        person
-                    );
-                }
-
-                const content = `
-                    <div style="padding:8px;min-width:180px;max-width:240px;color:#111">
-                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-                            ${
-                                person.profilePic
-                                    ? `<img src="${person.profilePic}" alt="" style="width:36px;height:36px;border-radius:50%;object-fit:cover" />`
-                                    : ""
-                            }
-                            <div>
-                                <strong style="font-size:14px">${person.fullName || "User"}</strong>
-                                ${
-                                    person.isFriend
-                                        ? `<div style="color:#16a34a;font-size:11px">Friend</div>`
-                                        : ""
-                                }
-                            </div>
-                        </div>
-                        <p style="margin:0;color:#555;font-size:12px">${Number(distance).toFixed(1)} km away</p>
-                        <a href="/${person._id}" style="display:inline-block;margin-top:8px;color:#0284c7;font-size:12px;text-decoration:none">View profile</a>
-                    </div>
-                `;
-
-                marker.addListener("click", () => {
-                    openInfoWindow(mapInstance, marker, content);
-                });
-
-                newMarkers.push(marker);
+        for (const person of profiles) {
+            if (
+                typeof person.location?.lat !== "number" ||
+                typeof person.location?.lng !== "number"
+            ) {
+                continue;
             }
 
-            friendMarkersRef.current = newMarkers;
-        },
-        [openInfoWindow]
-    );
+            const distance =
+                person.distance ??
+                calculateDistance(
+                    location.lat,
+                    location.lng,
+                    person.location.lat,
+                    person.location.lng
+                );
+
+            let icon = buildDivIcon({
+                size: 40,
+                borderColor: person.isFriend ? "#16a34a" : "#ef4444",
+                imageUrl: null,
+                background: person.isFriend ? "#16a34a" : "#ef4444",
+                label: person.fullName || person.username || "U",
+            });
+
+            if (person.profilePic) {
+                const circularImage = await createCircularImage(person.profilePic, 40);
+                if (circularImage) {
+                    icon = buildDivIcon({
+                        size: 40,
+                        borderColor: person.isFriend ? "#16a34a" : "#ef4444",
+                        imageUrl: circularImage,
+                        label: person.fullName || person.username || "U",
+                    });
+                }
+            }
+
+            const marker = L.marker([person.location.lat, person.location.lng], {
+                icon,
+                title: person.fullName,
+            }).addTo(mapInstance);
+
+            marker.bindPopup(`
+                <div style="padding:8px;min-width:180px;max-width:240px;color:#111">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                        ${
+                            person.profilePic
+                                ? `<img src="${escapeHtml(person.profilePic)}" alt="" style="width:36px;height:36px;border-radius:50%;object-fit:cover" />`
+                                : ""
+                        }
+                        <div>
+                            <strong style="font-size:14px">${escapeHtml(
+                                person.fullName || "User"
+                            )}</strong>
+                            ${
+                                person.isFriend
+                                    ? `<div style="color:#16a34a;font-size:11px">Friend</div>`
+                                    : ""
+                            }
+                        </div>
+                    </div>
+                    <p style="margin:0;color:#555;font-size:12px">${Number(distance).toFixed(
+                        1
+                    )} km away</p>
+                    <a href="/${escapeHtml(
+                        person._id
+                    )}" style="display:inline-block;margin-top:8px;color:#0284c7;font-size:12px;text-decoration:none">View profile</a>
+                </div>
+            `);
+
+            newMarkers.push(marker);
+        }
+
+        friendMarkersRef.current = newMarkers;
+    }, []);
 
     const initializeMap = useCallback(
-        (location) => {
-            if (!window.google?.maps || !mapRef.current || !location) return false;
+        async (location) => {
+            if (!mapRef.current || !location) return false;
             if (mapInstanceRef.current) return true;
 
             try {
-                const useAdvancedMarker =
-                    Boolean(window.google.maps.marker?.AdvancedMarkerElement) &&
-                    Boolean(process.env.REACT_APP_GOOGLE_MAPS_MAP_ID);
-                const mapId = process.env.REACT_APP_GOOGLE_MAPS_MAP_ID;
-
-                const mapOptions = {
-                    center: location,
+                const mapInstance = L.map(mapRef.current, {
+                    center: [location.lat, location.lng],
                     zoom: 14,
-                    mapTypeId: window.google.maps.MapTypeId.ROADMAP,
-                    mapTypeControl: true,
-                    mapTypeControlOptions: {
-                        style: window.google.maps.MapTypeControlStyle.DROPDOWN_MENU,
-                        position: window.google.maps.ControlPosition.TOP_RIGHT,
-                        mapTypeIds: [
-                            window.google.maps.MapTypeId.ROADMAP,
-                            window.google.maps.MapTypeId.SATELLITE,
-                            window.google.maps.MapTypeId.HYBRID,
-                            window.google.maps.MapTypeId.TERRAIN,
-                        ],
-                    },
-                    streetViewControl: true,
-                    fullscreenControl: true,
                     zoomControl: true,
-                    gestureHandling: "greedy",
-                };
-
-                if (useAdvancedMarker && mapId) {
-                    mapOptions.mapId = mapId;
-                }
-
-                const mapInstance = new window.google.maps.Map(mapRef.current, mapOptions);
-                mapInstanceRef.current = mapInstance;
-
-                // User location marker
-                if (useAdvancedMarker && mapId) {
-                    try {
-                        new window.google.maps.marker.AdvancedMarkerElement({
-                            map: mapInstance,
-                            position: location,
-                            title: "Your location",
-                        });
-                    } catch {
-                        new window.google.maps.Marker({
-                            position: location,
-                            map: mapInstance,
-                            title: "Your location",
-                            icon: {
-                                url: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png",
-                            },
-                        });
-                    }
-                } else {
-                    new window.google.maps.Marker({
-                        position: location,
-                        map: mapInstance,
-                        title: "Your location",
-                        icon: {
-                            url: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png",
-                        },
-                    });
-                }
-
-                // Ensure tiles render after container layout
-                window.google.maps.event.addListenerOnce(mapInstance, "idle", () => {
-                    window.google.maps.event.trigger(mapInstance, "resize");
-                    mapInstance.setCenter(location);
+                    preferCanvas: true,
                 });
 
-                searchNearbyPlaces(mapInstance, location);
+                L.tileLayer(
+                    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+                    {
+                        attribution:
+                            'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+                        maxZoom: 19,
+                    }
+                ).addTo(mapInstance);
+
+                mapInstanceRef.current = mapInstance;
+
+                userMarkerRef.current = L.marker([location.lat, location.lng], {
+                    icon: buildDivIcon({
+                        size: 42,
+                        borderColor: "#2563eb",
+                        background: "#2563eb",
+                        label: "You",
+                    }),
+                    title: "Your location",
+                })
+                    .addTo(mapInstance)
+                    .bindPopup(
+                        '<div style="padding:8px;color:#111"><strong>Your location</strong></div>'
+                    );
+
+                await searchNearbyPlaces(mapInstance, location);
                 setIsLoading(false);
                 return true;
             } catch (err) {
                 console.error("Error initializing map:", err);
-                const message = err?.message || "";
-                if (message.includes("BillingNotEnabled")) {
-                    setError(
-                        "Google Maps billing is not enabled. Enable billing in Google Cloud Console to use this feature."
-                    );
-                } else {
-                    setError("Failed to initialize map. Check your API key and billing settings.");
-                }
+                setError("Failed to initialize the map.");
                 setIsLoading(false);
                 return false;
             }
@@ -455,41 +344,10 @@ const PlacesNearYou = () => {
         [searchNearbyPlaces]
     );
 
-    // Load Google Maps script
     useEffect(() => {
-        const apiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
-        let cancelled = false;
-
-        if (!apiKey) {
-            setError(
-                "Google Maps API key is not configured. Add REACT_APP_GOOGLE_MAPS_API_KEY to your .env file."
-            );
-            setIsLoading(false);
-            return undefined;
-        }
-
-        loadGoogleMapsScript(apiKey)
-            .then(() => {
-                if (!cancelled) setMapsReady(true);
-            })
-            .catch((err) => {
-                if (cancelled) return;
-                if (err?.message === "timeout") {
-                    setError("Google Maps took too long to load. Refresh and try again.");
-                } else {
-                    setError(
-                        "Failed to load Google Maps. Check your API key and ensure Maps JavaScript API is enabled."
-                    );
-                }
-                setIsLoading(false);
-            });
-
-        return () => {
-            cancelled = true;
-        };
+        setMapsReady(true);
     }, []);
 
-    // Get user location
     useEffect(() => {
         if (!profile?._id) return undefined;
 
@@ -533,18 +391,16 @@ const PlacesNearYou = () => {
         return undefined;
     }, [profile?._id]);
 
-    // Initialize map once maps + location + DOM are ready
     useEffect(() => {
         if (!mapsReady || !userLocation || !mapRef.current || initAttemptedRef.current) {
             return undefined;
         }
 
-        // Wait a frame so the map container has real dimensions (avoids grey/blank map)
         let raf2 = 0;
         const raf1 = requestAnimationFrame(() => {
-            raf2 = requestAnimationFrame(() => {
+            raf2 = requestAnimationFrame(async () => {
                 if (initAttemptedRef.current) return;
-                const ok = initializeMap(userLocation);
+                const ok = await initializeMap(userLocation);
                 if (ok) initAttemptedRef.current = true;
             });
         });
@@ -555,7 +411,6 @@ const PlacesNearYou = () => {
         };
     }, [mapsReady, userLocation, initializeMap]);
 
-    // Fetch nearby profiles
     useEffect(() => {
         const fetchNearbyProfiles = async () => {
             if (!profile?._id || !userLocation) return;
@@ -587,8 +442,7 @@ const PlacesNearYou = () => {
                     const profiles = nearbyRes.data.profiles || [];
                     const mappedProfiles = profiles.map((profileData) => ({
                         _id: profileData._id,
-                        fullName:
-                            profileData.fullName || profileData.displayName || "User",
+                        fullName: profileData.fullName || profileData.displayName || "User",
                         profilePic: profileData.profilePic,
                         username: profileData.username,
                         bio: profileData.bio,
@@ -622,45 +476,53 @@ const PlacesNearYou = () => {
         fetchNearbyProfiles();
     }, [profile?._id, userLocation]);
 
-    // Update friend/people markers when data is ready
     useEffect(() => {
         if (!mapInstanceRef.current || !userLocation) return;
-        loadFriendsOnMap(mapInstanceRef.current, userLocation, nearbyProfiles);
-    }, [nearbyProfiles, userLocation, loadFriendsOnMap]);
 
-    // Resize map when container size changes (responsive)
+        mapInstanceRef.current.setView([userLocation.lat, userLocation.lng], mapInstanceRef.current.getZoom());
+
+        if (userMarkerRef.current) {
+            userMarkerRef.current.setLatLng([userLocation.lat, userLocation.lng]);
+        }
+
+        loadFriendsOnMap(mapInstanceRef.current, userLocation, nearbyProfiles);
+        searchNearbyPlaces(mapInstanceRef.current, userLocation);
+    }, [nearbyProfiles, userLocation, loadFriendsOnMap, searchNearbyPlaces]);
+
     useEffect(() => {
-        if (!mapInstanceRef.current || !mapRef.current || !window.google?.maps) {
+        if (!mapInstanceRef.current || !mapRef.current) {
             return undefined;
         }
 
         const observer = new ResizeObserver(() => {
             const map = mapInstanceRef.current;
             if (!map) return;
-            window.google.maps.event.trigger(map, "resize");
-            if (userLocation) map.setCenter(userLocation);
+            map.invalidateSize();
+            if (userLocation) {
+                map.setView([userLocation.lat, userLocation.lng], map.getZoom());
+            }
         });
 
         observer.observe(mapRef.current);
         return () => observer.disconnect();
     }, [userLocation, mapsReady]);
 
-    // Cleanup on unmount
     useEffect(() => {
         return () => {
             clearMarkers(placeMarkersRef);
             clearMarkers(friendMarkersRef);
-            if (infoWindowRef.current) {
-                infoWindowRef.current.close();
-                infoWindowRef.current = null;
+            if (userMarkerRef.current) {
+                userMarkerRef.current.remove();
+                userMarkerRef.current = null;
             }
-            mapInstanceRef.current = null;
+            if (mapInstanceRef.current) {
+                mapInstanceRef.current.remove();
+                mapInstanceRef.current = null;
+            }
         };
     }, []);
 
-    const alertClass = error?.toLowerCase().includes("billing")
-        ? "places-alert places-alert--danger"
-        : "places-alert places-alert--warning";
+    const alertClass = "places-alert places-alert--warning";
 
     return (
         <Fragment>
@@ -688,23 +550,8 @@ const PlacesNearYou = () => {
 
                 {error && (
                     <div className={alertClass} role="alert">
-                        <strong>
-                            {error.toLowerCase().includes("billing")
-                                ? "Billing required"
-                                : "Map notice"}
-                        </strong>
+                        <strong>Map notice</strong>
                         <div>{error}</div>
-                        {error.toLowerCase().includes("billing") && (
-                            <div style={{ marginTop: 8 }}>
-                                <a
-                                    href="https://developers.google.com/maps/documentation/javascript/error-messages#billing-not-enabled-map-error"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                >
-                                    Learn how to enable billing
-                                </a>
-                            </div>
-                        )}
                     </div>
                 )}
 

@@ -113,9 +113,10 @@ const NotificationSetting = () => {
                 checked={Boolean(notificationSettings[key])}
                 onChange={() => handleToggle(key)}
             />
-            <label className="form-check-label" htmlFor={key}>{label}</label>
-            <br />
-            <small className="form-text text-muted">{help}</small>
+            <div className="form-check-label-group">
+                <label className="form-check-label" htmlFor={key}>{label}</label>
+                <small className="form-text text-muted">{help}</small>
+            </div>
         </div>
     );
 
@@ -125,8 +126,10 @@ const NotificationSetting = () => {
                 <h3>Notification Settings</h3>
                 <p className="setting-section-desc">Choose which alerts you get on Connect and by email.</p>
                 <form onSubmit={handleSave}>
-                    <h4 className="mb-2">Push Notifications</h4>
-                    {PUSH_TOGGLES.map(renderToggle)}
+                    <div className="notification-section">
+                        <h4 className="mb-2">Push Notifications</h4>
+                        {PUSH_TOGGLES.map(renderToggle)}
+                    </div>
 
                     <button
                         type="button"
@@ -139,8 +142,10 @@ const NotificationSetting = () => {
 
                     <hr />
 
-                    <h4 className="text-center">Email Notifications</h4>
-                    {EMAIL_TOGGLES.map(renderToggle)}
+                    <div className="notification-section">
+                        <h4 className="text-center">Email Notifications</h4>
+                        {EMAIL_TOGGLES.map(renderToggle)}
+                    </div>
 
                     <button type="submit" className="btn btn-primary" disabled={isSaving}>
                         {isSaving ? 'Saving…' : 'Save Settings'}

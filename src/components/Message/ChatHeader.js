@@ -20,6 +20,7 @@ import { normalizeRingtoneId } from '../../utils/normalizeRingtoneId';
 import { unlockAudio, playAudioWithWebAudio, initializeAudioUnlock } from '../../utils/audioUnlock';
 import { showCallNotification, closeCallNotification } from '../../utils/callNotification';
 import LiveVoiceModal from './LiveVoiceModal';
+import LocationMap from '../modal/LocationMap';
 import './UserInfoModal.css';
 // Using Agora RTC SDK instead of simple-peer
 
@@ -48,9 +49,11 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
     const [userInfoData, setUserInfoData] = useState(null);
     const [loadingUserInfo, setLoadingUserInfo] = useState(false);
     const [friendLocation, setFriendLocation] = useState(null);
+    const [isCallDropdownOpen, setIsCallDropdownOpen] = useState(false);
     const [isLiveVoiceActive, setIsLiveVoiceActive] = useState(false);
     const [isLiveVoiceModalOpen, setIsLiveVoiceModalOpen] = useState(false);
     const [liveVoiceDuration, setLiveVoiceDuration] = useState(0);
+    const [mapLoading, setMapLoading] = useState(false);
     const liveVoiceDurationTimerRef = useRef(null);
     const callStartTime = useRef(null);
 
@@ -1813,10 +1816,14 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
     };
 
     const chatOptionMenu = useRef(null);
+    const callDropdownRef = useRef(null);
     useEffect(() => {
         const handleClickOutside = e => {
             if (chatOptionMenu.current && !chatOptionMenu.current.contains(e.target)) {
                 setIsChatOptionMenu(false);
+            }
+            if (callDropdownRef.current && !callDropdownRef.current.contains(e.target)) {
+                setIsCallDropdownOpen(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -1864,6 +1871,33 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
     }, [friendId]);
 
     const handleViewProfile = useCallback(() => navigate(`/${friendId}`), [navigate, friendId]);
+
+    // Removed Google Maps initialization - using Leaflet map component instead
+
+    // Initialize map when modal opens
+    // Handle map loading state when modal opens
+    useEffect(() => {
+        if (!isUserInfoModalOpen) {
+            setMapLoading(false);
+            return;
+        }
+        
+        const location = friendLocation || userInfoData?.lastLocation || friendProfile?.lastLocation;
+        if (!location || !location.latitude || !location.longitude) {
+            setMapLoading(false);
+            return;
+        }
+
+        // Show loading briefly, then hide it as Leaflet renders quickly
+        setMapLoading(true);
+        const timer = setTimeout(() => {
+            setMapLoading(false);
+        }, 500);
+
+        return () => {
+            clearTimeout(timer);
+        };
+    }, [isUserInfoModalOpen, friendLocation, userInfoData?.lastLocation, friendProfile?.lastLocation]);
 
     // Format last active time
     const formatLastActive = useCallback((lastSeenValue) => {
@@ -1955,6 +1989,11 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
         <>
             <div className="chat-header-main">
                 <div className={`chat-header-user ${'skleton-card'}`}>
+                    {isMobile && emotion && (
+                        <div style={{ fontSize: '24px', marginRight: '8px', display: 'flex', alignItems: 'center' }}>
+                            {emotion.split(' ')[0]}
+                        </div>
+                    )}
                     <div className='chat-header-profilePic'>
                         {
                             !isLoaded ? <div className="skeleton-header">
@@ -1972,7 +2011,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                                     isMobile ? (
                                         emotion ? (
                                             <span className='chat-header-active-status text-capitalized'>
-                                                {emotion}
+                                                {emotion.split(' ').slice(1).join(' ')}
                                                 {expression && expression !== 'none' && ` • ${expression}`}
                                             </span>
                                         ) : (
@@ -2004,40 +2043,96 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
 
                 <div className='chat-header-action'>
                     <div className='chat-header-action-btn-container'>
+                        {!isMobile && (
+                            <div
+                                onClick={handleBumpBtnClick}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleBumpBtnClick(); } }}
+                                role='button'
+                                tabIndex={0}
+                                className='bump-button action-button'
+                                title='Bump'
+                                aria-label='Bump'
+                            >
+                                <i className="fas fa-record-vinyl"></i>
+                            </div>
+                        )}
                         <div
-                            onClick={handleBumpBtnClick}
-                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleBumpBtnClick(); } }}
-                            role='button'
-                            tabIndex={0}
-                            className='bump-button action-button'
-                            title='Bump'
-                            aria-label='Bump'
+                            style={{ position: 'relative' }}
+                            ref={callDropdownRef}
                         >
-                            <i className="fas fa-record-vinyl"></i>
-                        </div>
-                        <div
-                            onClick={handleAudioCallBtn}
-                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleAudioCallBtn(e); } }}
-                            role='button'
-                            tabIndex={0}
-                            data-id={friendId}
-                            className='call-button action-button'
-                            title='Audio call'
-                            aria-label='Audio call'
-                        >
-                            <i className="fas fa-phone-alt"></i>
-                        </div>
-                        <div
-                            onClick={handleVideoCallBtn}
-                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleVideoCallBtn(e); } }}
-                            role='button'
-                            tabIndex={0}
-                            data-id={friendId}
-                            className='video-call-button action-button'
-                            title='Video call'
-                            aria-label='Video call'
-                        >
-                            <i className="fas fa-video"></i>
+                            <div
+                                onClick={() => setIsCallDropdownOpen(!isCallDropdownOpen)}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsCallDropdownOpen(!isCallDropdownOpen); } }}
+                                role='button'
+                                tabIndex={0}
+                                data-id={friendId}
+                                className='call-button action-button'
+                                title='Audio call'
+                                aria-label='Audio call'
+                                aria-expanded={isCallDropdownOpen}
+                            >
+                                <i className="fas fa-phone-alt"></i>
+                            </div>
+                            {isCallDropdownOpen && (
+                                <div className="call-dropdown-menu" style={{
+                                    position: 'absolute',
+                                    top: '100%',
+                                    right: 0,
+                                    backgroundColor: 'white',
+                                    border: '1px solid #ddd',
+                                    borderRadius: '8px',
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                    zIndex: 1000,
+                                    minWidth: '150px',
+                                    marginTop: '4px'
+                                }}>
+                                    <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                                        <li
+                                            onClick={(e) => {
+                                                setIsCallDropdownOpen(false);
+                                                handleAudioCallBtn(e);
+                                            }}
+                                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsCallDropdownOpen(false); handleAudioCallBtn(e); } }}
+                                            tabIndex={0}
+                                            style={{
+                                                padding: '12px 16px',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                borderBottom: '1px solid #eee',
+                                                transition: 'background-color 0.2s'
+                                            }}
+                                            onMouseEnter={(e) => e.target.style.backgroundColor = '#f5f5f5'}
+                                            onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
+                                        >
+                                            <i className="fas fa-phone-alt" style={{ width: '16px' }}></i>
+                                            <span>Audio Call</span>
+                                        </li>
+                                        <li
+                                            onClick={(e) => {
+                                                setIsCallDropdownOpen(false);
+                                                handleVideoCallBtn(e);
+                                            }}
+                                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsCallDropdownOpen(false); handleVideoCallBtn(e); } }}
+                                            tabIndex={0}
+                                            style={{
+                                                padding: '12px 16px',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                transition: 'background-color 0.2s'
+                                            }}
+                                            onMouseEnter={(e) => e.target.style.backgroundColor = '#f5f5f5'}
+                                            onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
+                                        >
+                                            <i className="fas fa-video" style={{ width: '16px' }}></i>
+                                            <span>Video Call</span>
+                                        </li>
+                                    </ul>
+                                </div>
+                            )}
                         </div>
                         <div
                             onClick={handleChatOptionClick.bind(this)}
@@ -2062,17 +2157,19 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                         >
                             <i className="fas fa-info-circle"></i>
                         </div>
-                        <div
-                            onClick={handleOpenStickyChat}
-                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpenStickyChat(); } }}
-                            role='button'
-                            tabIndex={0}
-                            className='sticky-chat-button action-button'
-                            title='Open Sticky Chat'
-                            aria-label='Open sticky chat'
-                        >
-                            <i className="fas fa-comment-dots"></i>
-                        </div>
+                        {!isMobile && (
+                            <div
+                                onClick={handleOpenStickyChat}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpenStickyChat(); } }}
+                                role='button'
+                                tabIndex={0}
+                                className='sticky-chat-button action-button'
+                                title='Open Sticky Chat'
+                                aria-label='Open sticky chat'
+                            >
+                                <i className="fas fa-comment-dots"></i>
+                            </div>
+                        )}
 
                         {isChatOptionMenu && (
                             <div className="chat-option-menu" ref={chatOptionMenu} >
@@ -2082,6 +2179,26 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleViewProfile(); } }}
                                         tabIndex={0}
                                     >View Profile</li>
+                                    {isMobile && (
+                                        <li
+                                            onClick={handleBumpBtnClick}
+                                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleBumpBtnClick(); } }}
+                                            tabIndex={0}
+                                        >
+                                            <i className="fas fa-record-vinyl" style={{ marginRight: '8px' }}></i>
+                                            Bump
+                                        </li>
+                                    )}
+                                    {isMobile && (
+                                        <li
+                                            onClick={handleOpenStickyChat}
+                                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpenStickyChat(); } }}
+                                            tabIndex={0}
+                                        >
+                                            <i className="fas fa-comment-dots" style={{ marginRight: '8px' }}></i>
+                                            Sticky Chat
+                                        </li>
+                                    )}
                                     {
                                         profile?.blockedUsers.includes(friendId) ?
                                             <li
@@ -2337,20 +2454,12 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                                         </div>
                                     </div>
                                     {(friendLocation || userInfoData?.lastLocation || friendProfile?.lastLocation) && (
-                                        <div style={{
-                                            width: '100%',
-                                            height: '200px',
-                                            borderTop: '1px solid rgba(0,0,0,0.1)',
-                                        }}>
-                                            <iframe
-                                                width="100%"
-                                                height="100%"
-                                                frameBorder="0"
-                                                style={{ border: 0 }}
-                                                src={`https://www.openstreetmap.org/export/embed.html?bbox=${((friendLocation || userInfoData?.lastLocation || friendProfile?.lastLocation).longitude - 0.01)},${((friendLocation || userInfoData?.lastLocation || friendProfile?.lastLocation).latitude - 0.01)},${((friendLocation || userInfoData?.lastLocation || friendProfile?.lastLocation).longitude + 0.01)},${((friendLocation || userInfoData?.lastLocation || friendProfile?.lastLocation).latitude + 0.01)}&layer=mapnik&marker=${(friendLocation || userInfoData?.lastLocation || friendProfile?.lastLocation).latitude},${(friendLocation || userInfoData?.lastLocation || friendProfile?.lastLocation).longitude}`}
-                                                allowFullScreen
-                                            ></iframe>
-                                        </div>
+                                        <LocationMap
+                                            latitude={friendLocation?.latitude || userInfoData?.lastLocation?.latitude || friendProfile?.lastLocation?.latitude}
+                                            longitude={friendLocation?.longitude || userInfoData?.lastLocation?.longitude || friendProfile?.lastLocation?.longitude}
+                                            userName={getUserName()}
+                                            isLoading={mapLoading}
+                                        />
                                     )}
                                 </div>
 

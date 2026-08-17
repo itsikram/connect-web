@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Dark teal/charcoal background matching the reference -->
+    <linearGradient id="background" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#1c292c"/>
+      <stop offset="38%"  stop-color="#233336"/>
+      <stop offset="68%"  stop-color="#27373a"/>
+      <stop offset="100%" stop-color="#20292b"/>
+    </linearGradient>
+
+    <!-- Soft central glow -->
+    <radialGradient id="softGlow" cx="52%" cy="43%" r="72%">
+      <stop offset="0%"   stop-color="#314448" stop-opacity="0.34"/>
+      <stop offset="48%"  stop-color="#293a3d" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#101719" stop-opacity="0.30"/>
+    </radialGradient>
+
+    <!-- Very subtle top/right atmospheric light -->
+    <radialGradient id="ambientGlow" cx="92%" cy="18%" r="62%">
+      <stop offset="0%"   stop-color="#4a5a5c" stop-opacity="0.16"/>
+      <stop offset="55%"  stop-color="#334447" stop-opacity="0.07"/>
+      <stop offset="100%" stop-color="#1b2527" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Subtle vignette -->
+    <radialGradient id="vignette" cx="50%" cy="50%" r="75%">
+      <stop offset="55%"  stop-color="#000000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#05090a" stop-opacity="0.22"/>
+    </radialGradient>
+
+    <!-- Very fine grain, kept extremely subtle -->
+    <filter id="grain">
+      <feTurbulence
+        type="fractalNoise"
+        baseFrequency="0.72"
+        numOctaves="3"
+        seed="8"
+        stitchTiles="stitch"
+        result="noise"/>
+      <feColorMatrix in="noise" type="saturate" values="0"/>
+      <feComponentTransfer>
+        <feFuncA type="table" tableValues="0 0.025"/>
+      </feComponentTransfer>
+    </filter>
+  </defs>
+
+  <!-- Base -->
+  <rect width="1920" height="1080" fill="url(#background)"/>
+
+  <!-- Soft tonal variation -->
+  <rect width="1920" height="1080" fill="url(#softGlow)"/>
+  <rect width="1920" height="1080" fill="url(#ambientGlow)"/>
+
+  <!-- Almost invisible texture -->
+  <rect width="1920" height="1080" filter="url(#grain)" opacity="0.55"/>
+
+  <!-- Edge darkening -->
+  <rect width="1920" height="1080" fill="url(#vignette)"/>
+</svg>

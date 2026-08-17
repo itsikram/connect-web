@@ -226,12 +226,14 @@
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 4px 10px;
+  gap: 10px;
   padding: 12px 12px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid transparent;
   margin-bottom: 10px !important;
+  min-height: auto;
+  overflow: visible;
 }
 
 .setting-page .form-check.form-switch:hover {
@@ -242,10 +244,12 @@
 .setting-page .form-check-input {
   width: 2.4em;
   height: 1.25em;
-  margin-top: 0.15em;
+  margin-top: 0;
+  margin-right: 0;
   cursor: pointer;
   background-color: rgba(255, 255, 255, 0.18);
   border-color: transparent;
+  flex-shrink: 0;
 }
 
 .setting-page .form-check-input:checked {
@@ -257,13 +261,22 @@
   flex: 1;
   margin-bottom: 0;
   cursor: pointer;
+  min-width: 0;
+  word-break: break-word;
 }
 
 .setting-page .form-check small,
 .setting-page .form-check .form-text {
-  flex: 1 1 100%;
+  flex: 0 1 100%;
   margin-left: 0 !important;
+  margin-top: 4px !important;
   padding-left: calc(2.4em + 10px);
+  display: none;
+}
+
+.setting-page .form-check.form-switch small,
+.setting-page .form-check.form-switch .form-text {
+  display: block;
 }
 
 .setting-page .btn-primary {
@@ -315,6 +328,48 @@
   border-radius: 12px !important;
   border-color: var(--set-border) !important;
   background: rgba(0, 0, 0, 0.15);
+}
+
+/* Form check label group - prevents overflow */
+.setting-page .form-check-label-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.setting-page .form-check-label-group .form-check-label {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setting-page .form-check-label-group .form-text {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--set-muted);
+  margin: 0;
+}
+
+.setting-page .notification-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Form switch improvements for settings */
+.setting-page .form-check.form-switch .form-check-input {
+  order: 1;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.setting-page .form-check.form-switch .form-check-label-group {
+  order: 2;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 /* Mobile */
@@ -392,9 +447,35 @@
     padding-left: 0;
   }
 
+  .setting-page .form-check.form-switch {
+    flex-wrap: wrap;
+    min-height: auto;
+    gap: 8px;
+    padding: 10px 10px;
+  }
+
+  .setting-page .form-check.form-switch .form-check-input {
+    order: 1;
+    flex-shrink: 0;
+  }
+
+  .setting-page .form-check.form-switch .form-check-label-group {
+    order: 2;
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .setting-page .form-check-label-group .form-check-label {
+    white-space: normal;
+  }
+
   .setting-page .multiple-input-container .row > .col {
     flex: 0 0 100%;
     max-width: 100%;
+  }
+
+  .setting-page .form-check-label-group .form-text {
+    margin-top: 6px !important;
   }
 
   .setting-page .btn-primary,

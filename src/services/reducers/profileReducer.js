@@ -1,11 +1,22 @@
 import {GET_PROFILE_REQ,GET_PROFILE_FAILED,GET_PROFILE_SUCCESS} from '../constants/profileConsts'
 import {CLEAR_ALL_STATE} from '../constants/authConsts'
 
+const PROFILE_STORAGE_KEY = 'cachedProfileData'
+
+const getInitialCachedProfile = () => {
+    try {
+        const cachedProfile = localStorage.getItem(PROFILE_STORAGE_KEY)
+        return cachedProfile ? JSON.parse(cachedProfile) : {}
+    } catch (error) {
+        console.error('Error reading cached profile from localStorage:', error)
+        return {}
+    }
+}
 
 // initial state
 const initialProfileState = {
     isLoggedIn: {},
-    profile: {},
+    profile: getInitialCachedProfile(),
     error: null
 }
 
@@ -30,7 +41,15 @@ const profileReducer = (state = initialProfileState,action) => {
                 error: action.payload
             }
         case CLEAR_ALL_STATE:
-            return initialProfileState
+            try {
+                localStorage.removeItem(PROFILE_STORAGE_KEY)
+            } catch (error) {
+                console.error('Error clearing cached profile from localStorage:', error)
+            }
+            return {
+                ...initialProfileState,
+                profile: {}
+            }
         default:
             return state
     }
