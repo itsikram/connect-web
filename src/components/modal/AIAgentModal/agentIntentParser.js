@@ -446,6 +446,102 @@ const PROFILE_SUB_PATTERNS = [
   { regex: /profile\s+(?:of|for)\s+(.+)/i, subPath: "", subLabel: "Profile" },
 ];
 
+// ── Direct send-message parsing ───────────────────────────────────────────────
+
+const GENERIC_MESSAGE_TEXTS = new Set([
+  "message",
+  "a message",
+  "the message",
+  "this message",
+  "text",
+  "a text",
+  "the text",
+  "this text",
+  "msg",
+  "বার্তা",
+  "মেসেজ",
+  "এই বার্তা",
+  "এই মেসেজ",
+]);
+
+const cleanCapturedSegment = (value = "") =>
+  String(value)
+    .trim()
+    .replace(/^["'`“”‘’]+|["'`“”‘’]+$/g, "")
+    .replace(/[?.!,;:]+$/, "")
+    .trim();
+
+const buildSendMessageIntent = ({ targetName, messageText }) => ({
+  action: "SEND_MESSAGE_TO_USER",
+  targetName: cleanCapturedSegment(targetName) || null,
+  messageText: cleanCapturedSegment(messageText) || null,
+  searchQuery: null,
+  targetRoute: null,
+  subPath: null,
+  label: null,
+  params: {},
+});
+
+const isGenericMessageText = (value = "") =>
+  GENERIC_MESSAGE_TEXTS.has(cleanCapturedSegment(value).toLowerCase());
+
+const parseDirectSendMessageIntent = (message) => {
+  const patterns = [
+    {
+      regex:
+        /^["'`“”‘’](.+?)["'`“”‘’]\s+(?:send|text|message)\s+(?:this\s+)?message\s+to\s+(.+)$/i,
+      messageIndex: 1,
+      targetIndex: 2,
+    },
+    {
+      regex: /^(?:send|text)\s+["'`“”‘’](.+?)["'`“”‘’]\s+to\s+(.+)$/i,
+      messageIndex: 1,
+      targetIndex: 2,
+    },
+    {
+      regex: /^(?:send|text)\s+(.+?)\s+to\s+(.+)$/i,
+      messageIndex: 1,
+      targetIndex: 2,
+      rejectGenericMessageText: true,
+    },
+    {
+      regex:
+        /^["'`“”‘’](.+?)["'`“”‘’]\s+(?:এই\s+)?(?:বার্তা|মেসেজ)(?:টা)?\s+(.+?)\s+কে\s+পাঠ(?:াও|ান)$/,
+      messageIndex: 1,
+      targetIndex: 2,
+    },
+    {
+      regex:
+        /^(.+?)\s+কে\s+["'`“”‘’](.+?)["'`“”‘’]\s+(?:বার্তা|মেসেজ)\s+পাঠ(?:াও|ান)$/,
+      messageIndex: 2,
+      targetIndex: 1,
+    },
+    {
+      regex:
+        /^(.+?)\s+কে\s+(?:বার্তা|মেসেজ)\s+পাঠ(?:াও|ান)\s+["'`“”‘’](.+?)["'`“”‘’]$/,
+      messageIndex: 2,
+      targetIndex: 1,
+    },
+  ];
+
+  for (const pattern of patterns) {
+    const match = message.match(pattern.regex);
+    if (!match) continue;
+
+    const messageText = cleanCapturedSegment(match[pattern.messageIndex]);
+    const targetName = cleanCapturedSegment(match[pattern.targetIndex]);
+
+    if (!messageText || !targetName) continue;
+    if (pattern.rejectGenericMessageText && isGenericMessageText(messageText)) {
+      continue;
+    }
+
+    return buildSendMessageIntent({ targetName, messageText });
+  }
+
+  return null;
+};
+
 // ── Primary intent patterns ───────────────────────────────────────────────────
 
 const INTENT_PATTERNS = [
@@ -550,18 +646,6 @@ const INTENT_PATTERNS = [
       // Bengali patterns for language settings
       /(?:ভাষা|লাঙ্গুয়েজ)\s+(?:বদল|পরিবর্তন|সেট)\s+করুন\s+(?:থেকে|পর্যন্ত)?\s+(.+)/,
       /(?:আমার\s+)?ভাষা\s+(.+)\s+করুন/,
-    ],
-  },
-
-  // ── Send Message to User (Bengali support) ────────────────────────────
-  {
-    action: "SEND_MESSAGE_TO_USER",
-    searchCapture: true,
-    patterns: [
-      /(?:send|write)\s+(?:a\s+)?message\s+(?:to\s+)?(.+)/i,
-      // Bengali patterns
-      /(?:বার্তা|মেসেজ)\s+পাঠান\s+(?:থেকে)?\s+(.+)/,
-      /(.+)\s+কে\s+(?:বার্তা|মেসেজ)\s+পাঠান/,
     ],
   },
 
@@ -820,6 +904,10 @@ export const parseIntent = (message) => {
   if (!message || typeof message !== "string") return null;
 
   const trimmed = message.trim();
+  const directSendMessageIntent = parseDirectSendMessageIntent(trimmed);
+  if (directSendMessageIntent) {
+    return directSendMessageIntent;
+  }
 
   // ── 1. Try primary action intents ─────────────────────────────────────────
   // ── 1. Try primary action intents ────────────────────────────────────────────────────────────
@@ -842,6 +930,7 @@ export const parseIntent = (message) => {
           return {
             action,
             targetName: null,
+            messageText: null,
             searchQuery: searchQuery || null,
             targetRoute: null,
             subPath: null,
@@ -862,6 +951,7 @@ export const parseIntent = (message) => {
         return {
           action,
           targetName,
+          messageText: null,
           searchQuery: null,
           targetRoute: null,
           subPath: null,
@@ -887,6 +977,7 @@ export const parseIntent = (message) => {
         return {
           action: "NAVIGATE",
           targetName: null,
+          messageText: null,
           targetRoute: routeEntry.route,
           subPath: null,
           label: routeEntry.label,
@@ -902,6 +993,7 @@ export const parseIntent = (message) => {
     return {
       action: "NAVIGATE",
       targetName: null,
+      messageText: null,
       targetRoute: routeEntry.route,
       subPath: null,
       label: routeEntry.label,
@@ -916,6 +1008,7 @@ export const parseIntent = (message) => {
     return {
       action: "NAVIGATE_PROFILE",
       targetName: profileSubNav.targetName,
+      messageText: null,
       targetRoute: null,
       subPath: profileSubNav.subPath,
       label: profileSubNav.subLabel,

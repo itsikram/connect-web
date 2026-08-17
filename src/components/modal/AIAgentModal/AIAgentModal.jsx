@@ -74,6 +74,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         targetRoute: intent?.targetRoute ?? null,
         subPath: intent?.subPath ?? null,
         label: intent?.label ?? null,
+        messageText: intent?.messageText ?? null,
         myProfile,
         navigate,
         onClose,
@@ -99,15 +100,18 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       setIsLoading(true);
 
       try {
-        let agentText = text.trim();
+        const originalText = text.trim();
+        let agentText = originalText;
+        let intent = parseIntent(originalText);
 
-        if (/[\u0980-\u09FF]/.test(agentText)) {
+        if (!intent && /[\u0980-\u09FF]/.test(agentText)) {
           try {
             agentText = await translateBanglaToEnglish(agentText);
             console.log("[AIAgentModal] Bangla command translated:", {
               original: text,
               translated: agentText,
             });
+            intent = parseIntent(agentText);
           } catch (translationError) {
             console.warn(
               "[AIAgentModal] Bangla translation failed; using original text:",
@@ -115,8 +119,6 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             );
           }
         }
-
-        const intent = parseIntent(agentText);
 
         // 1. No-friend navigation / creation / video-search actions
         if (intent && NO_FRIEND_ACTIONS.has(intent.action)) {
@@ -172,6 +174,15 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             return;
           }
 
+          if (intent.action === "SEND_MESSAGE_TO_USER" && !intent.messageText) {
+            addMessage({
+              type: "agent",
+              content: "What would you like the message to say?",
+            });
+            setIsLoading(false);
+            return;
+          }
+
           let matched = searchFriendsByName(friends, intent.targetName);
 
           // Redux may contain only friend IDs or a stale populated list. Retry
@@ -209,12 +220,22 @@ const AIAgentModal = ({ isOpen, onClose }) => {
               ? `Go to ${intent.subPath?.replace("/", "") || "profile"}`
               : meta.label;
 
+          const previewText = intent.messageText
+            ? intent.messageText.length > 100
+              ? `${intent.messageText.slice(0, 100)}…`
+              : intent.messageText
+            : null;
+
           addMessage({
             type: "friend-picker",
             content:
-              matched.length === 1
-                ? `Found ${getFriendDisplayName(matched[0])}! Click below.`
-                : `Found ${matched.length} people named "${intent.targetName}". Which one?`,
+              intent.action === "SEND_MESSAGE_TO_USER"
+                ? matched.length === 1
+                  ? `Ready to send "${previewText}" to ${getFriendDisplayName(matched[0])}. Click below to send it.`
+                  : `Found ${matched.length} people matching "${intent.targetName}". Choose who should receive "${previewText}".`
+                : matched.length === 1
+                  ? `Found ${getFriendDisplayName(matched[0])}! Click below.`
+                  : `Found ${matched.length} people named "${intent.targetName}". Which one?`,
             friends: matched,
             action: intent.action,
             actionLabel: cardLabel,

@@ -27,3 +27,31 @@ describe("friend profile navigation", () => {
     },
   );
 });
+
+describe("direct send message parsing", () => {
+  test("parses quoted english message sent to a friend", () => {
+    expect(
+      parseIntent('"Ki khobor" send this message to Rahima'),
+    ).toMatchObject({
+      action: "SEND_MESSAGE_TO_USER",
+      targetName: "Rahima",
+      messageText: "Ki khobor",
+    });
+  });
+
+  test("parses bangla direct message command", () => {
+    expect(parseIntent('রহিমা কে "কি খবর" মেসেজ পাঠাও')).toMatchObject({
+      action: "SEND_MESSAGE_TO_USER",
+      targetName: "রহিমা",
+      messageText: "কি খবর",
+    });
+  });
+
+  test("keeps plain message commands as open-chat intents", () => {
+    expect(parseIntent("message Rahima")).toMatchObject({
+      action: "SEND_MESSAGE",
+      targetName: "Rahima",
+      messageText: null,
+    });
+  });
+});

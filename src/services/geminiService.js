@@ -3,7 +3,20 @@
  * Handles communication with Google Gemini 1.5 Flash API (free tier)
  */
 
-const GEMINI_API_KEY = process.env.REACT_APP_GEMINI_API_KEY;
+export const parseGeminiApiKeys = (value = "") => [
+  ...new Set(
+    String(value)
+      .split(",")
+      .map((key) => key.trim())
+      .filter(Boolean),
+  ),
+];
+
+const GEMINI_API_KEYS = parseGeminiApiKeys(
+  process.env.REACT_APP_GEMINI_API_KEY,
+);
+let activeGeminiKeyIndex = 0;
+
 // gemini-3.5-flash — free-tier model available as of 2025/2026
 const GEMINI_MODEL = "gemini-3.5-flash";
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
@@ -42,20 +55,78 @@ const extractGeminiText = (data) =>
     .join("")
     .trim() || "";
 
+export const isGeminiQuotaError = (status, data) => {
+  const apiStatus = String(data?.error?.status || "").toUpperCase();
+  const message = String(data?.error?.message || "").toLowerCase();
+
+  return (
+    status === 429 ||
+    apiStatus === "RESOURCE_EXHAUSTED" ||
+    message.includes("quota") ||
+    message.includes("rate limit") ||
+    message.includes("resource exhausted")
+  );
+};
+
+const requestGemini = async (requestBody, operationLabel) => {
+  if (GEMINI_API_KEYS.length === 0) {
+    throw new Error("Gemini API key is not configured");
+  }
+
+  let lastError = null;
+  const startingKeyIndex = activeGeminiKeyIndex;
+
+  for (let attempt = 0; attempt < GEMINI_API_KEYS.length; attempt += 1) {
+    const keyIndex = (startingKeyIndex + attempt) % GEMINI_API_KEYS.length;
+    const apiKey = GEMINI_API_KEYS[keyIndex];
+    const response = await fetch(
+      `${GEMINI_API_URL}?key=${encodeURIComponent(apiKey)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      },
+    );
+
+    const data = await response.json().catch(() => null);
+    if (response.ok) {
+      activeGeminiKeyIndex = keyIndex;
+      return data;
+    }
+
+    const errorMessage =
+      data?.error?.message ||
+      `${operationLabel} failed with HTTP ${response.status}`;
+    lastError = new Error(errorMessage);
+
+    if (!isGeminiQuotaError(response.status, data)) {
+      throw lastError;
+    }
+
+    activeGeminiKeyIndex = (keyIndex + 1) % GEMINI_API_KEYS.length;
+    if (attempt < GEMINI_API_KEYS.length - 1) {
+      console.warn(
+        `[Gemini] ${operationLabel} quota exceeded; trying API key ${attempt + 2} of ${GEMINI_API_KEYS.length}.`,
+      );
+    }
+  }
+
+  const quotaSummary = `All ${GEMINI_API_KEYS.length} configured Gemini API ${GEMINI_API_KEYS.length === 1 ? "key has" : "keys have"} exceeded quota.`;
+  throw new Error(
+    lastError?.message
+      ? `${quotaSummary} Last error: ${lastError.message}`
+      : quotaSummary,
+  );
+};
+
 export const translateBanglaToEnglish = async (text) => {
   const sourceText = String(text || "").trim();
   if (!sourceText || !/[\u0980-\u09FF]/.test(sourceText)) {
     return sourceText;
   }
 
-  if (!GEMINI_API_KEY) {
-    throw new Error("Gemini API key is not configured");
-  }
-
-  const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+  const data = await requestGemini(
+    {
       systemInstruction: {
         parts: [
           {
@@ -68,15 +139,9 @@ export const translateBanglaToEnglish = async (text) => {
         temperature: 0,
         maxOutputTokens: 256,
       },
-    }),
-  });
-
-  const data = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error(
-      data?.error?.message || `Translation failed with HTTP ${response.status}`,
-    );
-  }
+    },
+    "Translation",
+  );
 
   const translation = extractGeminiText(data)
     .replace(/^English(?: translation)?:\s*/i, "")
@@ -91,7 +156,7 @@ export const translateBanglaToEnglish = async (text) => {
 };
 
 export const sendToGemini = async (message, conversationHistory = []) => {
-  if (!GEMINI_API_KEY) {
+  if (GEMINI_API_KEYS.length === 0) {
     return {
       response:
         "API key is not configured. Please add REACT_APP_GEMINI_API_KEY to your .env file and restart the dev server.",
@@ -157,28 +222,7 @@ export const sendToGemini = async (message, conversationHistory = []) => {
       ],
     };
 
-    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody),
-    });
-
-    // Parse the response body. Even error responses are usually JSON.
-    let data;
-    try {
-      data = await response.json();
-    } catch {
-      throw new Error(
-        `HTTP ${response.status} – could not parse response body.`,
-      );
-    }
-
-    if (!response.ok) {
-      const errMsg =
-        data?.error?.message ||
-        `HTTP ${response.status}: ${response.statusText}`;
-      throw new Error(errMsg);
-    }
+    const data = await requestGemini(requestBody, "Chat request");
 
     // A candidate may be blocked by safety filters even on a 200 response.
     const candidate = data.candidates?.[0];

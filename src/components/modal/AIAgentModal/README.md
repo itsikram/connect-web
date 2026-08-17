@@ -7,6 +7,7 @@ The AI Agent Modal is a fully responsive, modern chat interface integrated into 
 ## Features
 
 ### Core Features
+
 - 🤖 **AI-Powered Chat**: Powered by Google Gemini Free API
 - 💬 **Conversational Interface**: Natural language interactions
 - 📱 **Fully Responsive**: Works seamlessly on desktop, tablet, and mobile
@@ -15,7 +16,9 @@ The AI Agent Modal is a fully responsive, modern chat interface integrated into 
 - 🔐 **Secure**: No sensitive data stored locally
 
 ### User Actions
+
 The AI Agent can help with:
+
 - **Search & Discover**: Find users, posts, videos, trending content
 - **Create & Share**: Create posts, upload videos, start live streams, create stories
 - **Analytics & Insights**: Summarize content, get recommendations, analyze sentiment, view statistics
@@ -24,6 +27,7 @@ The AI Agent can help with:
 ## How to Use
 
 ### For Users
+
 1. **Long-press the header logo** (500ms press) to open the AI Agent Modal
 2. Type your query or request in the chat input
 3. AI Agent responds with helpful information or actions
@@ -35,16 +39,22 @@ The AI Agent can help with:
 #### Setup
 
 1. **Get Gemini API Key**
+
    ```bash
    # Visit: https://makersuite.google.com/app/apikey
    # Create a new API key (free tier available)
    ```
 
 2. **Configure Environment Variables**
+
    ```bash
    # Create .env file in /web directory
-   REACT_APP_GEMINI_API_KEY=your_api_key_here
+   # One key, or multiple fallback keys separated by commas
+   REACT_APP_GEMINI_API_KEY=your_first_key,your_second_key,your_third_key
    ```
+
+   The active key is reused until Gemini reports a quota or rate-limit error.
+   The service then retries the same request with each remaining key in order.
 
 3. **Install Dependencies**
    ```bash
@@ -83,13 +93,18 @@ const handleLogoMouseDown = () => {
 };
 
 // Render modal
-<AIAgentModal isOpen={isAIAgentModalOpen} onClose={() => setIsAIAgentModalOpen(false)} />
+<AIAgentModal
+  isOpen={isAIAgentModalOpen}
+  onClose={() => setIsAIAgentModalOpen(false)}
+/>;
 ```
 
 ## Component Details
 
 ### AIAgentModal.jsx
+
 **Responsibilities:**
+
 - Main container component
 - State management for messages, input, loading states
 - Integration with Gemini API service
@@ -97,10 +112,12 @@ const handleLogoMouseDown = () => {
 - Modal open/close logic
 
 **Props:**
+
 - `isOpen: boolean` - Modal visibility state
 - `onClose: function` - Callback to close modal
 
 **State:**
+
 - `messages: array` - Chat history
 - `inputValue: string` - Current input text
 - `isLoading: boolean` - API loading state
@@ -108,58 +125,72 @@ const handleLogoMouseDown = () => {
 - `selectedAction: object` - Currently selected action
 
 ### ModalHeader.jsx
+
 **Responsibilities:**
+
 - Display header with title and icon
 - Close button
 - Status indicator showing AI readiness
 - Gradient background animation
 
 **Features:**
+
 - Animated icon with floating effect
 - Status pulse indicator
 - Smooth close button rotation on hover
 
 ### ChatArea.jsx
+
 **Responsibilities:**
+
 - Display all messages
 - Loading indicator with typing animation
 - Smooth auto-scroll to latest message
 - Composition of MessageBubble and ChatInput
 
 ### MessageBubble.jsx
+
 **Responsibilities:**
+
 - Render individual messages
 - Different styling for user vs agent messages
 - Display timestamp and suggested actions
 - Avatar icons with gradients
 
 **Features:**
+
 - Animated entrance
 - Scale animation on appearance
 - Different bubble colors and positions
 - Time formatting
 
 ### ChatInput.jsx
+
 **Responsibilities:**
+
 - Text input with auto-resize
 - Quick suggestion chips
 - Send button with loading state
 - Emoji button placeholder
 
 **Features:**
+
 - Auto-expanding textarea
 - Smart suggestions
 - Keyboard shortcuts (Enter to send)
 - Loading spinner in send button
 
 ### ActionPanel.jsx
+
 **Responsibilities:**
+
 - Display quick action categories
 - Expandable/collapsible categories
 - Action items with icons
 - Category header with chevron animation
 
 **Features:**
+
 - Smooth expand/collapse animations
 - Icon-based actions
 - Hover effects
@@ -168,18 +199,21 @@ const handleLogoMouseDown = () => {
 ## Styling & Responsiveness
 
 ### Breakpoints
+
 - **Desktop**: Full width layout with sidebar
 - **Tablet** (max-width: 1024px): Sidebar width reduced
 - **Mobile** (max-width: 768px): Sidebar becomes overlay
 - **Small Mobile** (max-width: 480px): Optimized spacing and sizes
 
 ### Color Scheme
+
 - **Primary Gradient**: #6366f1 to #8b5cf6 (Indigo to Purple)
 - **Secondary**: #0ea5e9 (Cyan for user messages)
 - **Text**: #1f2937 (Dark Gray)
 - **Borders**: #e5e7eb (Light Gray)
 
 ### Dark Mode
+
 Full support for `prefers-color-scheme: dark`
 
 ## API Integration
@@ -189,17 +223,19 @@ Full support for `prefers-color-scheme: dark`
 **Main Function: `sendToGemini(message, conversationHistory)`**
 
 ```javascript
-import { sendToGemini } from '../../../services/geminiService';
+import { sendToGemini } from "../../../services/geminiService";
 
 const result = await sendToGemini(message, conversationHistory);
 // Returns: { response, suggestedAction, success }
 ```
 
 **Parameters:**
+
 - `message: string` - User's message
 - `conversationHistory: array` - Previous messages for context
 
 **Response:**
+
 ```javascript
 {
   response: "AI's response text",
@@ -210,6 +246,7 @@ const result = await sendToGemini(message, conversationHistory);
 
 **System Prompt:**
 The AI is configured to:
+
 - Help with Connect app features
 - Be conversational and concise
 - Suggest relevant next actions
@@ -218,22 +255,22 @@ The AI is configured to:
 ## Customization
 
 ### Change AI Capabilities
+
 Edit `ActionPanel.jsx` - Modify the `actions` array:
 
 ```javascript
 const actions = [
   {
-    category: 'custom',
-    icon: 'fa-icon-name',
-    label: 'Category Label',
-    items: [
-      { id: 1, label: 'Action', icon: 'fa-icon' },
-    ],
+    category: "custom",
+    icon: "fa-icon-name",
+    label: "Category Label",
+    items: [{ id: 1, label: "Action", icon: "fa-icon" }],
   },
 ];
 ```
 
 ### Change Color Scheme
+
 Edit `AIAgentModal.css` - Update gradient colors:
 
 ```css
@@ -243,6 +280,7 @@ Edit `AIAgentModal.css` - Update gradient colors:
 ```
 
 ### Change Long-Press Duration
+
 Edit `HeaderLeft.js` - Modify timeout value:
 
 ```javascript
@@ -252,6 +290,7 @@ setTimeout(() => {
 ```
 
 ### Disable Sidebar
+
 Remove the sidebar toggle and always show sidebar:
 
 ```javascript
@@ -262,22 +301,26 @@ const [isSidebarOpen] = useState(true); // Remove state update
 ## Troubleshooting
 
 ### Modal Not Opening
+
 - Check console for errors
 - Verify long-press duration (try holding 1+ second)
 - Ensure `AIAgentModal` is imported in `HeaderLeft.js`
 
 ### AI Not Responding
+
 - Check Gemini API key in `.env`
 - Verify API key has quota remaining
 - Check browser console for network errors
 - Ensure internet connection is active
 
 ### Styling Issues
+
 - Clear browser cache (Ctrl+Shift+Delete)
 - Rebuild project (npm start)
 - Check if CSS file is properly imported
 
 ### Responsive Issues
+
 - Test in browser dev tools device emulation
 - Check media query breakpoints in CSS
 - Verify viewport meta tag in HTML
@@ -316,7 +359,7 @@ const [isSidebarOpen] = useState(true); // Remove state update
 ## Browser Support
 
 | Browser | Desktop | Mobile |
-|---------|---------|--------|
+| ------- | ------- | ------ |
 | Chrome  | ✅      | ✅     |
 | Firefox | ✅      | ✅     |
 | Safari  | ✅      | ✅     |
@@ -340,6 +383,7 @@ Part of the Connect application. See main LICENSE file.
 ## Support
 
 For issues or feature requests:
+
 1. Check this README
 2. Review browser console for errors
 3. Contact development team with error details
@@ -347,6 +391,7 @@ For issues or feature requests:
 ## Changelog
 
 ### Version 1.0.0 (Initial Release)
+
 - ✨ AI Agent Modal with chat interface
 - ✨ Google Gemini integration
 - ✨ Fully responsive design

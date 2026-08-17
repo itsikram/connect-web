@@ -1083,7 +1083,7 @@
 .message-text {
   font-size: 13px;
   color: var(--msg-text-muted) !important;
-  white-space: nowrap;
+  white-space: wrap;
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1;

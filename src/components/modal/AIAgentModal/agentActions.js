@@ -27,6 +27,7 @@ export const executeAction = async ({
   subPath,
   label,
   searchQuery,
+  messageText,
   myProfile,
   navigate,
   onClose,
@@ -35,6 +36,15 @@ export const executeAction = async ({
 
   const go = (path) => {
     navigate(path);
+    if (onClose) onClose();
+  };
+
+  const openStickyChat = (profileId) => {
+    window.dispatchEvent(
+      new CustomEvent("openStickyChat", {
+        detail: { profileId },
+      }),
+    );
     if (onClose) onClose();
   };
 
@@ -166,7 +176,7 @@ export const executeAction = async ({
 
       // ── Open Chat ──────────────────────────────────────────────────────────
       case "SEND_MESSAGE": {
-        go(`/message/${friend._id}`);
+        openStickyChat(friend._id);
         return {
           success: true,
           message: `💬 Opening chat with ${friendName}…`,
@@ -499,8 +509,13 @@ export const executeAction = async ({
 
       // ── Send Message to User ──────────────────────────────────────────
       case "SEND_MESSAGE_TO_USER": {
-        const messageContent = label || searchQuery || "";
-        if (!messageContent.trim()) {
+        const messageContent = (
+          messageText ||
+          label ||
+          searchQuery ||
+          ""
+        ).trim();
+        if (!messageContent) {
           return {
             success: false,
             message: "What message would you like to send?",
@@ -513,12 +528,17 @@ export const executeAction = async ({
           };
         }
         try {
-          await api.post("/messages", {
-            to: friend._id,
-            from: myProfile._id,
-            content: messageContent,
-            timestamp: new Date(),
+          const room = [myProfile._id, friend._id].sort().join("_");
+          await api.post("/message/send", {
+            room,
+            senderId: myProfile._id,
+            receiverId: friend._id,
+            message: messageContent,
+            attachment: "",
+            parent: false,
+            messageType: "text",
           });
+          openStickyChat(friend._id);
           return {
             success: true,
             message: `💬 Message sent to ${friendName}: "${messageContent.substring(0, 40)}${messageContent.length > 40 ? "..." : ""}"`,
@@ -526,7 +546,7 @@ export const executeAction = async ({
         } catch (err) {
           return {
             success: false,
-            message: `Failed to send message: ${err?.message || "Unknown error"}`,
+            message: `Failed to send message: ${err?.response?.data?.reason || err?.response?.data?.message || err?.message || "Unknown error"}`,
           };
         }
       }
@@ -606,4 +626,6 @@ export const getActionMeta = (action) => {
   return map[action] || { label: action, icon: "fa-bolt", color: "#6366f1" };
 };
 
-export default { executeAction, getActionMeta };
+const agentActions = { executeAction, getActionMeta };
+
+export default agentActions;
