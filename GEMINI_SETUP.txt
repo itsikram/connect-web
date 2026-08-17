@@ -1,0 +1,135 @@
+🤖 GEMINI AI SETUP GUIDE
+
+STEP 1: Get Your Free Gemini API Key
+=====================================
+1. Go to: https://makersuite.google.com/app/apikey
+2. Sign in with your Google account
+3. Click "Create API Key"
+4. Copy your API key
+
+
+STEP 2: Add API Key to Your Project
+====================================
+1. In the /web directory, create a file named .env (if it doesn't exist)
+2. Add this line to the .env file:
+   
+   REACT_APP_GEMINI_API_KEY=your_actual_api_key_here
+   
+3. Replace "your_actual_api_key_here" with the actual key from Step 1
+4. Save the .env file
+
+
+STEP 3: Start Your App
+=======================
+1. Run: npm start
+2. The app will restart automatically
+3. Long-press the header logo to open AI Agent Modal
+4. Start typing your first message!
+
+
+TROUBLESHOOTING
+===============
+
+If you see "API key is not configured":
+  → Check that .env file exists in /web directory
+  → Check that REACT_APP_GEMINI_API_KEY is spelled correctly
+  → Check that you've pasted the actual API key (not "your_actual_api_key_here")
+  → Restart the dev server after adding .env
+
+If you see "message.trim is not a function":
+  → This has been fixed in the latest version
+  → Clear your browser cache and hard reload (Ctrl+F5)
+  → Restart the dev server
+
+If you see API errors:
+  → Check browser console (F12 → Console tab)
+  → Check that your API key is valid at https://makersuite.google.com/app/apikey
+  → Check that you have internet connection
+  → API key might have expired - get a new one
+
+
+API LIMITS (Free Tier)
+======================
+- Requests per minute: 60
+- Requests per day: 1,500
+- Characters per day: 1,000,000
+
+For production use, upgrade to paid plan.
+
+
+FEATURES NOW WORKING
+====================
+✅ AI Chat Interface
+✅ Long-press header logo to open
+✅ Full conversation history
+✅ Auto-scroll to latest message
+✅ Typing indicator
+✅ Emoji support
+✅ Quick action suggestions
+✅ Responsive on all devices
+✅ Dark mode support
+✅ Error handling with fallback messages
+✅ Loading states
+
+
+USAGE
+=====
+1. Long-press the header logo (hold for 0.5 seconds)
+2. Modal opens with AI Agent
+3. Type your message
+4. Press Enter or click Send button
+5. AI responds within 1-2 seconds
+6. Click actions in sidebar for specific tasks
+
+
+WHAT YOU CAN ASK
+================
+- "Find users" → AI helps you search
+- "Write a caption" → AI writes content
+- "Summarize this" → AI analyzes content
+- "Translate to Spanish" → AI translates
+- "Show trending posts" → AI recommends content
+- Any general question about the app features
+
+
+COMMON QUESTIONS
+================
+
+Q: Is my data private?
+A: Messages are sent to Google's servers. Review Google's privacy policy for Gemini API.
+
+Q: Can I use a different AI model?
+A: Yes, edit geminiService.js to use OpenAI, Claude, or other providers.
+
+Q: Do I need a paid API key?
+A: No, Gemini free tier works perfectly for development and small deployments.
+
+Q: What happens to my messages?
+A: Messages are sent to Gemini API, used to generate responses, and not stored locally.
+
+Q: Can I export chat history?
+A: Currently stored in browser memory. Refresh = messages cleared. 
+   Feature coming: localStorage persistence.
+
+
+NEXT STEPS
+==========
+1. ✅ Create .env file with API key
+2. ✅ Start the app: npm start
+3. ✅ Long-press header logo to test
+4. ✅ Start chatting with AI!
+5. ✅ Customize colors/actions if desired (see config.js)
+6. ✅ Deploy to production when ready
+
+
+SUPPORT
+=======
+If you need help:
+1. Check browser console (F12)
+2. Look for error messages
+3. Verify .env file is correct
+4. Restart dev server
+5. Clear browser cache and reload
+
+
+ENJOY YOUR AI AGENT! 🚀

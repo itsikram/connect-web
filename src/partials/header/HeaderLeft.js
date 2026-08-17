@@ -7,7 +7,7 @@ import useIsMobile from "../../utils/useIsMobile";
 import AppMenuModal from "./AppMenuModal";
 import config from "../../config/config.json";
 
-let HeaderLeft = () => {
+let HeaderLeft = ({ onAIAgentOpen }) => {
   let [searchedData, setSearchedData] = useState([])
   let [hasSearchResult, setHasSearchResult] = useState(false)
   let [mobileSearchMenu, setMobileSearchMenu] = useState(false)
@@ -16,9 +16,43 @@ let HeaderLeft = () => {
   let location = useLocation();
   let isMobile = useIsMobile();
   let navigate = useNavigate();
+  let longPressTimer = null;
   useEffect(() => {
     setIsAppMenuOpen(false)
   }, [location])
+
+  const handleLogoMouseDown = () => {
+    longPressTimer = setTimeout(() => {
+      onAIAgentOpen();
+    }, 500); // 500ms long press
+  };
+
+  const handleLogoMouseUp = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  };
+
+  const handleLogoMouseLeave = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  };
+
+  const handleLogoTouchStart = () => {
+    longPressTimer = setTimeout(() => {
+      onAIAgentOpen();
+    }, 500);
+  };
+
+  const handleLogoTouchEnd = () => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  };
 
   let headerMMClick = () => {
     setIsAppMenuOpen((open) => !open)
@@ -143,9 +177,16 @@ let HeaderLeft = () => {
   return (
     <Fragment>
       <div className="header-left">
-        <div className="header-logo-container">
+        <div className="header-logo-container"
+          onMouseDown={handleLogoMouseDown}
+          onMouseUp={handleLogoMouseUp}
+          onMouseLeave={handleLogoMouseLeave}
+          onTouchStart={handleLogoTouchStart}
+          onTouchEnd={handleLogoTouchEnd}
+          title="Long press for AI Agent"
+        >
           <Link to="/">
-            <img className="header-logo" src={config?.logo} alt="logo"></img>
+            <img className="header-logo" src={config?.logo} alt="logo" style={{ userSelect: 'none' }}></img>
           </Link>
 
         </div>

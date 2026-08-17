@@ -1637,23 +1637,33 @@ const LudoGame = () => {
     if (!myProfile?._id) return;
 
     // CRITICAL: Skip reconnection if we're joining via invite (new join, not reconnection)
+    // This is THE PRIMARY guard against reconnection modal on invite acceptance
     if (isJoiningViaInviteRef.current) {
-      // Skipping reconnection - joining via invite
+      console.log("[RECONNECTION] Skipping - joining via invite");
       return;
     }
 
-    // CRITICAL: Skip reconnection if we recently accepted an invite (within last 10 seconds)
+    // CRITICAL: Skip reconnection if we recently accepted an invite (within last 15 seconds)
     // This prevents reconnection logic from running when we've just joined a game via invite
     const timeSinceInviteAccept = Date.now() - inviteAcceptTimestampRef.current;
-    if (inviteAcceptTimestampRef.current > 0 && timeSinceInviteAccept < 10000) {
-      // Skipping reconnection - recently accepted invite
+    if (inviteAcceptTimestampRef.current > 0 && timeSinceInviteAccept < 15000) {
+      console.log("[RECONNECTION] Skipping - recently accepted invite", {
+        timeSinceInviteAccept,
+      });
       return;
     }
 
-    // CRITICAL: Skip reconnection if we already have a gameId and we're not in reconnecting state
+    // CRITICAL: Skip reconnection if we have an incoming invite request pending
+    // This prevents showing reconnecting modal when user is in process of accepting invite
+    if (incomingInviteRequest) {
+      console.log("[RECONNECTION] Skipping - incoming invite request pending");
+      return;
+    }
+
+    // CRITICAL: Skip reconnection if we already have a gameId and we're in online mode
     // This prevents reconnection logic from running when we've already joined a game via invite
-    if (gameId && !isReconnecting) {
-      // Skipping reconnection - already have gameId and not reconnecting
+    if (gameId && onlineMode) {
+      console.log("[RECONNECTION] Skipping - already have gameId and in online mode");
       return;
     }
 
@@ -7675,17 +7685,21 @@ const LudoGame = () => {
   };
 
   // Accept / decline an incoming invite
-  const acceptIncomingInvite = async () => {
+  const acceptIncomingInvite = useCallback(async () => {
+    // NOTE: selectedPlayerCount, initializeGame, ensureSocketConnected, clearHiddenBoardGameId are accessed
+    // but not added to dependency array to avoid circular dependencies and excessive re-renders.
+    // These are stable across renders in practice.
     const payload = incomingInviteRequest;
     if (!payload) return;
     try {
-      // CRITICAL: Clear reconnecting state immediately when accepting invite
-      // This prevents the reconnection modal from showing when joining a new game
-      setIsReconnecting(false);
-      setShowReconnectModal(false);
-      hasProcessedReconnectionStateRef.current = true; // Mark as processed to prevent reconnection logic
+      // CRITICAL: Mark as joining via invite FIRST - this is the primary guard
+      // This must be done BEFORE any state changes to prevent reconnection modal
       isJoiningViaInviteRef.current = true; // Mark that we're joining via invite
+      hasProcessedReconnectionStateRef.current = true; // Mark as processed to prevent reconnection logic
       inviteAcceptTimestampRef.current = Date.now(); // Track when we accepted invite to prevent reconnection
+      
+      // CRITICAL: Clear reconnecting state immediately and only once
+      // This prevents the reconnection modal from showing when joining a new game
       setIsReconnecting(false);
       setShowReconnectModal(false);
       clearHiddenBoardGameId();
@@ -7881,10 +7895,16 @@ const LudoGame = () => {
       setOnlineMode(false);
       setGameId(null);
       setIncomingInviteRequest(null);
+      // Reset invite refs on error
+      isJoiningViaInviteRef.current = false;
     } finally {
-      setIncomingInviteRequest(null);
+      // Don't clear incomingInviteRequest here - it will be cleared by state update in catch block
+      // This ensures the guard in reconnection effect continues to work
     }
-  };
+  }, [incomingInviteRequest, myProfile?._id, myProfile?.fullName, myProfile?.profilePic, myProfile?.coverPic]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Note: selectedPlayerCount, initializeGame, ensureSocketConnected, clearHiddenBoardGameId are not included
+  // in dependencies to avoid circular dependencies and excessive re-renders. These functions are stable enough.
 
   // Store accept function in ref for use in effects
   useEffect(() => {

@@ -34,6 +34,7 @@ import EnablePushBanner from "../components/EnablePushBanner";
 import { initIncomingCallPushBridge } from "../utils/incomingCallFromPush";
 import socket from "../common/socket";
 import Header from "../partials/header/Header";
+import AIAgentModal from "../components/modal/AIAgentModal/AIAgentModal";
 import ProtectedRoute from "../components/ProtectedRoute.js";
 import { useAuth } from "../hooks/useAuth";
 import Home from "./Home";
@@ -1387,6 +1388,9 @@ const Main = () => {
     location.pathname.startsWith("/portfolio") ||
     location.pathname.startsWith("/youtube");
 
+  // AI Agent Modal State
+  const [isAIAgentModalOpen, setIsAIAgentModalOpen] = useState(false);
+
   // Cleanup audio element on unmount
   useEffect(() => {
     return () => {
@@ -1411,7 +1415,10 @@ const Main = () => {
       )}
 
       {!isHeaderHiddenRoute && isAuthenticated && (
-        <Header pendingLudoInvites={pendingLudoInvites} />
+        <Header
+          pendingLudoInvites={pendingLudoInvites}
+          onAIAgentOpen={() => setIsAIAgentModalOpen(true)}
+        />
       )}
 
       <div id="main-container" className={isLoading ? "loading" : ""}>
@@ -1714,6 +1721,10 @@ const Main = () => {
         <AudioCall myId={profileId}></AudioCall>
       </>
       <StickyChatBoxContainer />
+      <AIAgentModal
+        isOpen={isAIAgentModalOpen}
+        onClose={() => setIsAIAgentModalOpen(false)}
+      />
       <ToastContainer
         position="top-center"
         autoClose={5000}
