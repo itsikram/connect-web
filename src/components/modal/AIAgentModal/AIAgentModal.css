@@ -789,6 +789,13 @@
     animation: aiMicPulse 1.4s ease-in-out infinite;
 }
 
+.ai-agent-voice-btn.finalizing {
+    border-color: rgba(245, 158, 11, 0.55);
+    background: rgba(245, 158, 11, 0.12);
+    color: #f59e0b;
+    animation: none;
+}
+
 .ai-agent-voice-btn:disabled {
     opacity: 0.45;
     cursor: not-allowed;

@@ -111,6 +111,8 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
   const [voiceMode, setVoiceMode] = useState("bn");
   const [isBanglaSupported, setIsBanglaSupported] = useState(false);
   const [isEnglishSupported, setIsEnglishSupported] = useState(false);
+  const [isFinalizing, setIsFinalizing] = useState(false);
+  const [voiceStatusMessage, setVoiceStatusMessage] = useState("");
 
   const inputRef = useRef(null);
   const onChangeRef = useRef(onChange);
@@ -123,6 +125,7 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
   const stopTimeoutRef = useRef(null);
   const recognitionRef = useRef(null);
   const activeStopRef = useRef(() => {});
+  const modelLoadingRef = useRef(false);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -289,6 +292,14 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
       return;
     }
 
+    if (payload.type === "status") {
+      const statusMessage = String(payload.message || "");
+      speechLog("Server status:", statusMessage);
+      modelLoadingRef.current = /still loading/i.test(statusMessage);
+      setVoiceStatusMessage(statusMessage);
+      return;
+    }
+
     if (payload.type === "partial") {
       const partial = (payload.text || "").trim();
       speechLog("Partial transcript:", partial);
@@ -308,6 +319,8 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
       clearStopTimeout();
       closeWebSocket();
       setIsListening(false);
+      setIsFinalizing(false);
+      setVoiceStatusMessage("");
       return;
     }
 
@@ -324,6 +337,8 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
         clearStopTimeout();
         closeWebSocket();
         stopListeningLocal();
+        setIsFinalizing(false);
+        setVoiceStatusMessage("");
         const fallbackFinal = finalTranscriptRef.current || value;
         finalizeWithText(fallbackFinal);
       } else {
@@ -347,6 +362,9 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
 
     listeningBaseTextRef.current = value;
     finalTranscriptRef.current = "";
+    modelLoadingRef.current = false;
+    setVoiceStatusMessage("");
+    setIsFinalizing(false);
     setShowSuggestions(false);
 
     try {
@@ -361,6 +379,10 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
       speechLog("Connecting to speech WebSocket:", socketUrl);
       const ws = new WebSocket(socketUrl);
       wsRef.current = ws;
+      // Attach the message handler immediately (before awaiting "open") so we
+      // never miss a message the server sends right after the handshake
+      // completes (e.g. a "status" notice that the model is still loading).
+      ws.onmessage = handleSocketMessage;
 
       await new Promise((resolve, reject) => {
         const timer = setTimeout(
@@ -388,7 +410,6 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
         ws.addEventListener("error", handleBootError);
       });
 
-      ws.onmessage = handleSocketMessage;
       ws.onerror = (err) => {
         speechLog("WebSocket error during session", err);
         closeWebSocket();
@@ -472,8 +493,30 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
     }
   };
 
+  // How long to wait for the server's "final" message before giving up and
+  // using whatever text we have locally. This needs to be generous: a cold
+  // Whisper model (especially "small"/"medium") can take a long time to load
+  // on first use, and transcription itself can take several seconds on CPU.
+  // If the server already told us the model is still loading, wait even
+  // longer instead of abandoning the session prematurely.
+  const STOP_TIMEOUT_NORMAL_MS = 12000;
+  const STOP_TIMEOUT_MODEL_LOADING_MS = 60000;
+
   const stopBanglaVoiceInput = async () => {
     if (!isListeningRef.current) return;
+
+    if (isFinalizing) {
+      // Second click while we're already waiting for the server: force an
+      // immediate local finalize instead of waiting out the full timeout.
+      speechLog("Force-finalizing (user requested early stop)");
+      clearStopTimeout();
+      finalizeWithText(finalTranscriptRef.current || value);
+      closeWebSocket();
+      setIsListening(false);
+      setIsFinalizing(false);
+      setVoiceStatusMessage("");
+      return;
+    }
 
     speechLog("stopBanglaVoiceInput called");
 
@@ -488,16 +531,27 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
         speechLog("Failed to send stop payload", err);
       }
 
+      setIsFinalizing(true);
+
+      const timeoutMs = modelLoadingRef.current
+        ? STOP_TIMEOUT_MODEL_LOADING_MS
+        : STOP_TIMEOUT_NORMAL_MS;
+
+      speechLog(`Waiting up to ${timeoutMs}ms for final transcript...`);
+
       clearStopTimeout();
       stopTimeoutRef.current = setTimeout(() => {
         speechLog("Stop timeout reached, finalizing locally");
         finalizeWithText(finalTranscriptRef.current || value);
         closeWebSocket();
         setIsListening(false);
-      }, 2500);
+        setIsFinalizing(false);
+        setVoiceStatusMessage("");
+      }, timeoutMs);
     } else {
       speechLog("No open socket on stop; finalizing immediately");
       setIsListening(false);
+      setIsFinalizing(false);
     }
   };
 
@@ -671,30 +725,42 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
         </motion.button>
 
         <motion.button
-          className={`ai-agent-voice-btn ${isListening ? "listening" : ""}`}
+          className={`ai-agent-voice-btn ${isListening ? "listening" : ""} ${isFinalizing ? "finalizing" : ""}`}
           onClick={toggleVoiceInput}
           disabled={!isSpeechSupported || isLoading}
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           type="button"
           title={
-            isSpeechSupported
-              ? isListening
-                ? "Stop voice input"
-                : voiceMode === "bn"
-                  ? "Start Bangla voice input"
-                  : "Start English voice input"
-              : "Voice input is not supported in this browser"
+            isFinalizing
+              ? "Finishing transcription… tap again to stop waiting and use the current text"
+              : isSpeechSupported
+                ? isListening
+                  ? "Stop voice input"
+                  : voiceMode === "bn"
+                    ? "Start Bangla voice input"
+                    : "Start English voice input"
+                : "Voice input is not supported in this browser"
           }
           aria-label={
-            isListening
-              ? "Stop voice recognition"
-              : voiceMode === "bn"
-                ? "Start Bangla voice recognition"
-                : "Start English voice recognition"
+            isFinalizing
+              ? "Finishing transcription, tap to stop waiting"
+              : isListening
+                ? "Stop voice recognition"
+                : voiceMode === "bn"
+                  ? "Start Bangla voice recognition"
+                  : "Start English voice recognition"
           }
         >
-          <i className={`fas ${isListening ? "fa-stop" : "fa-microphone"}`} />
+          <i
+            className={`fas ${
+              isFinalizing
+                ? "fa-circle-notch fa-spin"
+                : isListening
+                  ? "fa-stop"
+                  : "fa-microphone"
+            }`}
+          />
         </motion.button>
 
         <textarea
@@ -711,11 +777,14 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
             setTimeout(() => setShowSuggestions(false), 200);
           }}
           placeholder={
-            isListening
-              ? voiceMode === "bn"
-                ? "Listening in Bangla... speak naturally"
-                : "Listening in English... speak naturally"
-              : "Try: 'go to settings', 'call John', 'open my profile'…"
+            isFinalizing
+              ? voiceStatusMessage ||
+                "Finishing transcription… tap the mic again to stop waiting"
+              : isListening
+                ? voiceMode === "bn"
+                  ? "Listening in Bangla... speak naturally"
+                  : "Listening in English... speak naturally"
+                : "Try: 'go to settings', 'call John', 'open my profile'…"
           }
           className="ai-agent-input"
           rows="1"
