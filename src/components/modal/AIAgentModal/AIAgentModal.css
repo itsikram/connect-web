@@ -710,6 +710,61 @@
     flex-shrink: 0;
 }
 
+.ai-agent-voice-btn {
+    width: 34px;
+    height: 34px;
+    border: 1px solid #d1d5db;
+    background: #ffffff;
+    color: #4b5563;
+    border-radius: 10px;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+        transform 0.15s,
+        box-shadow 0.15s,
+        color 0.15s,
+        border-color 0.15s,
+        background 0.15s,
+        opacity 0.15s;
+    flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.ai-agent-voice-btn:hover:not(:disabled) {
+    color: var(--ai-purple);
+    border-color: rgba(99, 102, 241, 0.45);
+    box-shadow: 0 3px 10px rgba(99, 102, 241, 0.18);
+}
+
+.ai-agent-voice-btn:active:not(:disabled) {
+    transform: scale(0.95);
+}
+
+.ai-agent-voice-btn.listening {
+    border-color: rgba(239, 68, 68, 0.55);
+    background: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
+    animation: aiMicPulse 1.4s ease-in-out infinite;
+}
+
+.ai-agent-voice-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+@keyframes aiMicPulse {
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.28);
+    }
+    50% {
+        box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+    }
+}
+
 .ai-agent-send-btn {
     width: 38px;
     height: 38px;
@@ -970,6 +1025,24 @@
     }
     .ai-agent-input::placeholder {
         color: #5a6080;
+    }
+
+    .ai-agent-voice-btn {
+        background: #1e2232;
+        border-color: #3a3f5c;
+        color: #a4abc8;
+    }
+
+    .ai-agent-voice-btn:hover:not(:disabled) {
+        color: #c6cafe;
+        border-color: rgba(139, 92, 246, 0.5);
+        box-shadow: 0 3px 10px rgba(139, 92, 246, 0.24);
+    }
+
+    .ai-agent-voice-btn.listening {
+        border-color: rgba(248, 113, 113, 0.7);
+        background: rgba(248, 113, 113, 0.16);
+        color: #fda4af;
     }
 
     .ai-agent-chat-input-container {

@@ -737,6 +737,16 @@
     color: #b8fff5;
 }
 
+.ludo-tool__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.1rem;
+    font-size: 0.95rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
 .ludo-tool__dot {
     width: 8px;
     height: 8px;
@@ -1691,6 +1701,12 @@
         flex-direction: column;
         align-items: flex-start;
         gap: 4px;
+    }
+
+    .ludo-tool {
+        min-width: 38px;
+        justify-content: center;
+        padding: 6px 10px;
     }
 
     .ludo-tool span.ludo-tool__label {

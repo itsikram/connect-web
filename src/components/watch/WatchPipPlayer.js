@@ -1,6 +1,13 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import { useWatchPip } from "../../contexts/WatchPipContext";
+import useMediaSession from "../../hooks/useMediaSession";
 import "./WatchPipPlayer.css";
 
 const WatchPipPlayer = () => {
@@ -11,6 +18,9 @@ const WatchPipPlayer = () => {
   const [paused, setPaused] = useState(false);
   const [pos, setPos] = useState(null);
   const dragState = useRef(null);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [playbackRate, setPlaybackRate] = useState(1);
 
   useEffect(() => {
     if (!pip || !videoRef.current) return;
@@ -33,7 +43,7 @@ const WatchPipPlayer = () => {
     else video.addEventListener("loadedmetadata", onReady, { once: true });
 
     return () => video.removeEventListener("loadedmetadata", onReady);
-  }, [pip?.watchId, pip?.libraryVideoId, pip?.videoUrl]);
+  }, [pip]);
 
   useEffect(() => {
     if (!pip) return undefined;
@@ -41,6 +51,16 @@ const WatchPipPlayer = () => {
     if (!video) return undefined;
 
     const sync = () => {
+      const nextTime = Number(video.currentTime);
+      const nextDuration = Number(video.duration);
+      const nextRate = Number(video.playbackRate);
+
+      setCurrentTime(Number.isFinite(nextTime) ? Math.max(0, nextTime) : 0);
+      setDuration(
+        Number.isFinite(nextDuration) ? Math.max(0, nextDuration) : 0,
+      );
+      setPlaybackRate(Number.isFinite(nextRate) && nextRate > 0 ? nextRate : 1);
+
       updatePip({
         currentTime: video.currentTime,
         playing: !video.paused,
@@ -48,13 +68,153 @@ const WatchPipPlayer = () => {
       });
     };
 
+    const onPlay = () => {
+      setPaused(false);
+      sync();
+    };
+
+    const onPause = () => {
+      setPaused(true);
+      sync();
+    };
+
+    sync();
+
     video.addEventListener("timeupdate", sync);
-    video.addEventListener("play", () => setPaused(false));
-    video.addEventListener("pause", () => setPaused(true));
+    video.addEventListener("durationchange", sync);
+    video.addEventListener("ratechange", sync);
+    video.addEventListener("loadedmetadata", sync);
+    video.addEventListener("play", onPlay);
+    video.addEventListener("pause", onPause);
+
     return () => {
       video.removeEventListener("timeupdate", sync);
+      video.removeEventListener("durationchange", sync);
+      video.removeEventListener("ratechange", sync);
+      video.removeEventListener("loadedmetadata", sync);
+      video.removeEventListener("play", onPlay);
+      video.removeEventListener("pause", onPause);
     };
   }, [pip, updatePip]);
+
+  const playCurrent = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return Promise.resolve();
+    return video.play().then(() => setPaused(false));
+  }, []);
+
+  const pauseCurrent = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.pause();
+    setPaused(true);
+  }, []);
+
+  const seekBy = useCallback((delta) => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const base = Number(video.currentTime);
+    const maxDuration = Number(video.duration);
+    if (!Number.isFinite(base)) return;
+
+    const next = base + delta;
+    if (Number.isFinite(maxDuration) && maxDuration > 0) {
+      video.currentTime = Math.min(maxDuration, Math.max(0, next));
+      return;
+    }
+    video.currentTime = Math.max(0, next);
+  }, []);
+
+  const seekTo = useCallback((details) => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const requested = Number(details?.seekTime);
+    if (!Number.isFinite(requested) || requested < 0) return;
+
+    const maxDuration = Number(video.duration);
+    const target =
+      Number.isFinite(maxDuration) && maxDuration > 0
+        ? Math.min(maxDuration, requested)
+        : requested;
+
+    if (details?.fastSeek && typeof video.fastSeek === "function") {
+      try {
+        video.fastSeek(target);
+        return;
+      } catch (_) {}
+    }
+
+    video.currentTime = target;
+  }, []);
+
+  const mediaSessionHandlers = useMemo(
+    () => ({
+      play: () => playCurrent().catch(() => {}),
+      pause: () => pauseCurrent(),
+      seekbackward: (details) => seekBy(-(Number(details?.seekOffset) || 10)),
+      seekforward: (details) => seekBy(Number(details?.seekOffset) || 10),
+      seekto: (details) => seekTo(details),
+    }),
+    [playCurrent, pauseCurrent, seekBy, seekTo],
+  );
+
+  const mediaArtwork = useMemo(() => {
+    const buildAbsoluteArtwork = (src, sizes, type) => {
+      if (!src) return null;
+      try {
+        const image = {
+          src: new URL(src, window.location.origin).toString(),
+          sizes,
+        };
+        if (type) image.type = type;
+        return image;
+      } catch (_) {
+        return null;
+      }
+    };
+
+    const artwork = [];
+    const thumb = buildAbsoluteArtwork(pip?.thumbnail, "512x512");
+    if (thumb) artwork.push(thumb);
+
+    const logo512 = buildAbsoluteArtwork(
+      "/logo512.png",
+      "512x512",
+      "image/png",
+    );
+    if (logo512) artwork.push(logo512);
+
+    const logo192 = buildAbsoluteArtwork(
+      "/logo192.png",
+      "192x192",
+      "image/png",
+    );
+    if (logo192) artwork.push(logo192);
+
+    return artwork;
+  }, [pip?.thumbnail]);
+
+  useMediaSession({
+    enabled: !!pip,
+    metadata: pip
+      ? {
+          title: pip.title || "Connect Watch",
+          artist:
+            pip.source === "library" ? "Video pop-out player" : "Watch feed",
+          album: "Connect Watch",
+          artwork: mediaArtwork,
+        }
+      : null,
+    playbackState: paused ? "paused" : "playing",
+    positionState: {
+      duration,
+      position: currentTime,
+      playbackRate,
+    },
+    handlers: mediaSessionHandlers,
+  });
 
   if (!pip) return null;
 
@@ -62,12 +222,11 @@ const WatchPipPlayer = () => {
     e.stopPropagation();
     const video = videoRef.current;
     if (!video) return;
+
     if (video.paused) {
-      video.play().catch(() => {});
-      setPaused(false);
+      playCurrent().catch(() => {});
     } else {
-      video.pause();
-      setPaused(true);
+      pauseCurrent();
     }
   };
 
@@ -95,7 +254,7 @@ const WatchPipPlayer = () => {
 
   const handleClose = (e) => {
     e.stopPropagation();
-    if (videoRef.current) videoRef.current.pause();
+    pauseCurrent();
     closePip();
   };
 
@@ -121,11 +280,11 @@ const WatchPipPlayer = () => {
     if (Math.abs(dx) + Math.abs(dy) > 6) dragState.current.moved = true;
     const nextX = Math.max(
       8,
-      Math.min(window.innerWidth - 180, dragState.current.origX + dx)
+      Math.min(window.innerWidth - 180, dragState.current.origX + dx),
     );
     const nextY = Math.max(
       8,
-      Math.min(window.innerHeight - 140, dragState.current.origY + dy)
+      Math.min(window.innerHeight - 140, dragState.current.origY + dy),
     );
     setPos({ x: nextX, y: nextY });
   };
@@ -151,7 +310,11 @@ const WatchPipPlayer = () => {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       role="dialog"
-      aria-label={pip.source === "library" ? "Video pop-out player" : "Watch picture in picture"}
+      aria-label={
+        pip.source === "library"
+          ? "Video pop-out player"
+          : "Watch picture in picture"
+      }
     >
       <video
         ref={videoRef}

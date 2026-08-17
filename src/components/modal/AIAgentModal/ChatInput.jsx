@@ -40,10 +40,135 @@ const SUGGESTIONS = [
   "What can you help with?",
 ];
 
+const appendTranscript = (baseText, transcript) => {
+  const nextTranscript = transcript.trim();
+
+  if (!nextTranscript) return baseText;
+  if (!baseText) return nextTranscript;
+
+  return /\s$/.test(baseText)
+    ? `${baseText}${nextTranscript}`
+    : `${baseText} ${nextTranscript}`;
+};
+
+const BENGALI_CHAR_REGEX = /[\u0980-\u09FF]/;
+
+const resolveSpeechLanguage = (inputText = "") => {
+  if (BENGALI_CHAR_REGEX.test(inputText || "")) {
+    return "bn-BD";
+  }
+
+  if (typeof navigator !== "undefined") {
+    const browserLanguages = [
+      navigator.language,
+      ...(navigator.languages || []).filter(Boolean),
+    ].filter(Boolean);
+
+    const hasBanglaLocale = browserLanguages.some((lang) =>
+      /^bn(-|$)/i.test(lang),
+    );
+
+    if (hasBanglaLocale) {
+      return "bn-BD";
+    }
+
+    return browserLanguages[0] || "en-US";
+  }
+
+  return "en-US";
+};
+
 const ChatInput = ({ value, onChange, onSend, isLoading }) => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeechSupported, setIsSpeechSupported] = useState(false);
+
   const inputRef = useRef(null);
+  const onChangeRef = useRef(onChange);
+  const recognitionRef = useRef(null);
+  const listeningBaseTextRef = useRef("");
+  const finalTranscriptRef = useRef("");
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  useEffect(() => {
+    const SpeechRecognition =
+      typeof window !== "undefined"
+        ? window.SpeechRecognition || window.webkitSpeechRecognition
+        : null;
+
+    if (!SpeechRecognition) {
+      setIsSpeechSupported(false);
+      return;
+    }
+
+    setIsSpeechSupported(true);
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = resolveSpeechLanguage();
+
+    recognition.onresult = (event) => {
+      let interimTranscript = "";
+
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const transcript = event.results[i][0]?.transcript || "";
+
+        if (event.results[i].isFinal) {
+          finalTranscriptRef.current = appendTranscript(
+            finalTranscriptRef.current,
+            transcript,
+          );
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+
+      const withFinal = appendTranscript(
+        listeningBaseTextRef.current,
+        finalTranscriptRef.current,
+      );
+
+      onChangeRef.current(appendTranscript(withFinal, interimTranscript));
+    };
+
+    recognition.onerror = () => {
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      const withFinal = appendTranscript(
+        listeningBaseTextRef.current,
+        finalTranscriptRef.current,
+      );
+      onChangeRef.current(withFinal);
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+
+    return () => {
+      recognition.onresult = null;
+      recognition.onerror = null;
+      recognition.onend = null;
+      try {
+        recognition.stop();
+      } catch {
+        // noop
+      }
+      recognitionRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isLoading && isListening) {
+      recognitionRef.current?.stop();
+    }
+  }, [isLoading, isListening]);
 
   const handleKeyPress = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -65,6 +190,36 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
     onChange(s.replace(/\[.*?\]/g, ""));
     setShowSuggestions(false);
     setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  const toggleVoiceInput = () => {
+    if (!isSpeechSupported || isLoading || !recognitionRef.current) return;
+
+    if (isListening) {
+      recognitionRef.current.stop();
+      return;
+    }
+
+    listeningBaseTextRef.current = value;
+    finalTranscriptRef.current = "";
+    setShowSuggestions(false);
+    setIsListening(true);
+
+    recognitionRef.current.lang = resolveSpeechLanguage(value);
+
+    try {
+      recognitionRef.current.start();
+      inputRef.current?.focus();
+    } catch {
+      setIsListening(false);
+    }
+  };
+
+  const handleTextChange = (nextValue) => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+    }
+    onChange(nextValue);
   };
 
   return (
@@ -107,10 +262,31 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
 
       {/* Input wrapper */}
       <div className={`ai-agent-input-wrapper ${isFocused ? "focused" : ""}`}>
+        <motion.button
+          className={`ai-agent-voice-btn ${isListening ? "listening" : ""}`}
+          onClick={toggleVoiceInput}
+          disabled={!isSpeechSupported || isLoading}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          type="button"
+          title={
+            isSpeechSupported
+              ? isListening
+                ? "Stop voice input"
+                : "Start voice input"
+              : "Voice input is not supported in this browser"
+          }
+          aria-label={
+            isListening ? "Stop voice recognition" : "Start voice recognition"
+          }
+        >
+          <i className={`fas ${isListening ? "fa-stop" : "fa-microphone"}`} />
+        </motion.button>
+
         <textarea
           ref={inputRef}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => handleTextChange(e.target.value)}
           onKeyPress={handleKeyPress}
           onFocus={() => {
             setIsFocused(true);
@@ -120,7 +296,11 @@ const ChatInput = ({ value, onChange, onSend, isLoading }) => {
             setIsFocused(false);
             setTimeout(() => setShowSuggestions(false), 200);
           }}
-          placeholder="Try: 'go to settings', 'call John', 'open my profile'…"
+          placeholder={
+            isListening
+              ? "Listening... speak naturally"
+              : "Try: 'go to settings', 'call John', 'open my profile'…"
+          }
           className="ai-agent-input"
           rows="1"
           disabled={isLoading}
