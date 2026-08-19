@@ -514,6 +514,80 @@ const LudoGame = () => {
   const botActingRef = useRef(false);
   const botTurnTimerRef = useRef(null);
 
+  // Watchdog: recover from stuck rolling/moving state when host broadcast is delayed/dropped
+  useEffect(() => {
+    // Runs only when the game is active and we're not waiting in lobby
+    if (!onlineMode || !gameStarted || gameEnded || waitingForPlayers) return;
+    const CHECK_INTERVAL_MS = 1000;
+    const STUCK_THRESHOLD_MS = 4000; // If stuck longer than this, force-clear
+
+    const watcher = setInterval(() => {
+      try {
+        const myIdx = myPlayerIndexRef.current;
+        const isMyTurn =
+          typeof myIdx === 'number' && currentPlayerRef.current === myIdx;
+
+        const stuckRolling =
+          isMyTurn &&
+          isRollingRef.current === true &&
+          diceValueRef.current === 0;
+
+        // Use lastLocalDiceRollTimeRef as primary timing signal; fall back to lastRollTimeRef
+        const now = Date.now();
+        const lastLocalRoll = lastLocalDiceRollTimeRef.current || 0;
+        const lastRoll = lastRollTimeRef.current || 0;
+        const timeSinceLocalRoll = lastLocalRoll > 0 ? now - lastLocalRoll : now - lastRoll;
+
+        if (stuckRolling && timeSinceLocalRoll > STUCK_THRESHOLD_MS) {
+          console.log('[WATCHDOG] Detected stuck rolling/move state - forcing recovery', {
+            gameId,
+            myIdx,
+            currentPlayer: currentPlayerRef.current,
+            diceValue: diceValueRef.current,
+            isRolling: isRollingRef.current,
+            isMoving: isMovingRef.current,
+            isAutoMoving: isAutoMovingRef.current,
+            timeSinceLocalRoll,
+          });
+
+          // Force-clear the moving/rolling refs and timers
+          try {
+            isRollingRef.current = false;
+            isMovingRef.current = false;
+            isAutoMovingRef.current = false;
+            // Clear any pending move timers
+            try {
+              (moveTimersRef.current || []).forEach((t) => clearTimeout(t));
+            } catch (_e) {}
+            moveTimersRef.current = [];
+
+            // Re-enable dice locally
+            setCanRollDice(true);
+            setDiceValueImmediate(0);
+            lastLocalDiceRollTimeRef.current = 0;
+
+            // Ask server for authoritative players snapshot to reconcile state
+            if (socketRef.current && gameId) {
+              try {
+                socketRef.current.emit('ludo:players:get', { gameId });
+                console.log('[WATCHDOG] Requested players snapshot to reconcile after forced recovery', { gameId });
+              } catch (_e) {
+                console.error('[WATCHDOG] Error emitting players:get', _e);
+              }
+            }
+          } catch (err) {
+            console.error('[WATCHDOG] Error while forcing recovery', err);
+          }
+        }
+      } catch (err) {
+        console.error('[WATCHDOG] Unexpected error in watchdog loop', err);
+      }
+    }, CHECK_INTERVAL_MS);
+
+    return () => clearInterval(watcher);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onlineMode, gameStarted, gameEnded, waitingForPlayers, gameId]);
+
   // ============================================================================
   // SECTION 9: SOUND EFFECTS
   // ============================================================================
