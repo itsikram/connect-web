@@ -150,6 +150,8 @@
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     border-bottom: 1px solid var(--ludo-border);
+    max-width: 90%;
+    margin: auto;
 }
 
 .ludo-header__brand {

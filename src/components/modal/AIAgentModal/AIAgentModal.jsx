@@ -71,6 +71,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   const [autoRunActions, setAutoRunActions] = useState(
     getInitialAutoRunActions,
   );
+  const [modalInteractionVersion, setModalInteractionVersion] = useState(0);
   const messagesEndRef = useRef(null);
   const autoRunMessageIdsRef = useRef(new Set());
 
@@ -83,6 +84,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         { ...INITIAL_MESSAGE, id: createId(), timestamp: new Date() },
       ]);
       setInputValue("");
+      setModalInteractionVersion(0);
     }
   }, [isOpen]);
 
@@ -434,6 +436,9 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             exit={{ opacity: 0, y: 40, scale: 0.97 }}
             transition={{ type: "spring", damping: 28, stiffness: 320 }}
             onClick={(e) => e.stopPropagation()}
+            onPointerDownCapture={() =>
+              setModalInteractionVersion((value) => value + 1)
+            }
           >
             {/* Header — contains mobile hamburger */}
             <ModalHeader
@@ -482,6 +487,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
                   messagesEndRef={messagesEndRef}
                   userProfilePic={myProfile?.profilePic}
                   autoRunActions={autoRunActions}
+                  modalInteractionVersion={modalInteractionVersion}
                 />
               </div>
             </div>

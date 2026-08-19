@@ -12,6 +12,7 @@ const ChatArea = ({
   messagesEndRef,
   userProfilePic,
   autoRunActions,
+  modalInteractionVersion,
 }) => {
   return (
     <div className="ai-agent-chat-area">
@@ -48,6 +49,7 @@ const ChatArea = ({
         onSend={onSendMessage}
         isLoading={isLoading}
         autoRunActions={autoRunActions}
+        modalInteractionVersion={modalInteractionVersion}
       />
     </div>
   );

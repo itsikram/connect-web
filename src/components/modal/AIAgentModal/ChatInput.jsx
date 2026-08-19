@@ -41,7 +41,8 @@ const SUGGESTIONS = [
   "What can you help with?",
 ];
 
-const AUDIO_TIMESLICE_MS = 800;
+const AUDIO_TIMESLICE_MS = 400;
+const AUTO_SEND_DELAY_MS = 3000;
 
 const appendTranscript = (baseText, transcript) => {
   const nextTranscript = transcript.trim();
@@ -108,11 +109,12 @@ const ChatInput = ({
   onSend,
   isLoading,
   autoRunActions = false,
+  modalInteractionVersion = 0,
 }) => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  // "bn" -> Node.js + local Whisper pipeline (streamed over WebSocket)
+  // "bn" -> Node.js + Deepgram live transcription (streamed over WebSocket)
   // "en" -> browser's native SpeechRecognition (fast, free, no server round-trip)
   const [voiceMode, setVoiceMode] = useState("bn");
   const [isBanglaSupported, setIsBanglaSupported] = useState(false);
@@ -134,6 +136,8 @@ const ChatInput = ({
   const activeStopRef = useRef(() => {});
   const modelLoadingRef = useRef(false);
   const autoSendTimeoutRef = useRef(null);
+  const modalInteractionVersionRef = useRef(modalInteractionVersion);
+  const maybeScheduleAutoSendRef = useRef(() => {});
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -141,33 +145,68 @@ const ChatInput = ({
   }, [onChange, onSend]);
 
   useEffect(() => {
+    modalInteractionVersionRef.current = modalInteractionVersion;
+  }, [modalInteractionVersion]);
+
+  useEffect(() => {
     isListeningRef.current = isListening;
   }, [isListening]);
+
+  const clearAutoSendTimeout = () => {
+    if (autoSendTimeoutRef.current) {
+      clearTimeout(autoSendTimeoutRef.current);
+      autoSendTimeoutRef.current = null;
+    }
+  };
 
   // Clear auto-send timeout on unmount
   useEffect(() => {
     return () => {
-      if (autoSendTimeoutRef.current) {
-        clearTimeout(autoSendTimeoutRef.current);
-      }
+      clearAutoSendTimeout();
     };
   }, []);
 
+  useEffect(() => {
+    if (!autoRunActions) {
+      clearAutoSendTimeout();
+    }
+  }, [autoRunActions]);
+
+  useEffect(() => {
+    if (isLoading) {
+      clearAutoSendTimeout();
+    }
+  }, [isLoading]);
+
+  useEffect(() => {
+    clearAutoSendTimeout();
+  }, [modalInteractionVersion]);
+
   // Helper to trigger auto-send if enabled
   const scheduleAutoSend = (finalText) => {
-    if (!autoRunActions || !finalText || !finalText.trim()) return;
+    const nextText = typeof finalText === "string" ? finalText.trim() : "";
+    if (!autoRunActions || !nextText) return;
 
-    // Clear any existing timeout
-    if (autoSendTimeoutRef.current) {
-      clearTimeout(autoSendTimeoutRef.current);
-    }
+    clearAutoSendTimeout();
 
-    speechLog(`[auto-run] Scheduled auto-send in 5s, text: "${finalText}"`);
+    const scheduledInteractionVersion = modalInteractionVersionRef.current;
+
+    speechLog(
+      `[auto-run] Scheduled auto-send in ${AUTO_SEND_DELAY_MS}ms, text: "${nextText}"`,
+    );
     autoSendTimeoutRef.current = setTimeout(() => {
-      speechLog(`[auto-run] Sending after 5s delay: "${finalText}"`);
       autoSendTimeoutRef.current = null;
-      onSendRef.current(finalText);
-    }, 5000);
+
+      if (modalInteractionVersionRef.current !== scheduledInteractionVersion) {
+        speechLog("[auto-run] Cancelled because the modal was touched/clicked");
+        return;
+      }
+
+      speechLog(
+        `[auto-run] Sending after ${AUTO_SEND_DELAY_MS}ms delay: "${nextText}"`,
+      );
+      onSendRef.current(nextText);
+    }, AUTO_SEND_DELAY_MS);
   };
 
   // ── Bangla support check (WebSocket + MediaRecorder + mic pipeline) ──────
@@ -237,6 +276,7 @@ const ChatInput = ({
       );
       onChangeRef.current(withFinal);
       setIsListening(false);
+      maybeScheduleAutoSendRef.current(withFinal);
     };
 
     recognitionRef.current = recognition;
@@ -308,7 +348,19 @@ const ChatInput = ({
   const finalizeWithText = (text = "") => {
     const withFinal = appendTranscript(listeningBaseTextRef.current, text);
     onChangeRef.current(withFinal);
+    return withFinal;
   };
+
+  const maybeScheduleAutoSend = (finalText) => {
+    const nextText = typeof finalText === "string" ? finalText.trim() : "";
+    const baseText = listeningBaseTextRef.current.trim();
+
+    if (!nextText || nextText === baseText) return;
+
+    scheduleAutoSend(nextText);
+  };
+
+  maybeScheduleAutoSendRef.current = maybeScheduleAutoSend;
 
   const handleSocketMessage = (event) => {
     let payload;
@@ -350,14 +402,13 @@ const ChatInput = ({
       const finalText = (payload.text || "").trim();
       speechLog("Final transcript:", finalText);
       finalTranscriptRef.current = finalText;
-      finalizeWithText(finalText);
+      const withFinal = finalizeWithText(finalText);
       clearStopTimeout();
       closeWebSocket();
       setIsListening(false);
       setIsFinalizing(false);
       setVoiceStatusMessage("");
-      // Schedule auto-send if enabled
-      scheduleAutoSend(finalText);
+      maybeScheduleAutoSend(withFinal);
       return;
     }
 
@@ -386,7 +437,7 @@ const ChatInput = ({
     }
   };
 
-  // ── Bangla voice input: mic -> WebSocket -> Node.js -> local Whisper ────
+  // ── Bangla voice input: mic -> WebSocket -> Node.js -> Deepgram live STT ───
   const startBanglaVoiceInput = async () => {
     if (!isBanglaSupported || isLoading || isListeningRef.current) {
       speechLog("startBanglaVoiceInput blocked", {
@@ -397,6 +448,7 @@ const ChatInput = ({
       return;
     }
 
+    clearAutoSendTimeout();
     listeningBaseTextRef.current = value;
     finalTranscriptRef.current = "";
     modelLoadingRef.current = false;
@@ -531,13 +583,11 @@ const ChatInput = ({
   };
 
   // How long to wait for the server's "final" message before giving up and
-  // using whatever text we have locally. This needs to be generous: a cold
-  // Whisper model (especially "small"/"medium") can take a long time to load
-  // on first use, and transcription itself can take several seconds on CPU.
-  // If the server already told us the model is still loading, wait even
-  // longer instead of abandoning the session prematurely.
-  const STOP_TIMEOUT_NORMAL_MS = 12000;
-  const STOP_TIMEOUT_MODEL_LOADING_MS = 60000;
+  // using whatever text we have locally. The Bangla path now uses a live
+  // Deepgram stream, so finalization should normally be much faster than the
+  // older batch/Whisper pipeline.
+  const STOP_TIMEOUT_NORMAL_MS = 5000;
+  const STOP_TIMEOUT_MODEL_LOADING_MS = 12000;
 
   const stopBanglaVoiceInput = async () => {
     if (!isListeningRef.current) return;
@@ -547,11 +597,12 @@ const ChatInput = ({
       // immediate local finalize instead of waiting out the full timeout.
       speechLog("Force-finalizing (user requested early stop)");
       clearStopTimeout();
-      finalizeWithText(finalTranscriptRef.current || value);
+      const withFinal = finalizeWithText(finalTranscriptRef.current || value);
       closeWebSocket();
       setIsListening(false);
       setIsFinalizing(false);
       setVoiceStatusMessage("");
+      maybeScheduleAutoSend(withFinal);
       return;
     }
 
@@ -579,11 +630,12 @@ const ChatInput = ({
       clearStopTimeout();
       stopTimeoutRef.current = setTimeout(() => {
         speechLog("Stop timeout reached, finalizing locally");
-        finalizeWithText(finalTranscriptRef.current || value);
+        const withFinal = finalizeWithText(finalTranscriptRef.current || value);
         closeWebSocket();
         setIsListening(false);
         setIsFinalizing(false);
         setVoiceStatusMessage("");
+        maybeScheduleAutoSend(withFinal);
       }, timeoutMs);
     } else {
       speechLog("No open socket on stop; finalizing immediately");
@@ -608,6 +660,7 @@ const ChatInput = ({
       return;
     }
 
+    clearAutoSendTimeout();
     listeningBaseTextRef.current = value;
     finalTranscriptRef.current = "";
     setShowSuggestions(false);
@@ -663,7 +716,10 @@ const ChatInput = ({
   const handleKeyPress = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (value.trim()) onSend();
+      if (value.trim()) {
+        clearAutoSendTimeout();
+        onSend();
+      }
     }
   };
 
@@ -676,6 +732,7 @@ const ChatInput = ({
   }, [value]);
 
   const handleSuggestionClick = (s) => {
+    clearAutoSendTimeout();
     onChange(s.replace(/\[.*?\]/g, ""));
     setShowSuggestions(false);
     setTimeout(() => inputRef.current?.focus(), 50);
@@ -697,6 +754,7 @@ const ChatInput = ({
   };
 
   const handleTextChange = (nextValue) => {
+    clearAutoSendTimeout();
     if (isListening) {
       activeStopRef.current();
     }
@@ -831,7 +889,11 @@ const ChatInput = ({
         <div className="ai-agent-input-actions">
           <motion.button
             className="ai-agent-send-btn"
-            onClick={() => value.trim() && onSend()}
+            onClick={() => {
+              if (!value.trim()) return;
+              clearAutoSendTimeout();
+              onSend();
+            }}
             disabled={!value.trim() || isLoading}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
