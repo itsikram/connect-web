@@ -4444,6 +4444,16 @@ const LudoGame = () => {
 
               isMovingRef.current = false; // Reset moving flag
               isAutoMovingRef.current = false; // Clear auto-moving flag
+              // CRITICAL: Remove this move's timer marker. Unlike the "move out
+              // of home" branch above, this was never cleared here, leaving a
+              // permanent stale entry in moveTimersRef.current after every
+              // normal move. That stale entry made "isNotMoving"/"isIdle"
+              // checks (used to decide whether the dice button should be
+              // re-enabled) evaluate to false indefinitely, which was the
+              // root cause of the next player's dice staying unclickable.
+              moveTimersRef.current = moveTimersRef.current.filter(
+                (t) => t !== moveTimerId,
+              );
 
               // Determine if player should keep turn: rolled 6 OR captured a token (traditional Ludo rule)
               // CRITICAL: Use the captured rolled value to avoid closure issues
@@ -4498,85 +4508,116 @@ const LudoGame = () => {
               // conflicting decisions overwriting each other.
               const isTurnAuthorityLocal = !onlineMode || myPlayerIndex === 0;
 
-              if (keepTurn) {
-                // Player keeps turn (rolled 6 or captured) - don't advance
-                console.log("[MOVE_PIECE] Player keeps turn", {
-                  movingPlayerIndex,
-                  currentPlayer: currentPlayerRef.current,
-                  reason: isSix ? "rolled 6" : "captured token",
-                });
+              // CRITICAL: Check turn authority FIRST (outer branch), then decide
+              // keep-turn vs advance-turn inside it. Previously "keepTurn" was
+              // checked before "isTurnAuthorityLocal", so a non-host remote
+              // client that rolled a 6/captured would skip the "wait for host
+              // confirmation" branch entirely - inconsistent with the "move out
+              // of home" branch below, which already gets this right.
+              if (isTurnAuthorityLocal) {
+                if (keepTurn) {
+                  // Player keeps turn (rolled 6 or captured) - don't advance
+                  console.log("[MOVE_PIECE] Player keeps turn", {
+                    movingPlayerIndex,
+                    currentPlayer: currentPlayerRef.current,
+                    reason: isSix ? "rolled 6" : "captured token",
+                  });
 
-                // Don't manually set canRollDice - let the useEffect handle it after state settles
-                // The useEffect will detect that it's still the same player's turn and dice is 0
-
-                // Save and emit state after move completes (host only)
-                if (myPlayerIndex === 0 && onlineMode && gameId) {
+                  // CRITICAL: Explicitly re-enable rolling instead of relying
+                  // solely on the passive useEffect - that effect is throttled
+                  // and can miss this update, leaving the dice permanently
+                  // disabled. This mirrors the pattern already used below for
+                  // "move out of home" moves and in advanceTurnForPlayer.
                   setTimeout(() => {
-                    emitPlayersStateAfterSave(false);
+                    if (
+                      currentPlayerRef.current === movingPlayerIndex &&
+                      diceValueRef.current === 0
+                    ) {
+                      setCanRollDice(true);
+                    }
+                  }, 200);
+
+                  // Save and emit state after move completes (host only)
+                  if (myPlayerIndex === 0 && onlineMode && gameId) {
+                    setTimeout(() => {
+                      emitPlayersStateAfterSave(false);
+                    }, 200);
+                  }
+                } else {
+                  // CRITICAL: Advance to next player - this MUST happen for non-6, non-capture moves
+                  const nextPlayer = getNextActivePlayer(movingPlayerIndex);
+
+                  console.log("[MOVE_PIECE] Advancing turn", {
+                    fromPlayer: movingPlayerIndex,
+                    toPlayer: nextPlayer,
+                    currentPlayerBefore: currentPlayerRef.current,
+                    timestamp: Date.now(),
+                  });
+
+                  // Play turn change sound
+                  playSound("turnChange");
+
+                  // CRITICAL: Update ref first, then state, to ensure ref is always up-to-date
+                  // This prevents race conditions where state hasn't updated yet but ref has
+                  currentPlayerRef.current = nextPlayer; // Update ref immediately to prevent race conditions
+                  lastTurnAdvanceTimeRef.current = Date.now(); // Track when we advanced the turn locally
+
+                  // CRITICAL: Reset consecutive 6s for the player who lost their turn
+                  if (consecutiveSixesRef.current[movingPlayerIndex] > 0) {
+                    setConsecutiveSixes((prev) => ({
+                      ...prev,
+                      [movingPlayerIndex]: 0,
+                    }));
+                    consecutiveSixesRef.current[movingPlayerIndex] = 0;
+                  }
+
+                  // Update state using functional update to ensure consistency
+                  setCurrentPlayer((prev) => {
+                    // Ensure we're setting the correct next player
+                    if (prev !== nextPlayer) {
+                      return nextPlayer;
+                    }
+                    return prev; // Already correct, no change needed
+                  });
+
+                  console.log("[MOVE_PIECE] Turn advanced", {
+                    currentPlayerAfter: currentPlayerRef.current,
+                    nextPlayer,
+                    lastTurnAdvanceTime: lastTurnAdvanceTimeRef.current,
+                    myPlayerIndex: myPlayerIndexRef.current,
+                    isMyTurn: nextPlayer === myPlayerIndexRef.current,
+                  });
+
+                  // CRITICAL: Save and emit game state when turn changes (host only)
+                  if (myPlayerIndex === 0 && onlineMode && gameId) {
+                    setTimeout(() => {
+                      console.log(
+                        "[MOVE_PIECE] Host emitting state after turn change",
+                        {
+                          currentPlayer: currentPlayerRef.current,
+                          nextPlayer,
+                          gameId,
+                        },
+                      );
+                      emitPlayersStateAfterSave(false);
+                    }, 300); // Small delay to ensure state is synchronized
+                  }
+
+                  // CRITICAL: Explicitly re-enable rolling for the next player
+                  // instead of relying solely on the passive useEffect. Without
+                  // this, the next player's dice could stay disabled forever in
+                  // offline hot-seat mode (the periodic self-heal safety net only
+                  // runs in online mode) - this was the root cause of "the next
+                  // player's dice is not clickable" after a move.
+                  setTimeout(() => {
+                    if (
+                      currentPlayerRef.current === nextPlayer &&
+                      diceValueRef.current === 0
+                    ) {
+                      setCanRollDice(true);
+                    }
                   }, 200);
                 }
-              } else if (isTurnAuthorityLocal) {
-                // CRITICAL: Advance to next player - this MUST happen for non-6, non-capture moves
-                const nextPlayer = getNextActivePlayer(movingPlayerIndex);
-
-                console.log("[MOVE_PIECE] Advancing turn", {
-                  fromPlayer: movingPlayerIndex,
-                  toPlayer: nextPlayer,
-                  currentPlayerBefore: currentPlayerRef.current,
-                  timestamp: Date.now(),
-                });
-
-                // Play turn change sound
-                playSound("turnChange");
-
-                // CRITICAL: Update ref first, then state, to ensure ref is always up-to-date
-                // This prevents race conditions where state hasn't updated yet but ref has
-                currentPlayerRef.current = nextPlayer; // Update ref immediately to prevent race conditions
-                lastTurnAdvanceTimeRef.current = Date.now(); // Track when we advanced the turn locally
-
-                // CRITICAL: Reset consecutive 6s for the player who lost their turn
-                if (consecutiveSixesRef.current[movingPlayerIndex] > 0) {
-                  setConsecutiveSixes((prev) => ({
-                    ...prev,
-                    [movingPlayerIndex]: 0,
-                  }));
-                  consecutiveSixesRef.current[movingPlayerIndex] = 0;
-                }
-
-                // Update state using functional update to ensure consistency
-                setCurrentPlayer((prev) => {
-                  // Ensure we're setting the correct next player
-                  if (prev !== nextPlayer) {
-                    return nextPlayer;
-                  }
-                  return prev; // Already correct, no change needed
-                });
-
-                console.log("[MOVE_PIECE] Turn advanced", {
-                  currentPlayerAfter: currentPlayerRef.current,
-                  nextPlayer,
-                  lastTurnAdvanceTime: lastTurnAdvanceTimeRef.current,
-                  myPlayerIndex: myPlayerIndexRef.current,
-                  isMyTurn: nextPlayer === myPlayerIndexRef.current,
-                });
-
-                // CRITICAL: Save and emit game state when turn changes (host only)
-                if (myPlayerIndex === 0 && onlineMode && gameId) {
-                  setTimeout(() => {
-                    console.log(
-                      "[MOVE_PIECE] Host emitting state after turn change",
-                      {
-                        currentPlayer: currentPlayerRef.current,
-                        nextPlayer,
-                        gameId,
-                      },
-                    );
-                    emitPlayersStateAfterSave(false);
-                  }, 300); // Small delay to ensure state is synchronized
-                }
-
-                // Don't manually set canRollDice - let the useEffect handle it after state settles
-                // The useEffect will detect the turn change and update canRollDice accordingly
               } else {
                 // Prevent a double-roll window: keep dice disabled and the
                 // rolling lock active locally until the host's authoritative
@@ -4973,17 +5014,17 @@ const LudoGame = () => {
             `[onAccepted] friendId=${friendId} (as string: ${friendIdStr}), currentStatus=${currentStatus}, expectedSlot=${expectedSlot}, payload.slotIndex=${payload.slotIndex}, myPlayerIndex=${myPlayerIndex}, payload.from=${payload.from}`,
           );
 
-          // CRITICAL: Ignore accept events that arrive too soon after sending invite (within 1 second)
-          // This prevents processing events that are incorrectly fired immediately after invite
-          const inviteTimestamp =
-            inviteTimestampsRef.current[friendIdStr] ||
-            inviteTimestampsRef.current[friendId];
-          if (inviteTimestamp && Date.now() - inviteTimestamp < 1000) {
-            console.log(
-              `[onAccepted] Ignoring accept event - received too soon after invite (${Date.now() - inviteTimestamp}ms ago, need at least 1000ms)`,
-            );
-            return;
-          }
+          // NOTE: This handler previously ignored any "accepted" event that
+          // arrived within 1 second of sending the invite, to guard against
+          // spurious/duplicate events. In practice this silently dropped
+          // legitimate fast acceptances (e.g. auto-accept invite links, or a
+          // friend who already had the invite ready and tapped Accept
+          // immediately) - the host would never learn the friend had joined,
+          // while the friend's own client believed it had. This is a likely
+          // cause of "stuck in lobby" / seats not filling reports. The other
+          // guards below (status must be 'invited'/'joined', slot must match,
+          // and de-dup once already 'joined') are sufficient to reject bad or
+          // duplicate accept events without an arbitrary time-based cutoff.
 
           // CRITICAL: Only process if friend was previously 'invited' OR if status is undefined/null (first time accepting)
           // This allows processing accept events even if status wasn't set properly

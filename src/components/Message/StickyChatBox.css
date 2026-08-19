@@ -85,7 +85,7 @@
 .sticky-chat-header-name {
     font-size: 15px;
     font-weight: 600;
-    color: #E4E6EA;
+    color: #e4e6ea;
     margin: 0;
     white-space: nowrap;
     overflow: hidden;
@@ -95,7 +95,7 @@
 
 .sticky-chat-header-status {
     font-size: 12px;
-    color: #B0B3B8;
+    color: #b0b3b8;
     margin-top: 2px;
     white-space: nowrap;
     overflow: hidden;
@@ -120,7 +120,7 @@
     background: transparent;
     border: 1px solid rgba(47, 48, 49, 0.8);
     border-radius: 8px;
-    color: #B0B3B8;
+    color: #b0b3b8;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -131,7 +131,7 @@
 
 .sticky-chat-action-btn:hover {
     background: rgba(255, 255, 255, 0.1);
-    color: #E4E6EA;
+    color: #e4e6ea;
     border-color: rgba(0, 212, 255, 0.5);
     transform: scale(1.05);
 }
@@ -147,7 +147,9 @@
     backdrop-filter: blur(30px);
     border: 1px solid rgba(47, 48, 49, 1);
     border-radius: 8px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.2);
+    box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.6),
+        0 0 0 1px rgba(0, 0, 0, 0.2);
     min-width: 200px;
     padding: 4px;
     z-index: 99999;
@@ -175,7 +177,7 @@
     background: transparent;
     border: none;
     border-radius: 6px;
-    color: #E4E6EA;
+    color: #e4e6ea;
     font-size: 14px;
     font-family: inherit;
     cursor: pointer;
@@ -185,7 +187,7 @@
 
 .sticky-chat-option-item:hover {
     background: rgba(255, 255, 255, 0.15);
-    color: #FFFFFF;
+    color: #ffffff;
 }
 
 .sticky-chat-option-item:active {
@@ -196,12 +198,12 @@
     width: 18px;
     text-align: center;
     font-size: 14px;
-    color: #B0B3B8;
+    color: #b0b3b8;
     transition: color 0.2s ease;
 }
 
 .sticky-chat-option-item:hover i {
-    color: #E4E6EA;
+    color: #e4e6ea;
 }
 
 .sticky-chat-option-item span {
@@ -210,20 +212,20 @@
 }
 
 .sticky-chat-option-item.danger {
-    color: #FF4444;
+    color: #ff4444;
 }
 
 .sticky-chat-option-item.danger:hover {
     background: rgba(255, 68, 68, 0.1);
-    color: #FF6666;
+    color: #ff6666;
 }
 
 .sticky-chat-option-item.danger i {
-    color: #FF4444;
+    color: #ff4444;
 }
 
 .sticky-chat-option-item.danger:hover i {
-    color: #FF6666;
+    color: #ff6666;
 }
 
 .sticky-chat-options-divider {
@@ -259,7 +261,7 @@
 .sticky-chat-minimized-name {
     font-size: 14px;
     font-weight: 600;
-    color: #E4E6EA;
+    color: #e4e6ea;
     margin: 0;
     white-space: nowrap;
     overflow: hidden;
@@ -269,7 +271,7 @@
 
 .sticky-chat-minimized-status {
     font-size: 11px;
-    color: #B0B3B8;
+    color: #b0b3b8;
     margin-top: 2px;
     white-space: nowrap;
     overflow: hidden;
@@ -298,11 +300,15 @@
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
     padding: 16px;
     display: flex;
     flex-direction: column;
     gap: 12px;
-    scroll-behavior: smooth;
+    /* Keep auto here — smoothing is handled in JS via scrollTo({behavior}) so it
+       can be skipped/interrupted correctly during pagination and history loads. */
+    scroll-behavior: auto;
 }
 
 /* Custom Scrollbar for Sticky Chat */
@@ -326,13 +332,115 @@
 }
 
 .sticky-chat-message-list::-webkit-scrollbar-thumb:active {
-    background: #00D4FF;
+    background: #00d4ff;
 }
 
 /* Firefox Scrollbar */
 .sticky-chat-message-list {
     scrollbar-width: thin;
     scrollbar-color: rgba(0, 212, 255, 0.3) transparent;
+}
+
+/* Empty conversation state - shown when a chat has no messages yet */
+.sticky-chat-empty-conversation {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 6px;
+    padding: 24px 16px;
+    margin: auto;
+}
+
+.sticky-chat-empty-avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    overflow: hidden;
+    margin-bottom: 6px;
+    box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.15);
+}
+
+.sticky-chat-empty-avatar img,
+.sticky-chat-empty-avatar > div {
+    width: 100%;
+    height: 100%;
+}
+
+.sticky-chat-empty-name {
+    color: #e4e6ea;
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.sticky-chat-empty-subtitle {
+    color: #b0b3b8;
+    font-size: 0.82rem;
+    margin: 0;
+    max-width: 220px;
+}
+
+/* Floating "scroll to bottom / jump to latest" affordance */
+.sticky-chat-scroll-to-bottom {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 212, 255, 0.35);
+    background: rgba(24, 25, 26, 0.92);
+    color: #00d4ff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 5;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    transition:
+        transform 0.15s ease,
+        background 0.2s ease,
+        opacity 0.2s ease;
+    animation: stickyScrollToBottomIn 0.18s ease;
+}
+
+.sticky-chat-scroll-to-bottom:hover {
+    background: rgba(0, 212, 255, 0.15);
+    transform: translateY(-2px);
+}
+
+.sticky-chat-scroll-to-bottom:active {
+    transform: translateY(0);
+}
+
+.sticky-chat-scroll-to-bottom-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    border-radius: 9px;
+    background: #ff4757;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+}
+
+@keyframes stickyScrollToBottomIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.85);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 
 /* Chat Footer */
@@ -347,7 +455,7 @@
     justify-content: center;
     gap: 10px;
     padding: 16px;
-    color: #FF4444;
+    color: #ff4444;
     font-size: 14px;
     background: rgba(255, 68, 68, 0.1);
     border-top: 1px solid rgba(255, 68, 68, 0.3);
@@ -412,7 +520,7 @@
 
 /* Fix triangle tail for incoming messages */
 .sticky-chat-box .message-receive .chat-message::before {
-    content: '';
+    content: "";
     position: absolute;
     left: -6px;
     bottom: 12px;
@@ -434,7 +542,7 @@
 
 /* Fix triangle tail for outgoing messages */
 .sticky-chat-box .message-sent .chat-message::before {
-    content: '';
+    content: "";
     position: absolute;
     right: -6px;
     bottom: 12px;
@@ -449,8 +557,8 @@
 }
 
 .sticky-chat-box .message-sent .chat-message {
-    background: linear-gradient(135deg, #00D4FF, #0099CC);
-    border-color: #00D4FF;
+    background: linear-gradient(135deg, #00d4ff, #0099cc);
+    border-color: #00d4ff;
     color: white;
 }
 
@@ -524,9 +632,13 @@
 .sticky-chat-box .chat-message-container.message-sent {
     padding-right: 0;
     margin-right: 0;
+    
+    .message-text {
+        color: #fff !important;
+    }
 }
 
-/* Skeleton Avatar Size Override for Sticky Chat */
+/* Skeleton Avatar Size Override for Sticky Chat (legacy, kept for safety) */
 .sticky-chat-box .chat-message-profilePic .skeleton-avatar {
     width: 24px !important;
     height: 24px !important;
@@ -546,6 +658,16 @@
     flex-shrink: 0;
 }
 
+/* Message skeleton avatar sizing to match the real (smaller) sticky-chat avatar */
+.sticky-chat-box .msg-skeleton-avatar {
+    width: 24px;
+    height: 24px;
+}
+
+.sticky-chat-box .msg-skeleton-line {
+    height: 10px;
+}
+
 /* Typing Indicator */
 .sticky-chat-box .typing-indicator {
     display: flex;
@@ -558,7 +680,7 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #B0B3B8;
+    background: #b0b3b8;
     animation: typingBounce 1.4s infinite ease-in-out;
 }
 
@@ -571,7 +693,9 @@
 }
 
 @keyframes typingBounce {
-    0%, 80%, 100% {
+    0%,
+    80%,
+    100% {
         transform: scale(0.8);
         opacity: 0.5;
     }
@@ -643,7 +767,7 @@
 
 /* Focus states for accessibility */
 .sticky-chat-action-btn:focus {
-    outline: 2px solid #00D4FF;
+    outline: 2px solid #00d4ff;
     outline-offset: 2px;
 }
 
@@ -662,7 +786,7 @@
     height: 100%;
     padding: 40px 20px;
     text-align: center;
-    color: #B0B3B8;
+    color: #b0b3b8;
 }
 
 .sticky-chat-box .empty-chat-state-icon {
@@ -697,20 +821,21 @@
 
 /* Notification badge for unread messages */
 .sticky-chat-box.has-unread::before {
-    content: '';
+    content: "";
     position: absolute;
     top: 8px;
     right: 8px;
     width: 8px;
     height: 8px;
-    background: #FF4444;
+    background: #ff4444;
     border-radius: 50%;
     box-shadow: 0 0 0 2px rgba(30, 31, 32, 0.95);
     animation: pulse 2s infinite;
 }
 
 @keyframes pulse {
-    0%, 100% {
+    0%,
+    100% {
         opacity: 1;
         transform: scale(1);
     }

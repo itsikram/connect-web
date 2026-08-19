@@ -127,7 +127,7 @@ const PrivacySetting = () => {
                         </div>
 
                         <div className="form-group mb-2">
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', backgroundColor: '#222324', borderRadius: '8px' }}>
                                 <div>
                                     <label htmlFor="isShareLocation" style={{ margin: 0, fontWeight: '500' }}>
                                         Share Location with Friends

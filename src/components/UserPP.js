@@ -6,7 +6,7 @@ import config from "../config/config.json";
 const default_pp_src = config.defaultProfile;
 
 
-let UserPP = ({profilePic, profile, active, hasStory}) => {
+let UserPP = ({profilePic, profile, active, hasStory,size = 40}) => {
     const [ppLoaded, setPPLoaded] = useState(false);
     let navigate = useNavigate();
 
@@ -32,7 +32,7 @@ let UserPP = ({profilePic, profile, active, hasStory}) => {
                     active && <div className='active-icon active'></div>
                 }
 
-                <div className={`user-profile-img ${hasStory == true ? 'has-story' : ''}`}>
+          <div style={{ height: size == 'full' ? '100%' : size, width: size == 'full' ? '100%' : size }} className={`user-profile-img ${hasStory == true ? 'has-story' : ''}`}>
                     {
                         ppLoaded ?
                             <>
