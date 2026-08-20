@@ -236,6 +236,78 @@ const LudoGame = () => {
   const [loadingSearch, setLoadingSearch] = useState(false);
   const [friendList, setFriendList] = useState([]);
 
+  // Robust friend search handler (debounced, tolerant of API shapes)
+  const onChangeFriendSearch = (text) => {
+    try {
+      setFriendSearchQuery(text);
+    } catch (_e) {}
+
+    // Clear any pending timeout
+    try {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+        searchTimeoutRef.current = null;
+      }
+    } catch (_e) {}
+
+    const q = (text || "").trim();
+
+    // If query too short, clear results
+    if (q.length < 2) {
+      setSearchResults([]);
+      setLoadingSearch(false);
+      console.log("Clearing search results - text too short");
+      return;
+    }
+
+    setLoadingSearch(true);
+    console.log("Setting up search timeout for:", q);
+
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        console.log("Starting search for:", q);
+        // Prefer a GET with query param, but be tolerant of API differences
+        let res;
+        try {
+          res = await api.get(`/search?input=${encodeURIComponent(q)}`);
+        } catch (e) {
+          // fallback to param style
+          try {
+            res = await api.get('/search', { params: { input: q } });
+          } catch (_e) {
+            throw e;
+          }
+        }
+
+        // Normalize response shapes
+        let users = [];
+        const body = res && (res.data || res);
+        if (Array.isArray(body)) {
+          users = body;
+        } else if (Array.isArray(body.users)) {
+          users = body.users;
+        } else if (Array.isArray(body.data)) {
+          users = body.data;
+        } else if (Array.isArray(res?.users)) {
+          users = res.users;
+        }
+
+        setSearchResults(users || []);
+      } catch (_e) {
+        console.error("Friend search error:", _e);
+        setSearchResults([]);
+      } finally {
+        setLoadingSearch(false);
+        try {
+          if (searchTimeoutRef.current) {
+            clearTimeout(searchTimeoutRef.current);
+            searchTimeoutRef.current = null;
+          }
+        } catch (_e) {}
+      }
+    }, 300);
+  };
+
   // Invite management
   const [invitedStatusByFriendId, setInvitedStatusByFriendId] = useState({});
   const [invitedSlotByFriendId, setInvitedSlotByFriendId] = useState({});
@@ -3017,6 +3089,33 @@ const LudoGame = () => {
     [getNextOpenSlot, selectedPlayerCount],
   );
 
+  // Assign a searched friend/profile directly to a specific seat index (used by PlayerEditorModal)
+  const assignFriendToSlot = useCallback(
+    (friend, slotIndex) => {
+      if (!friend || !friend._id) return;
+      if (typeof slotIndex !== 'number' || slotIndex < 0) return;
+      setPlayers((prev) => {
+        const copy = prev.map((p) => ({
+          ...p,
+          pieces: p.pieces.map((pc) => ({ ...pc })),
+        }));
+        if (!copy[slotIndex]) return prev;
+        copy[slotIndex].name = friend.fullName || copy[slotIndex].name;
+        copy[slotIndex].avatar = friend.profilePic || copy[slotIndex].avatar;
+        copy[slotIndex].cover = friend.coverPic || copy[slotIndex].cover;
+        copy[slotIndex].profileId = friend._id; // local-only association
+        return copy;
+      });
+      setSelectedFriends((prev) => {
+        const already = prev.some((p) => String(p?._id) === String(friend._id));
+        if (already) return prev;
+        const next = [...prev, friend];
+        return next.slice(0, Math.max(0, selectedPlayerCount - 1));
+      });
+    },
+    [selectedPlayerCount],
+  );
+
   // Helper to check if all required players have actually joined (for online mode)
   const checkAllPlayersJoined = useCallback(() => {
     if (!onlineMode) return true; // Offline mode doesn't need to wait
@@ -3197,45 +3296,6 @@ const LudoGame = () => {
     checkAllPlayersJoined,
   ]);
 
-  const onChangeFriendSearch = (text) => {
-    console.log("Search input changed:", text);
-    setFriendSearchQuery(text);
-    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-    if (!text || text.trim().length < 2) {
-      console.log("Clearing search results - text too short");
-      setSearchResults([]);
-      return;
-    }
-    console.log("Setting up search timeout for:", text.trim());
-    searchTimeoutRef.current = setTimeout(async () => {
-      try {
-        setLoadingSearch(true);
-        console.log("Starting search for:", text.trim());
-        // Use the search API with query parameter
-        const res = await api.get(
-          `/search?input=${encodeURIComponent(text.trim())}`,
-          { credentials: "include" },
-        );
-        console.log("res fr", res);
-        // if (!res.success) {
-        //     setSearchResults([]);
-        //     return;
-        // }
-        const data = res.data;
-        console.log("Search results data:", data);
-
-        // Show all users (no filtering)
-        const allUsers = data.users || [];
-        console.log("All users to show:", allUsers);
-        setSearchResults(allUsers);
-      } catch (_e) {
-        console.error("Friend search error:", _e);
-        setSearchResults([]);
-      } finally {
-        setLoadingSearch(false);
-      }
-    }, 300);
-  };
 
   const generateGameId = () =>
     `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
@@ -3637,6 +3697,10 @@ const LudoGame = () => {
   const openPlayerEditor = (playerIndex) => {
     if (playerIndex == null || playerIndex < 0 || playerIndex >= players.length)
       return;
+    // If the player selection modal is open, close it to avoid overlapping
+    // modal backdrops which can prevent inputs inside the editor from receiving focus.
+    if (showPlayerSelection) setShowPlayerSelection(false);
+
     setEditingPlayerIndex(playerIndex);
     setEditName(players[playerIndex]?.name || "");
     setEditAvatarUrl(players[playerIndex]?.avatar || "");
@@ -6052,6 +6116,37 @@ const LudoGame = () => {
           setPlayers(protectedNext);
           // Update ref immediately
           playersRef.current = protectedNext;
+
+          // Safety: if the authoritative snapshot says it's now THIS client's turn
+          // and dice value is clear, ensure we release any local locks and enable
+          // the dice button immediately. This handles rare timing/race cases where
+          // move timers or rolling flags may have been left set and the passive
+          // effects didn't re-enable the dice promptly.
+          try {
+            if (
+              onlineMode &&
+              typeof incomingCurrentPlayer === "number" &&
+              incomingCurrentPlayer === myPlayerIndexRef.current &&
+              incomingDiceValue === 0
+            ) {
+              // Clear rolling/moving refs and timers
+              isRollingRef.current = false;
+              isMovingRef.current = false;
+              isAutoMovingRef.current = false;
+              try {
+                (moveTimersRef.current || []).forEach((t) => {
+                  try { clearTimeout(t); } catch (_e) {}
+                });
+              } catch (_e) {}
+              moveTimersRef.current = [];
+              lastLocalDiceRollTimeRef.current = 0;
+              // Enable dice for this player
+              setCanRollDice(true);
+              console.log('[ON_PLAYERS] Re-enabled dice after authoritative snapshot for local player');
+            }
+          } catch (_e) {
+            // Defensive: swallow any errors here to avoid breaking sync
+          }
 
           // CRITICAL: Only update invite status to 'joined' if player was previously invited AND game has started
           // This prevents automatically joining players who haven't accepted the invite
@@ -9515,6 +9610,14 @@ const LudoGame = () => {
             setEditName("");
             setEditAvatarUrl("");
           }}
+          // Search/assign props for picking a user inside editor
+          friendSearchQuery={friendSearchQuery}
+          loadingSearch={loadingSearch}
+          searchResults={searchResults}
+          friendList={friendList}
+          onFriendSearchChange={onChangeFriendSearch}
+          onAssignFriendToSlot={assignFriendToSlot}
+          onPlaySound={playSound}
           onSave={() => {
             if (editingPlayerIndex != null) {
               setPlayers((prev) => {
@@ -10225,6 +10328,14 @@ const LudoGame = () => {
           setEditName("");
           setEditAvatarUrl("");
         }}
+        // Search/assign props for picking a user inside editor
+        friendSearchQuery={friendSearchQuery}
+        loadingSearch={loadingSearch}
+        searchResults={searchResults}
+        friendList={friendList}
+        onFriendSearchChange={onChangeFriendSearch}
+        onAssignFriendToSlot={assignFriendToSlot}
+        onPlaySound={playSound}
         onSave={() => {
           if (editingPlayerIndex != null) {
             setPlayers((prev) => {

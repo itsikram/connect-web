@@ -114,7 +114,7 @@ let PorfilePosts = () => {
                     }
 
                     {posts.length > 0 ? posts.map((data, index) => {
-                        return <Post key={index} myProfile={myProfileData} postContainer={postContainer} data={data}></Post>
+                        return <Post key={data._id} myProfile={myProfileData} postContainer={postContainer} data={data} index={index}></Post>
                     })
                         :
                         <PostSkeleton count={3} />

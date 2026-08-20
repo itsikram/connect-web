@@ -52,11 +52,12 @@ if (!document.querySelector('meta[http-equiv="Content-Security-Policy"]')) {
 
 // Additional security measures
 window.addEventListener('load', () => {
-    // Disable right-click context menu in production (optional)
-    if (process.env.NODE_ENV === 'production') {
+    // Disable right-click context menu in production-like environments (optional)
+    // process is not available in the browser, so use hostname-based detection
+    if (!isDevelopment) {
         document.addEventListener('contextmenu', (e) => {
             // Allow right-click on input fields and text areas
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
                 return;
             }
             e.preventDefault();

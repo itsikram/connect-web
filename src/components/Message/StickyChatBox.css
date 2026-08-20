@@ -540,7 +540,7 @@
     border: 1px solid rgba(47, 48, 49, 0.8);
 }
 
-/* Fix triangle tail for outgoing messages */
+/* Fix triangle tail for outgoing messages - make translucent to match main chat glass style */
 .sticky-chat-box .message-sent .chat-message::before {
     content: "";
     position: absolute;
@@ -550,16 +550,19 @@
     height: 0;
     border-style: solid;
     border-width: 6px 0 6px 8px;
-    border-color: transparent transparent transparent rgba(0, 212, 255, 1);
+    /* Make triangle border translucent so it matches the bubble background */
+    border-color: transparent transparent transparent rgba(0, 212, 255, 0.18);
     transform: none;
     background: transparent;
     backdrop-filter: none;
 }
 
 .sticky-chat-box .message-sent .chat-message {
-    background: linear-gradient(135deg, #00d4ff, #0099cc);
-    border-color: #00d4ff;
+    /* Use translucent gradient stops so sticky sent bubbles match the glass effect */
+    background: linear-gradient(135deg, rgba(0,212,255,0.12) 0%, rgba(0,153,204,0.12) 100%);
+    border-color: rgba(0, 212, 255, 0.18);
     color: white;
+    box-shadow: 0 8px 24px rgba(0, 212, 255, 0.12);
 }
 
 .sticky-chat-box .chat-message-profilePic {

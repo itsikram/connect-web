@@ -2069,10 +2069,12 @@
     .chat-message-list
     .chat-message-container.message-sent
     .chat-message {
-    background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%) !important;
-    border-color: rgba(0, 212, 255, 0.4);
+    /* Keep the same blue color but make it translucent to match the "glass" effect
+       used by received messages (backdrop-filter + border). */
+    background: linear-gradient(135deg, rgba(0,212,255,0.12) 0%, rgba(0,153,204,0.12) 100%) !important;
+    border-color: rgba(0, 212, 255, 0.18);
     color: white;
-    box-shadow: 0 8px 24px rgba(0, 212, 255, 0.2);
+    box-shadow: 0 8px 24px rgba(0, 212, 255, 0.12);
 }
 
 .message-receive .chat-message,
@@ -2088,8 +2090,9 @@
 }
 
 .message-sent .chat-message::before {
-    background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
-    border-color: rgba(0, 212, 255, 0.4);
+    /* Use translucent gradient for the bubble tail so it matches the bubble background */
+    background: linear-gradient(135deg, rgba(0,212,255,0.12) 0%, rgba(0,153,204,0.12) 100%);
+    border-color: rgba(0, 212, 255, 0.18);
 }
 
 .message-receive .chat-message:hover {

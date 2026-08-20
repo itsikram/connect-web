@@ -227,7 +227,7 @@ const Home = () => {
                                     {
                                         newsFeedPosts.length > 0 ?
                                             newsFeedPosts.map((newsFeed, index) => {
-                                                return <Post key={index} index={newsFeedPosts.indexOf(newsFeed)} postContainer={postContainer} data={newsFeed}></Post>
+                                                return <Post key={newsFeed._id} index={index} postContainer={postContainer} data={newsFeed}></Post>
                                             })
                                         : feedLoaded ? (
                                             <div className="no-posts-message text-center py-4">
