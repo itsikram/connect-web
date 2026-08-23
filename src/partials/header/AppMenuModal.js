@@ -1,11 +1,10 @@
-import React, { Fragment, useCallback, useState } from 'react';
+import React, { Fragment, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import ModalContainer from '../../components/modal/ModalContainer';
 import UserPP from '../../components/UserPP';
 import useIsMobile from '../../utils/useIsMobile';
 import { SIDEBAR_MENU_ITEMS } from '../sidebar/sidebarMenuItems';
-import AIAgentModal from '../../components/modal/AIAgentModal/AIAgentModal';
 import './AppMenuModal.css';
 
 function getProfileDisplayName(profileData) {
@@ -19,10 +18,9 @@ function getProfileDisplayName(profileData) {
     return 'Your profile';
 }
 
-const AppMenuModal = ({ isOpen, onRequestClose }) => {
+const AppMenuModal = ({ isOpen, onRequestClose, onAIAgentOpen }) => {
     const isMobile = useIsMobile();
     const profileData = useSelector((state) => state.profile);
-    const [isAIAgentModalOpen, setIsAIAgentModalOpen] = useState(false);
 
     const userInfo = (() => {
         try {
@@ -40,8 +38,9 @@ const AppMenuModal = ({ isOpen, onRequestClose }) => {
     }, [onRequestClose]);
 
     const handleAIAgentClick = useCallback(() => {
-        setIsAIAgentModalOpen(true);
-    }, []);
+        onRequestClose();
+        onAIAgentOpen?.();
+    }, [onRequestClose, onAIAgentOpen]);
 
     return (
         <ModalContainer
@@ -154,11 +153,6 @@ const AppMenuModal = ({ isOpen, onRequestClose }) => {
                     </div>
                 </div>
             </div>
-
-            <AIAgentModal
-                isOpen={isAIAgentModalOpen}
-                onRequestClose={() => setIsAIAgentModalOpen(false)}
-            />
         </ModalContainer>
     );
 };

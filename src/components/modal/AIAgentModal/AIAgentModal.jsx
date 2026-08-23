@@ -20,6 +20,7 @@ import {
 } from "./agentIntentParser";
 import { executeAction, getActionMeta } from "./agentActions";
 import api from "../../../api/api";
+import { fetchLatestAIChat, saveAIChat } from "../../../services/aiChatService";
 
 const createId = () => Date.now() + Math.random();
 
@@ -74,24 +75,56 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   const [modalInteractionVersion, setModalInteractionVersion] = useState(0);
   const messagesEndRef = useRef(null);
   const autoRunMessageIdsRef = useRef(new Set());
+  const [isFetchingHistory, setIsFetchingHistory] = useState(false);
 
-  // Detect mobile to keep sidebar closed by default
+  // Fetch chat history from database
+  const fetchChatHistory = useCallback(async () => {
+    setIsFetchingHistory(true);
+    try {
+      const chatData = await fetchLatestAIChat();
+      if (chatData?.messages && Array.isArray(chatData.messages) && chatData.messages.length > 0) {
+        // Load existing messages
+        setMessages(chatData.messages);
+      } else {
+        // No previous chat, show initial message
+        setMessages([
+          { ...INITIAL_MESSAGE, id: createId(), timestamp: new Date() },
+        ]);
+      }
+    } catch (error) {
+      console.error("Failed to load chat history:", error);
+      // Fallback to initial message on error
+      setMessages([
+        { ...INITIAL_MESSAGE, id: createId(), timestamp: new Date() },
+      ]);
+    } finally {
+      setIsFetchingHistory(false);
+    }
+  }, []);
+
+  // Detect mobile to keep sidebar closed by default and fetch chat history
   useEffect(() => {
     if (isOpen) {
       const isMobile = window.innerWidth < 768;
       setIsSidebarOpen(!isMobile);
-      setMessages([
-        { ...INITIAL_MESSAGE, id: createId(), timestamp: new Date() },
-      ]);
       setInputValue("");
       setModalInteractionVersion(0);
+      
+      // Fetch chat history from database
+      fetchChatHistory();
     }
-  }, [isOpen]);
+  }, [isOpen, fetchChatHistory]);
 
   // Scroll to latest message
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Add a small delay to ensure DOM is updated
+    const timer = setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 100);
+    return () => clearTimeout(timer);
   }, [messages]);
+
+
 
   useEffect(() => {
     try {
@@ -102,6 +135,8 @@ const AIAgentModal = ({ isOpen, onClose }) => {
     } catch (_) {}
   }, [autoRunActions]);
 
+
+
   // ── Message helpers ─────────────────────────────────────────────────────────
   const addMessage = useCallback((msg) => {
     setMessages((prev) => [
@@ -109,6 +144,22 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       { id: createId(), timestamp: new Date(), ...msg },
     ]);
   }, []);
+
+  // Save messages to database whenever messages change (debounced)
+  useEffect(() => {
+    // Skip saving if still loading or only initial message
+    if (isFetchingHistory || messages.length <= 1) return;
+    
+    const timer = setTimeout(async () => {
+      try {
+        await saveAIChat(messages);
+      } catch (error) {
+        console.error("Failed to save chat to database:", error);
+      }
+    }, 1500); // Debounce: save after 1.5 seconds of no changes
+
+    return () => clearTimeout(timer);
+  }, [messages, isFetchingHistory]);
 
   // ── Execute after friend resolved ───────────────────────────────────────────
   const handlePlayVideo = useCallback(

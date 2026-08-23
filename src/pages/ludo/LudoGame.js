@@ -2945,10 +2945,11 @@ const LudoGame = () => {
         );
         // Update status to 'joined' if not already set
         if (currentStatus !== "joined") {
-          setInvitedStatusByFriendId((prev) => ({
-            ...prev,
-            [friendIdStr]: "joined",
-          }));
+          setInvitedStatusByFriendId((prev) => {
+            const updated = { ...prev, [friendIdStr]: "joined" };
+            invitedStatusByFriendIdRef.current = updated;
+            return updated;
+          });
         }
         return;
       }
@@ -2977,9 +2978,15 @@ const LudoGame = () => {
       setInvitedStatusByFriendId((prev) => {
         const updated = { ...prev, [friendIdStr]: "invited" };
         // Setting status to 'invited' for friend
+        // Update ref immediately for consistency
+        invitedStatusByFriendIdRef.current = updated;
         return updated;
       });
-      setInvitedSlotByFriendId((prev) => ({ ...prev, [friendIdStr]: slot }));
+      setInvitedSlotByFriendId((prev) => {
+        const updated = { ...prev, [friendIdStr]: slot };
+        invitedSlotByFriendIdRef.current = updated;
+        return updated;
+      });
 
       // CRITICAL: Add friend to selectedFriends if not already there
       setSelectedFriends((prev) => {
@@ -3366,6 +3373,11 @@ const LudoGame = () => {
         const entries = Object.entries(invitedSlotByFriendId || {});
         for (const [fid, slot] of entries) {
           if (Number(slot) === Number(slotIndex)) {
+            // Only return name if friend hasn't joined yet
+            const inviteStatus = invitedStatusByFriendId?.[fid];
+            if (inviteStatus === "joined") {
+              return null; // Friend has already joined, don't show as pending invite
+            }
             const pool = [...selectedFriends, ...friendList, ...searchResults];
             const f = pool.find((u) => u && String(u._id) === String(fid));
             return f?.fullName || null;
@@ -3374,7 +3386,7 @@ const LudoGame = () => {
       } catch (_e) {}
       return null;
     },
-    [invitedSlotByFriendId, selectedFriends, friendList, searchResults],
+    [invitedSlotByFriendId, invitedStatusByFriendId, selectedFriends, friendList, searchResults],
   );
 
   // Reload game state from server
@@ -3560,10 +3572,11 @@ const LudoGame = () => {
                     `[RE_INVITE] Skipping invite to ${friendIdStr} - already in game`,
                   );
                   if (currentStatus !== "joined") {
-                    setInvitedStatusByFriendId((prev) => ({
-                      ...prev,
-                      [friendIdStr]: "joined",
-                    }));
+                    setInvitedStatusByFriendId((prev) => {
+                      const updated = { ...prev, [friendIdStr]: "joined" };
+                      invitedStatusByFriendIdRef.current = updated;
+                      return updated;
+                    });
                   }
                   return;
                 }
@@ -5492,6 +5505,8 @@ const LudoGame = () => {
                 `[onAccepted] Setting status to 'joined' for friend ${friendIdStr}, updated status:`,
                 updated,
               );
+              // Update ref immediately for synchronous checks
+              invitedStatusByFriendIdRef.current = updated;
               return updated;
             });
             if (typeof payload.slotIndex === "number") {
@@ -6172,10 +6187,11 @@ const LudoGame = () => {
                   console.log(
                     `[ON_PLAYERS] Updating invite status to 'joined' for player ${playerIdStr} at slot ${playerIndex} (game started)`,
                   );
-                  setInvitedStatusByFriendId((prev) => ({
-                    ...prev,
-                    [playerIdStr]: "joined",
-                  }));
+                  setInvitedStatusByFriendId((prev) => {
+                    const updated = { ...prev, [playerIdStr]: "joined" };
+                    invitedStatusByFriendIdRef.current = updated;
+                    return updated;
+                  });
                 } else if (
                   currentStatus !== "invited" &&
                   currentStatus !== "joined" &&
@@ -6186,10 +6202,11 @@ const LudoGame = () => {
                   console.log(
                     `[ON_PLAYERS] Updating invite status to 'joined' for player ${playerIdStr} at slot ${playerIndex} (reconnection, game started)`,
                   );
-                  setInvitedStatusByFriendId((prev) => ({
-                    ...prev,
-                    [playerIdStr]: "joined",
-                  }));
+                  setInvitedStatusByFriendId((prev) => {
+                    const updated = { ...prev, [playerIdStr]: "joined" };
+                    invitedStatusByFriendIdRef.current = updated;
+                    return updated;
+                  });
                 } else if (
                   currentStatus === "invited" &&
                   !payload.gameStarted &&
@@ -8316,10 +8333,11 @@ const LudoGame = () => {
                           invitedStatusByFriendIdRef.current[friendIdStr] !==
                           "joined"
                         ) {
-                          setInvitedStatusByFriendId((prev) => ({
-                            ...prev,
-                            [friendIdStr]: "invited",
-                          }));
+                          setInvitedStatusByFriendId((prev) => {
+                            const updated = { ...prev, [friendIdStr]: "invited" };
+                            invitedStatusByFriendIdRef.current = updated;
+                            return updated;
+                          });
                         }
                       } catch (_e) {
                         console.error(

@@ -28,7 +28,7 @@
     inset: 0;
     background: rgba(0, 0, 0, 0.55);
     display: flex;
-    align-items: flex-end; /* bottom-sheet default */
+    align-items: center; /* center vertically */
     justify-content: center;
     z-index: 9999;
     /* No padding — let the container define its own safe-area gap */
@@ -37,10 +37,9 @@
     overscroll-behavior: contain;
 }
 
-/* On desktop, center the modal */
+/* On desktop, add padding */
 @media (min-width: 769px) {
     .ai-agent-modal-backdrop {
-        align-items: center;
         padding: 20px;
     }
 }
@@ -50,36 +49,29 @@
    ══════════════════════════════════════════════════ */
 .ai-agent-modal-container {
     position: relative;
-    width: 100%;
+    width: 92vw;
+    max-width: 1100px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     background: var(--ai-bg);
+    top: 420px;
 
-    /* Mobile: bottom sheet — takes almost full height */
-    height: 94svh; /* svh = small viewport height (stable, keyboard-aware) */
-    height: 94dvh; /* dvh = dynamic (Chrome 108+, Safari 15.4+) */
-    /* fallback for old browsers */
-    max-height: 94vh;
-
-    border-radius: var(--ai-radius) var(--ai-radius) 0 0;
-    box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.18);
+    /* Centered modal height - use max-height to allow flexing */
+    height: auto;
+    max-height: min(90vh, 90dvh);
+    border-radius: 18px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
 
     /* Safe area for home indicator (iPhone notch bottom) */
     padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* Desktop: floating centered card */
-@media (min-width: 769px) {
+/* Mobile adjustments */
+@media (max-width: 768px) {
     .ai-agent-modal-container {
-        max-width: 1100px;
-        width: 92vw;
-        height: 88vh;
-        height: 88dvh;
-        max-height: 88vh;
-        border-radius: 18px;
-        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
-        padding-bottom: 0;
+        width: 95vw;
+        max-height: min(90vh, 90dvh);
     }
 }
 
