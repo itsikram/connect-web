@@ -348,7 +348,7 @@ const SingleMessage = ({ index, msg, friendProfile, messages, setMessages, setRe
                             <button type='button' data-id={msg._id} className='chat-message-option delete' onClick={handleDeleteMessage.bind(msg)}><i className="fa fa-trash"></i></button>
                         </div>}
 
-                        {msg?.parent === undefined || msg?.parent === null ? (<></>) : (<div 
+                        {msg?.parent === undefined || msg?.parent === null || !msg?.parent?._id ? (<></>) : (<div 
                             onClick={handleParentMsgClick} 
                             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleParentMsgClick(e); } }}
                             role="button"
@@ -409,7 +409,7 @@ const SingleMessage = ({ index, msg, friendProfile, messages, setMessages, setRe
                             <button type='button' data-id={msg._id} className='chat-message-option delete' onClick={handleDeleteMessage.bind(this)}><i className="fa fa-trash"></i></button>
                         </div>}
 
-                        {msg?.parent === undefined || msg?.parent === null ? (<></>) : (<>
+                        {msg?.parent === undefined || msg?.parent === null || !msg?.parent?._id ? (<></>) : (<>
                             <div 
                                 onClick={handleParentMsgClick} 
                                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleParentMsgClick(e); } }}

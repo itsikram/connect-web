@@ -693,7 +693,7 @@ const ChatFooter = ({ chatFooter, room, isReplying, friendId, setIsTyping, chatN
                 {
                     isPreview && (<div className='new-message-preview-container'>
                         {
-                            isReplying && (
+                            isReplying && replyData.messageId && (
                                 <div className='reply-message-preview-form'>
                                     <p className='text-small'>
                                         {replyData.body}
