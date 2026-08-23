@@ -178,6 +178,132 @@
 }
 
 /* Views / reactors */
+.sp-filter-wrap {
+  padding: 12px 14px 0;
+}
+
+.sp-filter-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.sp-filter-label {
+  color: var(--sp-text);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+
+.sp-filter-reset {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--sp-muted);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sp-filter-reset:hover:not(:disabled) {
+  color: var(--sp-text);
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.sp-filter-reset:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.sp-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sp-filter-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+  color: var(--sp-text);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.sp-filter-chip:hover {
+  transform: translateY(-1px);
+  border-color: rgba(0, 212, 255, 0.24);
+  background: linear-gradient(180deg, rgba(0, 212, 255, 0.08), rgba(255, 255, 255, 0.03));
+}
+
+.sp-filter-chip.is-active {
+  border-color: rgba(0, 212, 255, 0.38);
+  background: linear-gradient(180deg, rgba(0, 212, 255, 0.16), rgba(0, 212, 255, 0.08));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 8px 20px rgba(0, 212, 255, 0.08);
+}
+
+.sp-filter-chip-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sp-filter-chip-icon {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sp-filter-chip-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.sp-filter-chip-text {
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.sp-filter-chip-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--sp-text);
+  font-size: 0.76rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.sp-filter-chip.is-active .sp-filter-chip-count {
+  background: rgba(255, 255, 255, 0.12);
+  color: #dff9ff;
+}
+
 .sp-views-panel .sp-reacts {
   list-style: none;
   margin: 0;
@@ -218,6 +344,7 @@
 }
 
 .sp-views-panel .reactor-name {
+  display: block;
   font-size: 0.9rem !important;
   font-weight: 600;
   white-space: nowrap;
@@ -225,9 +352,42 @@
   text-overflow: ellipsis;
 }
 
+.sp-views-panel .reactor-react-label {
+  display: inline-flex;
+  margin-top: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--sp-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.sp-views-panel .reactor-react {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 62px;
+}
+
 .sp-views-panel .reactor-react img {
   width: 26px !important;
   height: 26px !important;
+}
+
+.sp-views-panel .reactor-view-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--sp-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .sp-empty-state {
@@ -291,6 +451,18 @@
 
   .sp-panel-head {
     padding: 10px 12px;
+  }
+
+  .sp-filter-wrap {
+    padding: 10px 12px 0;
+  }
+
+  .sp-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sp-filter-chip {
+    padding: 10px 11px;
   }
 
   .sp-views-panel .sp-reacts {

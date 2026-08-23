@@ -84,7 +84,7 @@ const AppMenuModal = ({ isOpen, onRequestClose }) => {
                     >
                         <div className="app-menu-profile-avatar">
                 <UserPP profilePic={profileData?.profilePic}
-                  size={48}
+                  size='full'
                   profile={profileData?._id} />
                         </div>
                         <div className="app-menu-profile-meta">

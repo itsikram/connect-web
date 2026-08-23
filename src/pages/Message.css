@@ -1059,7 +1059,7 @@
     width: 42px;
     height: 42px;
     border-radius: 50%;
-    overflow: hidden;
+    overflow: visible;
 }
 
 .online-badge {
@@ -1104,6 +1104,7 @@
     min-width: 0;
     text-align: left;
 }
+
 
 .message-meta {
     display: flex;
@@ -1532,7 +1533,7 @@
     }
 
     .modern-message-container #chatBox .chat-header-main {
-        padding-left: 44px;
+        padding-left: 0px;
     }
 }
 

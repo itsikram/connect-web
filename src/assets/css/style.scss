@@ -2030,8 +2030,9 @@ select {
     .body {
         .caption {
             padding: 0 12px;
+            padding-left: 5px;
             margin: 0;
-            margin-bottom: 10px;
+            margin-bottom: 10px !important;
 
         }
 
@@ -2787,7 +2788,7 @@ select {
             padding: 0 12px;
             margin: 0;
             margin-bottom: 10px;
-
+            color: #fff;
         }
 
         .watch-caption-editor {
@@ -4370,7 +4371,7 @@ select {
                 padding: 0 12px;
                 margin: 0;
                 margin-bottom: 10px;
-
+                color: #fff;
             }
 
             .attachment {

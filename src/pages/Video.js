@@ -53,10 +53,11 @@ const Video = () => {
             align-items: center;
             gap: 8px;
             padding: 6px;
+            padding-top: 10px;
             border-radius: 999px;
             background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(2,6,23,0.04));
             border: 1px solid rgba(148, 163, 184, 0.08);
-            margin-bottom: 18px;
+            margin-bottom: 0px;
             box-shadow: 0 4px 18px rgba(2,6,23,0.06);
         }
         .watch-view-button {
@@ -67,7 +68,7 @@ const Video = () => {
             font-weight: 700;
             letter-spacing: 0.01em;
             padding: 10px 18px;
-            border-radius: 12px;
+            border-radius: 42px;
             transition: all 0.18s cubic-bezier(.2,.9,.2,1);
             min-width: 100px;
             text-transform: capitalize;
@@ -186,7 +187,7 @@ const Video = () => {
             font-size: 1rem;
             line-height: 1.35;
             font-weight: 700;
-            color: #0f1724;
+            color: #fff;
             display: -webkit-box;
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
@@ -313,7 +314,7 @@ const Video = () => {
                         </div>
                     </div>
                     <div className="col-md-3">
-                     
+
                     {!isMobile && <Rs />}
 
                     </div>

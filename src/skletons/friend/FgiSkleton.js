@@ -16,13 +16,13 @@ const FgiSkleton = ({ count = 1 }) => {
           </div> */}
 
                 {/* Main Content */}
-                <div className="skeleton-main" style={{marginBottom: '0', height: '270px'}}>
+                <div className="skeleton-main" style={{marginBottom: '0', height: '200px'}}>
                     {/* <ImageSkleton /> */}
                 </div>
 
                 {/* Footer */}
                 <div className="skeleton-footer" style={{flexDirection: 'column', marginTop: '10px'}} >
-                    <div style={{display: 'block'}} className="skeleton-line small w-100 py-2 d-block button mb-1" /> 
+                    <div style={{display: 'block'}} className="skeleton-line small w-100 py-2 d-block button mb-1" />
                     <br/>
                     <div className="skeleton-line small w-100 py-2 d-block button mb-1" />
                 </div>

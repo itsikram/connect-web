@@ -37,7 +37,6 @@ const Home = () => {
     const [lastVisitPost, setLastVisitPost] = useState(false)
     const [feedLoaded, setFeedLoaded] = useState(false)
     const [pageNumber, setPageNumber] = useState(0)
-    const myProfile = useSelector(state => state.profile)
     const newsFeedPosts = useSelector(state => state.post)
 
     const fetchProfileWithFallback = async () => {

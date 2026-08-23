@@ -72,17 +72,17 @@ let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [] }) => {
   useEffect(() => {
     if (!messageData || !profileData._id) return;
 
-    let unseenMessages = messageData.filter((data) => {
+    // Count total number of unseen messages across all conversations
+    let totalUnseenCount = 0;
+    messageData.forEach((data) => {
       if (data && data.messages && data.messages.length > 0) {
-        if (data.messages[0].isSeen === false) {
-          if (data.messages[0].receiverId === profileData._id) {
-            return true;
-          }
-        }
+        const unseenCount = data.messages.filter((msg) => 
+          msg.receiverId === profileData._id && msg.isSeen !== true
+        ).length;
+        totalUnseenCount += unseenCount;
       }
-      return false;
     });
-    setTotalMessages(unseenMessages.length);
+    setTotalMessages(totalUnseenCount);
   }, [messageData, profileData._id]);
 
   let showMsgList = () => {

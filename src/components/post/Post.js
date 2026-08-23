@@ -263,9 +263,7 @@ const Post = React.memo(({ data, postContainer, index }) => {
       if ($(target).hasClass("reacted")) {
         removeReact("post");
         $(target).removeClass("reacted");
-        setTimeout(() => {
-          $(target).parents(".post-react-container").css("display", "");
-        }, 500);
+        // Keep container hidden
       } else {
         placeReact("like", "post", target);
         $(target).addClass("reacted");
@@ -283,9 +281,7 @@ const Post = React.memo(({ data, postContainer, index }) => {
       if ($(e.currentTarget).hasClass("reacted")) {
         removeReact("post");
         $(e.currentTarget).removeClass("reacted");
-        setTimeout(() => {
-          $(target).parents(".post-react-container").css("display", "");
-        }, 500);
+        // Keep container hidden
       } else {
         placeReact("love", "post");
         $(e.currentTarget).siblings().removeClass("reacted");
@@ -304,9 +300,7 @@ const Post = React.memo(({ data, postContainer, index }) => {
       if ($(e.currentTarget).hasClass("reacted")) {
         removeReact();
         $(e.currentTarget).removeClass("reacted");
-        setTimeout(() => {
-          $(target).parents(".post-react-container").css("display", "");
-        }, 500);
+        // Keep container hidden
       } else {
         placeReact("haha", "post", target);
         $(e.currentTarget).siblings().removeClass("reacted");

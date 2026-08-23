@@ -179,22 +179,22 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
     const playCallingBeep = async () => {
         // First, try to unlock audio if not already unlocked
         await unlockAudio();
-        
+
         if (callingBeepAudio?.current) {
             const audio = callingBeepAudio.current;
-            
+
             // Check if audio has a valid source
             if (!audio.src || audio.src === window.location.href) {
                 console.warn('Ringtone audio has no valid source');
                 return;
             }
-            
+
             // Ensure audio is not muted and volume is set
             audio.muted = false;
             audio.volume = 1.0;
             audio.loop = true; // Loop the calling beep
             audio.currentTime = 0; // Reset to beginning for immediate playback
-                
+
             // Wait for audio to be ready if not already loaded
             if (audio.readyState < 2) {
                 const handleCanPlay = async () => {
@@ -249,10 +249,10 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
     // (Agora call uses its own camera, so we need to stop emotion detection camera)
     useEffect(() => {
         if (isVideoCalling || callAccepted) {
-            try { 
+            try {
                 stopCamera(true); // Force stop during calls
-            } catch (e) { 
-                /* Ignore camera stop errors */ 
+            } catch (e) {
+                /* Ignore camera stop errors */
             }
         }
     }, [isVideoCalling, callAccepted]);
@@ -294,13 +294,13 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
     // Listen for global event to stop hidden camera (from other components)
     // Only stop if camera is actually running and the event is from a legitimate source
     useEffect(() => {
-        const handler = () => { 
+        const handler = () => {
             // Only stop if camera is running (prevent unnecessary stops)
             if (isCameraRunningRef.current) {
-                try { 
+                try {
                     stopCamera(true); // Force stop when explicitly requested
-                } catch (e) { 
-                    /* Ignore camera stop errors */ 
+                } catch (e) {
+                    /* Ignore camera stop errors */
                 }
             }
         };
@@ -611,7 +611,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
     // Handle leave call - called when user clicks end button
     const handleLeaveCall = useCallback(async () => {
         console.log('ChatHeader: handleLeaveCall - emitting to server and cleaning up');
-        
+
         // Explicitly stop ringtone first
         stopCallingBeep();
 
@@ -826,32 +826,32 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             const ringtoneId = normalizeRingtoneId(settings.ringtone);
             const ringtone = ringtones.find(r => r.id === ringtoneId);
             const toneSrc = ringtone?.src || config?.callingBeep || '';
-            
+
             if (toneSrc) {
                 const audio = callingBeepAudio.current;
-                
+
                 // Only load if source hasn't been set yet
                 if (!audio.src || audio.src !== toneSrc) {
                     audio.setAttribute('src', toneSrc);
                     audio.load(); // Ensure the audio is loaded
-                    
+
                     // Handle loading errors
                     const handleError = () => {
                         console.error('Failed to load ringtone:', toneSrc);
                     };
-                    
+
                     // Handle successful load
                     const handleLoadStart = () => {
                         console.log('Loading ringtone:', toneSrc);
                     };
-                    
+
                     const handleCanPlay = () => {
                         console.log('Ringtone loaded successfully');
                         audio.removeEventListener('canplaythrough', handleCanPlay);
                         audio.removeEventListener('error', handleError);
                         audio.removeEventListener('loadstart', handleLoadStart);
                     };
-                    
+
                     audio.addEventListener('error', handleError);
                     audio.addEventListener('loadstart', handleLoadStart);
                     audio.addEventListener('canplaythrough', handleCanPlay);
@@ -969,7 +969,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
 
     const startVideo = useCallback(async () => {
         if (!cameraVideoRef.current) return;
-        
+
         // Check if camera is already running to prevent unnecessary restarts
         if (isCameraRunningRef.current) {
             const stream = cameraVideoRef.current?.srcObject;
@@ -978,21 +978,21 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                 return;
             }
         }
-        
+
         try {
             console.log('[ChatHeader] Starting emotion detection camera...');
             const emotionStream = await navigator.mediaDevices.getUserMedia({
-                video: { 
-                    facingMode: 'user', 
-                    width: { ideal: 640, min: 320 }, 
-                    height: { ideal: 480, min: 240 } 
+                video: {
+                    facingMode: 'user',
+                    width: { ideal: 640, min: 320 },
+                    height: { ideal: 480, min: 240 }
                 },
                 audio: false
             });
             const videoEl = cameraVideoRef.current;
             videoEl.srcObject = emotionStream;
             isCameraRunningRef.current = true; // Mark camera as running
-            
+
             await new Promise(resolve => {
                 const onLoaded = () => {
                     try { videoEl.play?.(); } catch (_) {
@@ -1019,7 +1019,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
 
     const stopCamera = (forceStop = false) => {
         if (!cameraVideoRef.current) return;
-        
+
         // Only stop if camera is actually running (unless forced)
         if (!isCameraRunningRef.current && !forceStop) {
             return;
@@ -1037,7 +1037,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             // Ignore errors when stopping camera
             isCameraRunningRef.current = false;
         }
-        
+
         if (emotionIntervalRef.current) {
             clearInterval(emotionIntervalRef.current);
             emotionIntervalRef.current = null;
@@ -1065,31 +1065,31 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
         try {
             const video = cameraVideoRef.current;
             const canvas = document.createElement('canvas');
-            
+
             // Optimize dimensions: use max 480px width to balance quality and payload size
             // Server will resize if needed, but we want good quality for detection
             const maxWidth = 480;
             const maxHeight = 360;
-            
+
             let targetWidth = video.videoWidth || 320;
             let targetHeight = video.videoHeight || 240;
-            
+
             // Scale down if too large to reduce payload size
             if (targetWidth > maxWidth || targetHeight > maxHeight) {
                 const scale = Math.min(maxWidth / targetWidth, maxHeight / targetHeight);
                 targetWidth = Math.round(targetWidth * scale);
                 targetHeight = Math.round(targetHeight * scale);
             }
-            
+
             // Ensure minimum size for face detection
             targetWidth = Math.max(targetWidth, 320);
             targetHeight = Math.max(targetHeight, 240);
-            
+
             canvas.width = targetWidth;
             canvas.height = targetHeight;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
+
             // Use 0.85 quality - good balance between quality and file size
             // This should result in ~50-100KB base64 payload (well under 10MB limit)
             return canvas.toDataURL('image/jpeg', 0.85);
@@ -1115,9 +1115,9 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             // Connect to Python server (default port 5000)
             const pythonServerUrl = process.env.REACT_APP_EMOTION_SERVER_URL || 'https://emotion-detection-z1b2.onrender.com';
             console.log('[ChatHeader] Connecting to Python emotion detection server:', pythonServerUrl);
-            
+
             isConnectingRef.current = true;
-            
+
             emotionServerSocketRef.current = io(pythonServerUrl, {
                 transports: ['websocket', 'polling'],
                 reconnection: true,
@@ -1143,7 +1143,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
 
             // Remove any existing listeners to prevent duplicates
             emotionServerSocketRef.current.off('face_emotion');
-            
+
             // Listen for emotion detection results
             // Use ref to get latest handler version without re-creating socket
             emotionServerSocketRef.current.on('face_emotion', (data) => {
@@ -1201,7 +1201,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
         const dominant = emotions.dominant || data.dominant_emotion || 'neutral';
         const confidence = emotions.confidence || 0.5;
         const allEmotions = emotions.all || {};
-        
+
         // Map Python server emotion format to ChatHeader format
         // Python server returns: 'happy', 'sad', 'angry', 'surprise', 'fear', 'disgust', 'neutral'
         // ChatHeader expects: 'Smiling', 'Sad', 'Angry', 'Surprised', 'Neutral', etc.
@@ -1220,7 +1220,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
         const dominantExpressionData = data.dominant_expression_data || {};
         const expressions = data.expressions || {};
         const features = data.features || {};
-        
+
         // Check if there's a dominant expression that might override emotion
         let finalEmotion = dominant;
         if (dominantExpression && dominantExpression !== 'none') {
@@ -1240,7 +1240,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
 
         // Map emotion to label
         let label = emotionLabelMap[finalEmotion] || 'Neutral';
-        
+
         // Ensure label matches emotionEmojiMap keys
         if (label && !emotionEmojiMap[label]) {
             const capitalized = label.charAt(0).toUpperCase() + label.slice(1);
@@ -1254,7 +1254,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
         // Log detected emotion and expression
         const emoji = emotionEmojiMap[label] || '😐';
         console.log(`[ChatHeader] 🎭 Emotion Detected: ${emoji} ${label} | Category: ${finalEmotion} | Confidence: ${(confidence * 100).toFixed(1)}% | Expression: ${dominantExpression || 'none'}`);
-        
+
         // Store expression data in ref for later emission
         expressionDataRef.current = {
             dominantExpression: dominantExpression,
@@ -1265,7 +1265,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             allEmotions: allEmotions,
             features: features
         };
-        
+
         // Update expression state for display (set my expression, not friend's)
         // Note: This is MY expression from my own camera detection
         // Friend's expression comes via socket.on('emotion_change')
@@ -1273,7 +1273,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             // We could store my own expression here if needed, but for now
             // we only display friend's expression from socket events
         }
-        
+
         // FAST EMISSION: Emit immediately if emotion changed (before majority window)
         // This ensures super fast response when emotions change
         if (label !== lastMajorityLabelRef.current) {
@@ -1282,16 +1282,16 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             const previousLabel = lastMajorityLabelRef.current;
             lastMajorityLabelRef.current = label;
             setMyEmotion(`${emoji} ${label}`);
-            
+
             // Use friendProfile._id directly if friendId state is not yet set
             const currentFriendId = friendId || friendProfile?._id;
             if (profileId && currentFriendId) {
                 try {
                     // Get the latest expression data from the most recent response
                     const latestExpressionData = expressionDataRef.current || {};
-                    
+
                     console.log(`[ChatHeader] ⚡ FAST Emotion Change Detected: ${previousLabel || 'none'} → ${emoji} ${label} | Emitting immediately`);
-                    
+
                     socket.emit('emotion_change', {
                         profileId,
                         emotion: `${emoji} ${label}`,
@@ -1323,10 +1323,10 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                     console.error('[ChatHeader] ❌ Error emitting emotion_change:', err);
                 }
             }
-            
+
             lastEmotionTimestampRef.current = Date.now();
         }
-        
+
         // Update rolling window for stability tracking (but don't wait for it)
         const now = Date.now();
         labelHistoryRef.current.push({ t: now, label });
@@ -1334,7 +1334,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
         while (labelHistoryRef.current.length && labelHistoryRef.current[0].t < cutoff) {
             labelHistoryRef.current.shift();
         }
-        
+
         // Compute majority in window for logging/stability (but emission already happened above)
         const counts = {};
         for (const item of labelHistoryRef.current) {
@@ -1349,7 +1349,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                 majorityLabel = k;
             }
         }
-        
+
         // Log majority for debugging (but emission already happened if changed)
         if (majorityLabel && majorityLabel === label) {
             const windowSize = labelHistoryRef.current.length || 1;
@@ -1388,16 +1388,16 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             if (!isConnectingRef.current) {
                 initializeEmotionServerSocket();
             }
-            
+
             // Wait for connection with a timeout
             let waitCount = 0;
             const maxWait = 10; // Wait up to 1 second (10 * 100ms)
-            
+
             while (!emotionServerSocketRef.current?.connected && waitCount < maxWait) {
                 await new Promise(resolve => setTimeout(resolve, 100));
                 waitCount++;
             }
-            
+
             if (!emotionServerSocketRef.current?.connected) {
                 console.warn('[ChatHeader] Emotion server not connected after waiting, skipping frame');
                 return;
@@ -1434,7 +1434,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
         emotionIntervalRef.current = setInterval(async () => {
             // Use friendProfile._id directly if friendId state is not yet set
             const currentFriendId = friendId || friendProfile?._id;
-            
+
             // Guard check: stop detection if profileId or friendId become unavailable
             if (!profileId || typeof profileId !== 'string' || profileId.length === 0 ||
                 !currentFriendId || typeof currentFriendId !== 'string' || currentFriendId.length === 0) {
@@ -1451,7 +1451,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                 }
                 return;
             }
-            
+
             // Adaptive frame skipping for performance
             // BUT: Don't skip frames when emotions are actively changing (for fast response)
             const timeSinceLastChange = Date.now() - lastEmotionTimestampRef.current;
@@ -1467,7 +1467,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                 // Recent change detected - don't skip frames for fast response
                 frameSkipCounter = 0; // Reset when active
             }
-            
+
             if (cameraVideoRef?.current && cameraVideoRef.current.readyState >= 2) {
                 try {
                     const base64Image = captureFrameAsBase64();
@@ -1485,7 +1485,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
     const startEmotionDetection = useCallback(() => {
         // Use friendProfile._id directly if friendId state is not yet set
         const currentFriendId = friendId || friendProfile?._id;
-        
+
         // Don't start detection if we don't have required IDs
         if (!profileId || typeof profileId !== 'string' || profileId.length === 0 ||
             !currentFriendId || typeof currentFriendId !== 'string' || currentFriendId.length === 0) {
@@ -1509,9 +1509,9 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
     const handleBumpBtnClick = useCallback(async () => {
         try {
             // Send bump via HTTP
-            await api.post('/bump', { 
-                friendProfile: friendProfile._id, 
-                myProfile: profile._id 
+            await api.post('/bump', {
+                friendProfile: friendProfile._id,
+                myProfile: profile._id
             });
             console.log('Bump sent to:', friendProfile._id);
         } catch (error) {
@@ -1564,11 +1564,11 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
         };
     }, [room, settings.isShareEmotion, profileId, friendId, friendProfile, startVideo, startEmotionDetection]);
 
-    useEffect(() => { 
+    useEffect(() => {
         // Only stop camera if we're actually leaving the chat page
         // Check if the new location is still a chat page
         const isStillOnChatPage = location.pathname.includes('/chat') || location.pathname.includes('/message');
-        
+
         if (!isStillOnChatPage) {
             // User left chat page - stop camera
             stopCamera(true); // Force stop when leaving page
@@ -1854,7 +1854,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             setMapLoading(false);
             return;
         }
-        
+
         const location = friendLocation || userInfoData?.lastLocation || friendProfile?.lastLocation;
         if (!location || !location.latitude || !location.longitude) {
             setMapLoading(false);
@@ -1943,9 +1943,9 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
 
     const getUserName = useCallback(() => {
         const data = userInfoData || friendProfile;
-        return data?.fullName || 
-               (data?.user?.firstName && data?.user?.surname 
-                   ? `${data.user.firstName} ${data.user.surname}` 
+        return data?.fullName ||
+               (data?.user?.firstName && data?.user?.surname
+                   ? `${data.user.firstName} ${data.user.surname}`
                    : 'Unknown User');
     }, [userInfoData, friendProfile]);
 
@@ -1972,7 +1972,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                             !isLoaded ? <div className="skeleton-header">
                                 <div className="skeleton-avatar" />
                             </div>
-                                : <UserPP profilePic={`${friendPP}`} hasStory={false} profile={friendProfile._id} active={friendProfile.isActive}></UserPP>
+                                : <UserPP profilePic={`${friendPP}`} size="full" hasStory={false} profile={friendProfile._id} active={friendProfile.isActive}></UserPP>
                         }
                     </div>
 
@@ -2007,8 +2007,8 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                             :
                             <div className='chat-header-user-info'>
                                 <div className="skeleton-lines">
-                                    <div className="skeleton-line short" />
-                                    <div className="skeleton-line medium" />
+                                    <div style={{maxWidth: 300}} className="skeleton-line short" />
+                                    <div style={{maxWidth: 100}} className="skeleton-line medium" />
                                 </div>
                             </div>
                     }
@@ -2337,9 +2337,9 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             }
 
             {/* Always render audio element to avoid autoplay issues when tab is not focused */}
-            <audio 
-                ref={callingBeepAudio} 
-                loop 
+            <audio
+                ref={callingBeepAudio}
+                loop
                 preload="auto"
                 style={{ display: 'none' }}
             >
@@ -2365,8 +2365,8 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                             {/* Header Section */}
                             <div className="user-info-header">
                                 <div className="user-info-avatar-container">
-                                    <img 
-                                        src={getUserProfilePic()} 
+                                    <img
+                                        src={getUserProfilePic()}
                                         alt={getUserName()}
                                         className="user-info-avatar"
                                         onError={(e) => {
@@ -2482,7 +2482,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
 
                             {/* Footer Actions */}
                             <div className="user-info-footer">
-                                <button 
+                                <button
                                     className="user-info-action-btn primary"
                                     onClick={() => {
                                         setIsUserInfoModalOpen(false);
@@ -2491,7 +2491,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                                 >
                                     View Full Profile
                                 </button>
-                                <button 
+                                <button
                                     className="user-info-action-btn secondary"
                                     onClick={() => setIsUserInfoModalOpen(false)}
                                 >
@@ -2502,7 +2502,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
                     )}
                 </div>
             </ModalContainer>
-            
+
             <LiveVoiceModal
                 isOpen={isLiveVoiceModalOpen}
                 onClose={() => setIsLiveVoiceModalOpen(false)}

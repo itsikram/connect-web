@@ -459,7 +459,12 @@ const Chat = ({}) => {
       if (!data?.messageId) return;
       setMessages((prev) =>
         prev.map((msg) => {
+          // Mark the specific message as seen, OR mark all unseen messages sent by current user as seen
           if (String(msg._id) === String(data.messageId)) {
+            return { ...msg, isSeen: true };
+          }
+          // Also mark all other unseen messages from current user as seen (since friend has viewed conversation)
+          if (msg.senderId === userId && msg.isSeen !== true) {
             return { ...msg, isSeen: true };
           }
           return msg;

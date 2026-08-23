@@ -712,7 +712,8 @@ const Main = () => {
 
     // Initial fetch
     fetchNotifications();
-    // Don't call fetchNewMessages here - messages are handled via socket
+    // Fetch all messages on app startup to populate Redux state and message counter
+    fetchNewMessages();
 
     // Poll for notifications every 60 seconds (increased from 30s to reduce server load)
     // Use ref to track interval for proper cleanup

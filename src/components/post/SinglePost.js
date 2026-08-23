@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import api from '../../api/api';
@@ -842,8 +842,58 @@ const SinglePost = () => {
 
 
 
-    const viewers = Array.isArray(postData?.viewers) ? postData.viewers : [];
+    const viewers = useMemo(() => (Array.isArray(postData?.viewers) ? postData.viewers : []), [postData?.viewers]);
+    const [viewFilter, setViewFilter] = useState('all');
     const commentCount = typeof totalComments === 'number' ? totalComments : (postData?.comments?.length || 0);
+    const reacts = useMemo(() => (Array.isArray(postData?.reacts) ? postData.reacts : []), [postData?.reacts]);
+
+    const viewerReactMap = useMemo(() => {
+        const map = new Map();
+
+        reacts.forEach((react) => {
+            const reactProfileId = react?.profile?._id || react?.profile || react;
+            if (reactProfileId && react?.type) {
+                map.set(reactProfileId, react.type);
+            }
+        });
+
+        return map;
+    }, [reacts]);
+
+    const filterOptions = useMemo(() => {
+        const reactedCount = viewers.filter((viewer) => viewerReactMap.has(viewer?._id || viewer)).length;
+        const unreactedCount = viewers.length - reactedCount;
+        const typeCounts = viewers.reduce((counts, viewer) => {
+            const reactType = viewerReactMap.get(viewer?._id || viewer);
+            if (reactType && counts[reactType] !== undefined) {
+                counts[reactType] += 1;
+            }
+            return counts;
+        }, { like: 0, love: 0, haha: 0 });
+
+        return [
+            { key: 'all', label: 'All Views', count: viewers.length },
+            { key: 'reacted', label: 'Reacted', count: reactedCount },
+            { key: 'unreacted', label: 'No React', count: unreactedCount },
+            { key: 'like', label: 'Like', count: typeCounts.like, icon: Rlike },
+            { key: 'love', label: 'Love', count: typeCounts.love, icon: Rlove },
+            { key: 'haha', label: 'Haha', count: typeCounts.haha, icon: Rhaha },
+        ];
+    }, [viewerReactMap, viewers]);
+
+    const filteredViewers = useMemo(() => {
+        if (viewFilter === 'all') return viewers;
+
+        return viewers.filter((viewer) => {
+            const viewerId = viewer?._id || viewer;
+            const reactType = viewerReactMap.get(viewerId);
+
+            if (viewFilter === 'reacted') return Boolean(reactType);
+            if (viewFilter === 'unreacted') return !reactType;
+            if (['like', 'love', 'haha'].includes(viewFilter)) return reactType === viewFilter;
+            return true;
+        });
+    }, [viewFilter, viewerReactMap, viewers]);
 
     return (
         <div className="sp-page">
@@ -899,18 +949,58 @@ const SinglePost = () => {
                             <section className="sp-panel sp-views-panel" aria-label="People who viewed this post">
                                 <div className="sp-panel-head">
                                     <h2 className="section-title">Views</h2>
-                                    <span className="sp-panel-count">{viewers.length}</span>
+                                    <span className="sp-panel-count">{filteredViewers.length}</span>
                                 </div>
+                                {viewers.length > 0 && (
+                                    <div className="sp-filter-wrap">
+                                        <div className="sp-filter-head">
+                                            <span className="sp-filter-label">Filter viewers</span>
+                                            <button
+                                                type="button"
+                                                className="sp-filter-reset"
+                                                onClick={() => setViewFilter('all')}
+                                                disabled={viewFilter === 'all'}
+                                            >
+                                                Reset
+                                            </button>
+                                        </div>
+                                        <div className="sp-filter-grid">
+                                            {filterOptions.map((option) => (
+                                                <button
+                                                    key={option.key}
+                                                    type="button"
+                                                    className={`sp-filter-chip ${viewFilter === option.key ? 'is-active' : ''}`}
+                                                    onClick={() => setViewFilter(option.key)}
+                                                >
+                                                    <span className="sp-filter-chip-main">
+                                                        {option.icon ? (
+                                                            <span className="sp-filter-chip-icon">
+                                                                <img src={option.icon} alt={option.label} />
+                                                            </span>
+                                                        ) : null}
+                                                        <span className="sp-filter-chip-text">{option.label}</span>
+                                                    </span>
+                                                    <span className="sp-filter-chip-count">{option.count}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                                 {viewers.length > 0 ? (
-                                    <ul className="sp-reacts">
-                                        {viewers.map((item) => (
-                                            <SingleReactor
-                                                key={item._id || item}
-                                                reacts={postData.reacts}
-                                                viewer={item._id || item}
-                                            />
-                                        ))}
-                                    </ul>
+                                    filteredViewers.length > 0 ? (
+                                        <ul className="sp-reacts">
+                                            {filteredViewers.map((item) => (
+                                                <SingleReactor
+                                                    key={item._id || item}
+                                                    reacts={postData.reacts}
+                                                    viewer={item._id || item}
+                                                    reactType={viewerReactMap.get(item._id || item) || ''}
+                                                />
+                                            ))}
+                                        </ul>
+                                    ) : (
+                                        <div className="sp-empty-state">No viewers match this filter</div>
+                                    )
                                 ) : (
                                     <div className="sp-empty-state">No views yet</div>
                                 )}

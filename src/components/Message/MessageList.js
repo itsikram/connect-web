@@ -137,6 +137,7 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
       .filter((contact) => contact?.isOnline && contact.person?._id)
       .map((contact) => contact.person._id);
   });
+  const [friendProfileStatusMap, setFriendProfileStatusMap] = useState({});
   const [loading, setLoading] = useState(() => cachedContacts.length === 0);
 
   // HTTP-based contacts fetching (now includes online status)
@@ -210,6 +211,54 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
     return () => clearInterval(interval);
   }, [effectiveProfileId, cachedContacts.length, fetchContacts]);
 
+  const refreshProfileStatuses = useCallback(async () => {
+    const contactPeople = (contacts || [])
+      .map((contact) => contact?.person)
+      .filter((person) => person?._id);
+
+    if (contactPeople.length === 0) {
+      setFriendProfileStatusMap({});
+      return;
+    }
+
+    const results = await Promise.allSettled(
+      contactPeople.map(async (person) => {
+        const response = await api.get("/profile", {
+          params: { profileId: person._id },
+        });
+
+        return {
+          profileId: person._id,
+          isActive: Boolean(response?.data?.isActive),
+        };
+      }),
+    );
+
+    const nextStatusMap = {};
+    const nextActiveFriends = [];
+
+    results.forEach((result) => {
+      if (result.status === "fulfilled" && result.value?.profileId) {
+        nextStatusMap[result.value.profileId] = result.value.isActive;
+        if (result.value.isActive) {
+          nextActiveFriends.push(result.value.profileId);
+        }
+      }
+    });
+
+    setFriendProfileStatusMap(nextStatusMap);
+    setActiveFriends(nextActiveFriends);
+  }, [contacts]);
+
+  useEffect(() => {
+    if (!effectiveProfileId || contacts.length === 0) return;
+
+    refreshProfileStatuses();
+    const interval = setInterval(refreshProfileStatuses, 30000);
+
+    return () => clearInterval(interval);
+  }, [effectiveProfileId, contacts, refreshProfileStatuses]);
+
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (
@@ -237,11 +286,7 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
   }, []);
 
   const handleMsgOptionClick = useCallback(async () => {
-    // if (messageOption) {
-    //     setMessageOption(false)
-
-    // }
-    setMessageOption(!messageOption);
+    setMessageOption((prev) => !prev);
   }, []);
 
   const goToLink = useCallback(
@@ -442,9 +487,12 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
                     : contactMessages[0].isSeen
                   : true;
                 const isActive = contactPerson._id === params.profile;
+                const profileIsActive = friendProfileStatusMap[contactPerson._id];
                 const isOnline =
-                  contactItem.isOnline ||
-                  activeFriends.includes(contactPerson._id);
+                  profileIsActive !== undefined
+                    ? profileIsActive
+                    : contactItem.isOnline ||
+                      activeFriends.includes(contactPerson._id);
                 const unreadCount = (contactMessages || []).reduce(
                   (count, m) => {
                     return (
@@ -704,9 +752,12 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
                       : contactMessages[0].isSeen
                     : true;
                   const isActive = contactPerson._id === params.profile;
+                  const profileIsActive = friendProfileStatusMap[contactPerson._id];
                   const isOnline =
-                    contactItem.isOnline ||
-                    activeFriends.includes(contactPerson._id);
+                    profileIsActive !== undefined
+                      ? profileIsActive
+                      : contactItem.isOnline ||
+                        activeFriends.includes(contactPerson._id);
                   const unreadCount = (contactMessages || []).reduce(
                     (count, m) => {
                       return (

@@ -211,6 +211,10 @@
   word-break: break-word;
 }
 
+.nf-post.profilePic .body .caption {
+    padding-left: 0 !important;
+}
+
 .nf-post .body .attachment {
   background: rgba(0, 0, 0, 0.2);
 }
@@ -265,7 +269,7 @@
 }
 
 .nf-post .footer .react-count .reacts .react {
-  height: 20px !important;
+  height: 30px !important;
   width: 20px !important;
   margin-right: -3px !important;
   line-height: 1lh !important;
@@ -430,7 +434,9 @@
     margin-bottom: 10px !important;
     border-radius: 12px !important;
   }
-
+  .nf-post .header {
+    padding: 10px 5px !important;
+  }
   .nf-post .header .author-name {
     font-size: 0.9rem !important;
   }

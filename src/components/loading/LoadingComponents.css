@@ -7,16 +7,16 @@
   --loading-success: #10b981;
   --loading-warning: #f59e0b;
   --loading-error: #ef4444;
-  
+
   --loading-bg: #f8fafc;
   --loading-border: #e2e8f0;
   --loading-text: #64748b;
   --loading-text-dark: #334155;
-  
+
   --loading-skeleton-base: #e2e8f0;
   --loading-skeleton-highlight: #f1f5f9;
   --loading-skeleton-dark: #cbd5e1;
-  
+
   --loading-transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   --loading-transition-fast: all 0.15s ease-out;
   --loading-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
@@ -28,7 +28,7 @@
   --loading-border: #334155;
   --loading-text: #94a3b8;
   --loading-text-dark: #f1f5f9;
-  
+
   --loading-skeleton-base: #334155;
   --loading-skeleton-highlight: #475569;
   --loading-skeleton-dark: #1e293b;
@@ -76,8 +76,8 @@
 
 /* Avatar Skeletons (Facebook-like) */
 .skeleton-avatar {
-  width: 32px;
-  height: 32px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
   background: var(--loading-skeleton-base);
   flex-shrink: 0;
@@ -553,41 +553,41 @@
   .reply-skeleton-wrapper {
     gap: 8px;
   }
-  
+
   .skeleton-avatar {
-    width: 28px;
-    height: 28px;
+    width: 36px;
+    height: 36px;
   }
-  
+
   .skeleton-avatar-small {
     width: 24px;
     height: 24px;
   }
-  
+
   .reply-skeleton-container {
     margin-left: 28px;
   }
-  
+
   .skeleton-actions {
     gap: 8px;
     margin-left: 8px;
   }
-  
+
   .skeleton-comment-box,
   .skeleton-reply-box {
     max-width: 250px;
   }
-  
+
   .skeleton-reply-box {
     max-width: 200px;
   }
-  
+
   .comment-loading-overlay,
   .reply-loading-overlay {
     right: 38px;
     padding: 2px 6px;
   }
-  
+
   .typing-text {
     font-size: 10px;
   }
@@ -607,7 +607,7 @@
   .typing-dots span {
     animation: none;
   }
-  
+
   .loading-spinner-wrapper,
   .dots-loader,
   .pulse-loader,
@@ -772,11 +772,11 @@
   .skeleton-line {
     background: #666;
   }
-  
+
   .skeleton-line {
     background: #888;
   }
-  
+
   .loading-spinner .spinner-ring div {
     border-color: #000 transparent transparent transparent;
   }

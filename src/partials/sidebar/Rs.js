@@ -1,21 +1,62 @@
 import React, { Fragment, useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useSelector } from 'react-redux';
-import { useNavigate, useParams } from 'react-router-dom';
 import UserPP from '../../components/UserPP';
 import api from '../../api/api';
 import RsMenuItemSkleton from '../../skletons/rs/RsMenuItemSkleton';
 
 let RightSidebar = () => {
-    let params = useParams();
-    let navigate = useNavigate();
     let userJson = localStorage.getItem('user') ? localStorage.getItem('user') : '{}'
     let { profile } = JSON.parse(userJson)
     let myProfile = useSelector(state => state.profile)
     let myContacts = useSelector(state => state.message) // Get contacts with messages from Redux
     const [activeFriends, setActiveFriends] = useState([]);
+    const [friendProfileStatusMap, setFriendProfileStatusMap] = useState({});
     const [triggerUpdate, setTriggerUpdate] = useState(0); // Force re-sort when messages update
     const messageIntervalRef = useRef(null);
     const statusIntervalRef = useRef(null);
+    const effectiveProfileId = myProfile._id || profile;
+
+    const getStoredContacts = useCallback(() => {
+        if (!effectiveProfileId) return [];
+
+        try {
+            const cacheKey = `contactsData_${effectiveProfileId}`;
+            const cached = localStorage.getItem(cacheKey) || localStorage.getItem('contactsData');
+            if (!cached) return [];
+
+            const parsed = JSON.parse(cached);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (error) {
+            console.error('Error reading stored contacts:', error);
+            return [];
+        }
+    }, [effectiveProfileId]);
+
+    const contactsData = useMemo(() => {
+        const reduxContacts = Array.isArray(myContacts) ? myContacts.filter(contact => contact?.person?._id) : [];
+        if (reduxContacts.length > 0) {
+            return reduxContacts;
+        }
+
+        return getStoredContacts();
+    }, [myContacts, getStoredContacts]);
+
+    const contactStatusMap = useMemo(() => {
+        const statusMap = new Map();
+
+        contactsData.forEach(contact => {
+            if (contact?.person?._id) {
+                statusMap.set(contact.person._id, {
+                    isOnline: Boolean(contact.isOnline),
+                    lastMessageTimestamp: contact?.messages?.[0]?.timestamp
+                        ? new Date(contact.messages[0].timestamp).getTime()
+                        : 0,
+                });
+            }
+        });
+
+        return statusMap;
+    }, [contactsData]);
 
     // Sort friends by last message timestamp
     const sortedFriendsData = useMemo(() => {
@@ -23,12 +64,9 @@ let RightSidebar = () => {
 
         // Create a map of contact IDs to their last message timestamp
         const contactMessageMap = new Map();
-        myContacts.forEach(contact => {
-            if (contact?.person?._id && contact?.messages?.[0]?.timestamp) {
-                contactMessageMap.set(
-                    contact.person._id,
-                    new Date(contact.messages[0].timestamp).getTime()
-                );
+        contactStatusMap.forEach((status, profileId) => {
+            if (status.lastMessageTimestamp) {
+                contactMessageMap.set(profileId, status.lastMessageTimestamp);
             }
         });
 
@@ -49,24 +87,73 @@ let RightSidebar = () => {
         });
 
         return sorted;
-    }, [myProfile.friends, myContacts, triggerUpdate]);
+    }, [myProfile.friends, contactStatusMap]);
 
-    // Get online status from contacts data (no separate API calls)
-    const getOnlineStatusFromContacts = (profileId) => {
-        try {
-            const contactsData = localStorage.getItem('contactsData');
-            if (contactsData) {
-                const contacts = JSON.parse(contactsData);
-                const friendContact = contacts.find(c => c.person?._id === profileId);
-                if (friendContact) {
-                    return friendContact.isOnline || false;
+    // Get online status from contacts data (same source used by message UI)
+    const getOnlineStatusFromContacts = useCallback((profileId) => {
+        const contactStatus = contactStatusMap.get(profileId);
+        if (contactStatus) {
+            return contactStatus.isOnline;
+        }
+
+        const storedContacts = getStoredContacts();
+        const friendContact = storedContacts.find(contact => contact?.person?._id === profileId);
+        if (friendContact) {
+            return Boolean(friendContact.isOnline);
+        }
+
+        return undefined;
+    }, [contactStatusMap, getStoredContacts]);
+
+    const refreshOnlineStatuses = useCallback(async () => {
+        const friends = Array.isArray(myProfile.friends) ? myProfile.friends : [];
+        if (friends.length === 0) {
+            setActiveFriends([]);
+            setFriendProfileStatusMap({});
+            return;
+        }
+
+        const cachedOnlineFriends = friends
+            .map(friend => friend?._id)
+            .filter(friendId => getOnlineStatusFromContacts(friendId) === true);
+
+        if (cachedOnlineFriends.length > 0) {
+            setActiveFriends(prev => {
+                const merged = new Set([...(Array.isArray(prev) ? prev : []), ...cachedOnlineFriends]);
+                return Array.from(merged);
+            });
+        }
+
+        const statusResults = await Promise.allSettled(
+            friends
+                .filter(friend => friend?._id)
+                .map(async (friend) => {
+                    const response = await api.get('/profile', {
+                        params: { profileId: friend._id }
+                    });
+
+                    return {
+                        profileId: friend._id,
+                        isOnline: Boolean(response?.data?.isActive),
+                    };
+                })
+        );
+
+        const nextStatusMap = {};
+        const liveOnlineFriends = [];
+
+        statusResults.forEach(result => {
+            if (result.status === 'fulfilled' && result.value?.profileId) {
+                nextStatusMap[result.value.profileId] = result.value.isOnline;
+                if (result.value.isOnline) {
+                    liveOnlineFriends.push(result.value.profileId);
                 }
             }
-        } catch (error) {
-            console.error('Error getting online status from contacts:', error);
-        }
-        return false;
-    };
+        });
+
+        setFriendProfileStatusMap(nextStatusMap);
+        setActiveFriends(liveOnlineFriends);
+    }, [myProfile.friends, getOnlineStatusFromContacts]);
 
     // On-demand online status checking (only when opening chat)
     const checkOnlineStatusOnDemand = async (profileId) => {
@@ -76,7 +163,7 @@ let RightSidebar = () => {
             if (statusFromContacts !== undefined) {
                 return statusFromContacts;
             }
-            
+
             // Fallback to API call only if not found in contacts
             const response = await api.get('/profile/online-status', {
                 params: { profileId }
@@ -127,26 +214,10 @@ let RightSidebar = () => {
             statusIntervalRef.current = null;
         }
 
-        // Get online status from contacts data (no API calls)
-        const setOnlineStatusFromContacts = () => {
-            try {
-                const contactsData = localStorage.getItem('contactsData');
-                if (contactsData) {
-                    const contacts = JSON.parse(contactsData);
-                    const onlineFriends = contacts
-                        .filter(contact => contact.isOnline && contact.person?._id)
-                        .map(contact => contact.person._id);
-                    setActiveFriends(onlineFriends);
-                }
-            } catch (error) {
-                console.error('Error setting online status from contacts:', error);
-            }
-        };
+        refreshOnlineStatuses();
 
-        setOnlineStatusFromContacts();
-
-        // Refresh online status every 2 minutes (aligned with contacts refresh)
-        statusIntervalRef.current = setInterval(setOnlineStatusFromContacts, 120000);
+        // Refresh online status regularly using live checks so RS matches chat header behavior
+        statusIntervalRef.current = setInterval(refreshOnlineStatuses, 30000);
 
         // Poll for new messages every 30 seconds (reduced frequency to prevent loops)
         messageIntervalRef.current = setInterval(checkForNewMessages, 30000);
@@ -161,7 +232,7 @@ let RightSidebar = () => {
                 messageIntervalRef.current = null;
             }
         };
-    }, [myProfile._id, checkForNewMessages])
+    }, [myProfile._id, myProfile.friends, refreshOnlineStatuses, checkForNewMessages])
 
     // Remove duplicate message polling since it's already handled above
 
@@ -170,7 +241,7 @@ let RightSidebar = () => {
 
         // Check online status on-demand when opening chat
         const isOnline = await checkOnlineStatusOnDemand(profileId);
-        
+
         // Update active friends state with fresh status
         if (isOnline && !activeFriends.includes(profileId)) {
             setActiveFriends(prev => [...prev, profileId]);
@@ -193,17 +264,22 @@ let RightSidebar = () => {
                     {
                         sortedFriendsData && sortedFriendsData.length > 0 ? sortedFriendsData.map((data, index) => {
 
-                            let isFrndActive = activeFriends.includes(data._id);
+                            const profileIsActive = friendProfileStatusMap[data._id];
+                            let isFrndActive = Boolean(
+                                profileIsActive !== undefined
+                                    ? profileIsActive
+                                    : data?.isActive !== undefined
+                                        ? data.isActive
+                                        : activeFriends.includes(data._id)
+                            );
                             let displayName = data.fullName || [data.user?.firstName, data.user?.surname].filter(Boolean).join(' ');
                             if (!displayName) displayName = 'Unknown User';
 
                             return <li key={data._id || index}>
                                 <div className='rs-nav-menu-item' data-profile={data._id} onClick={redirectToMessage.bind(this)}>
                                     <div className='rs-profile-img-container'>
-                                        <div className='active-icon'></div>
                                         <div className='rs-profile-img'>
-                                            <UserPP profilePic={`${data.profilePic}`} profile={data._id} active={isFrndActive}></UserPP>
-
+                                            <UserPP profilePic={`${data.profilePic}`} profile={data._id} size="full" active={isFrndActive}></UserPP>
                                         </div>
                                     </div>
 

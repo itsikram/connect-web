@@ -118,10 +118,11 @@ const messageReducer = (state = initialState, action) => {
             // Check if the contact exists and has messages before trying to access them
             if (seenContact.length > 0 && seenContact[0]?.messages && seenContact[0].messages.length > 0) {
                 // Create a deep copy to avoid mutation
+                // Mark ALL unseen messages from this contact as seen
                 const updatedSeenContact = {
                     ...seenContact[0],
-                    messages: seenContact[0].messages.map((msg, index) => 
-                        index === 0 ? { ...msg, isSeen: true } : msg
+                    messages: seenContact[0].messages.map((msg) => 
+                        msg.isSeen !== true ? { ...msg, isSeen: true } : msg
                     )
                 };
 
