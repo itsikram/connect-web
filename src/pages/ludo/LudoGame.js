@@ -328,7 +328,11 @@ const LudoGame = () => {
   const shownInviteToastsRef = useRef(new Map());
   const joinedGamesRef = useRef([]);
   const gameIdRef = useRef(null);
+  const newGameDraftIdRef = useRef(null);
   const myPlayerIndexRef = useRef(0);
+  const pendingPersistRequestRef = useRef(null);
+  const persistRequestVersionRef = useRef(0);
+  const awaitingAuthoritativeSnapshotRef = useRef(false);
   // ============================================================================
   // SECTION 6: PLAYER EDITOR STATE
   // ============================================================================
@@ -416,6 +420,23 @@ const LudoGame = () => {
             setLastInviter({ id: payload.from, name: payload.name, avatar: payload.avatar });
             setOnlineMode(true);
             setWaitingForPlayers(true);
+            newGameDraftIdRef.current = null;
+            gameIdRef.current = payload.gameId;
+            latestSentPlayersSeqRef.current = 0;
+            latestAppliedPlayersSeqRef.current = 0;
+            persistRequestVersionRef.current = 0;
+            pendingPersistRequestRef.current = null;
+            awaitingAuthoritativeSnapshotRef.current = false;
+            recentMovesRef.current.clear();
+            gameStartedRef.current = false;
+            gameEndedRef.current = false;
+            winnersRef.current = [];
+            currentPlayerRef.current = 0;
+            setGameStarted(false);
+            setGameEnded(false);
+            setWinners([]);
+            setCurrentPlayer(0);
+            setDiceValueImmediate(0);
             setGameId(payload.gameId);
             setSelectedPlayerCount([2,3,4].includes(payload.playerCount) ? payload.playerCount : selectedPlayerCount);
             if (typeof payload.slotIndex === 'number') {
@@ -633,8 +654,14 @@ const LudoGame = () => {
             } catch (_e) {}
             moveTimersRef.current = [];
 
-            // Re-enable dice locally
-            setCanRollDice(true);
+            // Online recovery must wait for the requested authoritative
+            // snapshot; never unlock a roll from stale local refs.
+            if (!onlineMode) {
+              setCanRollDice(true);
+            } else {
+              setCanRollDice(false);
+              awaitingAuthoritativeSnapshotRef.current = true;
+            }
             setDiceValueImmediate(0);
             lastLocalDiceRollTimeRef.current = 0;
 
@@ -1083,8 +1110,10 @@ const LudoGame = () => {
             includePlayers: true,
           });
 
-          // Restore state if needed
-          if (savedGameStateRef.current && !gameId) {
+          // Restore only when there is no active room identity. The render-time
+          // gameId can be stale immediately after creating/accepting a new game.
+          if (savedGameStateRef.current && !gameIdRef.current) {
+            gameIdRef.current = savedGameStateRef.current.gameId;
             setGameId(savedGameStateRef.current.gameId);
             setMyPlayerIndex(savedGameStateRef.current.myPlayerIndex || 0);
             setOnlineMode(true);
@@ -2180,6 +2209,19 @@ const LudoGame = () => {
         try {
           dbGameState = await loadGameStateFromDB(savedState.gameId);
 
+          const activeGameIdAfterLoad = gameIdRef.current;
+          if (
+            isJoiningViaInviteRef.current ||
+            (activeGameIdAfterLoad &&
+              String(activeGameIdAfterLoad) !== String(savedState.gameId))
+          ) {
+            console.log("[RECONNECT] Ignored old restore after new game selected", {
+              restoreGameId: savedState.gameId,
+              activeGameId: activeGameIdAfterLoad,
+            });
+            return;
+          }
+
           if (dbGameState) {
             // Database state found - use it to restore game
             // Restoring game state from database:
@@ -2242,7 +2284,21 @@ const LudoGame = () => {
           }
         }
 
+        // Re-check after all async restore work before activating the room.
+        if (
+          isJoiningViaInviteRef.current ||
+          (gameIdRef.current &&
+            String(gameIdRef.current) !== String(savedState.gameId))
+        ) {
+          console.log("[RECONNECT] Cancelled stale reconnection setup", {
+            restoreGameId: savedState.gameId,
+            activeGameId: gameIdRef.current,
+          });
+          return;
+        }
+
         // Set up reconnection state
+        gameIdRef.current = savedState.gameId;
         setGameId(savedState.gameId);
         if (!dbGameState) {
           setMyPlayerIndex(savedState.myPlayerIndex || 0);
@@ -2582,9 +2638,10 @@ const LudoGame = () => {
           setShowPlayerSelection(false);
           setGameStarted(true);
           setCurrentPlayer(0);
+          currentPlayerRef.current = 0;
           setDiceValueImmediate(0);
           setWinner(null);
-          setCanRollDice(true);
+          setCanRollDice(false);
           initializeGame(playerCountFromLink || selectedPlayerCount);
           ensureSocketConnected();
           // Wait for socket to be ready before emitting
@@ -2593,7 +2650,10 @@ const LudoGame = () => {
               try {
                 socketRef.current.emit("ludo:join", { gameId: gid });
                 setMyPlayerIndex(0);
-                emitPlayersState(gid);
+                myPlayerIndexRef.current = 0;
+                persistAndBroadcastGameState("game_start_auto_link", {
+                  gameId: gid,
+                });
               } catch (_e) {}
             } else if (socketRef.current) {
               // Wait for connection
@@ -2601,7 +2661,10 @@ const LudoGame = () => {
                 try {
                   socketRef.current.emit("ludo:join", { gameId: gid });
                   setMyPlayerIndex(0);
-                  emitPlayersState(gid);
+                  myPlayerIndexRef.current = 0;
+                  persistAndBroadcastGameState("game_start_auto_link", {
+                    gameId: gid,
+                  });
                 } catch (_e) {}
               });
             }
@@ -2674,10 +2737,101 @@ const LudoGame = () => {
     [myPlayerIndex, onlineMode, gameId],
   );
 
+  const serializePlayersForSnapshot = useCallback((sourcePlayers = []) => {
+    return (Array.isArray(sourcePlayers) ? sourcePlayers : []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      color: p.color,
+      avatar: p.avatar,
+      cover: p.cover,
+      profileId: p.profileId,
+      isActive: p.isActive !== undefined ? p.isActive : true,
+      isOffline: p.isOffline || false,
+      offlineSince: p.offlineSince,
+      isBot: p.isBot || false,
+      pieces: Array.isArray(p.pieces)
+        ? p.pieces.map((pc) => ({
+            id: pc.id,
+            steps: typeof pc.steps === "number" ? pc.steps : 0,
+            isHome: Boolean(pc.isHome),
+            isInPlay: Boolean(pc.isInPlay),
+            color: pc.color || p.color,
+          }))
+        : [],
+    }));
+  }, []);
+
+  const sanitizeWinnersForSnapshot = useCallback((sourceWinners = []) => {
+    return (Array.isArray(sourceWinners) ? sourceWinners : []).map((winner) => {
+      const cleanWinner = { ...winner };
+      if (
+        cleanWinner.profileId === "local" ||
+        !cleanWinner.profileId ||
+        typeof cleanWinner.profileId !== "string" ||
+        cleanWinner.profileId.length !== 24
+      ) {
+        delete cleanWinner.profileId;
+      }
+      return cleanWinner;
+    });
+  }, []);
+
+  const buildMinimalGameState = useCallback(
+    (overrides = {}, meta = {}) => {
+      const nextSeq =
+        typeof overrides.playersSeq === "number"
+          ? overrides.playersSeq
+          : typeof overrides.stateVersion === "number"
+            ? overrides.stateVersion
+            : latestSentPlayersSeqRef.current + 1;
+
+      const sourcePlayers =
+        overrides.players !== undefined ? overrides.players : playersRef.current;
+      const sourceWinners =
+        overrides.winners !== undefined ? overrides.winners : winnersRef.current;
+
+      return {
+        gameId: overrides.gameId || gameIdRef.current || gameId,
+        players: serializePlayersForSnapshot(sourcePlayers),
+        currentPlayer:
+          typeof overrides.currentPlayer === "number"
+            ? overrides.currentPlayer
+            : currentPlayerRef.current,
+        diceValue:
+          typeof overrides.diceValue === "number"
+            ? overrides.diceValue
+            : diceValueRef.current || 0,
+        gameStarted:
+          typeof overrides.gameStarted === "boolean"
+            ? overrides.gameStarted
+            : Boolean(gameStartedRef.current),
+        gameEnded:
+          typeof overrides.gameEnded === "boolean"
+            ? overrides.gameEnded
+            : Boolean(gameEndedRef.current),
+        winners: sanitizeWinnersForSnapshot(sourceWinners),
+        selectedPlayerCount:
+          typeof overrides.selectedPlayerCount === "number"
+            ? overrides.selectedPlayerCount
+            : selectedPlayerCountRef.current,
+        playersSeq: nextSeq,
+        stateVersion: nextSeq,
+        timestamp: Date.now(),
+        lastActionType: meta.actionType || overrides.lastActionType,
+        ...(meta.extraMeta || {}),
+      };
+    },
+    [
+      gameId,
+      serializePlayersForSnapshot,
+      sanitizeWinnersForSnapshot,
+    ],
+  );
+
   // Create initial game state in database (host only) - called when starting a new game
   const createInitialGameState = useCallback(
     async (gid, currentPlayers) => {
-      console.log("[CREATE_INITIAL_GAME_STATE] Called", {
+      console.log("[LUDO][sync] create initial state requested", {
         gid,
         onlineMode,
         hasProfile: !!myProfile?._id,
@@ -2685,238 +2839,240 @@ const LudoGame = () => {
       });
 
       if (!onlineMode || !gid || !myProfile?._id) {
-        console.log("[CREATE_INITIAL_GAME_STATE] Skipped - invalid params", {
-          onlineMode,
+        console.log("[LUDO][sync] create initial state skipped", {
           gid,
+          onlineMode,
           hasProfile: !!myProfile?._id,
         });
         return false;
       }
 
-      // Prevent concurrent saves to avoid version conflicts
-      if (isSavingGameStateRef.current) {
-        console.log(
-          "[CREATE_INITIAL_GAME_STATE] Skipped - save already in progress",
-        );
-        return false; // Skip if a save is already in progress
-      }
-
-      try {
-        isSavingGameStateRef.current = true; // Mark as saving
-        console.log(
-          "[CREATE_INITIAL_GAME_STATE] Starting to create game state...",
-        );
-
-        const minimalPlayers = currentPlayers.map((p) => ({
-          id: p.id,
-          name: p.name,
-          color: p.color,
-          avatar: p.avatar,
-          cover: p.cover,
-          profileId: p.profileId,
-          isActive: p.isActive !== undefined ? p.isActive : true,
-          isOffline: p.isOffline || false,
-          pieces: Array.isArray(p.pieces)
-            ? p.pieces.map((pc) => ({
-                id: pc.id,
-                steps: pc.steps,
-                isHome: pc.isHome,
-                isInPlay: pc.isInPlay,
-                color: pc.color,
-              }))
-            : [],
-        }));
-
-        const gameState = {
+      const gameState = buildMinimalGameState(
+        {
           gameId: gid,
-          players: minimalPlayers,
+          players: currentPlayers,
           currentPlayer: 0,
           diceValue: 0,
           gameStarted: false,
           gameEnded: false,
           winners: [],
           selectedPlayerCount: selectedPlayerCountRef.current,
-        };
+          playersSeq: latestSentPlayersSeqRef.current,
+          stateVersion: latestSentPlayersSeqRef.current,
+        },
+        { actionType: "game_lobby_create" },
+      );
 
-        console.log("[CREATE_INITIAL_GAME_STATE] Saving game state to DB...", {
+      console.log("[LUDO][sync] save started", {
+        actionType: "game_lobby_create",
+        gameId: gid,
+      });
+      const result = await saveGameStateToDB(gameState);
+      const success = result !== null;
+      if (success) {
+        console.log("[LUDO][sync] save success", {
+          actionType: "game_lobby_create",
           gameId: gid,
-          playersCount: minimalPlayers.length,
         });
-        const result = await saveGameStateToDB(gameState);
-        const success = result !== null;
-        console.log("[CREATE_INITIAL_GAME_STATE] Save result:", {
-          success,
-          result,
+      } else {
+        console.error("[LUDO][sync] save failed", {
+          actionType: "game_lobby_create",
+          gameId: gid,
         });
-        return success; // Return true if successfully created
-      } catch (error) {
-        console.error(
-          "[CREATE_INITIAL_GAME_STATE] Failed to create initial game state:",
-          error,
-        );
-        return false;
-      } finally {
-        // Always reset the flag, even if save fails
-        isSavingGameStateRef.current = false;
       }
+      return success;
     },
-    [onlineMode, myProfile?._id],
+    [onlineMode, myProfile?._id, buildMinimalGameState],
   );
 
-  // Save game state to database (host only) - returns promise
-  const saveGameStateToDatabase = useCallback(async () => {
-    if (myPlayerIndex !== 0 || !onlineMode || !gameId || !myProfile?._id) {
-      // Skipped: not host or invalid state
-      return false;
-    }
+  // Save game state to database (host only) - returns saved snapshot or null
+  const saveGameStateToDatabase = useCallback(
+    async (overrides = {}, meta = {}) => {
+      const activeGameId = gameIdRef.current || gameId;
+      if (
+        myPlayerIndexRef.current !== 0 ||
+        !onlineMode ||
+        !activeGameId ||
+        !myProfile?._id
+      ) {
+        return null;
+      }
 
-    // CRITICAL: Don't save if we're currently restoring from server (prevents save/restore loops)
-    if (isRestoringFromServerRef.current) {
-      // Skipped: currently restoring from server
-      return false; // Skip save during restoration
-    }
-
-    // Prevent concurrent saves to avoid version conflicts
-    if (isSavingGameStateRef.current) {
-      // Skipped: save already in progress
-      return false; // Skip if a save is already in progress
-    }
-
-    try {
-      isSavingGameStateRef.current = true; // Mark as saving
-      // Starting database save
-
-      const minimalPlayers = playersRef.current.map((p) => ({
-        id: p.id,
-        name: p.name,
-        color: p.color,
-        avatar: p.avatar,
-        cover: p.cover,
-        profileId: p.profileId,
-        isActive: p.isActive !== undefined ? p.isActive : true,
-        isOffline: p.isOffline || false,
-        pieces: Array.isArray(p.pieces)
-          ? p.pieces.map((pc) => ({
-              id: pc.id,
-              steps: pc.steps,
-              isHome: pc.isHome,
-              isInPlay: pc.isInPlay,
-              color: pc.color,
-            }))
-          : [],
-      }));
-
-      // Filter winners to remove invalid profileIds (like "local")
-      const validWinners = (winnersRef.current || []).map((winner) => {
-        // Only include profileId if it's a valid ObjectId (not "local" or undefined)
-        const cleanWinner = { ...winner };
-        if (
-          cleanWinner.profileId === "local" ||
-          !cleanWinner.profileId ||
-          typeof cleanWinner.profileId !== "string" ||
-          cleanWinner.profileId.length !== 24
-        ) {
-          delete cleanWinner.profileId;
-        }
-        return cleanWinner;
+      const snapshot = buildMinimalGameState(overrides, {
+        actionType: meta.actionType || "save_only",
+        extraMeta: meta.extraMeta || {},
       });
 
-      const gameState = {
-        gameId,
-        players: minimalPlayers,
-        currentPlayer: currentPlayerRef.current,
-        diceValue: diceValueRef.current || 0,
-        gameStarted: gameStartedRef.current || false,
-        gameEnded: gameEndedRef.current || false,
-        winners: validWinners,
-        selectedPlayerCount: selectedPlayerCountRef.current,
-      };
-
-      const result = await saveGameStateToDB(gameState);
-      // Database save completed
-      return result !== null;
-    } catch (error) {
-      // Log error but don't interrupt gameplay
-      // Failed to save game state to database
-      return false;
-    } finally {
-      // Always reset the flag, even if save fails
-      isSavingGameStateRef.current = false;
-    }
-  }, [myPlayerIndex, onlineMode, gameId, myProfile?._id]);
-
-  // Emit player state ONLY after database save completes (host only)
-  // This prevents re-rendering loops and ensures state consistency
-  const emitPlayersStateAfterSave = useCallback(
-    async (force = false) => {
-      if (!onlineMode || !gameId || !socketRef.current) return;
-
-      // Prevent concurrent saves
-      if (isSavingGameStateRef.current && !force) return;
-
-      try {
-        isSavingGameStateRef.current = true;
-
-        // Create minimal state payload for faster transmission
-        const minimalPlayers = playersRef.current.map((p) => ({
-          id: p.id,
-          name: p.name,
-          color: p.color,
-          avatar: p.avatar,
-          cover: p.cover,
-          profileId: p.profileId,
-          isActive: p.isActive !== undefined ? p.isActive : true,
-          pieces: Array.isArray(p.pieces)
-            ? p.pieces.map((pc) => ({
-                id: pc.id,
-                steps: pc.steps,
-                isHome: pc.isHome,
-                isInPlay: pc.isInPlay,
-              }))
-            : [],
-        }));
-
-        const nextPlayersSeq = latestSentPlayersSeqRef.current + 1;
-        latestSentPlayersSeqRef.current = nextPlayersSeq;
-
-        const payload = {
-          gameId,
-          players: minimalPlayers,
-          selectedPlayerCount: selectedPlayerCountRef.current,
-          currentPlayer: currentPlayerRef.current,
-          diceValue: diceValueRef.current,
-          gameStarted: gameStartedRef.current,
-          timestamp: Date.now(),
-          playersSeq: nextPlayersSeq,
-        };
-
-        // Emitting optimized state
-
-        // Emit immediately without delay for better real-time sync
-        socketRef.current.emit("ludo:players", payload);
-
-        // Save to database in background (non-blocking)
-        saveGameStateToDB(payload).catch((err) => {
-          // Failed to save to DB
+      console.log("[LUDO][sync] save started", {
+        actionType: snapshot.lastActionType,
+        gameId: snapshot.gameId,
+        stateVersion: snapshot.stateVersion,
+      });
+      const result = await saveGameStateToDB(snapshot);
+      if (result === null) {
+        console.error("[LUDO][sync] save failed", {
+          actionType: snapshot.lastActionType,
+          gameId: snapshot.gameId,
+          stateVersion: snapshot.stateVersion,
         });
-      } catch (_e) {
-        // Error in emit state
-      } finally {
-        isSavingGameStateRef.current = false;
+        return null;
       }
+
+      // A successfully persisted version is consumed even if a newer action
+      // later suppresses its socket emission. This guarantees the queued final
+      // state receives a strictly newer version and cannot be rejected as a
+      // duplicate by a client that fetched the intermediate DB snapshot.
+      latestSentPlayersSeqRef.current = Math.max(
+        latestSentPlayersSeqRef.current,
+        Number(snapshot.playersSeq || snapshot.stateVersion || 0),
+      );
+      console.log("[LUDO][sync] save success", {
+        actionType: snapshot.lastActionType,
+        gameId: snapshot.gameId,
+        stateVersion: snapshot.stateVersion,
+      });
+      return snapshot;
     },
-    [onlineMode, gameId, saveGameStateToDB],
+    [onlineMode, gameId, myProfile?._id, buildMinimalGameState],
   );
 
-  // Legacy function - now redirects to emitPlayersStateAfterSave
-  // Only used for initial game setup before game starts
-  emitPlayersState = useCallback(
-    (gid, forceEmit = true) => {
-      if (!gid) return;
-      // For initial setup, emit immediately without waiting for save
-      emitPlayersStateAfterSave(forceEmit);
+  const persistAndBroadcastGameState = useCallback(
+    async (actionType, extraMeta = {}) => {
+      const activeGameId = gameIdRef.current || gameId;
+      if (
+        myPlayerIndexRef.current !== 0 ||
+        !onlineMode ||
+        !activeGameId ||
+        !socketRef.current
+      ) {
+        return null;
+      }
+
+      const requestVersion = persistRequestVersionRef.current + 1;
+      persistRequestVersionRef.current = requestVersion;
+
+      // Socket handlers run serially, and onPlayers updates canonical refs
+      // synchronously before another action can run. Never discard a gameplay
+      // action merely because a previous restore flag has not settled yet.
+      if (isRestoringFromServerRef.current) {
+        console.log("[LUDO][sync] persistence continuing after restore apply", {
+          actionType,
+          gameId,
+        });
+      }
+
+      awaitingAuthoritativeSnapshotRef.current = true;
+
+      if (isSavingGameStateRef.current) {
+        pendingPersistRequestRef.current = {
+          actionType,
+          extraMeta,
+          requestVersion,
+        };
+        console.log("[LUDO][sync] persist queued", {
+          actionType,
+          gameId,
+        });
+        return null;
+      }
+
+      isSavingGameStateRef.current = true;
+      try {
+        const snapshot = await saveGameStateToDatabase({}, { actionType, extraMeta });
+        if (!snapshot) {
+          console.error("[LUDO][sync] authoritative emit skipped because save failed", {
+            actionType,
+            gameId,
+          });
+          return null;
+        }
+
+        // A newer action arrived while this snapshot was being saved. The save
+        // itself succeeded, but emitting it now would roll clients back to the
+        // older board before the queued final action is persisted. Skip this
+        // superseded emit; the queued request below will save and broadcast the
+        // latest canonical refs instead.
+        if (
+          requestVersion !== persistRequestVersionRef.current ||
+          pendingPersistRequestRef.current
+        ) {
+          console.log("[LUDO][sync] superseded authoritative snapshot not emitted", {
+            actionType,
+            gameId: snapshot.gameId,
+            stateVersion: snapshot.stateVersion,
+            requestVersion,
+            latestRequestVersion: persistRequestVersionRef.current,
+          });
+          return null;
+        }
+
+        latestSentPlayersSeqRef.current = Number(snapshot.playersSeq || snapshot.stateVersion || latestSentPlayersSeqRef.current);
+        socketRef.current.emit("ludo:players", snapshot);
+
+        // The host has already saved the canonical state successfully and must
+        // not depend on the server echoing its own broadcast to unlock input.
+        // Some Socket.IO broadcast paths exclude the sender, which otherwise
+        // leaves the host showing the zero-dice logo indefinitely.
+        awaitingAuthoritativeSnapshotRef.current = false;
+        if (snapshot.diceValue === 0) {
+          isRollingRef.current = false;
+          isMovingRef.current = false;
+          isAutoMovingRef.current = false;
+          moveTimersRef.current = [];
+        }
+        setCanRollDice(
+          Boolean(
+            snapshot.gameStarted &&
+              !snapshot.gameEnded &&
+              snapshot.diceValue === 0 &&
+              snapshot.currentPlayer === myPlayerIndexRef.current,
+          ),
+        );
+
+        console.log("[LUDO][sync] authoritative state emitted", {
+          actionType,
+          gameId: snapshot.gameId,
+          stateVersion: snapshot.stateVersion,
+          currentPlayer: snapshot.currentPlayer,
+          diceValue: snapshot.diceValue,
+        });
+        return snapshot;
+      } finally {
+        isSavingGameStateRef.current = false;
+        const pending = pendingPersistRequestRef.current;
+        if (pending) {
+          pendingPersistRequestRef.current = null;
+          setTimeout(() => {
+            persistAndBroadcastGameState(
+              pending.actionType,
+              pending.extraMeta || {},
+            );
+          }, 0);
+        }
+      }
     },
-    [emitPlayersStateAfterSave],
+    [gameId, onlineMode, saveGameStateToDatabase],
+  );
+
+  // Emit player state ONLY after database save completes (host only)
+  const emitPlayersStateAfterSave = useCallback(
+    async (actionType = "players_snapshot", extraMeta = {}) => {
+      const normalizedActionType =
+        typeof actionType === "string" ? actionType : "players_snapshot";
+      return persistAndBroadcastGameState(normalizedActionType, extraMeta);
+    },
+    [persistAndBroadcastGameState],
+  );
+
+  // Legacy function - now redirects to save-first authoritative sync
+  emitPlayersState = useCallback(
+    (gid, actionType = "players_snapshot") => {
+      if (!gid) return;
+      persistAndBroadcastGameState(
+        typeof actionType === "string" ? actionType : "players_snapshot",
+      );
+    },
+    [persistAndBroadcastGameState],
   );
 
   const inviteFriend = useCallback(
@@ -2957,8 +3113,10 @@ const LudoGame = () => {
       // Must be online mode to invite
       if (!onlineMode) setOnlineMode(true);
       ensureSocketConnected();
-      const gid = gameId || generateGameId();
-      if (!gameId) setGameId(gid);
+      const gid = newGameDraftIdRef.current || generateGameId();
+      newGameDraftIdRef.current = gid;
+      gameIdRef.current = gid;
+      if (gameId !== gid) setGameId(gid);
       // Reserve a slot for friend
       const slot = getNextOpenSlot();
       if (slot == null) return; // no open slot
@@ -3284,7 +3442,9 @@ const LudoGame = () => {
             // Save and emit game start state to all players
             if (socketRef.current && myPlayerIndex === 0) {
               setTimeout(() => {
-                emitPlayersStateAfterSave(false);
+                persistAndBroadcastGameState("game_auto_start", {
+                  trigger: "recomputeWaitingState",
+                });
               }, 300); // Small delay to ensure state is synchronized
             }
           }, 500); // Small delay to ensure UI updates
@@ -3301,6 +3461,8 @@ const LudoGame = () => {
     selectedPlayerCount,
     gameId,
     checkAllPlayersJoined,
+    persistAndBroadcastGameState,
+    setDiceValueImmediate,
   ]);
 
 
@@ -3308,8 +3470,10 @@ const LudoGame = () => {
     `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
   const createInviteToken = (slotIndex) => {
-    const gid = gameId || generateGameId();
-    if (!gameId) setGameId(gid);
+    const gid = newGameDraftIdRef.current || generateGameId();
+    newGameDraftIdRef.current = gid;
+    gameIdRef.current = gid;
+    if (gameId !== gid) setGameId(gid);
     const payload = {
       type: "ludo_invite",
       by: myProfile?._id || "anon",
@@ -3758,13 +3922,15 @@ const LudoGame = () => {
       lastLocalDiceRollTimeRef.current = 0;
 
       if (myPlayerIndexRef.current === 0 && onlineMode && gameId) {
-        setTimeout(() => {
-          emitPlayersStateAfterSave(false);
-        }, 300);
+        persistAndBroadcastGameState("turn_advance", {
+          fromPlayer,
+          toPlayer: nextPlayer,
+        });
       }
 
       setTimeout(() => {
         if (
+          !onlineMode &&
           currentPlayerRef.current === nextPlayer &&
           diceValueRef.current === 0
         ) {
@@ -3779,7 +3945,7 @@ const LudoGame = () => {
       setCurrentPlayerImmediate,
       onlineMode,
       gameId,
-      emitPlayersStateAfterSave,
+      persistAndBroadcastGameState,
     ],
   );
 
@@ -3797,11 +3963,71 @@ const LudoGame = () => {
     return best;
   }, []);
 
+  const resolveWinnerStateForPlayer = useCallback(
+    (updatedPlayers, playerIndex) => {
+      const playerPieces = updatedPlayers?.[playerIndex]?.pieces || [];
+      const finishedCount = playerPieces.filter(
+        (p) => p.steps === maxStepsRef.current,
+      ).length;
+
+      if (finishedCount !== 4) {
+        return {
+          didFinish: false,
+          winners: winnersRef.current || [],
+          gameEnded: gameEndedRef.current || false,
+        };
+      }
+
+      const winnerPlayer = updatedPlayers[playerIndex];
+      const existingWinners = winnersRef.current || [];
+      const alreadyWinner = existingWinners.some(
+        (w) => String(w.id) === String(winnerPlayer?.id),
+      );
+      const nextWinners = alreadyWinner
+        ? existingWinners
+        : [...existingWinners, winnerPlayer];
+
+      if (!alreadyWinner) {
+        setWinners(nextWinners);
+        winnersRef.current = nextWinners;
+        setWinner(winnerPlayer);
+        setShowWinnerModal(true);
+        playSound("win");
+      }
+
+      const remainingPlayers = updatedPlayers.filter(
+        (_, idx) => idx < selectedPlayerCountRef.current,
+      );
+      const nextGameEnded = nextWinners.length >= remainingPlayers.length - 1;
+      if (nextGameEnded) {
+        setGameEnded(true);
+        gameEndedRef.current = true;
+      }
+
+      return {
+        didFinish: true,
+        winnerPlayer,
+        winners: nextWinners,
+        gameEnded: nextGameEnded,
+      };
+    },
+    [playSound],
+  );
+
   /**
    * Roll the dice for the current player
    * Handles both offline and online modes with proper synchronization
    */
   const rollDice = () => {
+    if (onlineMode && awaitingAuthoritativeSnapshotRef.current) {
+      console.log("[ROLL_DICE] Blocked: awaiting authoritative snapshot", {
+        gameId,
+        currentPlayer: currentPlayerRef.current,
+        myPlayerIndex: myPlayerIndexRef.current,
+      });
+      return;
+    }
+
     // DEBUG: Log roll attempt
     console.log("[ROLL_DICE] Attempt to roll dice", {
       waitingForPlayers,
@@ -3962,7 +4188,11 @@ const LudoGame = () => {
       return;
     }
 
-    // Set rolling flags immediately to prevent duplicate rolls
+    // Set rolling flags immediately to prevent duplicate rolls. Online play
+    // remains locked until a saved authoritative snapshot is received.
+    if (onlineMode) {
+      awaitingAuthoritativeSnapshotRef.current = true;
+    }
     isRollingRef.current = true;
     setCanRollDice(false);
     lastRollTimeRef.current = Date.now();
@@ -3975,43 +4205,15 @@ const LudoGame = () => {
     });
 
     // Ensure game is started when rolling dice
-    if (!gameStarted) {
+  if (!gameStarted) {
       setGameStarted(true);
       gameStartedRef.current = true;
-      // Broadcast game start state if in online mode
-      if (onlineMode && socketRef.current && gameId) {
-        try {
-          const minimalPlayers = playersRef.current.map((p) => ({
-            id: p.id,
-            name: p.name,
-            color: p.color,
-            avatar: p.avatar,
-            cover: p.cover,
-            profileId: p.profileId,
-            isActive: p.isActive !== undefined ? p.isActive : true,
-            pieces: Array.isArray(p.pieces)
-              ? p.pieces.map((pc) => ({
-                  id: pc.id,
-                  steps: pc.steps,
-                  isHome: pc.isHome,
-                  isInPlay: pc.isInPlay,
-                }))
-              : [],
-          }));
-          const nextPlayersSeq = latestSentPlayersSeqRef.current + 1;
-          latestSentPlayersSeqRef.current = nextPlayersSeq;
-          socketRef.current.emit("ludo:players", {
-            gameId,
-            players: minimalPlayers,
-            selectedPlayerCount: selectedPlayerCountRef.current,
-            currentPlayer: currentPlayerRef.current,
-            diceValue: 0,
-            gameStarted: true,
-            gameEnded: false,
-            winners: [],
-            playersSeq: nextPlayersSeq,
+      if (onlineMode && myPlayerIndexRef.current === 0 && gameId) {
+        setTimeout(() => {
+          persistAndBroadcastGameState("game_start_via_roll", {
+            trigger: "rollDice",
           });
-        } catch (_e) {}
+        }, 0);
       }
     }
 
@@ -4114,6 +4316,7 @@ const LudoGame = () => {
             // Allow next player to roll
             setTimeout(() => {
               if (
+                !onlineMode &&
                 currentPlayerRef.current === nextPlayer &&
                 diceValueRef.current === 0
               ) {
@@ -4124,7 +4327,10 @@ const LudoGame = () => {
             // Save and emit game state when turn changes (host only)
             if (myPlayerIndexRef.current === 0 && onlineMode && gameId) {
               setTimeout(() => {
-                emitPlayersStateAfterSave(false);
+                persistAndBroadcastGameState("three_consecutive_sixes", {
+                  playerIndex: currentRollPlayer,
+                  rolledValue: value,
+                });
               }, 100);
             }
           }, 1000);
@@ -4157,10 +4363,10 @@ const LudoGame = () => {
         playSound("pieceOut", { frequency: 500, duration: 0.3 });
       }
 
-      // Broadcast dice roll to other players immediately
+      // Broadcast dice roll intent for responsiveness; host snapshot remains authoritative
       if (onlineMode && socketRef.current && gameId) {
         try {
-          console.log("[ROLL] Broadcasting dice roll", {
+          console.log("[ROLL] Broadcasting dice roll intent", {
             value,
             by: myProfile?._id,
           });
@@ -4171,6 +4377,15 @@ const LudoGame = () => {
             currentPlayer: currentPlayerRef.current,
           });
         } catch (_e) {}
+      }
+
+      if (onlineMode && myPlayerIndexRef.current === 0 && gameId) {
+        setTimeout(() => {
+          persistAndBroadcastGameState("dice_roll", {
+            playerIndex: currentRollPlayer,
+            rolledValue: value,
+          });
+        }, 0);
       }
 
       const currentPlayersForRoll =
@@ -4224,7 +4439,11 @@ const LudoGame = () => {
             movePiece(playablePieces[0]);
           } else {
             isAutoMovingRef.current = false;
-            setCanRollDice(true);
+            if (!onlineMode) {
+              setCanRollDice(true);
+            } else {
+              setCanRollDice(false);
+            }
           }
         }, 200);
       } else {
@@ -4359,7 +4578,13 @@ const LudoGame = () => {
       timers.push(timer);
     }
 
-    // Final update to exact position (only if not already there)
+    // Final update to exact position (only if not already there). Online state
+    // is already at the target before this cosmetic animation starts, so cap
+    // completion latency instead of delaying authoritative turn persistence by
+    // up to one full step duration per rolled square.
+    const completionDelay = onlineMode
+      ? Math.min(stepsToGo * stepDurationMs, 250)
+      : stepsToGo * stepDurationMs;
     const finalTimer = setTimeout(() => {
       moveTimersRef.current = moveTimersRef.current.filter(
         (t) => t !== finalTimer,
@@ -4387,7 +4612,7 @@ const LudoGame = () => {
         recentMovesRef.current.delete(pieceKey);
       }, 2000);
       onComplete && onComplete();
-    }, stepsToGo * stepDurationMs);
+    }, completionDelay);
     timers.push(finalTimer);
 
     moveTimersRef.current.push(...timers);
@@ -4435,12 +4660,16 @@ const LudoGame = () => {
     // This ensures turn advancement uses the actual rolled value, not the current dice state
     const rolledNow = effectiveDiceValue;
     const rolledDiceValue = rolledNow; // Explicitly name it for clarity
+    // Capture the acting seat from the synchronous ref. The React state value
+    // can still belong to the previous turn while a fresh host snapshot is
+    // being rendered, which previously made moves update the wrong player.
+    const actingPlayerIndex = currentPlayerRef.current;
 
     const currentPlayersForMove =
       playersRef.current && Array.isArray(playersRef.current)
         ? playersRef.current
         : players;
-    const currentPlayerData = currentPlayersForMove[currentPlayer];
+    const currentPlayerData = currentPlayersForMove[actingPlayerIndex];
     if (!currentPlayerData) {
       isMovingRef.current = false;
       isAutoMovingRef.current = false;
@@ -4456,6 +4685,28 @@ const LudoGame = () => {
     }
     if (piece.isInPlay && piece.steps + effectiveDiceValue > maxSteps) {
       return;
+    }
+
+    // If the host still has an earlier state (usually the dice-roll snapshot)
+    // saving, mark it superseded immediately. Final move persistence happens
+    // after animation/turn resolution; without this invalidation the earlier
+    // snapshot could be emitted in that gap and visibly return the token.
+    if (
+      onlineMode &&
+      myPlayerIndexRef.current === 0 &&
+      isSavingGameStateRef.current
+    ) {
+      persistRequestVersionRef.current += 1;
+      console.log("[LUDO][sync] in-flight snapshot invalidated by move", {
+        gameId,
+        playerIndex: actingPlayerIndex,
+        pieceIndex: pieceId,
+        requestVersion: persistRequestVersionRef.current,
+      });
+    }
+
+    if (onlineMode) {
+      awaitingAuthoritativeSnapshotRef.current = true;
     }
 
     // Set moving flag to prevent duplicate moves
@@ -4477,7 +4728,7 @@ const LudoGame = () => {
         // Play piece out sound
         playSound("pieceOut");
 
-        const movingPlayerIndex = currentPlayer;
+        const movingPlayerIndex = actingPlayerIndex;
         const pieceKey = `${movingPlayerIndex}-${pieceId}`;
         recentMovesRef.current.set(pieceKey, {
           toSteps: 1,
@@ -4595,7 +4846,7 @@ const LudoGame = () => {
         // re-enable rolling and allow a second roll before server confirmation.
         // Keep the local dice/rolling lock intact for remote clients and wait
         // for onPlayers/onMove from the host to finalize the state.
-        const shouldDeferDiceResetToHost = onlineMode && myPlayerIndex !== 0;
+        const shouldDeferDiceResetToHost = onlineMode;
         if (!shouldDeferDiceResetToHost) {
           setDiceValueImmediate(0);
           lastLocalDiceRollTimeRef.current = 0;
@@ -4620,7 +4871,8 @@ const LudoGame = () => {
         // the two conflicting turn decisions fought each other. Non-host
         // online players simply wait for the host's ludo:players snapshot to
         // update currentPlayer/canRollDice.
-        const isTurnAuthorityLocal = !onlineMode || myPlayerIndex === 0;
+        const isTurnAuthorityLocal =
+          !onlineMode || myPlayerIndexRef.current === 0;
 
         if (isTurnAuthorityLocal) {
           if (keepTurnOnMoveOut) {
@@ -4629,21 +4881,44 @@ const LudoGame = () => {
             setTimeout(() => {
               // Double-check that it's still the same player's turn and dice is 0
               if (
-                currentPlayerRef.current === currentPlayer &&
+                !onlineMode &&
+                currentPlayerRef.current === movingPlayerIndex &&
                 diceValueRef.current === 0
               ) {
                 setCanRollDice(true); // keep turn on 6 (traditional Ludo rule)
               }
             }, 200); // Small delay to ensure state propagation
+
+            if (myPlayerIndexRef.current === 0 && onlineMode && gameId) {
+              persistAndBroadcastGameState("keep_turn_after_move_from_home", {
+                playerIndex: movingPlayerIndex,
+                pieceIndex: pieceId,
+                rolledValue: rolledValueForMoveOut,
+                hasCapture: didCaptureOnMoveOut,
+              });
+            }
           } else {
             // No capture, advance turn
             setTimeout(() => {
-              const nextPlayer = getNextActivePlayer(currentPlayerRef.current);
+              const nextPlayer = getNextActivePlayer(movingPlayerIndex);
               playSound("turnChange");
               setCurrentPlayerImmediate(nextPlayer);
 
+              if (myPlayerIndexRef.current === 0 && onlineMode && gameId) {
+                persistAndBroadcastGameState(
+                  "turn_advance_after_move_from_home",
+                  {
+                    fromPlayer: movingPlayerIndex,
+                    toPlayer: nextPlayer,
+                    rolledValue: rolledValueForMoveOut,
+                    hasCapture: didCaptureOnMoveOut,
+                  },
+                );
+              }
+
               setTimeout(() => {
                 if (
+                  !onlineMode &&
                   currentPlayerRef.current === nextPlayer &&
                   diceValueRef.current === 0
                 ) {
@@ -4663,7 +4938,7 @@ const LudoGame = () => {
           console.log(
             "[MOVE_PIECE] Remote move out of home - waiting for host's authoritative turn update",
             {
-              movingPlayerIndex: currentPlayer,
+              movingPlayerIndex,
               keepTurnOnMoveOut,
               diceValue: diceValueRef.current,
               currentPlayer: currentPlayerRef.current,
@@ -4671,18 +4946,13 @@ const LudoGame = () => {
           );
         }
 
-        // Save and emit state after move and captures are processed (moves out of home)
-        if (onlineMode && myPlayerIndex === 0 && gameId) {
-          // Small delay to ensure all capture state updates have been applied
-          setTimeout(() => {
-            emitPlayersStateAfterSave(false);
-          }, 200);
-        }
+        // Authoritative online sync for move-out-of-home is emitted only after
+        // the host resolves the final keep-turn or turn-advance state above.
       } else if (piece.isInPlay) {
         // Play piece move sound
         playSound("pieceMove");
 
-        const movingPlayerIndex = currentPlayer;
+        const movingPlayerIndex = actingPlayerIndex;
         const oldSteps = piece.steps;
         const oldPosition = getPositionOnPath(movingPlayerIndex, oldSteps);
         const newSteps = piece.steps + effectiveDiceValue;
@@ -4799,7 +5069,7 @@ const LudoGame = () => {
                 pieceIndex: pieceId,
                 toSteps: newSteps,
                 fromSteps: oldSteps,
-                rolled: lastDiceValueRef.current, // Include the dice value that was rolled
+                rolled: rolledDiceValue, // Use the value captured before dice reset
                 captures: finalCaptures,
               });
             } catch (_e) {}
@@ -4824,32 +5094,7 @@ const LudoGame = () => {
                     ...p,
                     pieces: p.pieces.map((pc) => ({ ...pc })),
                   }));
-                  const finishedCount = updatedPlayers[
-                    movingPlayerIndex
-                  ].pieces.filter((p) => p.steps === maxSteps).length;
-                  if (finishedCount === 4) {
-                    const winnerPlayer = updatedPlayers[movingPlayerIndex];
-                    const newWinners = [...winners, winnerPlayer];
-                    setWinners(newWinners);
-                    winnersRef.current = newWinners;
-                    setWinner(winnerPlayer);
-                    setShowWinnerModal(true);
-                    // Play win sound
-                    playSound("win");
-                    const remainingPlayers = updatedPlayers.filter(
-                      (_, idx) => idx < selectedPlayerCount,
-                    );
-                    if (newWinners.length >= remainingPlayers.length - 1) {
-                      setGameEnded(true);
-                      gameEndedRef.current = true;
-                    }
-                    // Save game state to database after winner (host only)
-                    if (myPlayerIndex === 0 && onlineMode && gameId) {
-                      setTimeout(() => {
-                        saveGameStateToDatabase();
-                      }, 500);
-                    }
-                  }
+                  resolveWinnerStateForPlayer(updatedPlayers, movingPlayerIndex);
                   playersRef.current = updatedPlayers; // Update ref
                   return updatedPlayers;
                 });
@@ -4895,20 +5140,16 @@ const LudoGame = () => {
               // local dice/rolling lock until the host confirms the post-move
               // state. Otherwise a fast move after rolling 6 can reopen the
               // dice locally before the authoritative snapshot arrives.
-              const shouldDeferDiceResetToHost =
-                onlineMode && myPlayerIndex !== 0;
+              const shouldDeferDiceResetToHost = onlineMode;
               if (!shouldDeferDiceResetToHost) {
                 setDiceValueImmediate(0);
                 lastLocalDiceRollTimeRef.current = 0;
                 isRollingRef.current = false;
               }
 
-              // Save and emit game state after move completes (host only)
-              if (myPlayerIndex === 0 && onlineMode && gameId) {
-                setTimeout(() => {
-                  emitPlayersStateAfterSave(false);
-                }, 500); // Small delay to ensure all state updates are complete
-              }
+              // The host emits a single final post-move snapshot only after it
+              // resolves keep-turn vs turn-advance below, so all clients receive
+              // the same canonical board and turn state together.
 
               // CRITICAL: Only the host (or an offline/vs-computer game) is
               // allowed to locally mutate currentPlayer in online mode. A
@@ -4919,7 +5160,8 @@ const LudoGame = () => {
               // was the root cause of the host sometimes never regaining its
               // turn and of remote tokens visibly "blinking" from the two
               // conflicting decisions overwriting each other.
-              const isTurnAuthorityLocal = !onlineMode || myPlayerIndex === 0;
+              const isTurnAuthorityLocal =
+                !onlineMode || myPlayerIndexRef.current === 0;
 
               // CRITICAL: Check turn authority FIRST (outer branch), then decide
               // keep-turn vs advance-turn inside it. Previously "keepTurn" was
@@ -4943,6 +5185,7 @@ const LudoGame = () => {
                   // "move out of home" moves and in advanceTurnForPlayer.
                   setTimeout(() => {
                     if (
+                      !onlineMode &&
                       currentPlayerRef.current === movingPlayerIndex &&
                       diceValueRef.current === 0
                     ) {
@@ -4951,10 +5194,12 @@ const LudoGame = () => {
                   }, 200);
 
                   // Save and emit state after move completes (host only)
-                  if (myPlayerIndex === 0 && onlineMode && gameId) {
-                    setTimeout(() => {
-                      emitPlayersStateAfterSave(false);
-                    }, 200);
+                  if (myPlayerIndexRef.current === 0 && onlineMode && gameId) {
+                    persistAndBroadcastGameState("keep_turn_after_move", {
+                      playerIndex: movingPlayerIndex,
+                      rolledValue,
+                      hasCapture,
+                    });
                   }
                 } else {
                   // CRITICAL: Advance to next player - this MUST happen for non-6, non-capture moves
@@ -5002,18 +5247,21 @@ const LudoGame = () => {
                   });
 
                   // CRITICAL: Save and emit game state when turn changes (host only)
-                  if (myPlayerIndex === 0 && onlineMode && gameId) {
-                    setTimeout(() => {
-                      console.log(
-                        "[MOVE_PIECE] Host emitting state after turn change",
-                        {
-                          currentPlayer: currentPlayerRef.current,
-                          nextPlayer,
-                          gameId,
-                        },
-                      );
-                      emitPlayersStateAfterSave(false);
-                    }, 300); // Small delay to ensure state is synchronized
+                  if (myPlayerIndexRef.current === 0 && onlineMode && gameId) {
+                    console.log(
+                      "[MOVE_PIECE] Host persisting state after turn change",
+                      {
+                        currentPlayer: currentPlayerRef.current,
+                        nextPlayer,
+                        gameId,
+                      },
+                    );
+                    persistAndBroadcastGameState("turn_advance_after_move", {
+                      fromPlayer: movingPlayerIndex,
+                      toPlayer: nextPlayer,
+                      rolledValue,
+                      hasCapture,
+                    });
                   }
 
                   // CRITICAL: Explicitly re-enable rolling for the next player
@@ -5024,6 +5272,7 @@ const LudoGame = () => {
                   // player's dice is not clickable" after a move.
                   setTimeout(() => {
                     if (
+                      !onlineMode &&
                       currentPlayerRef.current === nextPlayer &&
                       diceValueRef.current === 0
                     ) {
@@ -5084,6 +5333,25 @@ const LudoGame = () => {
         const incomingCaptures = Array.isArray(payload.captures)
           ? payload.captures
           : [];
+        if (myPlayerIndexRef.current === 0) {
+          awaitingAuthoritativeSnapshotRef.current = true;
+        }
+
+        // A remote move can arrive while the host is still saving the preceding
+        // dice-roll snapshot. Invalidate that emission before applying the move;
+        // the post-move persist below will save and broadcast the complete board.
+        if (
+          myPlayerIndexRef.current === 0 &&
+          isSavingGameStateRef.current
+        ) {
+          persistRequestVersionRef.current += 1;
+          console.log("[LUDO][sync] in-flight snapshot invalidated by remote move", {
+            gameId,
+            playerIndex: payload.playerIndex,
+            pieceIndex: payload.pieceIndex,
+            requestVersion: persistRequestVersionRef.current,
+          });
+        }
 
         // Apply remote move AND any captures together, so every client's
         // board matches exactly what the mover computed. Previously captures
@@ -5091,32 +5359,30 @@ const LudoGame = () => {
         // player was silently dropped here - the captured piece stayed on the
         // board for the host/other clients while it was already sent home on
         // the mover's own screen, causing token positions to diverge.
-        setPlayers((prev) => {
-          const updated = prev.map((p) => ({
-            ...p,
-            pieces: p.pieces.map((pc) => ({ ...pc })),
-          }));
-          const player = updated[payload.playerIndex];
-          if (player && player.pieces[payload.pieceIndex]) {
-            const piece = player.pieces[payload.pieceIndex];
-            piece.steps = payload.toSteps;
-            piece.isHome = payload.toSteps === 0;
-            piece.isInPlay =
-              payload.toSteps > 0 && payload.toSteps < maxStepsRef.current;
+        const nextPlayers = (playersRef.current || []).map((p) => ({
+          ...p,
+          pieces: p.pieces.map((pc) => ({ ...pc })),
+        }));
+        const player = nextPlayers[payload.playerIndex];
+        if (player && player.pieces[payload.pieceIndex]) {
+          const piece = player.pieces[payload.pieceIndex];
+          piece.steps = payload.toSteps;
+          piece.isHome = payload.toSteps === 0;
+          piece.isInPlay =
+            payload.toSteps > 0 && payload.toSteps < maxStepsRef.current;
+        }
+        incomingCaptures.forEach(({ playerIndex, pieceIndex }) => {
+          if (nextPlayers[playerIndex]?.pieces?.[pieceIndex]) {
+            nextPlayers[playerIndex].pieces[pieceIndex] = {
+              ...nextPlayers[playerIndex].pieces[pieceIndex],
+              steps: 0,
+              isHome: true,
+              isInPlay: false,
+            };
           }
-          incomingCaptures.forEach(({ playerIndex, pieceIndex }) => {
-            if (updated[playerIndex]?.pieces?.[pieceIndex]) {
-              updated[playerIndex].pieces[pieceIndex] = {
-                ...updated[playerIndex].pieces[pieceIndex],
-                steps: 0,
-                isHome: true,
-                isInPlay: false,
-              };
-            }
-          });
-          playersRef.current = updated;
-          return updated;
         });
+        setPlayers(nextPlayers);
+        playersRef.current = nextPlayers;
 
         if (incomingCaptures.length > 0) {
           playSound("capture");
@@ -5164,6 +5430,8 @@ const LudoGame = () => {
           const hasCapture = incomingCaptures.length > 0;
           const keepTurn = rolledValue === 6 || hasCapture;
 
+          resolveWinnerStateForPlayer(nextPlayers, payload.playerIndex);
+
           // CRITICAL: If keeping turn, reset the dice broadcast to 0 so the
           // mover's own client can clear its local rolling lock and re-enable the
           // dice for the next roll. Broadcasting the stale value keeps the turn
@@ -5192,36 +5460,40 @@ const LudoGame = () => {
             setDiceValueImmediate(0);
             lastLocalDiceRollTimeRef.current = 0;
 
-            setTimeout(() => {
-              console.log(
-                "[ON_MOVE][HOST] Emitting authoritative turn change",
-                {
-                  fromPlayer: payload.playerIndex,
-                  toPlayer: nextPlayer,
-                  rolledValue,
-                  hasCapture,
-                  diceValue: diceValueRef.current,
-                  gameId,
-                },
-              );
-              emitPlayersStateAfterSave(false);
-            }, 120);
+            console.log(
+              "[ON_MOVE][HOST] Persisting authoritative turn change",
+              {
+                fromPlayer: payload.playerIndex,
+                toPlayer: nextPlayer,
+                rolledValue,
+                hasCapture,
+                diceValue: diceValueRef.current,
+                gameId,
+              },
+            );
+            persistAndBroadcastGameState("turn_advance_after_remote_move", {
+              fromPlayer: payload.playerIndex,
+              toPlayer: nextPlayer,
+              rolledValue,
+              hasCapture,
+            });
           } else {
-            // Keep turn - player rolled a 6 or captured
-            // CRITICAL: diceValue was already set above if rolledValue > 0
-            setTimeout(() => {
-              console.log(
-                "[ON_MOVE][HOST] Emitting authoritative keep-turn state",
-                {
-                  playerIndex: payload.playerIndex,
-                  rolledValue,
-                  hasCapture,
-                  diceValue: diceValueRef.current,
-                  gameId,
-                },
-              );
-              emitPlayersStateAfterSave(false);
-            }, 120);
+            // Keep turn - player rolled a 6 or captured.
+            console.log(
+              "[ON_MOVE][HOST] Persisting authoritative keep-turn state",
+              {
+                playerIndex: payload.playerIndex,
+                rolledValue,
+                hasCapture,
+                diceValue: diceValueRef.current,
+                gameId,
+              },
+            );
+            persistAndBroadcastGameState("keep_turn_after_remote_move", {
+              playerIndex: payload.playerIndex,
+              rolledValue,
+              hasCapture,
+            });
           }
         }
       } catch (_e) {
@@ -5336,7 +5608,11 @@ const LudoGame = () => {
               lastTurnAdvanceTimeRef.current = Date.now();
               setDiceValueImmediate(0);
               lastLocalDiceRollTimeRef.current = 0;
-              emitPlayersStateAfterSave(false);
+              persistAndBroadcastGameState("three_consecutive_sixes", {
+                playerIndex: rollingPlayer,
+                rolledValue: value,
+                reachedSixLimit: true,
+              });
             }, 500);
           }
 
@@ -5385,7 +5661,10 @@ const LudoGame = () => {
             lastTurnAdvanceTimeRef.current = Date.now();
             setDiceValueImmediate(0);
             lastLocalDiceRollTimeRef.current = 0;
-            emitPlayersStateAfterSave(false);
+            persistAndBroadcastGameState("turn_advance_no_playable_move", {
+              playerIndex: rollingPlayer,
+              rolledValue: value,
+            });
           }, 250);
         }
       } else {
@@ -5413,6 +5692,16 @@ const LudoGame = () => {
           console.log(
             "[ON_ROLL] 6 rolled - player will keep turn after moving",
           );
+        }
+
+        if (isHostAuthority && onlineMode && gameId) {
+          setTimeout(() => {
+            persistAndBroadcastGameState("dice_roll", {
+              playerIndex: rollingPlayer,
+              rolledValue: value,
+              remoteRoll: true,
+            });
+          }, 0);
         }
       }
     };
@@ -5589,7 +5878,10 @@ const LudoGame = () => {
           setTimeout(() => {
             // Save and emit state after friend accepts (host only)
             if (myPlayerIndex === 0) {
-              emitPlayersStateAfterSave(false);
+              persistAndBroadcastGameState("player_accept_join", {
+                slotIndex: payload.slotIndex,
+                friendId: payload.friend?._id,
+              });
             }
             // Update lobby state based on new join
             recomputeWaitingState();
@@ -5626,7 +5918,9 @@ const LudoGame = () => {
               setCanRollDice(false);
 
               setTimeout(() => {
-                emitPlayersStateAfterSave(false);
+                persistAndBroadcastGameState("game_auto_start_after_accept", {
+                  trigger: "onAccepted",
+                });
               }, 150);
             }
           }, 200);
@@ -5642,13 +5936,93 @@ const LudoGame = () => {
     const onPlayers = (payload) => {
       try {
         if (!payload) return;
-        const payloadSeq = Number(payload.playersSeq || 0);
+        const payloadSeq = Number(
+          payload.playersSeq || payload.stateVersion || 0,
+        );
+        // Accept if gameId matches current or saved game state (for reconnection)
+        const currentGid =
+          gameIdRef.current || gameId || savedGameStateRef.current?.gameId;
+        if (payload.gameId !== currentGid) return;
+
+        // A versioned dice snapshot may have started saving before a token was
+        // moved. Do not let that pre-move board overwrite an optimistic move
+        // while the host is preparing the newer post-move snapshot.
+        const snapshotActionType = String(payload.lastActionType || "");
+        const hasPendingMoveConflict =
+          awaitingAuthoritativeSnapshotRef.current &&
+          !snapshotActionType.includes("move") &&
+          Array.from(recentMovesRef.current.entries()).some(
+            ([pieceKey, tracked]) => {
+              if (!tracked || Date.now() - tracked.timestamp > 5000) return false;
+              const [playerIndex, pieceIndex] = pieceKey
+                .split("-")
+                .map((value) => Number(value));
+              const incomingSteps =
+                payload.players?.[playerIndex]?.pieces?.[pieceIndex]?.steps;
+              return (
+                typeof incomingSteps === "number" &&
+                incomingSteps !== tracked.toSteps
+              );
+            },
+          );
+        if (payloadSeq > 0 && hasPendingMoveConflict) {
+          console.log("[LUDO][sync] ignored pre-move authoritative snapshot", {
+            payloadSeq,
+            lastActionType: snapshotActionType,
+            gameId: payload.gameId,
+          });
+          return;
+        }
+
         if (
           payloadSeq > 0 &&
           latestAppliedPlayersSeqRef.current > 0 &&
-          payloadSeq < latestAppliedPlayersSeqRef.current
+          payloadSeq <= latestAppliedPlayersSeqRef.current
         ) {
-          console.log("[ON_PLAYERS] Ignoring stale players snapshot", {
+          const snapshotMatchesCanonicalState =
+            payloadSeq === latestAppliedPlayersSeqRef.current &&
+            payload.currentPlayer === currentPlayerRef.current &&
+            Number(payload.diceValue || 0) === Number(diceValueRef.current || 0) &&
+            Array.isArray(payload.players) &&
+            payload.players.every((player, playerIndex) =>
+              Array.isArray(player?.pieces) &&
+              player.pieces.every(
+                (piece, pieceIndex) =>
+                  Number(piece?.steps || 0) ===
+                  Number(
+                    playersRef.current?.[playerIndex]?.pieces?.[pieceIndex]
+                      ?.steps || 0,
+                  ),
+              ),
+            );
+
+          if (
+            awaitingAuthoritativeSnapshotRef.current &&
+            snapshotMatchesCanonicalState
+          ) {
+            awaitingAuthoritativeSnapshotRef.current = false;
+            isRollingRef.current = false;
+            isMovingRef.current = false;
+            isAutoMovingRef.current = false;
+            moveTimersRef.current = [];
+            const canRollFromConfirmedSnapshot =
+              Boolean(payload.gameStarted) &&
+              !payload.gameEnded &&
+              Number(payload.diceValue || 0) === 0 &&
+              payload.currentPlayer === myPlayerIndexRef.current;
+            setCanRollDice(canRollFromConfirmedSnapshot);
+            console.log(
+              "[LUDO][sync] matching duplicate snapshot confirmed pending action",
+              {
+                payloadSeq,
+                gameId: payload.gameId,
+                canRollDice: canRollFromConfirmedSnapshot,
+              },
+            );
+            return;
+          }
+
+          console.log("[LUDO][sync] ignored stale or duplicate snapshot", {
             payloadSeq,
             latestApplied: latestAppliedPlayersSeqRef.current,
             gameId: payload.gameId,
@@ -5657,12 +6031,16 @@ const LudoGame = () => {
         }
         if (payloadSeq > 0) {
           latestAppliedPlayersSeqRef.current = payloadSeq;
+          if (myPlayerIndexRef.current === 0) {
+            latestSentPlayersSeqRef.current = Math.max(
+              latestSentPlayersSeqRef.current,
+              payloadSeq,
+            );
+          }
         }
-        // Accept if gameId matches current or saved game state (for reconnection)
-        const currentGid = gameId || savedGameStateRef.current?.gameId;
-        if (payload.gameId !== currentGid) return;
         // If we're reconnecting and this matches saved state, restore gameId
-        if (!gameId && savedGameStateRef.current?.gameId === payload.gameId) {
+        if (!gameIdRef.current && savedGameStateRef.current?.gameId === payload.gameId) {
+          gameIdRef.current = payload.gameId;
           setGameId(payload.gameId);
         }
 
@@ -5833,9 +6211,8 @@ const LudoGame = () => {
             ) {
               lastLocalDiceRollTimeRef.current = 0;
               setDiceValueImmediate(0);
-              if (currentPlayerRef.current === myPlayerIndexRef.current) {
-                setCanRollDice(true);
-              }
+              // Dice availability is reconciled after incomingCurrentPlayer is
+              // applied below; never enable from the previous turn pointer.
             } else if (
               snapshotClearsDice &&
               shouldProtectDiceValue &&
@@ -6038,9 +6415,11 @@ const LudoGame = () => {
               (p) => p && p.pieces && p.pieces.some((pc) => pc.steps > 0),
             );
 
-          // Only apply protection if we have an active local game state (not during initial reconnection)
+          // Fresh versioned snapshots are canonical host truth and must be applied
+          // exactly, including legitimate backward movement caused by captures.
+          // Keep the legacy rollback protection only for unversioned payloads.
           const shouldApplyProtection =
-            !isReconnectingState && hasLocalGameState;
+            payloadSeq <= 0 && !isReconnectingState && hasLocalGameState;
 
           // Simplified protection logic - focus on preventing backward movement only
           const now = Date.now();
@@ -6126,11 +6505,17 @@ const LudoGame = () => {
               })
             : next;
 
-          // CRITICAL: Set flag to prevent saves during state restoration (prevents save/restore loops)
-          isRestoringFromServerRef.current = true;
+          // Only pause host persistence while applying an actual restore/rejoin snapshot.
+          // Applying this guard to every normal ludo:players update blocks legitimate
+          // host actions like player_accept_join and game_auto_start, which is what
+          // was preventing invited users from fully joining the lobby.
+          const shouldPausePersistsDuringSnapshotApply =
+            isReconnectingState || isJoiningViaInvite;
+          isRestoringFromServerRef.current = shouldPausePersistsDuringSnapshotApply;
           setPlayers(protectedNext);
           // Update ref immediately
           playersRef.current = protectedNext;
+          awaitingAuthoritativeSnapshotRef.current = false;
 
           // Safety: if the authoritative snapshot says it's now THIS client's turn
           // and dice value is clear, ensure we release any local locks and enable
@@ -6222,10 +6607,10 @@ const LudoGame = () => {
             });
           }
 
-          // Clear the flag after a delay to allow normal saves again
-          setTimeout(() => {
-            isRestoringFromServerRef.current = false;
-          }, 1000); // 1 second delay to ensure all state updates are complete
+          // Canonical refs are already updated synchronously above. Keeping this
+          // guard active after onPlayers returns can discard the very next roll
+          // or move, so always release it before another socket event can run.
+          isRestoringFromServerRef.current = false;
 
           // Update waiting state after players state is updated
           setTimeout(() => {
@@ -6239,6 +6624,10 @@ const LudoGame = () => {
         // Check dice value BEFORE updating currentPlayer to avoid race conditions
         // We need to check if it's our turn using BOTH current ref and payload value
         if (typeof payload.diceValue === "number") {
+          if (payloadSeq > 0) {
+            // Fresh versioned snapshots are authoritative for dice state.
+            setDiceValueImmediate(payload.diceValue);
+          } else {
           const localDiceValue = diceValueRef.current || 0;
           const currentTurnFromRef = currentPlayerRef.current === myPlayerIndex;
           const currentTurnFromPayload =
@@ -6311,6 +6700,7 @@ const LudoGame = () => {
                 setDiceValueImmediate(payload.diceValue);
               }
             }
+          }
           }
         }
 
@@ -6398,6 +6788,7 @@ const LudoGame = () => {
             // If we advanced the turn locally moments ago, reject a snapshot that would
             // rewind currentPlayer back to the mover while the move is already complete.
             const shouldRejectRecentTurnRewind =
+              payloadSeq <= 0 &&
               onlineMode &&
               recentlyAdvancedTurn &&
               moveJustCompleted &&
@@ -6524,6 +6915,14 @@ const LudoGame = () => {
         ) {
           const nextPlayer = getNextActivePlayer(offlinePlayerIndex);
           if (nextPlayer !== offlinePlayerIndex) {
+            if (onlineMode && myPlayerIndexRef.current !== 0) {
+              console.log(
+                "[ON_PLAYER_OFFLINE] Non-host waiting for authoritative turn advance",
+                { from: offlinePlayerIndex, to: nextPlayer },
+              );
+              return;
+            }
+
             console.log(
               "[ON_PLAYER_OFFLINE] Current player went offline, advancing turn",
               { from: offlinePlayerIndex, to: nextPlayer },
@@ -6544,10 +6943,13 @@ const LudoGame = () => {
             setDiceValueImmediate(0);
             lastLocalDiceRollTimeRef.current = 0;
             isRollingRef.current = false;
-            // Broadcast the state change to all players
-            if (onlineMode && socketRef.current?.connected) {
+            // Only the host may publish the authoritative turn change in online mode.
+            if (onlineMode && myPlayerIndexRef.current === 0 && socketRef.current?.connected) {
               setTimeout(() => {
-                emitPlayersStateAfterSave(false);
+                persistAndBroadcastGameState("player_offline_turn_advance", {
+                  offlinePlayerIndex,
+                  nextPlayer,
+                });
               }, 100);
             }
           }
@@ -6609,7 +7011,7 @@ const LudoGame = () => {
                     ...(g.lastPlayers || {}),
                     isDisconnected: true,
                     gameStarted: false,
-                  },P
+                  },
                 };
               }
               return g;
@@ -6653,6 +7055,14 @@ const LudoGame = () => {
         ) {
           const nextPlayer = getNextActivePlayer(leftPlayerIndex);
           if (nextPlayer !== leftPlayerIndex) {
+            if (onlineMode && myPlayerIndexRef.current !== 0) {
+              console.log(
+                "[ON_PLAYER_LEFT] Non-host waiting for authoritative turn advance",
+                { from: leftPlayerIndex, to: nextPlayer },
+              );
+              return;
+            }
+
             console.log(
               "[ON_PLAYER_LEFT] Current player left, advancing turn",
               { from: leftPlayerIndex, to: nextPlayer },
@@ -6673,10 +7083,13 @@ const LudoGame = () => {
             setDiceValueImmediate(0);
             lastLocalDiceRollTimeRef.current = 0;
             isRollingRef.current = false;
-            // Broadcast the state change
-            if (onlineMode && socketRef.current?.connected) {
+            // Only the host may publish the authoritative turn change in online mode.
+            if (onlineMode && myPlayerIndexRef.current === 0 && socketRef.current?.connected) {
               setTimeout(() => {
-                emitPlayersStateAfterSave(false);
+                persistAndBroadcastGameState("player_left_turn_advance", {
+                  leftPlayerIndex,
+                  nextPlayer,
+                });
               }, 100);
             }
           }
@@ -6801,7 +7214,8 @@ const LudoGame = () => {
         .slice(1, maxPlayers)
         .filter((p) => p && p.profileId).length;
       const allSeatsFilled = joinedSeats >= maxPlayers - 1;
-      const shouldEnable = allSeatsFilled;
+      // Online games are unlocked only by a saved gameStarted snapshot.
+      const shouldEnable = !onlineMode && allSeatsFilled;
 
       if (
         shouldEnable !== currentCanRollDice &&
@@ -6850,8 +7264,14 @@ const LudoGame = () => {
         activeMoveTimers.length === 0;
 
       // Determine what canRollDice should be
+      const hasAuthoritativeConfirmation =
+        !onlineMode || !awaitingAuthoritativeSnapshotRef.current;
       const shouldEnable =
-        isMyTurn && hasNoDiceValue && isNotRolling && isNotMoving;
+        isMyTurn &&
+        hasNoDiceValue &&
+        isNotRolling &&
+        isNotMoving &&
+        hasAuthoritativeConfirmation;
 
       // CRITICAL: Force update if it's not the player's turn but canRollDice is true
       // This fixes the bug where canRollDice stays true after game starts when it's not the player's turn
@@ -6932,6 +7352,9 @@ const LudoGame = () => {
     const interval = setInterval(() => {
       const isMyTurnNow = myPlayerIndexRef.current === currentPlayerRef.current;
       const isIdle =
+        !awaitingAuthoritativeSnapshotRef.current &&
+        !isSavingGameStateRef.current &&
+        !pendingPersistRequestRef.current &&
         !isRollingRef.current &&
         !isMovingRef.current &&
         !isAutoMovingRef.current &&
@@ -6974,7 +7397,12 @@ const LudoGame = () => {
       const now = Date.now();
       const lastRequest = selfHealPlayersGetRequestRef.current;
       const timeSinceLastRequest = now - lastRequest.timestamp;
-      const MIN_REQUEST_INTERVAL = 3000;
+      // Avoid every client flooding the room with duplicate snapshots while
+      // the socket is healthy. Poll quickly only while an action is awaiting
+      // confirmation; otherwise use a low-frequency recovery check.
+      const MIN_REQUEST_INTERVAL = awaitingAuthoritativeSnapshotRef.current
+        ? 3000
+        : 15000;
 
       if (
         lastRequest.gameId !== gameId ||
@@ -7659,8 +8087,11 @@ const LudoGame = () => {
     } catch (_e) {
       // Ignore errors
     }
-    // Reset game state
+    // Reset every session identity/ref before opening a new-game flow.
     setGameId(null);
+    gameIdRef.current = null;
+    newGameDraftIdRef.current = null;
+    savedGameStateRef.current = null;
     setOnlineMode(false);
     setGameStarted(false);
     gameStartedRef.current = false;
@@ -7668,8 +8099,24 @@ const LudoGame = () => {
     setDiceValueImmediate(0);
     setWinner(null);
     setWinners([]);
+    winnersRef.current = [];
     setGameEnded(false);
+    gameEndedRef.current = false;
     setWaitingForPlayers(false);
+    setCanRollDice(false);
+    currentPlayerRef.current = 0;
+    playersRef.current = [];
+    latestSentPlayersSeqRef.current = 0;
+    latestAppliedPlayersSeqRef.current = 0;
+    persistRequestVersionRef.current = 0;
+    pendingPersistRequestRef.current = null;
+    awaitingAuthoritativeSnapshotRef.current = false;
+    recentMovesRef.current.clear();
+    invitedStatusByFriendIdRef.current = {};
+    invitedSlotByFriendIdRef.current = {};
+    setInvitedStatusByFriendId({});
+    setInvitedSlotByFriendId({});
+    setSelectedFriends([]);
     // Open player selection
     setShowPlayerSelection(true);
   };
@@ -7746,6 +8193,7 @@ const LudoGame = () => {
       lastRollTimeRef.current = 0;
       recentMovesRef.current.clear();
       latestAppliedPlayersSeqRef.current = 0;
+      awaitingAuthoritativeSnapshotRef.current = false;
 
       // Mark this joined game as disconnected locally so it doesn't auto-restore
       try {
@@ -7930,6 +8378,7 @@ const LudoGame = () => {
     currentPlayerUpdatedFromServerRef.current = false;
     latestSentPlayersSeqRef.current = 0;
     latestAppliedPlayersSeqRef.current = 0;
+    awaitingAuthoritativeSnapshotRef.current = false;
     isSavingGameStateRef.current = false;
     isRollingRef.current = false;
     isMovingRef.current = false;
@@ -7953,6 +8402,30 @@ const LudoGame = () => {
 
   const confirmPlayerCount = () => {
     clearHiddenBoardGameId();
+
+    // Starting from the player picker always creates a brand-new match. Do not
+    // allow a hidden/resumable game or stale refs to supply its room or board.
+    const newOnlineGameId = onlineMode
+      ? newGameDraftIdRef.current || generateGameId()
+      : null;
+    if (onlineMode) {
+      clearGameState();
+      gameIdRef.current = newOnlineGameId;
+      newGameDraftIdRef.current = null;
+      setGameId(newOnlineGameId);
+      setIsReconnecting(false);
+      setShowReconnectModal(false);
+      gameStartedRef.current = false;
+      gameEndedRef.current = false;
+      currentPlayerRef.current = 0;
+      winnersRef.current = [];
+      latestSentPlayersSeqRef.current = 0;
+      latestAppliedPlayersSeqRef.current = 0;
+      persistRequestVersionRef.current = 0;
+      pendingPersistRequestRef.current = null;
+      awaitingAuthoritativeSnapshotRef.current = false;
+      recentMovesRef.current.clear();
+    }
     console.log("[CONFIRM_PLAYER_COUNT] Called", {
       onlineMode,
       selectedPlayerCount,
@@ -7985,24 +8458,15 @@ const LudoGame = () => {
           i === 0
             ? myProfile?.coverPic || myProfile?.cover || undefined
             : undefined;
-        const pieces =
-          Array.isArray(prevSeat?.pieces) && prevSeat.pieces.length === 4
-            ? prevSeat.pieces.map((pc, idx) => ({
-                id: idx,
-                color: colors[i],
-                position: { x: 0, y: 0 },
-                isHome: pc.isHome,
-                isInPlay: pc.isInPlay,
-                steps: pc.steps,
-              }))
-            : Array.from({ length: 4 }).map((_, j) => ({
-                id: j,
-                color: colors[i],
-                position: { x: 0, y: 0 },
-                isHome: true,
-                isInPlay: false,
-                steps: 0,
-              }));
+        // A newly hosted game must always start with all tokens at home.
+        const pieces = Array.from({ length: 4 }).map((_, j) => ({
+          id: j,
+          color: colors[i],
+          position: { x: 0, y: 0 },
+          isHome: true,
+          isInPlay: false,
+          steps: 0,
+        }));
         next.push({
           id: i,
           name: prevSeat?.name || baseName,
@@ -8014,7 +8478,9 @@ const LudoGame = () => {
           profileId:
             i === 0
               ? myProfile?._id || "local"
-              : prevSeat?.profileId || undefined,
+              : onlineMode
+                ? undefined
+                : prevSeat?.profileId || undefined,
           isBot: prevSeat?.isBot || false,
         });
       }
@@ -8089,7 +8555,7 @@ const LudoGame = () => {
 
     // Setup online room/socket and check if we should wait for players
     if (onlineMode && myProfile?._id) {
-      const gid = gameId || generateGameId();
+      const gid = newOnlineGameId;
       console.log("[CONFIRM_PLAYER_COUNT] Setting up online game", {
         gid,
         hasGameId: !!gameId,
@@ -8387,8 +8853,10 @@ const LudoGame = () => {
             } catch (_e) {}
             socketRef.current.emit("ludo:join", { gameId: gid });
             setMyPlayerIndex(0);
-            // Broadcast players snapshot so remotes sync
-            emitPlayersState(gid);
+            myPlayerIndexRef.current = 0;
+            persistAndBroadcastGameState("game_lobby_initialized", {
+              gameId: gid,
+            });
           } catch (_e) {}
         } else if (socketRef.current) {
           // Wait for connection
@@ -8413,8 +8881,10 @@ const LudoGame = () => {
             try {
               socketRef.current.emit("ludo:join", { gameId: gid });
               setMyPlayerIndex(0);
-              // Broadcast players snapshot so remotes sync
-              emitPlayersState(gid);
+              myPlayerIndexRef.current = 0;
+              persistAndBroadcastGameState("game_lobby_initialized", {
+                gameId: gid,
+              });
             } catch (_e) {}
           });
         }
@@ -8455,10 +8925,25 @@ const LudoGame = () => {
   const continueGame = () => {
     setShowWinnerModal(false);
     setWinner(null);
-    const nextPlayer = getNextActivePlayer(currentPlayer);
+
+    if (onlineMode && myPlayerIndexRef.current !== 0) {
+      setCanRollDice(false);
+      return;
+    }
+
+    const fromPlayer = currentPlayerRef.current;
+    const nextPlayer = getNextActivePlayer(fromPlayer);
     setCurrentPlayer(nextPlayer);
+    currentPlayerRef.current = nextPlayer;
     setDiceValueImmediate(0);
-    setCanRollDice(true);
+    setCanRollDice(!onlineMode);
+
+    if (onlineMode && gameId) {
+      persistAndBroadcastGameState("continue_after_winner", {
+        fromPlayer,
+        toPlayer: nextPlayer,
+      });
+    }
   };
 
   const endGame = () => {
@@ -8470,12 +8955,15 @@ const LudoGame = () => {
     // Clear disconnected players tracking
     setDisconnectedPlayers(new Set());
 
-    // Save final game state to database before clearing (host only)
+    // Save final authoritative state before clearing local restore data.
     if (myPlayerIndex === 0 && onlineMode && gameId) {
       setTimeout(() => {
-        saveGameStateToDatabase().then(() => {
-          // Clear saved game state after saving final state
-          clearGameState();
+        persistAndBroadcastGameState("game_end", {
+          trigger: "endGame",
+        }).then((snapshot) => {
+          if (snapshot) {
+            clearGameState();
+          }
         });
       }, 300);
     } else {
@@ -8528,7 +9016,8 @@ const LudoGame = () => {
     setShowWinnerModal(false);
     setDiceValueImmediate(0);
     setCurrentPlayer(0);
-    setCanRollDice(true);
+    currentPlayerRef.current = 0;
+    setCanRollDice(!onlineMode);
     setShowPlayerSelection(false);
     setWaitingForPlayers(false);
 
@@ -8544,6 +9033,7 @@ const LudoGame = () => {
     clearHandledLudoInvites();
     latestSentPlayersSeqRef.current = 0;
     latestAppliedPlayersSeqRef.current = 0;
+    awaitingAuthoritativeSnapshotRef.current = false;
 
     setIncomingInviteRequest(null);
 
@@ -8570,7 +9060,9 @@ const LudoGame = () => {
           }));
 
           // Save and emit reset state to all players
-          emitPlayersStateAfterSave(true); // Force emit for reset
+          persistAndBroadcastGameState("game_reset", {
+            trigger: "resetGame",
+          });
         } catch (_e) {}
       }
     }, 100);
@@ -8633,6 +9125,28 @@ const LudoGame = () => {
       } catch (_e) {}
       setOnlineMode(true);
       setWaitingForPlayers(true);
+      setCanRollDice(false);
+      isRollingRef.current = false;
+      isMovingRef.current = false;
+      isAutoMovingRef.current = false;
+      moveTimersRef.current = [];
+      newGameDraftIdRef.current = null;
+      gameIdRef.current = payload.gameId;
+      latestSentPlayersSeqRef.current = 0;
+      latestAppliedPlayersSeqRef.current = 0;
+      persistRequestVersionRef.current = 0;
+      pendingPersistRequestRef.current = null;
+      awaitingAuthoritativeSnapshotRef.current = false;
+      recentMovesRef.current.clear();
+      gameStartedRef.current = false;
+      gameEndedRef.current = false;
+      winnersRef.current = [];
+      currentPlayerRef.current = 0;
+      setGameStarted(false);
+      setGameEnded(false);
+      setWinners([]);
+      setCurrentPlayer(0);
+      setDiceValueImmediate(0);
       setGameId(payload.gameId);
       setSelectedPlayerCount(
         [2, 3, 4].includes(payload.playerCount)
@@ -9995,7 +10509,7 @@ const LudoGame = () => {
                 disabled={
                   !canRollDice ||
                   ((onlineMode || playWithComputer) &&
-                    currentPlayer !== myPlayerIndex)
+                    effectiveCurrentPlayer !== myPlayerIndex)
                 }
                 aria-label={canTapDice ? "Roll dice" : "Dice"}
               >
