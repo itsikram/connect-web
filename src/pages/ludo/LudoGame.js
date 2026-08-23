@@ -329,6 +329,7 @@ const LudoGame = () => {
   const joinedGamesRef = useRef([]);
   const gameIdRef = useRef(null);
   const newGameDraftIdRef = useRef(null);
+  const gameSessionVersionRef = useRef(0);
   const myPlayerIndexRef = useRef(0);
   const pendingPersistRequestRef = useRef(null);
   const persistRequestVersionRef = useRef(0);
@@ -402,7 +403,9 @@ const LudoGame = () => {
         const payload = incomingInviteRequest;
         if (payload) {
           try {
-            // Mark joining via invite so reconnection logic doesn't interfere
+            // Mark joining via invite and invalidate any old asynchronous restore.
+            gameSessionVersionRef.current += 1;
+            pendingConnectActionsRef.current.clear();
             isJoiningViaInviteRef.current = true;
             hasProcessedReconnectionStateRef.current = true;
             inviteAcceptTimestampRef.current = Date.now();
@@ -1495,6 +1498,13 @@ const LudoGame = () => {
    * Animation timing for piece movement
    */
   const stepDurationMs = STEP_DURATION_MS;
+  const DICE_ROLL_ANIMATION_MS = 450;
+  const DICE_FACE_INTERVAL_MS = 60;
+  const AUTO_MOVE_DELAY_MS = 120;
+  const TURN_TRANSITION_DELAY_MS = 200;
+  const ROLL_UNLOCK_DELAY_MS = 100;
+  const SIX_LIMIT_TRANSITION_DELAY_MS = 500;
+  const ONLINE_MOVE_COMPLETION_MAX_MS = 100;
 
   // Cleanup move timers on unmount
   useEffect(
@@ -2086,6 +2096,11 @@ const LudoGame = () => {
     }
 
     const attemptReconnection = async () => {
+      const restoreSessionVersion = gameSessionVersionRef.current;
+      const restoreWasInvalidated = () =>
+        restoreSessionVersion !== gameSessionVersionRef.current ||
+        isJoiningViaInviteRef.current;
+
       // First try loading from localStorage
       const savedState = loadGameState();
 
@@ -2211,7 +2226,7 @@ const LudoGame = () => {
 
           const activeGameIdAfterLoad = gameIdRef.current;
           if (
-            isJoiningViaInviteRef.current ||
+            restoreWasInvalidated() ||
             (activeGameIdAfterLoad &&
               String(activeGameIdAfterLoad) !== String(savedState.gameId))
           ) {
@@ -2286,7 +2301,7 @@ const LudoGame = () => {
 
         // Re-check after all async restore work before activating the room.
         if (
-          isJoiningViaInviteRef.current ||
+          restoreWasInvalidated() ||
           (gameIdRef.current &&
             String(gameIdRef.current) !== String(savedState.gameId))
         ) {
@@ -2594,6 +2609,11 @@ const LudoGame = () => {
             : undefined;
         if (playerCountFromLink) setSelectedPlayerCount(playerCountFromLink);
         const gid = payload.gameId || generateGameId();
+        if (String(gameIdRef.current || "") !== String(gid)) {
+          gameSessionVersionRef.current += 1;
+          clearGameState();
+        }
+        gameIdRef.current = gid;
         setGameId(gid);
         setOnlineMode(true);
 
@@ -2963,6 +2983,32 @@ const LudoGame = () => {
 
       awaitingAuthoritativeSnapshotRef.current = true;
 
+      // Real-time play must not wait for the database round trip. Broadcast the
+      // host's canonical refs immediately; persistence remains serialized below
+      // so reconnects still receive the latest durable snapshot.
+      const liveSnapshot = buildMinimalGameState({}, { actionType, extraMeta });
+      latestSentPlayersSeqRef.current = Number(
+        liveSnapshot.playersSeq ||
+          liveSnapshot.stateVersion ||
+          latestSentPlayersSeqRef.current,
+      );
+      socketRef.current.emit("ludo:players", liveSnapshot);
+      awaitingAuthoritativeSnapshotRef.current = false;
+      if (liveSnapshot.diceValue === 0) {
+        isRollingRef.current = false;
+        isMovingRef.current = false;
+        isAutoMovingRef.current = false;
+        moveTimersRef.current = [];
+      }
+      setCanRollDice(
+        Boolean(
+          liveSnapshot.gameStarted &&
+            !liveSnapshot.gameEnded &&
+            liveSnapshot.diceValue === 0 &&
+            liveSnapshot.currentPlayer === myPlayerIndexRef.current,
+        ),
+      );
+
       if (isSavingGameStateRef.current) {
         pendingPersistRequestRef.current = {
           actionType,
@@ -3051,7 +3097,7 @@ const LudoGame = () => {
         }
       }
     },
-    [gameId, onlineMode, saveGameStateToDatabase],
+    [gameId, onlineMode, buildMinimalGameState, saveGameStateToDatabase],
   );
 
   // Emit player state ONLY after database save completes (host only)
@@ -4239,8 +4285,8 @@ const LudoGame = () => {
         : Math.floor(Math.random() * 6) + 1;
 
     const currentRollPlayer = currentPlayerRef.current;
-    const animationDuration = 750;
-    const faceIntervalMs = 90;
+    const animationDuration = onlineMode ? 300 : DICE_ROLL_ANIMATION_MS;
+    const faceIntervalMs = onlineMode ? 50 : DICE_FACE_INTERVAL_MS;
     const rollingFaces = [1, 2, 3, 4, 5, 6];
     let rollingTick = 0;
 
@@ -4322,7 +4368,7 @@ const LudoGame = () => {
               ) {
                 setCanRollDice(true);
               }
-            }, 150);
+            }, ROLL_UNLOCK_DELAY_MS);
 
             // Save and emit game state when turn changes (host only)
             if (myPlayerIndexRef.current === 0 && onlineMode && gameId) {
@@ -4333,7 +4379,7 @@ const LudoGame = () => {
                 });
               }, 100);
             }
-          }, 1000);
+          }, onlineMode ? 250 : SIX_LIMIT_TRANSITION_DELAY_MS);
 
           return;
         }
@@ -4418,7 +4464,7 @@ const LudoGame = () => {
 
         setTimeout(() => {
           advanceTurnForPlayer(currentPlayerRef.current);
-        }, 400);
+        }, onlineMode ? 100 : TURN_TRANSITION_DELAY_MS);
       } else if (playablePieces.length === 1) {
         const isCpuTurnNow =
           playWithComputerRef.current &&
@@ -4445,7 +4491,7 @@ const LudoGame = () => {
               setCanRollDice(false);
             }
           }
-        }, 200);
+        }, AUTO_MOVE_DELAY_MS);
       } else {
         if (!gameStarted) {
           setGameStarted(true);
@@ -4583,7 +4629,7 @@ const LudoGame = () => {
     // completion latency instead of delaying authoritative turn persistence by
     // up to one full step duration per rolled square.
     const completionDelay = onlineMode
-      ? Math.min(stepsToGo * stepDurationMs, 250)
+      ? Math.min(stepsToGo * stepDurationMs, ONLINE_MOVE_COMPLETION_MAX_MS)
       : stepsToGo * stepDurationMs;
     const finalTimer = setTimeout(() => {
       moveTimersRef.current = moveTimersRef.current.filter(
@@ -4887,7 +4933,7 @@ const LudoGame = () => {
               ) {
                 setCanRollDice(true); // keep turn on 6 (traditional Ludo rule)
               }
-            }, 200); // Small delay to ensure state propagation
+            }, ROLL_UNLOCK_DELAY_MS); // Small delay to ensure state propagation
 
             if (myPlayerIndexRef.current === 0 && onlineMode && gameId) {
               persistAndBroadcastGameState("keep_turn_after_move_from_home", {
@@ -4924,8 +4970,8 @@ const LudoGame = () => {
                 ) {
                   setCanRollDice(true);
                 }
-              }, 200);
-            }, 200);
+              }, ROLL_UNLOCK_DELAY_MS);
+            }, TURN_TRANSITION_DELAY_MS);
           }
         } else {
           // Prevent a double-roll window: keep dice disabled locally until
@@ -5191,7 +5237,7 @@ const LudoGame = () => {
                     ) {
                       setCanRollDice(true);
                     }
-                  }, 200);
+                  }, ROLL_UNLOCK_DELAY_MS);
 
                   // Save and emit state after move completes (host only)
                   if (myPlayerIndexRef.current === 0 && onlineMode && gameId) {
@@ -5278,7 +5324,7 @@ const LudoGame = () => {
                     ) {
                       setCanRollDice(true);
                     }
-                  }, 200);
+                  }, ROLL_UNLOCK_DELAY_MS);
                 }
               } else {
                 // Prevent a double-roll window: keep dice disabled and the
@@ -5613,7 +5659,7 @@ const LudoGame = () => {
                 rolledValue: value,
                 reachedSixLimit: true,
               });
-            }, 500);
+            }, TURN_TRANSITION_DELAY_MS);
           }
 
           return; // Exit early - don't proceed with normal move logic
@@ -5665,7 +5711,7 @@ const LudoGame = () => {
               playerIndex: rollingPlayer,
               rolledValue: value,
             });
-          }, 250);
+          }, TURN_TRANSITION_DELAY_MS);
         }
       } else {
         // Remote player has moves available - they should be able to make a move
@@ -7353,8 +7399,6 @@ const LudoGame = () => {
       const isMyTurnNow = myPlayerIndexRef.current === currentPlayerRef.current;
       const isIdle =
         !awaitingAuthoritativeSnapshotRef.current &&
-        !isSavingGameStateRef.current &&
-        !pendingPersistRequestRef.current &&
         !isRollingRef.current &&
         !isMovingRef.current &&
         !isAutoMovingRef.current &&
@@ -7933,10 +7977,6 @@ const LudoGame = () => {
     } catch (_e) {}
   }, [onlineMode, gameId]);
 
-  const startGame = () => {
-    setShowPlayerSelection(true);
-  };
-
   const handleJoinGame = useCallback(
     (game) => {
       if (!game?.gameId) return;
@@ -8075,10 +8115,17 @@ const LudoGame = () => {
   );
 
   const startNewGame = () => {
+    // Invalidate any in-flight database restore before clearing the room ID.
+    gameSessionVersionRef.current += 1;
+    pendingConnectActionsRef.current.clear();
+    isJoiningViaInviteRef.current = false;
+    inviteAcceptTimestampRef.current = 0;
+
     // Clear reconnecting state
     setIsReconnecting(false);
     setShowReconnectModal(false);
     clearHiddenBoardGameId();
+    clearActiveLudoGameId();
     // Clear saved game state
     clearGameState();
     // Clear exited games flag to allow new games
@@ -8120,6 +8167,9 @@ const LudoGame = () => {
     // Open player selection
     setShowPlayerSelection(true);
   };
+
+  // Every user-facing start action must begin with the same clean session.
+  const startGame = startNewGame;
 
   // Exit game - online matches become resumable, offline matches clear state
   const exitGame = () => {
@@ -9082,8 +9132,10 @@ const LudoGame = () => {
     const payload = incomingInviteRequest;
     if (!payload) return;
     try {
-      // CRITICAL: Mark as joining via invite FIRST - this is the primary guard
-      // This must be done BEFORE any state changes to prevent reconnection modal
+      // Mark as joining via invite first and invalidate any old asynchronous
+      // restore before changing the active room.
+      gameSessionVersionRef.current += 1;
+      pendingConnectActionsRef.current.clear();
       isJoiningViaInviteRef.current = true; // Mark that we're joining via invite
       hasProcessedReconnectionStateRef.current = true; // Mark as processed to prevent reconnection logic
       inviteAcceptTimestampRef.current = Date.now(); // Track when we accepted invite to prevent reconnection

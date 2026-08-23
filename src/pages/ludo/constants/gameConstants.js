@@ -92,4 +92,4 @@ export const HOME_POSITIONS = [
 ];
 
 // Animation timing
-export const STEP_DURATION_MS = 150;
+export const STEP_DURATION_MS = 90;
