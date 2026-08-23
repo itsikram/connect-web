@@ -4,6 +4,7 @@ import ModalContainer from '../modal/ModalContainer'
 import UserPP from "../UserPP";
 import $, { post } from 'jquery'
 import api from "../../api/api";
+import { fetchProfileHasStoryCached } from "../../utils/requestCache";
 import { addPost } from "../../services/actions/postActions";
 
 const loadingImgUrl = 'https://res.cloudinary.com/dz88yjerw/image/upload/v1743092084/i5lcu63atrbkpcy6oqam.gif'
@@ -71,13 +72,11 @@ let CreatePost = ({ setPosts = null }) => {
     const [hasStory, setHasStory] = useState(false);
 
     useEffect(() => {
-        api.get('/profile/hasStory', {
-            params: {
-                profileId
-            }
-        }).then(res => {
-            if (res.status == 200) {
-                let storyStatus = res.data.hasStory
+        if (!profileId) return;
+
+        fetchProfileHasStoryCached(profileId, { ttlMs: 60000, storageTtlMs: 300000 })
+            .then((data) => {
+                let storyStatus = data?.hasStory
 
                 if (storyStatus == 'yes') {
                     setHasStory(true)
@@ -86,11 +85,9 @@ let CreatePost = ({ setPosts = null }) => {
                 if (storyStatus == 'no') {
                     setHasStory(false)
                 }
+            })
 
-            }
-        })
-
-    }, [postData])
+    }, [profileId])
 
     // Close audience menu when clicking outside
     useEffect(() => {

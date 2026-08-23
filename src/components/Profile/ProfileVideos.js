@@ -8,6 +8,7 @@ import api from "../../api/api";
 import $ from 'jquery'
 import PostSkeleton from "../../skletons/post/PostSkeleton";
 import { useRef } from "react";
+import { fetchProfileCached } from "../../utils/requestCache";
 
 
 let ProfileVideos = () => {
@@ -28,30 +29,12 @@ let ProfileVideos = () => {
             }
         })
 
-        
-        api.get('/profile', {
-            params: {
-                profileId: profile
-            }
-        }).then((res) => {
-            setProfileData(res.data)
-
-        }).catch(e => console.log(e))
+        fetchProfileCached(profile, { ttlMs: 60000, storageTtlMs: 300000 })
+            .then((profileResponse) => {
+                setProfileData(profileResponse)
+            }).catch(e => console.log(e))
 
     },[profile])
-
-
-    useEffect(() => {
-
-        api.get('/profile', {
-            params: {
-                profileId: profile
-            }
-        }).then((res) => {
-            setProfileData(res.data)
-        }).catch(e => console.log(e))
-
-    }, [])
 
 
     return(

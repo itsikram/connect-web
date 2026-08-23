@@ -8,6 +8,7 @@ import AgoraRTC from 'agora-rtc-sdk-ng';
 import ModalContainer from '../modal/ModalContainer';
 import useIsMobile from '../../utils/useIsMobile';
 import api from '../../api/api';
+import { fetchProfileCached } from '../../utils/requestCache';
 import checkImgLoading from '../../utils/checkImgLoading';
 import isValidUrl from '../../utils/isValiUrl';
 import { useCallMinimize } from '../../contexts/CallMinimizeContext';
@@ -1808,14 +1809,14 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
         setIsUserInfoModalOpen(true);
         setLoadingUserInfo(true);
         // Fetch user info
-        api.get('/profile', { params: { profileId: friendId } }).then(res => {
-            if (res.status === 200) {
-                setUserInfoData(res.data);
-                if (res.data?.lastLocation?.latitude && res.data?.lastLocation?.longitude) {
+        fetchProfileCached(friendId, { ttlMs: 60000, storageTtlMs: 300000 }).then(profileData => {
+            if (profileData) {
+                setUserInfoData(profileData);
+                if (profileData?.lastLocation?.latitude && profileData?.lastLocation?.longitude) {
                     setFriendLocation({
-                        latitude: res.data.lastLocation.latitude,
-                        longitude: res.data.lastLocation.longitude,
-                        timestamp: res.data.lastLocation.timestamp || Date.now(),
+                        latitude: profileData.lastLocation.latitude,
+                        longitude: profileData.lastLocation.longitude,
+                        timestamp: profileData.lastLocation.timestamp || Date.now(),
                     });
                 }
             }

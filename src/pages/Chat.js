@@ -11,6 +11,7 @@ import { useParams } from "react-router-dom";
 import api from "../api/api";
 import socket from "../common/socket";
 import UserPP from "../components/UserPP";
+import { fetchProfileCached } from "../utils/requestCache";
 import moment from "moment";
 import SingleMessage from "../components/Message/SingleMessage";
 import $ from "jquery";
@@ -520,14 +521,9 @@ const Chat = ({}) => {
 
   useEffect(() => {
     if (!friendId) return;
-    api
-      .get("/profile", {
-        params: {
-          profileId: friendId,
-        },
-      })
-      .then((res) => {
-        setFriendProfile(res.data);
+    fetchProfileCached(friendId, { ttlMs: 60000, storageTtlMs: 300000 })
+      .then((profileData) => {
+        setFriendProfile(profileData);
         dispatch(setLoading(false));
       })
       .catch((e) => console.log(e));

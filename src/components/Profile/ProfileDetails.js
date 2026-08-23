@@ -2,7 +2,7 @@ import React, { Fragment, useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import Moment from "react-moment";
 import { useParams } from "react-router-dom";
-import api from "../../api/api";
+import { fetchProfileCached } from "../../utils/requestCache";
 
 let ProfileDetails = (props) => {
     let mySettings = useSelector(state => state.setting)
@@ -36,15 +36,10 @@ let ProfileDetails = (props) => {
     useEffect(() => {
         if (!friendId) return;
 
-        api.get('/profile', {
-            params: {
-                profileId: friendId
-            }
-        }).then((res) => {
-            const profileResponse = res.data?.profile || res.data
-            setFriendProfile(profileResponse)
-
-        }).catch(e => console.log(e))
+        fetchProfileCached(friendId, { ttlMs: 60000, storageTtlMs: 300000 })
+            .then((profileResponse) => {
+                setFriendProfile(profileResponse)
+            }).catch(e => console.log(e))
 
     }, [friendId])
 

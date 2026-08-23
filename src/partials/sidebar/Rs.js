@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux';
 import UserPP from '../../components/UserPP';
 import api from '../../api/api';
 import RsMenuItemSkleton from '../../skletons/rs/RsMenuItemSkleton';
+import { fetchProfileCached } from '../../utils/requestCache';
 
 let RightSidebar = () => {
     let userJson = localStorage.getItem('user') ? localStorage.getItem('user') : '{}'
@@ -11,17 +12,40 @@ let RightSidebar = () => {
     let myContacts = useSelector(state => state.message) // Get contacts with messages from Redux
     const [activeFriends, setActiveFriends] = useState([]);
     const [friendProfileStatusMap, setFriendProfileStatusMap] = useState({});
+    const [cachedContacts, setCachedContacts] = useState(() => {
+        try {
+            const userData = JSON.parse(localStorage.getItem('user') || '{}')
+            const profileId = userData?.profile
+            const cacheKey = profileId ? `contactsData_${profileId}` : 'contactsData'
+            const cached = localStorage.getItem(cacheKey) || localStorage.getItem('contactsData')
+            if (!cached) return []
+
+            const parsed = JSON.parse(cached)
+            return Array.isArray(parsed) ? parsed : []
+        } catch (error) {
+            console.error('Error reading cached RS contacts:', error)
+            return []
+        }
+    });
     const [triggerUpdate, setTriggerUpdate] = useState(0); // Force re-sort when messages update
     const messageIntervalRef = useRef(null);
     const statusIntervalRef = useRef(null);
+    const contactsIntervalRef = useRef(null);
     const effectiveProfileId = myProfile._id || profile;
+    const contactsCacheKey = effectiveProfileId ? `contactsData_${effectiveProfileId}` : 'contactsData';
+
+    const persistContactsCache = useCallback((contacts) => {
+        try {
+            localStorage.setItem('contactsData', JSON.stringify(contacts));
+            localStorage.setItem(contactsCacheKey, JSON.stringify(contacts));
+        } catch (error) {
+            console.error('Error caching RS contacts:', error);
+        }
+    }, [contactsCacheKey]);
 
     const getStoredContacts = useCallback(() => {
-        if (!effectiveProfileId) return [];
-
         try {
-            const cacheKey = `contactsData_${effectiveProfileId}`;
-            const cached = localStorage.getItem(cacheKey) || localStorage.getItem('contactsData');
+            const cached = localStorage.getItem(contactsCacheKey) || localStorage.getItem('contactsData');
             if (!cached) return [];
 
             const parsed = JSON.parse(cached);
@@ -30,16 +54,33 @@ let RightSidebar = () => {
             console.error('Error reading stored contacts:', error);
             return [];
         }
-    }, [effectiveProfileId]);
+    }, [contactsCacheKey]);
+
+    const reduxContacts = useMemo(() => (
+        Array.isArray(myContacts) ? myContacts.filter(contact => contact?.person?._id) : []
+    ), [myContacts]);
 
     const contactsData = useMemo(() => {
-        const reduxContacts = Array.isArray(myContacts) ? myContacts.filter(contact => contact?.person?._id) : [];
+        if (cachedContacts.length > 0) {
+            return cachedContacts;
+        }
+
         if (reduxContacts.length > 0) {
             return reduxContacts;
         }
 
         return getStoredContacts();
-    }, [myContacts, getStoredContacts]);
+    }, [cachedContacts, reduxContacts, getStoredContacts]);
+
+    const sidebarFriends = useMemo(() => {
+        if (Array.isArray(myProfile.friends) && myProfile.friends.length > 0) {
+            return myProfile.friends;
+        }
+
+        return contactsData
+            .map(contact => contact?.person)
+            .filter(friend => friend?._id);
+    }, [myProfile.friends, contactsData]);
 
     const contactStatusMap = useMemo(() => {
         const statusMap = new Map();
@@ -60,7 +101,7 @@ let RightSidebar = () => {
 
     // Sort friends by last message timestamp
     const sortedFriendsData = useMemo(() => {
-        if (!myProfile.friends || !Array.isArray(myProfile.friends)) return [];
+        if (!sidebarFriends || !Array.isArray(sidebarFriends) || sidebarFriends.length === 0) return [];
 
         // Create a map of contact IDs to their last message timestamp
         const contactMessageMap = new Map();
@@ -71,7 +112,7 @@ let RightSidebar = () => {
         });
 
         // Sort friends: those with messages first (by timestamp), then those without messages
-        const sorted = [...myProfile.friends].sort((a, b) => {
+        const sorted = [...sidebarFriends].sort((a, b) => {
             const aTimestamp = contactMessageMap.get(a._id) || 0;
             const bTimestamp = contactMessageMap.get(b._id) || 0;
 
@@ -87,7 +128,7 @@ let RightSidebar = () => {
         });
 
         return sorted;
-    }, [myProfile.friends, contactStatusMap]);
+    }, [sidebarFriends, contactStatusMap]);
 
     // Get online status from contacts data (same source used by message UI)
     const getOnlineStatusFromContacts = useCallback((profileId) => {
@@ -105,8 +146,38 @@ let RightSidebar = () => {
         return undefined;
     }, [contactStatusMap, getStoredContacts]);
 
+    const refreshContacts = useCallback(async () => {
+        if (!effectiveProfileId) return;
+
+        try {
+            const response = await api.get('/message/chatList', {
+                params: { profileId: effectiveProfileId }
+            });
+
+            const body = response.data;
+            const nextContacts = Array.isArray(body)
+                ? body
+                : Array.isArray(body?.contacts)
+                    ? body.contacts
+                    : Array.isArray(body?.data)
+                        ? body.data
+                        : [];
+
+            setCachedContacts(nextContacts);
+            persistContactsCache(nextContacts);
+        } catch (error) {
+            console.error('Error refreshing RS contacts:', error);
+        }
+    }, [effectiveProfileId, persistContactsCache]);
+
+    useEffect(() => {
+        if (reduxContacts.length === 0) return;
+        setCachedContacts(reduxContacts);
+        persistContactsCache(reduxContacts);
+    }, [reduxContacts, persistContactsCache]);
+
     const refreshOnlineStatuses = useCallback(async () => {
-        const friends = Array.isArray(myProfile.friends) ? myProfile.friends : [];
+        const friends = Array.isArray(sidebarFriends) ? sidebarFriends : [];
         if (friends.length === 0) {
             setActiveFriends([]);
             setFriendProfileStatusMap({});
@@ -128,13 +199,14 @@ let RightSidebar = () => {
             friends
                 .filter(friend => friend?._id)
                 .map(async (friend) => {
-                    const response = await api.get('/profile', {
-                        params: { profileId: friend._id }
+                    const profileData = await fetchProfileCached(friend._id, {
+                        ttlMs: 15000,
+                        storageTtlMs: 60000,
                     });
 
                     return {
                         profileId: friend._id,
-                        isOnline: Boolean(response?.data?.isActive),
+                        isOnline: Boolean(profileData?.isActive),
                     };
                 })
         );
@@ -153,10 +225,10 @@ let RightSidebar = () => {
 
         setFriendProfileStatusMap(nextStatusMap);
         setActiveFriends(liveOnlineFriends);
-    }, [myProfile.friends, getOnlineStatusFromContacts]);
+    }, [sidebarFriends, getOnlineStatusFromContacts]);
 
     // On-demand online status checking (only when opening chat)
-    const checkOnlineStatusOnDemand = async (profileId) => {
+    const checkOnlineStatusOnDemand = useCallback(async (profileId) => {
         try {
             // First try to get from contacts data
             const statusFromContacts = getOnlineStatusFromContacts(profileId);
@@ -173,7 +245,7 @@ let RightSidebar = () => {
             console.error('Error checking online status:', error);
             return false;
         }
-    };
+    }, [getOnlineStatusFromContacts]);
 
     // HTTP-based message checking for sorting - memoized to prevent recreation
     const checkForNewMessages = useCallback(async () => {
@@ -191,7 +263,7 @@ let RightSidebar = () => {
     }, [myProfile._id]);
 
     useEffect(() => {
-        if (!myProfile._id || !myProfile.friends || !Array.isArray(myProfile.friends)) {
+        if (!effectiveProfileId || !sidebarFriends || !Array.isArray(sidebarFriends) || sidebarFriends.length === 0) {
             // Clear intervals if profile is not available
             if (messageIntervalRef.current) {
                 clearInterval(messageIntervalRef.current);
@@ -200,6 +272,10 @@ let RightSidebar = () => {
             if (statusIntervalRef.current) {
                 clearInterval(statusIntervalRef.current);
                 statusIntervalRef.current = null;
+            }
+            if (contactsIntervalRef.current) {
+                clearInterval(contactsIntervalRef.current);
+                contactsIntervalRef.current = null;
             }
             return;
         }
@@ -213,6 +289,13 @@ let RightSidebar = () => {
             clearInterval(statusIntervalRef.current);
             statusIntervalRef.current = null;
         }
+        if (contactsIntervalRef.current) {
+            clearInterval(contactsIntervalRef.current);
+            contactsIntervalRef.current = null;
+        }
+
+        refreshContacts();
+        contactsIntervalRef.current = setInterval(refreshContacts, 120000);
 
         refreshOnlineStatuses();
 
@@ -231,13 +314,21 @@ let RightSidebar = () => {
                 clearInterval(messageIntervalRef.current);
                 messageIntervalRef.current = null;
             }
+            if (contactsIntervalRef.current) {
+                clearInterval(contactsIntervalRef.current);
+                contactsIntervalRef.current = null;
+            }
         };
-    }, [myProfile._id, myProfile.friends, refreshOnlineStatuses, checkForNewMessages])
+    }, [effectiveProfileId, sidebarFriends, refreshContacts, refreshOnlineStatuses, checkForNewMessages])
 
     // Remove duplicate message polling since it's already handled above
 
-    let redirectToMessage = async (e) => {
+    const redirectToMessage = useCallback(async (e) => {
+        // Prevent event bubbling
+        e.stopPropagation();
+        
         let profileId = e.currentTarget.dataset.profile
+        if (!profileId) return;
 
         // Check online status on-demand when opening chat
         const isOnline = await checkOnlineStatusOnDemand(profileId);
@@ -254,7 +345,7 @@ let RightSidebar = () => {
             detail: { profileId, isOnline }
         });
         window.dispatchEvent(event);
-    }
+    }, [activeFriends, checkOnlineStatusOnDemand]);
 
     return (
         <Fragment>
@@ -276,7 +367,7 @@ let RightSidebar = () => {
                             if (!displayName) displayName = 'Unknown User';
 
                             return <li key={data._id || index}>
-                                <div className='rs-nav-menu-item' data-profile={data._id} onClick={redirectToMessage.bind(this)}>
+                                <div className='rs-nav-menu-item' data-profile={data._id} onClick={redirectToMessage}>
                                     <div className='rs-profile-img-container'>
                                         <div className='rs-profile-img'>
                                             <UserPP profilePic={`${data.profilePic}`} profile={data._id} size="full" active={isFrndActive}></UserPP>

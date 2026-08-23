@@ -10,6 +10,7 @@ import isValidUrl from "../../utils/isValiUrl";
 import PpSkleton from "../../skletons/profile/PpSkleton";
 import config from "../../config/config.json";
 import { getProfileSuccess } from "../../services/actions/profileActions";
+import { fetchProfileHasStoryCached } from "../../utils/requestCache";
 const defaultPpSrc = config?.defaultProfile;
 
 let ProfilePic = ({ profileData }) => {
@@ -30,11 +31,14 @@ let ProfilePic = ({ profileData }) => {
     const [hasStory, setHasStory] = useState(false);
     const [ppCaption, setPpCaption] = useState('');
     useEffect(() => {
-        api.get('/profile/hasStory?profileId=' + profile).then(res => {
-            if (res.status == 200) {
-                setHasStory(res.data.hasStory)
-            }
-        })
+        if (!profile) return;
+
+        fetchProfileHasStoryCached(profile, { ttlMs: 60000, storageTtlMs: 300000 })
+            .then((data) => {
+                if (data) {
+                    setHasStory(data.hasStory)
+                }
+            })
 
     }, [profile])
 

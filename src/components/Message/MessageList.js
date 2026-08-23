@@ -11,6 +11,7 @@ import { useSelector } from "react-redux";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import moment from "moment";
+import { fetchProfileCached } from "../../utils/requestCache";
 import MsgListSkleton from "../../skletons/message/MsgListSkleton";
 // const isProfileActive = (id) => {
 //     return true
@@ -223,13 +224,14 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
 
     const results = await Promise.allSettled(
       contactPeople.map(async (person) => {
-        const response = await api.get("/profile", {
-          params: { profileId: person._id },
+        const profileData = await fetchProfileCached(person._id, {
+          ttlMs: 15000,
+          storageTtlMs: 60000,
         });
 
         return {
           profileId: person._id,
-          isActive: Boolean(response?.data?.isActive),
+          isActive: Boolean(profileData?.isActive),
         };
       }),
     );

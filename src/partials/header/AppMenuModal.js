@@ -1,10 +1,11 @@
-import React, { Fragment, useCallback } from 'react';
+import React, { Fragment, useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import ModalContainer from '../../components/modal/ModalContainer';
 import UserPP from '../../components/UserPP';
 import useIsMobile from '../../utils/useIsMobile';
 import { SIDEBAR_MENU_ITEMS } from '../sidebar/sidebarMenuItems';
+import AIAgentModal from '../../components/modal/AIAgentModal/AIAgentModal';
 import './AppMenuModal.css';
 
 function getProfileDisplayName(profileData) {
@@ -21,6 +22,7 @@ function getProfileDisplayName(profileData) {
 const AppMenuModal = ({ isOpen, onRequestClose }) => {
     const isMobile = useIsMobile();
     const profileData = useSelector((state) => state.profile);
+    const [isAIAgentModalOpen, setIsAIAgentModalOpen] = useState(false);
 
     const userInfo = (() => {
         try {
@@ -36,6 +38,10 @@ const AppMenuModal = ({ isOpen, onRequestClose }) => {
     const handleItemClick = useCallback(() => {
         onRequestClose();
     }, [onRequestClose]);
+
+    const handleAIAgentClick = useCallback(() => {
+        setIsAIAgentModalOpen(true);
+    }, []);
 
     return (
         <ModalContainer
@@ -95,6 +101,19 @@ const AppMenuModal = ({ isOpen, onRequestClose }) => {
                     </Link>
 
                     <div className="app-menu-grid" role="list">
+                        <button
+                            type="button"
+                            className="app-menu-grid-item"
+                            role="listitem"
+                            onClick={handleAIAgentClick}
+                            style={{ cursor: 'pointer', border: 'none', background: 'none', padding: 0 }}
+                        >
+                            <span className="app-menu-icon-wrap" style={{ boxShadow: 'inset 0 0 0 1px #7C3AED22' }}>
+                                <i className="fas fa-robot" style={{ color: '#7C3AED' }} aria-hidden="true" />
+                            </span>
+                            <span className="app-menu-grid-label">AI Agent</span>
+                        </button>
+
                         {SIDEBAR_MENU_ITEMS.map((item) => {
                             const iconStyle = { color: item.accent || '#29B1A9' };
                             const content = (
@@ -135,6 +154,11 @@ const AppMenuModal = ({ isOpen, onRequestClose }) => {
                     </div>
                 </div>
             </div>
+
+            <AIAgentModal
+                isOpen={isAIAgentModalOpen}
+                onRequestClose={() => setIsAIAgentModalOpen(false)}
+            />
         </ModalContainer>
     );
 };

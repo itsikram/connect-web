@@ -243,7 +243,7 @@ let HeaderLeft = ({ onAIAgentOpen }) => {
           onTouchCancel={handleLogoTouchCancel}
           onContextMenu={handleLogoContextMenu}
           title="Long press for AI Agent"
-          style={{ userSelect: "none", WebkitUserSelect: "none" }}
+          style={{ userSelect: "none", WebkitUserSelect: "none", position: "relative" }}
         >
           <Link
             to="/"
@@ -263,6 +263,17 @@ let HeaderLeft = ({ onAIAgentOpen }) => {
               }}
             ></img>
           </Link>
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              pointerEvents: "none",
+            }}
+            aria-hidden="true"
+          />
         </div>
 
         <div className="header-app-menu-container">

@@ -7,6 +7,7 @@ import ProfileDetails from "./ProfileDetails";
 import api from "../../api/api";
 import $ from 'jquery'
 import PostSkeleton from "../../skletons/post/PostSkeleton";
+import { fetchProfileCached, fetchProfilePostsCached } from "../../utils/requestCache";
 
 
 let PorfilePosts = () => {
@@ -22,24 +23,13 @@ let PorfilePosts = () => {
     useEffect(() => {
         if (!profile) return;
 
-        api.get('/post/myPosts', {
-            params: {
-                profile
-            }
-        }).then(res => {
-            if (res.status === 200) {
-                setPosts(res.data)
-            }
-        }).catch(e => console.log(e))
-
-        api.get('/profile', {
-            params: {
-                profileId: profile
-            }
-        }).then((res) => {
-            const profileResponse = res.data?.profile || res.data
+        Promise.all([
+            fetchProfilePostsCached(profile, { ttlMs: 60000, storageTtlMs: 180000 }),
+            fetchProfileCached(profile, { ttlMs: 60000, storageTtlMs: 300000 }),
+        ]).then(([postsResponse, profileResponse]) => {
+            setPosts(Array.isArray(postsResponse) ? postsResponse : [])
             setProfileData(profileResponse)
-            setBio(profileResponse.bio || myProfileData.bio || '')
+            setBio(profileResponse?.bio || myProfileData.bio || '')
         }).catch(e => console.log(e))
 
     }, [profile, myProfileData.bio])
@@ -79,7 +69,7 @@ let PorfilePosts = () => {
 
     let handleEditProfileDetails = useCallback(e => {
         navigate('/settings/')
-    }, [])
+    }, [navigate])
 
 
 

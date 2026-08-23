@@ -1,4 +1,4 @@
-import React, { Fragment, useState, useEffect, useRef, useMemo } from "react";
+import React, { Fragment, useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Container, Col, Row } from 'react-bootstrap';
 import { useDispatch, useSelector } from "react-redux";
 import Ls from '../partials/sidebar/Ls';
@@ -16,6 +16,10 @@ import { getCachedProfile, getProfileSuccess } from "../services/actions/profile
 const Home = () => {
 
     const dispatch = useDispatch()
+    const myProfile = useSelector(state => state.profile)
+    const userInfo = JSON.parse(localStorage.getItem('user') || '{}')
+    const effectiveProfileId = myProfile._id || userInfo.profile || 'guest'
+    const storiesCacheKey = `homeStories_${effectiveProfileId}`
     const storyContainer = useRef()
     const postContainer = useRef()
     function scrollLeft() {
@@ -33,13 +37,32 @@ const Home = () => {
     // setting state to store posts data
 
     const [newsFeeds, setNewsFeed] = useState([])
-    const [stories, setStories] = useState([])
+    const [stories, setStories] = useState(() => {
+        try {
+            const cachedStories = localStorage.getItem(storiesCacheKey)
+            if (!cachedStories) return []
+
+            const parsedStories = JSON.parse(cachedStories)
+            return Array.isArray(parsedStories) ? parsedStories : []
+        } catch (error) {
+            console.error('Error reading cached stories:', error)
+            return []
+        }
+    })
     const [lastVisitPost, setLastVisitPost] = useState(false)
     const [feedLoaded, setFeedLoaded] = useState(false)
     const [pageNumber, setPageNumber] = useState(0)
     const newsFeedPosts = useSelector(state => state.post)
 
-    const fetchProfileWithFallback = async () => {
+    const writeStoriesCache = useCallback((storyList) => {
+        try {
+            localStorage.setItem(storiesCacheKey, JSON.stringify(storyList))
+        } catch (error) {
+            console.error('Error caching stories:', error)
+        }
+    }, [storiesCacheKey])
+
+    const fetchProfileWithFallback = useCallback(async () => {
         try {
             const user = JSON.parse(localStorage.getItem('user') || '{}')
             const profileId = user?.profile
@@ -59,9 +82,9 @@ const Home = () => {
         if (cachedProfile) {
             dispatch(getProfileSuccess(cachedProfile))
         }
-    }
+    }, [dispatch])
 
-    const loadData = async () => {
+    const loadData = useCallback(async () => {
 
         if (hasNewPosts === false) return;
 
@@ -84,14 +107,20 @@ const Home = () => {
             setFeedLoaded(true)
             dispatch(setLoading(false))
         }
-    }
+    }, [dispatch, hasNewPosts, pageNumber])
 
-    const fetchStories = async () => {
-        const strRes = await api.get('/story/')
-        if (strRes.status === 200) {
-            setStories(strRes.data)
+    const fetchStories = useCallback(async () => {
+        try {
+            const strRes = await api.get('/story/')
+            if (strRes.status === 200) {
+                const nextStories = Array.isArray(strRes.data) ? strRes.data : []
+                setStories(nextStories)
+                writeStoriesCache(nextStories)
+            }
+        } catch (error) {
+            console.error('Error fetching stories:', error)
         }
-    }
+    }, [writeStoriesCache])
 
     const memoizedStories = useMemo(() => {
         return stories.map((story, index) => {
@@ -130,7 +159,7 @@ const Home = () => {
             }
 
         }
-    }, [loadNewPosts])
+    }, [hasNewPosts, loadData, loadNewPosts])
 
     useEffect(() => {
         dispatch(setLoading(false))
@@ -149,7 +178,7 @@ const Home = () => {
         return () => {
             mediaQuery.removeEventListener('change', handleMediaChange)
         }
-    }, [])
+    }, [dispatch, fetchProfileWithFallback, fetchStories])
 
     useEffect(() => {
         const handleStoryCreated = () => {
@@ -157,7 +186,7 @@ const Home = () => {
         }
         window.addEventListener('story:created', handleStoryCreated)
         return () => window.removeEventListener('story:created', handleStoryCreated)
-    }, [])
+    }, [fetchStories])
 
     useEffect(() => {
         if (newsFeedPosts.length > 0) {

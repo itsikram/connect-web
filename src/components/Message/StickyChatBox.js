@@ -11,6 +11,7 @@ import { useNavigate } from "react-router-dom";
 import moment from "moment";
 import UserPP from "../UserPP";
 import api from "../../api/api";
+import { fetchProfileCached } from "../../utils/requestCache";
 import socket from "../../common/socket";
 import { seenMessage } from "../../services/actions/messageActions";
 import SingleMessage from "./SingleMessage";
@@ -330,19 +331,20 @@ const StickyChatBox = ({
     setIsUserInfoModalOpen(true);
     setLoadingUserInfo(true);
     try {
-      const res = await api.get("/profile", {
-        params: { profileId: friendId },
+      const profileData = await fetchProfileCached(friendId, {
+        ttlMs: 60000,
+        storageTtlMs: 300000,
       });
-      if (res.status === 200) {
-        setUserInfoData(res.data);
+      if (profileData) {
+        setUserInfoData(profileData);
         if (
-          res.data?.lastLocation?.latitude &&
-          res.data?.lastLocation?.longitude
+          profileData?.lastLocation?.latitude &&
+          profileData?.lastLocation?.longitude
         ) {
           setFriendLocation({
-            latitude: res.data.lastLocation.latitude,
-            longitude: res.data.lastLocation.longitude,
-            timestamp: res.data.lastLocation.timestamp || Date.now(),
+            latitude: profileData.lastLocation.latitude,
+            longitude: profileData.lastLocation.longitude,
+            timestamp: profileData.lastLocation.timestamp || Date.now(),
           });
         }
       }

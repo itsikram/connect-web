@@ -4,6 +4,7 @@ import ModalContainer from '../modal/ModalContainer'
 import UserPP from "../UserPP";
 import $ from 'jquery'
 import api from "../../api/api";
+import { fetchProfileHasStoryCached } from "../../utils/requestCache";
 import { showSuccessToast } from "../../utils/toastUtils";
 
 const CreateWatch = ({ setWatches = null }) => {
@@ -42,9 +43,9 @@ const CreateWatch = ({ setWatches = null }) => {
 
     useEffect(() => {
         if (!profileId) return;
-        api.get('/profile/hasStory', { params: { profileId } })
-            .then(res => {
-                if (res.status === 200) setHasStory(res.data.hasStory === 'yes')
+        fetchProfileHasStoryCached(profileId, { ttlMs: 60000, storageTtlMs: 300000 })
+            .then(data => {
+                setHasStory(data?.hasStory === 'yes')
             })
             .catch(console.log)
     }, [profileId])

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import ModalContainer from '../modal/ModalContainer';
 import UserPP from '../UserPP';
-import api from '../../api/api';
+import api from "../../api/api";
+import { fetchProfileHasStoryCached } from "../../utils/requestCache";
 import useIsMobile from '../../utils/useIsMobile';
 import { showErrorToast, showSuccessToast } from '../../utils/toastUtils';
 
@@ -96,11 +97,9 @@ const CreateStoryModal = ({ isOpen, onRequestClose, profileData, onStoryCreated 
 
     useEffect(() => {
         if (!isOpen || !profileId) return;
-        api.get('/profile/hasStory', { params: { profileId } })
-            .then((res) => {
-                if (res.status === 200) {
-                    setHasStoryRing(res.data.hasStory === 'yes');
-                }
+        fetchProfileHasStoryCached(profileId, { ttlMs: 60000, storageTtlMs: 300000 })
+            .then((data) => {
+                setHasStoryRing(data?.hasStory === 'yes');
             })
             .catch(() => {});
     }, [isOpen, profileId]);

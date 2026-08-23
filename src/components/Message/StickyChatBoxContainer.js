@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import StickyChatBox from './StickyChatBox';
 import api from '../../api/api';
+import { fetchProfileCached } from '../../utils/requestCache';
 import './StickyChatBox.css';
 
 const StickyChatBoxContainer = () => {
     const [openChats, setOpenChats] = useState([]);
     const [maxChats] = useState(5); // Maximum number of open chats
     const openChatsRef = useRef(openChats);
+    const pendingOpensRef = useRef(new Set()); // Track pending chat opens
 
     // Keep ref in sync with state
     useEffect(() => {
@@ -16,7 +18,10 @@ const StickyChatBoxContainer = () => {
     // Expose function to check if chat is open (for external use)
     useEffect(() => {
         window.isStickyChatOpen = (profileId) => {
-            return openChatsRef.current.some(chat => chat.friendProfile?._id === profileId);
+            // Check if chat is already open or currently being opened
+            const isChatOpen = openChatsRef.current.some(chat => chat.friendProfile?._id === profileId);
+            const isPending = pendingOpensRef.current.has(profileId);
+            return isChatOpen || isPending;
         };
         return () => {
             delete window.isStickyChatOpen;
@@ -28,7 +33,11 @@ const StickyChatBoxContainer = () => {
     }, []);
 
     const openChat = useCallback(async (profileId) => {
-        // Check if chat is already open using ref to get latest state
+        // Check if chat is already open or pending to open
+        if (pendingOpensRef.current.has(profileId)) {
+            return true; // Chat is already being opened
+        }
+
         const existingChat = openChatsRef.current.find(chat => chat.friendProfile?._id === profileId);
         if (existingChat && existingChat.friendProfile?._id) {
             // If minimized, maximize it
@@ -39,6 +48,9 @@ const StickyChatBoxContainer = () => {
             ));
             return true; // Return true to indicate chat was already open
         }
+
+        // Mark this chat as pending to prevent duplicate opens
+        pendingOpensRef.current.add(profileId);
 
         // Remove all minimized chats of the same user before opening new chat
         const minimizedChatsOfSameUser = openChatsRef.current.filter(chat => 
@@ -85,23 +97,27 @@ const StickyChatBoxContainer = () => {
 
         // Fetch friend profile in background
         try {
-            const response = await api.get('/profile', {
-                params: { profileId }
+            const profileData = await fetchProfileCached(profileId, {
+                ttlMs: 60000,
+                storageTtlMs: 300000,
             });
 
             // Update the chat with real profile data
             setOpenChats(prev => prev.map(chat => 
                 chat.id === newChat.id
-                    ? { ...chat, friendProfile: response.data, isLoading: false }
+                    ? { ...chat, friendProfile: profileData, isLoading: false }
                     : chat
             ));
         } catch (error) {
             console.error('Error opening chat:', error);
             // Remove chat on error or show error state
             setOpenChats(prev => prev.filter(chat => chat.id !== newChat.id));
+        } finally {
+            // Remove from pending set when done
+            pendingOpensRef.current.delete(profileId);
         }
         return false; // Return false to indicate new chat was opened
-    }, []);
+    }, [maxChats]);
 
     const minimizeChat = useCallback((profileId) => {
         setOpenChats(prev => prev.map(chat => 
