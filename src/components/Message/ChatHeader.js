@@ -180,95 +180,58 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
         // First, try to unlock audio if not already unlocked
         await unlockAudio();
         
-        setTimeout(async () => {
-            if (callingBeepAudio?.current) {
-                const audio = callingBeepAudio.current;
+        if (callingBeepAudio?.current) {
+            const audio = callingBeepAudio.current;
+            
+            // Check if audio has a valid source
+            if (!audio.src || audio.src === window.location.href) {
+                console.warn('Ringtone audio has no valid source');
+                return;
+            }
+            
+            // Ensure audio is not muted and volume is set
+            audio.muted = false;
+            audio.volume = 1.0;
+            audio.loop = true; // Loop the calling beep
+            audio.currentTime = 0; // Reset to beginning for immediate playback
                 
-                // Check if audio has a valid source
-                if (!audio.src || audio.src === window.location.href) {
-                    console.warn('Ringtone audio has no valid source');
-                    return;
-                }
-                
-                // Ensure audio is not muted and volume is set
-                audio.muted = false;
-                audio.volume = 1.0;
-                
-                // Wait for audio to be ready if not already loaded
-                if (audio.readyState < 2) {
-                    const handleCanPlay = async () => {
-                        try {
-                            // Try Web Audio API first for better background playback
-                            await playAudioWithWebAudio(audio);
-                            console.log('Ringtone playing successfully');
-                        } catch (error) {
-                            console.warn('Failed to play ringtone:', error);
-                            // Fallback: try regular play
-                            try {
-                                await audio.play();
-                                console.log('Ringtone playing with fallback method');
-                            } catch (fallbackError) {
-                                console.warn('Fallback play also failed:', fallbackError);
-                                // If autoplay is blocked, try again when tab becomes visible
-                                if (fallbackError.name === 'NotAllowedError' || fallbackError.name === 'NotSupportedError') {
-                                    const handleVisibilityChange = () => {
-                                        if (document.visibilityState === 'visible' && incomingCall) {
-                                            playAudioWithWebAudio(audio).catch(e => console.warn('Retry play failed:', e));
-                                            document.removeEventListener('visibilitychange', handleVisibilityChange);
-                                        }
-                                    };
-                                    document.addEventListener('visibilitychange', handleVisibilityChange);
-                                }
-                            }
-                        }
-                        audio.removeEventListener('canplaythrough', handleCanPlay);
-                    };
-                    audio.addEventListener('canplaythrough', handleCanPlay);
-                    
-                    // Fallback timeout
-                    setTimeout(() => {
-                        audio.removeEventListener('canplaythrough', handleCanPlay);
-                    }, 3000);
-                } else {
+            // Wait for audio to be ready if not already loaded
+            if (audio.readyState < 2) {
+                const handleCanPlay = async () => {
                     try {
                         // Try Web Audio API first for better background playback
                         await playAudioWithWebAudio(audio);
-                        console.log('Ringtone playing successfully');
+                        console.log('Calling beep playing successfully');
                     } catch (error) {
-                        console.warn('Failed to play ringtone:', error);
+                        console.warn('Failed to play calling beep:', error);
                         // Fallback: try regular play
                         try {
                             await audio.play();
-                            console.log('Ringtone playing with fallback method');
+                            console.log('Calling beep playing with fallback method');
                         } catch (fallbackError) {
                             console.warn('Fallback play also failed:', fallbackError);
-                            // If autoplay is blocked, try again when tab becomes visible
-                            if (fallbackError.name === 'NotAllowedError' || fallbackError.name === 'NotSupportedError') {
-                                const handleVisibilityChange = () => {
-                                    if (document.visibilityState === 'visible' && incomingCall) {
-                                        playAudioWithWebAudio(audio).catch(e => console.warn('Retry play failed:', e));
-                                        document.removeEventListener('visibilitychange', handleVisibilityChange);
-                                    }
-                                };
-                                document.addEventListener('visibilitychange', handleVisibilityChange);
-                            }
                         }
+                    }
+                    audio.removeEventListener('canplaythrough', handleCanPlay);
+                };
+                audio.addEventListener('canplaythrough', handleCanPlay);
+            } else {
+                try {
+                    // Try Web Audio API first for better background playback
+                    await playAudioWithWebAudio(audio);
+                    console.log('Calling beep playing successfully');
+                } catch (error) {
+                    console.warn('Failed to play calling beep:', error);
+                    // Fallback: try regular play
+                    try {
+                        await audio.play();
+                        console.log('Calling beep playing with fallback method');
+                    } catch (fallbackError) {
+                        console.warn('Fallback play also failed:', fallbackError);
                     }
                 }
-            } else {
-                // Retry after a short delay if audio element not yet mounted
-                setTimeout(async () => {
-                    if (callingBeepAudio?.current) {
-                        await unlockAudio();
-                        try {
-                            await playAudioWithWebAudio(callingBeepAudio.current);
-                        } catch (error) {
-                            callingBeepAudio.current.play().catch(e => console.warn('Failed to play ringtone after retry:', e));
-                        }
-                    }
-                }, 300);
             }
-        }, 500);
+        }
     };
 
     const stopCallingBeep = () => {
@@ -276,6 +239,8 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             const audio = callingBeepAudio.current;
             audio.pause();
             audio.currentTime = 0; // Reset to beginning
+            audio.loop = false; // Disable looping when stopped
+            audio.muted = false; // Reset mute state for next playback
         }
         closeCallNotification(); // Close notification when beep stops
     };
@@ -651,13 +616,13 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
         stopCallingBeep();
 
         if(!callAccepted) {
-            socket.emit('video-call-cancel', {to: friendId, channelName: currentChannel});
+            socket.emit('video-call-cancel', {to: String(friendId), channelName: currentChannel});
             await cleanupVideoCall();
             return;
 
         }
         // Emit to server (server will broadcast to both users)
-        socket.emit('video-call-end', {to:friendId, channelName: currentChannel});
+        socket.emit('video-call-end', {to:String(friendId), channelName: currentChannel});
         // Do local cleanup
         await cleanupVideoCall();
     }, [friendId, cleanupVideoCall, callAccepted, currentChannel]);
@@ -856,7 +821,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
 
     // Setup ringtone based on user settings (only when audio element exists)
     useEffect(() => {
-        if (callingBeepAudio?.current && incomingCall) {
+        if (callingBeepAudio?.current) {
             // Use user's ringtone preference or fallback to default
             const ringtoneId = normalizeRingtoneId(settings.ringtone);
             const ringtone = ringtones.find(r => r.id === ringtoneId);
@@ -917,7 +882,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             console.error('Failed to start local video for outgoing call:', error);
         }
 
-        socket.emit('video-call', { to: friendId, channelName });
+        socket.emit('video-call', { to: String(friendId), channelName });
         playCallingBeep();
     }, [profileId]);
 
@@ -942,7 +907,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             }
         }));
 
-        socket.emit('video-call', { to: id, channelName, isAudio: false });
+        socket.emit('video-call', { to: String(id), channelName, isAudio: false });
     }, [profileId, friendProfile, friendId]);
 
     const handleAudioCallBtn = useCallback(e => {
@@ -965,7 +930,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
             }
         }));
 
-        socket.emit('audio-call', { to: id, channelName, isAudio: true });
+        socket.emit('audio-call', { to: String(id), channelName, isAudio: true });
     }, [profileId, friendProfile, friendId]);
 
     const minimizeVideoCall = useCallback(() => {

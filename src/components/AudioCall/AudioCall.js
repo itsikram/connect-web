@@ -70,6 +70,7 @@ const AudioCall = ({ myId }) => {
             audio.pause();
             audio.currentTime = 0; // Reset to beginning
             audio.loop = false; // Ensure it won't loop
+            audio.muted = false; // Reset mute state for next playback
         }
         closeCallNotification(); // Close notification when ringtone stops
     };
@@ -78,50 +79,24 @@ const AudioCall = ({ myId }) => {
         // First, try to unlock audio if not already unlocked
         await unlockAudio();
         
-        setTimeout(async () => {
-            if (ringtoneAudio?.current && receivingCallRef.current && !callAcceptedRef.current) {
-                const audio = ringtoneAudio.current;
+        if (ringtoneAudio?.current && receivingCallRef.current && !callAcceptedRef.current) {
+            const audio = ringtoneAudio.current;
+            
+            // Check if audio has a valid source
+            if (!audio.src || audio.src === window.location.href) {
+                console.warn('Ringtone audio has no valid source');
+                return;
+            }
+            
+            // Ensure audio is not muted and volume is set
+            audio.muted = false;
+            audio.volume = 1.0;
+            audio.currentTime = 0; // Reset to beginning for immediate playback
+            audio.loop = true; // Loop the ringtone
                 
-                // Check if audio has a valid source
-                if (!audio.src || audio.src === window.location.href) {
-                    console.warn('Ringtone audio has no valid source');
-                    return;
-                }
-                
-                // Ensure audio is not muted and volume is set
-                audio.muted = false;
-                audio.volume = 1.0;
-                audio.loop = true; // Loop the ringtone
-                
-                // Wait for audio to be ready if not already loaded
-                if (audio.readyState < 2) {
-                    const handleCanPlay = async () => {
-                        // Only play if still receiving and not accepted
-                        if (receivingCallRef.current && !callAcceptedRef.current) {
-                            try {
-                                // Try Web Audio API first for better background playback
-                                await playAudioWithWebAudio(audio);
-                                console.log('Ringtone playing successfully');
-                            } catch (error) {
-                                console.warn('Failed to play ringtone:', error);
-                                // Fallback: try regular play
-                                try {
-                                    await audio.play();
-                                    console.log('Ringtone playing with fallback method');
-                                } catch (fallbackError) {
-                                    console.warn('Fallback play also failed:', fallbackError);
-                                }
-                            }
-                        }
-                        audio.removeEventListener('canplaythrough', handleCanPlay);
-                    };
-                    audio.addEventListener('canplaythrough', handleCanPlay);
-                    
-                    // Fallback timeout
-                    setTimeout(() => {
-                        audio.removeEventListener('canplaythrough', handleCanPlay);
-                    }, 3000);
-                } else {
+            // Wait for audio to be ready if not already loaded
+            if (audio.readyState < 2) {
+                const handleCanPlay = async () => {
                     // Only play if still receiving and not accepted
                     if (receivingCallRef.current && !callAcceptedRef.current) {
                         try {
@@ -139,11 +114,29 @@ const AudioCall = ({ myId }) => {
                             }
                         }
                     }
+                    audio.removeEventListener('canplaythrough', handleCanPlay);
+                };
+                audio.addEventListener('canplaythrough', handleCanPlay);
+            } else {
+                // Only play if still receiving and not accepted
+                if (receivingCallRef.current && !callAcceptedRef.current) {
+                    try {
+                        // Try Web Audio API first for better background playback
+                        await playAudioWithWebAudio(audio);
+                        console.log('Ringtone playing successfully');
+                    } catch (error) {
+                        console.warn('Failed to play ringtone:', error);
+                        // Fallback: try regular play
+                        try {
+                            await audio.play();
+                            console.log('Ringtone playing with fallback method');
+                        } catch (fallbackError) {
+                            console.warn('Fallback play also failed:', fallbackError);
+                        }
+                    }
                 }
-            } else if (ringtoneAudio?.current && !receivingCallRef.current) {
-                console.log('AudioCall: Not playing ringtone - not receiving a call');
             }
-        }, 500);
+        }
     };
 
     const closeAudioCall = () => {
@@ -243,8 +236,27 @@ const AudioCall = ({ myId }) => {
 
             // Create local audio track only (no video)
             if (!localTracks.current || localTracks.current.length === 0) {
-                localTracks.current = [await AgoraRTC.createMicrophoneAudioTrack()];
-                console.log('Created local audio track');
+                try {
+                    // Request microphone permission explicitly
+                    try {
+                        const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        // Stop the tracks after getting permission (Agora will create its own)
+                        mediaStream.getTracks().forEach(track => track.stop());
+                    } catch (permissionError) {
+                        if (permissionError.name === 'NotAllowedError') {
+                            console.warn('Microphone permission denied by user');
+                            // Don't throw - let startCall handle the error
+                        }
+                    }
+                    
+                    localTracks.current = [await AgoraRTC.createMicrophoneAudioTrack()];
+                    console.log('Created local audio track');
+                } catch (trackError) {
+                    console.error('Failed to create microphone track:', trackError);
+                    if (trackError.name === 'NotAllowedError') {
+                        console.warn('Cannot proceed without microphone permission');
+                    }
+                }
             } else {
                 console.log('Using existing audio track');
             }
@@ -578,10 +590,10 @@ const AudioCall = ({ myId }) => {
             // Only reject if: currently joined to a channel, accepted a call, or already receiving another incoming call
             if (isJoiningOrJoined.current || callAcceptedRef.current || receivingCallRef.current) {
                 console.warn('AudioCall: Busy — rejecting incoming call', { isJoiningOrJoined: isJoiningOrJoined.current, callAccepted: callAcceptedRef.current, alreadyReceiving: receivingCallRef.current });
-                socket.emit('audio-call-reject', { to: from, channelName });
+                socket.emit('audio-call-reject', { to: String(from), channelName });
                 return;
             }
-            socket.emit('update-call-status', { to: from, status: "Ringing..." });
+            socket.emit('update-call-status', { to: String(from), status: "Ringing..." });
             console.log('AudioCall: Accepting incoming call from', from, 'channel:', channelName);
             setIsAudioCall(true);
             setReceivingCall(true);
@@ -634,7 +646,7 @@ const AudioCall = ({ myId }) => {
             const to = detail.from;
             const channelName = detail.channelName;
             if (to && channelName) {
-                socket.emit('audio-call-reject', { to, channelName });
+                socket.emit('audio-call-reject', { to: String(to), channelName });
             }
             cleanupAudioCall();
         };
@@ -834,13 +846,30 @@ const AudioCall = ({ myId }) => {
         // Start local audio immediately when accepting call
         try {
             console.log('Starting local audio for call answer');
+            
+            // Request microphone permission explicitly
+            try {
+                const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                // Stop the tracks after getting permission (Agora will create its own)
+                mediaStream.getTracks().forEach(track => track.stop());
+            } catch (permissionError) {
+                if (permissionError.name === 'NotAllowedError') {
+                    console.warn('Microphone permission denied by user');
+                    throw permissionError;
+                }
+                // If getUserMedia fails for other reasons, still try Agora
+            }
+            
             localTracks.current = [await AgoraRTC.createMicrophoneAudioTrack()];
             console.log('Local audio started immediately');
         } catch (error) {
             console.error('Failed to start local audio immediately:', error);
+            if (error.name === 'NotAllowedError' || error.message?.includes('Permission denied')) {
+                console.warn('Microphone access denied - user must grant microphone permission');
+            }
         }
         
-        socket.emit('answer-call', { to: incomingCall.from, channelName: incomingCall.channelName, isAudio: true });
+        socket.emit('answer-call', { to: String(incomingCall.from), channelName: incomingCall.channelName, isAudio: true });
         await startCall(incomingCall.channelName);
     }, [incomingCall, startCall]);
 
@@ -850,8 +879,6 @@ const AudioCall = ({ myId }) => {
 
     // End call - called when user clicks end button
     const endCall = useCallback(async () => {
-        console.log('AudioCall: Current state - callAccepted:',incomingCall, caller, callAccepted,myId);
-        
         // Explicitly stop ringtone first
         stopRingtone();
         
@@ -859,34 +886,28 @@ const AudioCall = ({ myId }) => {
         // If we have incomingCall, use incomingCall.from (the person who called us)
         // If we don't have incomingCall, we initiated the call, so use caller (the person we called)
         let friendIdToNotify;
-        if (incomingCall?.from) {
+        if (incomingCall?.from && incomingCall.from !== myId) {
             // We received this call, so notify the person who called us
             friendIdToNotify = incomingCall.from;
-            if(!callAccepted && friendIdToNotify !== myId) {
-                socket.emit('audio-call-reject', {to:friendIdToNotify, channelName: currentChannel});
+            if(!callAccepted) {
+                socket.emit('audio-call-reject', {to:String(friendIdToNotify), channelName: currentChannel});
+                console.log('AudioCall: Emitting audio-call-reject to friend:', friendIdToNotify);
                 await cleanupAudioCall();
                 return;
             }
-            if(!callAccepted && friendIdToNotify === myId) {
-                socket.emit('audio-call-cancel', {to:caller, channelName: currentChannel});
-
-                await cleanupAudioCall();
-                return;
-            }
-        } else if (caller) {
+        } else if (caller && caller !== myId) {
             // We initiated this call, so notify the person we called
             friendIdToNotify = caller;
             if(!callAccepted) {
-                socket.emit('audio-call-cancel', {to:friendIdToNotify, channelName: currentChannel});
+                socket.emit('audio-call-cancel', {to:String(friendIdToNotify), channelName: currentChannel});
+                console.log('AudioCall: Emitting audio-call-cancel to friend:', friendIdToNotify);
                 await cleanupAudioCall();
                 return;
             }
-            await cleanupAudioCall();
-            return;
         }
 
-        if (friendIdToNotify && friendIdToNotify !== myId) {
-            socket.emit('audio-call-end', {to:friendIdToNotify, channelName: currentChannel});
+        if (friendIdToNotify && friendIdToNotify !== myId && currentChannel) {
+            socket.emit('audio-call-end', {to:String(friendIdToNotify), channelName: currentChannel});
             console.log('AudioCall: Successfully emitted audio-call-end to friend:', friendIdToNotify);
         } else {
             console.log('AudioCall: No friend ID to notify or trying to notify self, cannot emit audio-call-end');

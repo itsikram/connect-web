@@ -560,6 +560,9 @@ const Main = () => {
   // HTTP-based notification polling - memoized to prevent recreation on every render
   const fetchNotifications = useCallback(async () => {
     if (!profileId) return;
+    
+    // Skip fetch if tab is not active (optimization for background tabs)
+    if (!isTabActive) return;
 
     try {
       const response = await api.get("/notification/new", {
@@ -616,7 +619,7 @@ const Main = () => {
     } catch (error) {
       console.error("Error fetching notifications:", error);
     }
-  }, [profileId, dispatch]);
+  }, [profileId, dispatch, isTabActive]);
 
   // HTTP-based message polling - memoized to prevent recreation on every render
   const fetchNewMessages = useCallback(async () => {
@@ -711,11 +714,11 @@ const Main = () => {
     fetchNotifications();
     // Don't call fetchNewMessages here - messages are handled via socket
 
-    // Poll for notifications every 30 seconds (keep this as it's for general notifications)
+    // Poll for notifications every 60 seconds (increased from 30s to reduce server load)
     // Use ref to track interval for proper cleanup
     notificationIntervalRef.current = setInterval(() => {
       fetchNotifications();
-    }, 30000);
+    }, 60000);
 
     // Listen for new messages via socket instead of polling
     const handleNewMessageToUser = (data) => {
@@ -791,7 +794,7 @@ const Main = () => {
       }
       socket.off("newMessageToUser", handleNewMessageToUser);
     };
-  }, [profileId, fetchNotifications, dispatch]);
+  }, [profileId, fetchNotifications, dispatch, isTabActive]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -803,7 +806,7 @@ const Main = () => {
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, []);
+  }, [isTabActive]);
 
   useEffect(() => {
     const handleNotification = (msg, senderName, senderPP) => {
