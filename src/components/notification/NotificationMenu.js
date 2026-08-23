@@ -74,7 +74,7 @@ const NotificationMenu = ({
   const ludoInviteFeed = useMemo(() => {
     if (!Array.isArray(pendingLudoInvites)) return [];
     return pendingLudoInvites
-      .filter((inv) => shouldShowLudoInviteAlert(inv.gameId, inv.from))
+      .filter((inv) => shouldShowLudoInviteAlert(inv.gameId, inv.from, inv))
       .map((inv) => ({
         _id: `ludo-invite-${inv.gameId}-${inv.from}`,
         isSeen: false,
@@ -116,7 +116,8 @@ const NotificationMenu = ({
       // joined this game, stop showing it entirely - invitation alerts and
       // notifications should only ever be visible before the invite is
       // resolved.
-      if (gameId && !shouldShowLudoInviteAlert(gameId, from)) {
+      const inviteMeta = item?.data || item?.linkData || item;
+      if (gameId && !shouldShowLudoInviteAlert(gameId, from, inviteMeta)) {
         return false;
       }
 
@@ -299,6 +300,14 @@ const NotificationMenu = ({
               notification?.playerCount ||
               notification?.data?.playerCount ||
               notification?.linkData?.playerCount,
+            reinvite:
+              notification?.reinvite === true ||
+              notification?.data?.reinvite === true ||
+              notification?.linkData?.reinvite === true,
+            inviteId:
+              notification?.inviteId ||
+              notification?.data?.inviteId ||
+              notification?.linkData?.inviteId,
             ts: notification?.timestamp,
           }
         : null);
@@ -310,6 +319,7 @@ const NotificationMenu = ({
         shouldShowLudoInviteAlert(
           derivedInvitePayload.gameId,
           derivedInvitePayload.from,
+          derivedInvitePayload,
         )),
     );
     const parts = isLudoInvite

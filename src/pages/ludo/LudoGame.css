@@ -249,6 +249,14 @@
     transform: scale(0.97);
 }
 
+.ludo-btn__icon {
+    display: block;
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    overflow: visible;
+}
+
 .ludo-btn--primary {
     background: linear-gradient(135deg, var(--ludo-accent), #26a69a);
     color: #06241f;
@@ -749,6 +757,13 @@
     flex-shrink: 0;
 }
 
+.ludo-tool__icon svg {
+    display: block;
+    width: 18px;
+    height: 18px;
+    overflow: visible;
+}
+
 .ludo-tool__dot {
     width: 8px;
     height: 8px;
@@ -839,6 +854,51 @@
     color: var(--ludo-muted);
     font-size: 0.88rem;
     margin-bottom: 18px;
+}
+
+.ludo-dice-picker {
+    position: relative;
+    max-width: 360px;
+}
+
+.ludo-dice-picker__grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+
+.ludo-dice-picker__button {
+    min-width: 0;
+    aspect-ratio: 1;
+    display: grid;
+    place-items: center;
+    padding: 10px;
+    border: 2px solid transparent;
+    border-radius: 16px;
+    background: var(--ludo-surface);
+    color: var(--ludo-text);
+    cursor: pointer;
+    transition:
+        border-color 0.15s ease,
+        background 0.15s ease,
+        transform 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.ludo-dice-picker__button:hover,
+.ludo-dice-picker__button:focus-visible {
+    border-color: var(--ludo-accent);
+    background: rgba(46, 196, 182, 0.12);
+    outline: none;
+}
+
+.ludo-dice-picker__button:active {
+    transform: scale(0.94);
+}
+
+.ludo-dice-picker__button svg {
+    width: min(64px, 100%);
+    height: auto;
 }
 
 .ludo-choice-grid {
@@ -1678,8 +1738,9 @@
     }
 
     .ludo-header__actions .ludo-btn {
+        width: 40px;
         min-width: 40px;
-        padding: 8px 12px;
+        padding: 8px;
     }
 
     .ludo-turn__hint {

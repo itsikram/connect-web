@@ -87,8 +87,11 @@ export const isUserInLudoGame = (gameId) => {
   return false;
 };
 
-export const shouldShowLudoInviteAlert = (gameId, from) => {
+export const shouldShowLudoInviteAlert = (gameId, from, invite = null) => {
   if (!gameId) return false;
+  // A re-invite is a new explicit request for the same room. It must not be
+  // hidden by the handled/active markers belonging to the earlier invite.
+  if (invite?.reinvite === true) return true;
   if (isInviteHandled(gameId, from)) return false;
   if (isUserInLudoGame(gameId)) return false;
   return true;

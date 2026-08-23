@@ -23,6 +23,8 @@ export const PlayerEditorModal = ({
     onFriendSearchChange,
     onAssignFriendToSlot,
     onPlaySound,
+    canReplaceWithComputer,
+    onReplaceWithComputer,
 }) => {
     if (!show || editingPlayerIndex == null || !player) return null;
 
@@ -161,6 +163,23 @@ export const PlayerEditorModal = ({
                         </div>
                     </div>
                 </div>
+
+                {canReplaceWithComputer && (
+                    <div className="ludo-divider">
+                        <div className="ludo-section-title">Player type</div>
+                        <button
+                            type="button"
+                            className="ludo-btn ludo-btn--accent"
+                            disabled={player?.isBot}
+                            onClick={() => {
+                                onPlaySound && onPlaySound('buttonClick');
+                                onReplaceWithComputer && onReplaceWithComputer();
+                            }}
+                        >
+                            {player?.isBot ? 'Computer Player' : 'Replace with Computer'}
+                        </button>
+                    </div>
+                )}
 
                 <div className="ludo-divider">
                     <div className="ludo-section-title">Continue on another device</div>

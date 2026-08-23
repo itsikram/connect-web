@@ -1,4 +1,5 @@
 import React from "react";
+import { LudoIcon } from "./LudoIcon";
 
 export const GameHeader = ({
   gameStarted,
@@ -48,9 +49,11 @@ export const GameHeader = ({
               type="button"
               className="ludo-btn ludo-btn--primary"
               onClick={onStartGame}
+              title="Start a new game"
+              aria-label="Start a new game"
             >
+              <LudoIcon name="play" className="ludo-btn__icon" />
               <span className="ludo-btn__label">Start</span>
-              <span aria-hidden="true">▶</span>
             </button>
             {showExit && (
               <button
@@ -58,7 +61,9 @@ export const GameHeader = ({
                 className="ludo-btn ludo-btn--ghost"
                 onClick={onExitGame}
                 title="Leave the board and resume later"
+                aria-label="Leave the board and resume later"
               >
+                <LudoIcon name="leave" className="ludo-btn__icon" />
                 <span className="ludo-btn__label">Leave</span>
               </button>
             )}
@@ -70,7 +75,9 @@ export const GameHeader = ({
               className="ludo-btn ludo-btn--danger"
               onClick={onResetGame}
               title="Restart from the beginning"
+              aria-label="Restart from the beginning"
             >
+              <LudoIcon name="restart" className="ludo-btn__icon" />
               <span className="ludo-btn__label">Restart</span>
             </button>
             <button
@@ -78,7 +85,9 @@ export const GameHeader = ({
               className="ludo-btn ludo-btn--ghost"
               onClick={onExitGame}
               title="Leave the board and resume later"
+              aria-label="Leave the board and resume later"
             >
+              <LudoIcon name="leave" className="ludo-btn__icon" />
               <span className="ludo-btn__label">Leave</span>
             </button>
           </>
@@ -89,8 +98,10 @@ export const GameHeader = ({
             className="ludo-btn ludo-btn--sm ludo-btn--accent"
             onClick={onTriggerDebugCelebration}
             title="Debug: Test celebration"
+            aria-label="Test celebration"
           >
-            Debug
+            <LudoIcon name="bug" className="ludo-btn__icon" />
+            <span className="ludo-btn__label">Debug</span>
           </button>
         )}
         {(isSpecialUser || isDebug) && (
@@ -106,8 +117,14 @@ export const GameHeader = ({
                 ? "Disable control mode"
                 : "Enable control mode (dice prompts)"
             }
+            aria-label={
+              controlMode ? "Disable control mode" : "Enable control mode"
+            }
           >
-            {controlMode ? "Control On" : "Control"}
+            <LudoIcon name="controls" className="ludo-btn__icon" />
+            <span className="ludo-btn__label">
+              {controlMode ? "Control On" : "Control"}
+            </span>
           </button>
         )}
       </div>

@@ -3468,6 +3468,15 @@ select {
                 background-color: $profilebg;
                 border: 1px solid $bc;
                 color: $tc
+
+                option {
+                    background: #000;
+
+                }
+            }
+
+            select.form-control {
+                background: #000 !important;
             }
         }
     }

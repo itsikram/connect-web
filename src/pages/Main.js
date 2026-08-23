@@ -922,7 +922,18 @@ const Main = () => {
             String(item.gameId) === String(invite.gameId) &&
             String(item.from) === String(invite.from),
         );
-        if (exists) return prev;
+        if (exists) {
+          return [
+            invite,
+            ...prev.filter(
+              (item) =>
+                !(
+                  String(item.gameId) === String(invite.gameId) &&
+                  String(item.from) === String(invite.from)
+                ),
+            ),
+          ].slice(0, 20);
+        }
         return [invite, ...prev].slice(0, 20);
       });
     };
@@ -953,7 +964,9 @@ const Main = () => {
           gameId: invite.gameId,
           slotIndex: invite.slotIndex,
           playerCount: invite.playerCount,
-          ts: Date.now(),
+          reinvite: invite.reinvite === true,
+          inviteId: invite.inviteId,
+          ts: invite.ts || Date.now(),
           autoAccept: true,
           source: "notification-menu",
         };
@@ -1026,7 +1039,7 @@ const Main = () => {
         // Check if invite is for this user
         if (payload.to && String(payload.to) !== String(myProfile._id)) return;
 
-        if (isUserInLudoGame(payload.gameId)) {
+        if (!payload.reinvite && isUserInLudoGame(payload.gameId)) {
           try {
             if (socket && socket.connected) {
               socket.emit("ludo:invites:dismiss", {
@@ -1038,12 +1051,13 @@ const Main = () => {
           return;
         }
 
-        if (!shouldShowLudoInviteAlert(payload.gameId, payload.by)) {
+        if (!shouldShowLudoInviteAlert(payload.gameId, payload.by, payload)) {
           return;
         }
 
         // Create unique key for this invite
-        const inviteKey = `${payload.gameId}:${payload.by}`;
+        const inviteKey =
+          payload.inviteId || `${payload.gameId}:${payload.by}`;
         const now = Date.now();
 
         // Check if we've already shown a toast for this invite recently (30 seconds)
@@ -1073,7 +1087,9 @@ const Main = () => {
           gameId: payload.gameId,
           slotIndex: payload.slotIndex,
           playerCount: payload.playerCount,
-          ts: now,
+          reinvite: payload.reinvite === true,
+          inviteId: payload.inviteId,
+          ts: payload.ts || now,
         };
 
         upsertPendingInvite(invite);
@@ -1143,12 +1159,14 @@ const Main = () => {
           gameId: x.gameId,
           slotIndex: x.slotIndex,
           playerCount: x.playerCount,
+          reinvite: x.reinvite === true,
+          inviteId: x.inviteId,
           ts: x.ts || Date.now(),
         }));
 
         // Filter out invites for games the user is already in or already handled
         const filteredNormalized = normalized.filter((inv) => {
-          if (isUserInLudoGame(inv.gameId)) {
+          if (!inv.reinvite && isUserInLudoGame(inv.gameId)) {
             try {
               if (socket && socket.connected) {
                 socket.emit("ludo:invites:dismiss", {
@@ -1159,7 +1177,7 @@ const Main = () => {
             } catch (_e) {}
             return false;
           }
-          return shouldShowLudoInviteAlert(inv.gameId, inv.from);
+          return shouldShowLudoInviteAlert(inv.gameId, inv.from, inv);
         });
 
         filteredNormalized.forEach(upsertPendingInvite);
@@ -1168,7 +1186,7 @@ const Main = () => {
 
         // Filter and mark toasts synchronously to prevent duplicates
         const newInvites = filteredNormalized.filter((inv) => {
-          const inviteKey = `${inv.gameId}:${inv.from}`;
+          const inviteKey = inv.inviteId || `${inv.gameId}:${inv.from}`;
           const lastShownTime = shownLudoInviteToastsRef.current.get(inviteKey);
           if (lastShownTime && now - lastShownTime < 30000) {
             return false; // Already shown a toast for this invite recently, skip

@@ -60,6 +60,7 @@ import { WinnerModal } from "./components/WinnerModal";
 import { IncomingInviteModal } from "./components/IncomingInviteModal";
 import { PlayerEditorModal } from "./components/PlayerEditorModal";
 import { GameHeader } from "./components/GameHeader";
+import { LudoIcon } from "./components/LudoIcon";
 import { PendingInvitesBanner } from "./components/PendingInvitesBanner";
 import { PlayerSelectionModal } from "./components/PlayerSelectionModal";
 import { useAudio } from "./hooks/useAudio";
@@ -72,6 +73,22 @@ import {
   clearHandledLudoInvites,
   resolveLudoInviteNotifications,
 } from "../../utils/ludoInviteUtils";
+
+const getBoardSeatIndex = (playerIndex, playerCount) =>
+  Number(playerCount) === 2 && Number(playerIndex) === 1
+    ? 3
+    : Number(playerIndex);
+
+const getPlayerIndexForBoardSeat = (boardSeatIndex, playerCount) => {
+  if (Number(playerCount) === 2) {
+    if (Number(boardSeatIndex) === 0) return 0;
+    if (Number(boardSeatIndex) === 3) return 1;
+    return null;
+  }
+  return Number(boardSeatIndex) < Number(playerCount)
+    ? Number(boardSeatIndex)
+    : null;
+};
 
 /**
  * LudoGame Component
@@ -362,12 +379,15 @@ const LudoGame = () => {
   // Guard to prevent duplicate accept emits from double-tap and to bound retries
   const acceptInFlightRef = useRef(false);
 
-  const wrappedAcceptIncomingInvite = useCallback(async () => {
+  const wrappedAcceptIncomingInvite = useCallback(async (inviteOverride = null) => {
     if (acceptInFlightRef.current) {
       console.log('[LUDO][client] accept already in flight - ignoring duplicate');
       return;
     }
     acceptInFlightRef.current = true;
+    const invitePayload = inviteOverride?.gameId
+      ? inviteOverride
+      : incomingInviteRequest;
     try {
       // Prefer calling the full accept handler if it's been registered
       const HANDLER_WAIT_ATTEMPTS = 5;
@@ -376,7 +396,7 @@ const LudoGame = () => {
 
       if (acceptIncomingInviteRef.current) {
         try {
-          await acceptIncomingInviteRef.current();
+          await acceptIncomingInviteRef.current(invitePayload);
           handlerCalled = true;
         } catch (err) {
           console.log('[LUDO][client] acceptIncomingInvite threw:', err?.message || err);
@@ -388,7 +408,7 @@ const LudoGame = () => {
         }
         if (acceptIncomingInviteRef.current) {
           try {
-            await acceptIncomingInviteRef.current();
+            await acceptIncomingInviteRef.current(invitePayload);
             handlerCalled = true;
           } catch (err) {
             console.log('[LUDO][client] acceptIncomingInvite threw after wait:', err?.message || err);
@@ -400,7 +420,7 @@ const LudoGame = () => {
       // to avoid losing auto-accepts that fire very early (best-effort fallback).
       if (!handlerCalled) {
         console.log('[LUDO][client] accept handler unavailable - performing minimal fallback accept');
-        const payload = incomingInviteRequest;
+        const payload = invitePayload;
         if (payload) {
           try {
             // Mark joining via invite and invalidate any old asynchronous restore.
@@ -561,8 +581,10 @@ const LudoGame = () => {
           break;
         }
         try {
-          if (socketRef.current && gameId) {
-            socketRef.current.emit('ludo:players:get', { gameId });
+          if (socketRef.current && invitePayload?.gameId) {
+            socketRef.current.emit('ludo:players:get', {
+              gameId: invitePayload.gameId,
+            });
             console.log('[LUDO][client] Polling for players snapshot (attempt)', attempt + 1);
           }
         } catch (_e) {}
@@ -1414,9 +1436,10 @@ const LudoGame = () => {
   }, []);
 
   /**
-   * Control mode enables dice value prompts for testing
+   * Control mode enables choosing the next dice value for testing.
    */
   const [controlMode, setControlMode] = useState(false);
+  const [showDiceValueModal, setShowDiceValueModal] = useState(false);
 
   /**
    * Check if current user is a special user (has access to control mode)
@@ -1429,9 +1452,11 @@ const LudoGame = () => {
    * Check if it's the current player's turn
    */
   const isMyTurn = useMemo(() => {
-    if (!onlineMode && !playWithComputer) return true; // Offline hot-seat
+    if (!onlineMode && !playWithComputer) {
+      return !players[currentPlayer]?.isBot;
+    }
     return currentPlayer === myPlayerIndex;
-  }, [onlineMode, playWithComputer, currentPlayer, myPlayerIndex]);
+  }, [onlineMode, playWithComputer, currentPlayer, myPlayerIndex, players]);
 
   // ============================================================================
   // SECTION 11: GAME LOGIC HELPERS
@@ -1440,7 +1465,8 @@ const LudoGame = () => {
   /**
    * Get the next active player in turn order
    * Turn order: 4 players = Red -> Green -> Yellow -> Blue (0,1,3,2)
-   *             2/3 players = [Red, Green] or [Red, Green, Blue]
+   *             2/3 logical players = [0,1] or [0,1,2]. In two-player
+   *             matches logical player 1 is rendered at opposite board seat 3.
    *
    * @param {number} fromIndex - Current player index
    * @returns {number} Next active player index
@@ -1517,13 +1543,17 @@ const LudoGame = () => {
   // Helpers (identical logic) - memoized for performance
   const getPositionOnPath = useCallback(
     (playerIndex, steps) => {
-      const path = PATHS[playerIndex];
+      const boardSeatIndex = getBoardSeatIndex(
+        playerIndex,
+        selectedPlayerCount,
+      );
+      const path = PATHS[boardSeatIndex];
       if (!path || steps <= 0 || steps > path.length) {
         return { x: 7, y: 7 };
       }
       return path[steps - 1];
     },
-    [PATHS],
+    [selectedPlayerCount],
   );
 
   // Safe zones - cannot capture here. Includes entry squares to home columns and classic star squares (board coordinates).
@@ -1811,7 +1841,10 @@ const LudoGame = () => {
     return captured;
   };
 
-  const initializeGame = (playerCount = selectedPlayerCount) => {
+  const initializeGame = (
+    playerCount = selectedPlayerCount,
+    friends = selectedFriends,
+  ) => {
     const newPlayers = [];
     const names = [];
     const avatars = [];
@@ -1824,17 +1857,19 @@ const LudoGame = () => {
       myProfile?.profileCover ||
       undefined;
     for (let i = 1; i < playerCount; i++) {
-      const f = selectedFriends[i - 1];
-      names[i] = f?.fullName || playerNames[i];
+      const f = friends[i - 1];
+      const boardSeatIndex = getBoardSeatIndex(i, playerCount);
+      names[i] = f?.fullName || playerNames[boardSeatIndex];
       avatars[i] = f?.profilePic;
       covers[i] = f?.coverPic || f?.cover || f?.profileCover || undefined;
     }
     for (let i = 0; i < playerCount; i++) {
+      const boardSeatIndex = getBoardSeatIndex(i, playerCount);
       const pieces = [];
       for (let j = 0; j < 4; j++) {
         pieces.push({
           id: j,
-          color: colors[i],
+          color: colors[boardSeatIndex],
           position: { x: 0, y: 0 },
           isHome: true,
           isInPlay: false,
@@ -1843,8 +1878,8 @@ const LudoGame = () => {
       }
       newPlayers.push({
         id: i,
-        name: names[i] || playerNames[i],
-        color: colors[i],
+        name: names[i] || playerNames[boardSeatIndex],
+        color: colors[boardSeatIndex],
         pieces,
         isActive: i === 0,
         avatar: avatars[i],
@@ -1852,6 +1887,7 @@ const LudoGame = () => {
         profileId: i === 0 ? myProfile?._id || "local" : undefined,
       });
     }
+    playersRef.current = newPlayers;
     setPlayers(newPlayers);
 
     // CRITICAL: Initialize consecutive 6s tracking for all players
@@ -2635,6 +2671,8 @@ const LudoGame = () => {
             gameId: gid,
             slotIndex: slotFromLink,
             playerCount: playerCountFromLink,
+            reinvite: payload.reinvite === true,
+            inviteId: payload.inviteId,
             autoAccept: true,
             viaLink: true,
             ts: payload.ts || Date.now(),
@@ -2649,7 +2687,7 @@ const LudoGame = () => {
             socketRef.current && socketRef.current.emit("ludo:invites:get");
           } catch (_e) {}
           setIncomingInviteRequest(inviteRequest);
-          setTimeout(() => wrappedAcceptIncomingInvite(), 0);
+          setTimeout(() => wrappedAcceptIncomingInvite(inviteRequest), 0);
           return;
         }
 
@@ -2724,7 +2762,7 @@ const LudoGame = () => {
     for (let i = 1; i < max; i++) {
       const p = players[i];
       if (!p) return i;
-      if (!p.profileId) return i;
+      if (!p.profileId && !p.isBot) return i;
     }
     return null;
   }, [players, selectedPlayerCount]);
@@ -2732,18 +2770,6 @@ const LudoGame = () => {
   // Legacy function placeholder - will be defined after emitPlayersStateAfterSave
   let emitPlayersState;
 
-  // Handle offline player actions (host only)
-  const replacePlayerWithBot = useCallback(
-    (playerIndex) => {
-      if (myPlayerIndex !== 0 || !onlineMode || !gameId) return;
-      try {
-        if (socketRef.current) {
-          socketRef.current.emit("ludo:replace:bot", { gameId, playerIndex });
-        }
-      } catch (_e) {}
-    },
-    [myPlayerIndex, onlineMode, gameId],
-  );
 
   const removeOfflinePlayer = useCallback(
     (playerIndex) => {
@@ -3121,14 +3147,135 @@ const LudoGame = () => {
     [persistAndBroadcastGameState],
   );
 
+  const replacePlayerWithBot = useCallback(
+    (playerIndex) => {
+      const seatIndex = Number(playerIndex);
+      const hadActiveGameId = Boolean(gameIdRef.current || gameId);
+      const activeGameId =
+        gameIdRef.current ||
+        gameId ||
+        (onlineMode
+          ? newGameDraftIdRef.current || generateGameId()
+          : null);
+      if (
+        myPlayerIndexRef.current !== 0 ||
+        !Number.isInteger(seatIndex) ||
+        seatIndex <= 0 ||
+        seatIndex >= selectedPlayerCountRef.current ||
+        isRollingRef.current ||
+        isMovingRef.current ||
+        isAutoMovingRef.current ||
+        (onlineMode && !activeGameId)
+      ) {
+        return;
+      }
+
+      if (onlineMode && !hadActiveGameId && activeGameId) {
+        newGameDraftIdRef.current = activeGameId;
+        gameIdRef.current = activeGameId;
+        setGameId(activeGameId);
+      }
+
+      const sourcePlayers = Array.isArray(playersRef.current)
+        ? playersRef.current
+        : players;
+      const replacedPlayer = sourcePlayers[seatIndex];
+      if (!replacedPlayer || replacedPlayer.isBot) return;
+
+      const replacedProfileId = replacedPlayer.profileId
+        ? String(replacedPlayer.profileId)
+        : null;
+      const nextPlayers = sourcePlayers.map((player, index) =>
+        index === seatIndex
+          ? {
+              ...player,
+              name: `Computer ${seatIndex}`,
+              avatar: undefined,
+              cover: undefined,
+              profileId: null,
+              isBot: true,
+              isActive: true,
+              isOffline: false,
+              offlineSince: undefined,
+              pieces: Array.isArray(player.pieces)
+                ? player.pieces.map((piece) => ({ ...piece }))
+                : [],
+            }
+          : player,
+      );
+
+      playersRef.current = nextPlayers;
+      setPlayers(nextPlayers);
+
+      if (replacedProfileId) {
+        const nextStatuses = { ...invitedStatusByFriendIdRef.current };
+        const nextSlots = { ...invitedSlotByFriendIdRef.current };
+        delete nextStatuses[replacedProfileId];
+        delete nextSlots[replacedProfileId];
+        invitedStatusByFriendIdRef.current = nextStatuses;
+        invitedSlotByFriendIdRef.current = nextSlots;
+        setInvitedStatusByFriendId(nextStatuses);
+        setInvitedSlotByFriendId(nextSlots);
+        setSelectedFriends((prev) =>
+          prev.filter(
+            (friend) => String(friend?._id || "") !== replacedProfileId,
+          ),
+        );
+      }
+
+      if (onlineMode && hadActiveGameId) {
+        try {
+          socketRef.current?.emit("ludo:replace:bot", {
+            gameId: activeGameId,
+            playerIndex: seatIndex,
+          });
+        } catch (_e) {}
+        setTimeout(() => {
+          persistAndBroadcastGameState("player_replace_bot", {
+            playerIndex: seatIndex,
+            replacedProfileId,
+          });
+        }, 0);
+      }
+
+      setShowPlayerEditor(false);
+      setEditingPlayerIndex(null);
+      setEditName("");
+      setEditAvatarUrl("");
+    },
+    [gameId, onlineMode, persistAndBroadcastGameState, players],
+  );
+
   const inviteFriend = useCallback(
     (friend) => {
       if (!friend || !friend._id) return;
 
       const friendIdStr = String(friend._id);
 
-      // CRITICAL: Check if friend has already joined before sending invite
-      const currentStatus = invitedStatusByFriendIdRef.current[friendIdStr];
+      // Invite state is valid only while the friend still owns a seat in the
+      // current setup. A delayed state update from a room that was just left
+      // must not make that friend permanently appear joined in a new game.
+      const currentPlayers = Array.isArray(playersRef.current)
+        ? playersRef.current
+        : players;
+      const friendAlreadyInGame = currentPlayers.some(
+        (p, index) =>
+          index > 0 && p?.profileId && String(p.profileId) === friendIdStr,
+      );
+      let currentStatus = invitedStatusByFriendIdRef.current[friendIdStr];
+
+      if (currentStatus && !friendAlreadyInGame) {
+        const nextStatuses = { ...invitedStatusByFriendIdRef.current };
+        const nextSlots = { ...invitedSlotByFriendIdRef.current };
+        delete nextStatuses[friendIdStr];
+        delete nextSlots[friendIdStr];
+        invitedStatusByFriendIdRef.current = nextStatuses;
+        invitedSlotByFriendIdRef.current = nextSlots;
+        setInvitedStatusByFriendId(nextStatuses);
+        setInvitedSlotByFriendId(nextSlots);
+        currentStatus = undefined;
+      }
+
       if (currentStatus === "joined") {
         console.log(
           `[INVITE_FRIEND] Skipping invite to ${friendIdStr} - already joined`,
@@ -3136,11 +3283,7 @@ const LudoGame = () => {
         return;
       }
 
-      // Also check if the friend is already in the game
-      const currentPlayers = playersRef.current || players;
-      const friendAlreadyInGame = currentPlayers.some(
-        (p) => p?.profileId && String(p.profileId) === friendIdStr,
-      );
+      // Also check if the friend is already in the current game.
       if (friendAlreadyInGame) {
         console.log(
           `[INVITE_FRIEND] Skipping invite to ${friendIdStr} - already in game`,
@@ -3315,6 +3458,9 @@ const LudoGame = () => {
         copy[slotIndex].avatar = friend.profilePic || copy[slotIndex].avatar;
         copy[slotIndex].cover = friend.coverPic || copy[slotIndex].cover;
         copy[slotIndex].profileId = friend._id; // local-only association
+        copy[slotIndex].isBot = false;
+        copy[slotIndex].isActive = true;
+        copy[slotIndex].isOffline = false;
         return copy;
       });
       setSelectedFriends((prev) => {
@@ -3363,6 +3509,10 @@ const LudoGame = () => {
     for (let i = 1; i < maxPlayers; i++) {
       const seat = currentPlayers[i];
       const hasProfileId = Boolean(seat?.profileId);
+
+      if (seat?.isBot) {
+        continue;
+      }
 
       if (!hasProfileId) {
         console.log(
@@ -3534,7 +3684,12 @@ const LudoGame = () => {
     return btoa(JSON.stringify(payload));
   };
 
-  const sendInviteNotificationToFriend = async (friend, gid, slotIndex) => {
+  const sendInviteNotificationToFriend = async (
+    friend,
+    gid,
+    slotIndex,
+    options = {},
+  ) => {
     try {
       const token = (() => {
         try {
@@ -3546,6 +3701,8 @@ const LudoGame = () => {
             gameId: gid,
             playerCount: selectedPlayerCount,
             slotIndex,
+            reinvite: options.reinvite === true,
+            inviteId: options.inviteId,
           };
           return btoa(JSON.stringify(payload));
         } catch (_e) {
@@ -3567,6 +3724,8 @@ const LudoGame = () => {
           inviterName: myProfile?.fullName,
           inviterAvatar: myProfile?.profilePic,
           inviterCover: myProfile?.coverPic,
+          reinvite: options.reinvite === true,
+          inviteId: options.inviteId,
         },
       };
       await api.post("/web-notification/send-to-all-browsers", {
@@ -3742,6 +3901,7 @@ const LudoGame = () => {
     console.log("[RE_INVITE] Re-inviting players to current game");
 
     try {
+      const reinvitedFriendIds = new Set();
       // Find offline players or empty slots and re-invite them specifically
       players.forEach((player, index) => {
         // Skip current player and active online players
@@ -3762,16 +3922,21 @@ const LudoGame = () => {
             selectedFriends.forEach((friend) => {
               if (friend && friend._id) {
                 const friendIdStr = String(friend._id);
-
-                // CRITICAL: Check if friend has already joined before sending invite
-                const currentStatus =
-                  invitedStatusByFriendIdRef.current[friendIdStr];
-                if (currentStatus === "joined") {
-                  console.log(
-                    `[RE_INVITE] Skipping invite to ${friendIdStr} - already joined`,
-                  );
+                const reservedSlot =
+                  invitedSlotByFriendIdRef.current[friendIdStr];
+                if (
+                  reinvitedFriendIds.has(friendIdStr) ||
+                  (reservedSlot !== undefined &&
+                    Number(reservedSlot) !== Number(index))
+                ) {
                   return;
                 }
+
+                // Check the current roster, not stale invite status. An empty
+                // seat means a previous joined/declined marker must not block a
+                // fresh invitation.
+                const currentStatus =
+                  invitedStatusByFriendIdRef.current[friendIdStr];
 
                 // Also check if the friend is already in the game
                 const friendAlreadyInGame = players.some(
@@ -3792,6 +3957,8 @@ const LudoGame = () => {
                 }
 
                 try {
+                  reinvitedFriendIds.add(friendIdStr);
+                  const inviteId = `${gameId}:${friendIdStr}:${Date.now()}`;
                   socketRef.current.emit("ludo:invite", {
                     to: friend._id,
                     by: myProfile?._id,
@@ -3801,12 +3968,27 @@ const LudoGame = () => {
                     gameId,
                     slotIndex: index,
                     playerCount: selectedPlayerCount || 4,
+                    reinvite: true,
+                    inviteId,
                     ts: Date.now(),
                   });
+                  invitedStatusByFriendIdRef.current[friendIdStr] = "invited";
+                  invitedSlotByFriendIdRef.current[friendIdStr] = index;
+                  setInvitedStatusByFriendId((prev) => ({
+                    ...prev,
+                    [friendIdStr]: "invited",
+                  }));
+                  setInvitedSlotByFriendId((prev) => ({
+                    ...prev,
+                    [friendIdStr]: index,
+                  }));
 
                   // Fire web notification to friend
                   try {
-                    sendInviteNotificationToFriend(friend, gameId, index);
+                    sendInviteNotificationToFriend(friend, gameId, index, {
+                      reinvite: true,
+                      inviteId,
+                    });
                   } catch (_e) {}
                   console.log(
                     "[RE_INVITE] Sent targeted invite to friend",
@@ -3827,16 +4009,6 @@ const LudoGame = () => {
           else if (player.isOffline && player.profileId) {
             const playerIdStr = String(player.profileId);
 
-            // CRITICAL: Check if player has already joined (status might be 'joined' even if marked offline)
-            const currentStatus =
-              invitedStatusByFriendIdRef.current[playerIdStr];
-            if (currentStatus === "joined" || !player.isOffline) {
-              console.log(
-                `[RE_INVITE] Skipping re-invite to ${playerIdStr} - already joined or online`,
-              );
-              return;
-            }
-
             console.log(
               "[RE_INVITE] Sending re-invite to offline player",
               player.profileId,
@@ -3844,6 +4016,9 @@ const LudoGame = () => {
               index,
             );
             try {
+              if (reinvitedFriendIds.has(playerIdStr)) return;
+              reinvitedFriendIds.add(playerIdStr);
+              const inviteId = `${gameId}:${playerIdStr}:${Date.now()}`;
               socketRef.current.emit("ludo:invite", {
                 to: player.profileId,
                 by: myProfile?._id,
@@ -3853,8 +4028,20 @@ const LudoGame = () => {
                 gameId,
                 slotIndex: index,
                 playerCount: selectedPlayerCount || 4,
+                reinvite: true,
+                inviteId,
                 ts: Date.now(),
               });
+              invitedStatusByFriendIdRef.current[playerIdStr] = "invited";
+              invitedSlotByFriendIdRef.current[playerIdStr] = index;
+              setInvitedStatusByFriendId((prev) => ({
+                ...prev,
+                [playerIdStr]: "invited",
+              }));
+              setInvitedSlotByFriendId((prev) => ({
+                ...prev,
+                [playerIdStr]: index,
+              }));
 
               // Fire web notification to offline player
               const offlineFriend = {
@@ -3863,7 +4050,12 @@ const LudoGame = () => {
                 profilePic: player.avatar,
               };
               try {
-                sendInviteNotificationToFriend(offlineFriend, gameId, index);
+                sendInviteNotificationToFriend(
+                  offlineFriend,
+                  gameId,
+                  index,
+                  { reinvite: true, inviteId },
+                );
               } catch (_e) {}
               console.log(
                 "[RE_INVITE] Sent re-invite to offline player",
@@ -4064,7 +4256,13 @@ const LudoGame = () => {
    * Roll the dice for the current player
    * Handles both offline and online modes with proper synchronization
    */
-  const rollDice = () => {
+  const rollDice = (controlledValue = null, bypassControlModal = false) => {
+    const chosenDiceValue =
+      Number.isInteger(controlledValue) &&
+      controlledValue >= 1 &&
+      controlledValue <= 6
+        ? controlledValue
+        : null;
     if (onlineMode && awaitingAuthoritativeSnapshotRef.current) {
       console.log("[ROLL_DICE] Blocked: awaiting authoritative snapshot", {
         gameId,
@@ -4095,9 +4293,7 @@ const LudoGame = () => {
     }
 
     const isBotTurn =
-      playWithComputerRef.current &&
-      !onlineMode &&
-      playersRef.current[currentPlayerRef.current]?.isBot;
+      !onlineMode && playersRef.current[currentPlayerRef.current]?.isBot;
 
     if (!botActingRef.current && isBotTurn) {
       return;
@@ -4134,12 +4330,20 @@ const LudoGame = () => {
     }
 
     // CRITICAL: Use refs to ensure we check the most current values (avoid stale closures)
-    // Only the current player can roll dice in online or vs-computer mode
-    if (onlineMode || playWithComputerRef.current) {
+    // Only the current player can roll dice in online or vs-computer mode.
+    // Bot seats are controlled exclusively by the local bot-turn scheduler.
+    if (
+      onlineMode ||
+      playWithComputerRef.current ||
+      isBotPlayerIndex(currentPlayerRef.current)
+    ) {
       const currentMyPlayerIndex = myPlayerIndexRef.current;
       const currentPlayerIndex = currentPlayerRef.current;
-      const cpuTurn =
-        isBotPlayerIndex(currentPlayerIndex) || botActingRef.current;
+      const currentSeatIsBot = isBotPlayerIndex(currentPlayerIndex);
+      if (currentSeatIsBot && !botActingRef.current) {
+        return;
+      }
+      const cpuTurn = botActingRef.current;
       if (!cpuTurn && currentMyPlayerIndex !== currentPlayerIndex) {
         console.log("[ROLL_DICE] Blocked: not my turn", {
           myIndex: currentMyPlayerIndex,
@@ -4234,6 +4438,11 @@ const LudoGame = () => {
       return;
     }
 
+    if (controlMode && !bypassControlModal) {
+      setShowDiceValueModal(true);
+      return;
+    }
+
     // Set rolling flags immediately to prevent duplicate rolls. Online play
     // remains locked until a saved authoritative snapshot is received.
     if (onlineMode) {
@@ -4263,26 +4472,11 @@ const LudoGame = () => {
       }
     }
 
-    // Optional debug value entry (localhost only) or control mode
-    let debugChosenValue = null;
-    if ((isDebug && controlMode) || controlMode) {
-      try {
-        const input = window.prompt("Enter dice value (1-6). Cancel = random");
-        const n = Number(input);
-        if (Number.isFinite(n) && n >= 1 && n <= 6) {
-          debugChosenValue = Math.floor(n);
-        }
-      } catch (_e) {}
-    }
-
     // Play dice roll sound
     playSound("diceRoll");
 
     // Generate the final dice value up-front, but reveal it only after a short animation
-    const value =
-      debugChosenValue && debugChosenValue >= 1 && debugChosenValue <= 6
-        ? debugChosenValue
-        : Math.floor(Math.random() * 6) + 1;
+    const value = chosenDiceValue || Math.floor(Math.random() * 6) + 1;
 
     const currentRollPlayer = currentPlayerRef.current;
     const animationDuration = onlineMode ? 300 : DICE_ROLL_ANIMATION_MS;
@@ -4690,13 +4884,20 @@ const LudoGame = () => {
       return;
     }
 
-    // In online or vs-computer mode, only allow moves if it's the current player's turn
-    // CRITICAL: Use refs to get the most current values (avoid stale closures)
-    if (onlineMode || playWithComputerRef.current) {
+    // In online or vs-computer mode, only allow moves if it's the current player's turn.
+    // Human clicks must never control a seat that the host replaced with a bot.
+    if (
+      onlineMode ||
+      playWithComputerRef.current ||
+      isBotPlayerIndex(currentPlayerRef.current)
+    ) {
       const currentMyPlayerIndex = myPlayerIndexRef.current;
       const currentPlayerIndex = currentPlayerRef.current;
-      const cpuTurn =
-        isBotPlayerIndex(currentPlayerIndex) || botActingRef.current;
+      const currentSeatIsBot = isBotPlayerIndex(currentPlayerIndex);
+      if (currentSeatIsBot && !botActingRef.current) {
+        return;
+      }
+      const cpuTurn = botActingRef.current;
       if (!cpuTurn && currentMyPlayerIndex !== currentPlayerIndex) {
         return; // Not the current player's turn
       }
@@ -5754,7 +5955,13 @@ const LudoGame = () => {
 
     const onAccepted = (payload) => {
       try {
-        if (!payload || payload.gameId !== gameId) return;
+        const activeGameId = gameIdRef.current;
+        if (
+          !payload ||
+          !activeGameId ||
+          String(payload.gameId) !== String(activeGameId)
+        )
+          return;
         // Only process accept events if we're the host (myPlayerIndex === 0)
         // This ensures only the host processes friend join events
         if (myPlayerIndex !== 0) {
@@ -5944,7 +6151,11 @@ const LudoGame = () => {
                 ? playersRef.current
                 : [];
             const allSeatsFilled = Array.from({ length: maxPlayers - 1 }).every(
-              (_, idx) => Boolean(currentPlayers[idx + 1]?.profileId),
+              (_, idx) =>
+                Boolean(
+                  currentPlayers[idx + 1]?.profileId ||
+                    currentPlayers[idx + 1]?.isBot,
+                ),
             );
 
             if (
@@ -5987,7 +6198,7 @@ const LudoGame = () => {
         );
         // Accept if gameId matches current or saved game state (for reconnection)
         const currentGid =
-          gameIdRef.current || gameId || savedGameStateRef.current?.gameId;
+          gameIdRef.current || savedGameStateRef.current?.gameId;
         if (payload.gameId !== currentGid) return;
 
         // A versioned dice snapshot may have started saving before a token was
@@ -6105,7 +6316,8 @@ const LudoGame = () => {
           savedGameStateRef.current &&
           savedGameStateRef.current.gameId === payload.gameId;
         const isJoiningViaInvite =
-          isJoiningViaInviteRef.current && payload.gameId === gameId;
+          isJoiningViaInviteRef.current &&
+          String(payload.gameId) === String(gameIdRef.current);
 
         if (isJoiningViaInvite) {
           setIsReconnecting(false);
@@ -6380,7 +6592,16 @@ const LudoGame = () => {
             // Only apply seat correction if the snapshot does NOT already contain me.
             // This avoids the previous bug where we overwrote the host seat or
             // duplicate-filled both seats with the invitee identity.
-            if (!isUserInPlayers && myPlayerIndex !== 0) {
+            if (
+              !isUserInPlayers &&
+              myPlayerIndex !== 0 &&
+              next[myPlayerIndex]?.isBot
+            ) {
+              setMyPlayerIndex(-1);
+              myPlayerIndexRef.current = -1;
+              clearActiveLudoGameId();
+              clearGameState();
+            } else if (!isUserInPlayers && myPlayerIndex !== 0) {
               if (next[0] && lastInviter?.id) {
                 next[0].profileId = lastInviter.id;
                 if (lastInviter.name) next[0].name = lastInviter.name;
@@ -6422,7 +6643,7 @@ const LudoGame = () => {
             for (let i = 0; i < maxPlayers; i++) {
               const hasIncomingId = next[i] && next[i].profileId;
               const prevId = prev[i] && prev[i].profileId;
-              if (!hasIncomingId && prevId) {
+              if (!hasIncomingId && prevId && !next[i]?.isBot) {
                 next[i] = {
                   id:
                     typeof next[i]?.id === "number"
@@ -7283,7 +7504,9 @@ const LudoGame = () => {
       const currentMyPlayerIndex = myPlayerIndexRef.current;
       const currentPlayerIndex = currentPlayerRef.current;
       const isMyTurn =
-        (!onlineMode && !playWithComputer) ||
+        (!onlineMode &&
+          !playWithComputer &&
+          !playersRef.current[currentPlayerIndex]?.isBot) ||
         currentMyPlayerIndex === currentPlayerIndex;
       const hasNoDiceValue = diceValueRef.current === 0 && diceValue === 0;
       const isNotRolling = !isRollingRef.current;
@@ -7462,16 +7685,12 @@ const LudoGame = () => {
     return () => clearInterval(interval);
   }, [onlineMode, gameId, gameStarted, gameEnded]);
 
-  // CPU opponent turns in local vs-computer mode
+  // CPU turns run locally in offline games and exclusively on the online host.
   useEffect(() => {
-    if (
-      !playWithComputer ||
-      onlineMode ||
-      !gameStarted ||
-      gameEnded ||
-      waitingForPlayers
-    )
-      return;
+    const canControlBots = onlineMode
+      ? myPlayerIndexRef.current === 0 && Boolean(gameId)
+      : playWithComputer || playersRef.current.some((player) => player?.isBot);
+    if (!canControlBots || !gameStarted || gameEnded || waitingForPlayers) return;
 
     const cp = currentPlayerRef.current;
     const player = playersRef.current[cp];
@@ -7530,7 +7749,10 @@ const LudoGame = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     playWithComputer,
+    players,
     onlineMode,
+    gameId,
+    myPlayerIndex,
     gameStarted,
     gameEnded,
     waitingForPlayers,
@@ -7673,12 +7895,14 @@ const LudoGame = () => {
           const currentGameId = gameIdRef.current;
           const joinedGamesList = joinedGamesRef.current;
           if (
+            !payload.reinvite &&
             currentGameId &&
             String(payload.gameId) === String(currentGameId)
           ) {
             return;
           }
           if (
+            !payload.reinvite &&
             Array.isArray(joinedGamesList) &&
             joinedGamesList.some(
               (g) => String(g.gameId) === String(payload.gameId),
@@ -7686,11 +7910,12 @@ const LudoGame = () => {
           ) {
             return;
           }
-          if (!shouldShowLudoInviteAlert(payload.gameId, payload.by)) {
+          if (!shouldShowLudoInviteAlert(payload.gameId, payload.by, payload)) {
             return;
           }
 
-          const inviteKey = `${payload.gameId}:${payload.by}`;
+          const inviteKey =
+            payload.inviteId || `${payload.gameId}:${payload.by}`;
           const now = Date.now();
 
           const lastShownTime = shownInviteToastsRef.current.get(inviteKey);
@@ -7727,7 +7952,9 @@ const LudoGame = () => {
             gameId: payload.gameId,
             slotIndex: payload.slotIndex,
             playerCount: payload.playerCount,
-            ts: now,
+            reinvite: payload.reinvite === true,
+            inviteId: payload.inviteId,
+            ts: payload.ts || now,
           };
 
           setPendingInvites((prev) => {
@@ -7736,7 +7963,18 @@ const LudoGame = () => {
                 String(i.gameId) === String(payload.gameId) &&
                 String(i.from) === String(payload.by),
             );
-            if (exists) return prev;
+            if (exists) {
+              return [
+                inv,
+                ...prev.filter(
+                  (i) =>
+                    !(
+                      String(i.gameId) === String(payload.gameId) &&
+                      String(i.from) === String(payload.by)
+                    ),
+                ),
+              ].slice(0, 20);
+            }
             return [inv, ...prev].slice(0, 20);
           });
 
@@ -7748,7 +7986,7 @@ const LudoGame = () => {
               setActiveLudoGameId(payload.gameId);
               resolveLudoInviteNotifications(payload.gameId, payload.by);
               setIncomingInviteRequest(inv);
-              setTimeout(() => wrappedAcceptIncomingInvite(), 0);
+              setTimeout(() => wrappedAcceptIncomingInvite(inv), 0);
             },
             () => {
               markInviteHandled(payload.gameId, payload.by);
@@ -7787,16 +8025,23 @@ const LudoGame = () => {
             gameId: x.gameId,
             slotIndex: x.slotIndex,
             playerCount: x.playerCount,
+            reinvite: x.reinvite === true,
+            inviteId: x.inviteId,
             ts: x.ts || Date.now(),
           }));
 
           const currentGameId = gameIdRef.current;
           const joinedGamesList = joinedGamesRef.current;
           const filteredNormalized = normalized.filter((inv) => {
-            if (currentGameId && String(inv.gameId) === String(currentGameId)) {
+            if (
+              !inv.reinvite &&
+              currentGameId &&
+              String(inv.gameId) === String(currentGameId)
+            ) {
               return false;
             }
             if (
+              !inv.reinvite &&
               Array.isArray(joinedGamesList) &&
               joinedGamesList.some(
                 (g) => String(g.gameId) === String(inv.gameId),
@@ -7804,24 +8049,26 @@ const LudoGame = () => {
             ) {
               return false;
             }
-            return shouldShowLudoInviteAlert(inv.gameId, inv.from);
+            return shouldShowLudoInviteAlert(inv.gameId, inv.from, inv);
           });
 
           setPendingInvites((prev) => {
-            const invitesToAdd = filteredNormalized.filter(
-              (inv) =>
-                !prev.find(
-                  (p) =>
-                    String(p.gameId) === String(inv.gameId) &&
-                    String(p.from) === String(inv.from),
-                ),
-            );
-            return [...prev, ...invitesToAdd].slice(0, 20);
+            const next = [...prev];
+            filteredNormalized.forEach((inv) => {
+              const existingIndex = next.findIndex(
+                (pending) =>
+                  String(pending.gameId) === String(inv.gameId) &&
+                  String(pending.from) === String(inv.from),
+              );
+              if (existingIndex >= 0) next.splice(existingIndex, 1);
+              next.unshift(inv);
+            });
+            return next.slice(0, 20);
           });
 
           const now = Date.now();
           const firstNewInvite = filteredNormalized.find((inv) => {
-            const inviteKey = `${inv.gameId}:${inv.from}`;
+            const inviteKey = inv.inviteId || `${inv.gameId}:${inv.from}`;
             const lastShownTime = shownInviteToastsRef.current.get(inviteKey);
             if (lastShownTime && now - lastShownTime < 300000) {
               return false;
@@ -7842,7 +8089,10 @@ const LudoGame = () => {
                   firstNewInvite.from,
                 );
                 setIncomingInviteRequest(firstNewInvite);
-                setTimeout(() => wrappedAcceptIncomingInvite(), 0);
+                setTimeout(
+                  () => wrappedAcceptIncomingInvite(firstNewInvite),
+                  0,
+                );
               },
               () => {
                 markInviteHandled(firstNewInvite.gameId, firstNewInvite.from);
@@ -7991,6 +8241,7 @@ const LudoGame = () => {
       setWaitingForPlayers(false);
       setIsReconnecting(false);
       setShowReconnectModal(false);
+      gameIdRef.current = game.gameId;
       setGameId(game.gameId);
 
       // Clear transient local action locks before restoring/joining a live game.
@@ -8164,6 +8415,7 @@ const LudoGame = () => {
     setInvitedStatusByFriendId({});
     setInvitedSlotByFriendId({});
     setSelectedFriends([]);
+    initializeGame(selectedPlayerCount, []);
     // Open player selection
     setShowPlayerSelection(true);
   };
@@ -8501,8 +8753,11 @@ const LudoGame = () => {
       const next = [];
       for (let i = 0; i < max; i++) {
         const prevSeat = prev?.[i];
+        const boardSeatIndex = getBoardSeatIndex(i, selectedPlayerCount);
         const baseName =
-          i === 0 ? myProfile?.fullName || "You" : playerNames[i];
+          i === 0
+            ? myProfile?.fullName || "You"
+            : playerNames[boardSeatIndex];
         const baseAvatar = i === 0 ? myProfile?.profilePic : undefined;
         const baseCover =
           i === 0
@@ -8511,7 +8766,7 @@ const LudoGame = () => {
         // A newly hosted game must always start with all tokens at home.
         const pieces = Array.from({ length: 4 }).map((_, j) => ({
           id: j,
-          color: colors[i],
+          color: colors[boardSeatIndex],
           position: { x: 0, y: 0 },
           isHome: true,
           isInPlay: false,
@@ -8520,9 +8775,9 @@ const LudoGame = () => {
         next.push({
           id: i,
           name: prevSeat?.name || baseName,
-          color: colors[i],
+          color: colors[boardSeatIndex],
           pieces,
-          isActive: i === 0,
+          isActive: i === 0 || Boolean(prevSeat?.isBot),
           avatar: prevSeat?.avatar || baseAvatar,
           cover: prevSeat?.cover || baseCover,
           profileId:
@@ -9125,11 +9380,13 @@ const LudoGame = () => {
   };
 
   // Accept / decline an incoming invite
-  const acceptIncomingInvite = useCallback(async () => {
+  const acceptIncomingInvite = useCallback(async (inviteOverride = null) => {
     // NOTE: selectedPlayerCount, initializeGame, ensureSocketConnected, clearHiddenBoardGameId are accessed
     // but not added to dependency array to avoid circular dependencies and excessive re-renders.
     // These are stable across renders in practice.
-    const payload = incomingInviteRequest;
+    const payload = inviteOverride?.gameId
+      ? inviteOverride
+      : incomingInviteRequest;
     if (!payload) return;
     try {
       // Mark as joining via invite first and invalidate any old asynchronous
@@ -9531,12 +9788,18 @@ const LudoGame = () => {
       const innerW = CELL_SIZE * 4;
       const innerH = CELL_SIZE * 4;
       // Background cover image
+      const playerIndex = getPlayerIndexForBoardSeat(
+        idx,
+        selectedPlayerCount,
+      );
+      const homePlayer =
+        playerIndex === null ? null : players[playerIndex];
       const coverUrl =
-        players[idx]?.cover ||
-        players[idx]?.coverPic ||
-        players[idx]?.profileCover ||
+        homePlayer?.cover ||
+        homePlayer?.coverPic ||
+        homePlayer?.profileCover ||
         undefined;
-      if (coverUrl && idx < selectedPlayerCount) {
+      if (coverUrl && playerIndex !== null) {
         elems.push(
           <image
             key={`home-cover-${x0}-${y0}`}
@@ -9868,7 +10131,11 @@ const LudoGame = () => {
     let x = 0;
     let y = 0;
     if (piece.isHome) {
-      const pos = HOME_POSITIONS[playerIndex][pieceIndex];
+      const boardSeatIndex = getBoardSeatIndex(
+        playerIndex,
+        selectedPlayerCount,
+      );
+      const pos = HOME_POSITIONS[boardSeatIndex][pieceIndex];
       // Calculate cell center position precisely
       // Cell left edge is at pos.x * CELL_SIZE, right edge at (pos.x + 1) * CELL_SIZE
       // Center is exactly halfway: pos.x * CELL_SIZE + CELL_SIZE / 2 = (pos.x + 0.5) * CELL_SIZE
@@ -9985,8 +10252,10 @@ const LudoGame = () => {
             const currentDiceValue =
               diceValueRef.current > 0 ? diceValueRef.current : diceValue;
             if (
-              (((!onlineMode && !playWithComputer) ||
-                myPlayerIndexRef.current === currentPlayerRef.current) ) &&
+              (((!onlineMode &&
+                !playWithComputer &&
+                !playersRef.current[currentPlayerRef.current]?.isBot) ||
+                myPlayerIndexRef.current === currentPlayerRef.current)) &&
               isActivePlayer &&
               isCurrentPlayer &&
               currentDiceValue > 0 &&
@@ -10039,7 +10308,9 @@ const LudoGame = () => {
             WebkitTapHighlightColor: "transparent",
             pointerEvents: "auto",
           }}
-          aria-label={`Piece ${pieceIndex + 1} of ${playerNames[playerIndex]}`}
+          aria-label={`Piece ${pieceIndex + 1} of ${
+            playerNames[getBoardSeatIndex(playerIndex, selectedPlayerCount)]
+          }`}
         >
           {/* Actual token visual - centered in the larger touch area */}
           <div
@@ -10202,6 +10473,16 @@ const LudoGame = () => {
           onFriendSearchChange={onChangeFriendSearch}
           onAssignFriendToSlot={assignFriendToSlot}
           onPlaySound={playSound}
+          canReplaceWithComputer={
+            myPlayerIndex === 0 &&
+            Number(editingPlayerIndex) > 0 &&
+            !isRollingRef.current &&
+            !isMovingRef.current &&
+            !isAutoMovingRef.current
+          }
+          onReplaceWithComputer={() =>
+            replacePlayerWithBot(editingPlayerIndex)
+          }
           onSave={() => {
             if (editingPlayerIndex != null) {
               setPlayers((prev) => {
@@ -10299,6 +10580,59 @@ const LudoGame = () => {
         onPlaySound={playSound}
       />
 
+      {showDiceValueModal && (
+        <div
+          className="ludo-modal-backdrop"
+          role="presentation"
+          onClick={() => {
+            setShowDiceValueModal(false);
+            rollDice(null, true);
+          }}
+        >
+          <div
+            className="ludo-modal ludo-dice-picker"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ludo-dice-picker-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="ludo-modal__close"
+              onClick={() => {
+                setShowDiceValueModal(false);
+                rollDice(null, true);
+              }}
+              aria-label="Close and roll a random value"
+            >
+              ×
+            </button>
+            <h2 id="ludo-dice-picker-title" className="ludo-modal__title">
+              Choose Dice Value
+            </h2>
+            <p className="ludo-modal__subtitle">
+              Select a value, or close to roll randomly
+            </p>
+            <div className="ludo-dice-picker__grid">
+              {[1, 2, 3, 4, 5, 6].map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  className="ludo-dice-picker__button"
+                  onClick={() => {
+                    setShowDiceValueModal(false);
+                    rollDice(value, true);
+                  }}
+                  aria-label={`Roll ${value}`}
+                >
+                  <DiceSVG value={value} size={64} strokeColor="#2ec4b6" />
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       <PendingInvitesBanner
         pendingInvites={pendingInvites}
         onDismissInvite={(inv) => {
@@ -10322,7 +10656,7 @@ const LudoGame = () => {
         }}
         onAcceptInvite={(inv) => {
           setIncomingInviteRequest(inv);
-          setTimeout(() => wrappedAcceptIncomingInvite(), 0);
+          setTimeout(() => wrappedAcceptIncomingInvite(inv), 0);
         }}
       />
 
@@ -10395,6 +10729,7 @@ const LudoGame = () => {
                               players[0]?.profileId || myProfile?._id,
                             );
                           const seat = players[i];
+                          if (seat?.isBot) return true;
                           const hasProfileId = Boolean(seat?.profileId);
                           if (!hasProfileId) return false;
                           const profileIdStr = seat?.profileId
@@ -10424,7 +10759,7 @@ const LudoGame = () => {
                       const hasProfileId =
                         i === 0
                           ? Boolean(seat?.profileId || myProfile?._id)
-                          : Boolean(seat?.profileId);
+                          : Boolean(seat?.profileId || seat?.isBot);
                       const profileIdStr = seat?.profileId
                         ? String(seat.profileId)
                         : null;
@@ -10440,11 +10775,12 @@ const LudoGame = () => {
                         (invitedSlotByFriendId[profileIdStr] === i ||
                           invitedSlotByFriendId[seat.profileId] === i);
                       const joined =
-                        hasProfileId &&
-                        (i === 0 ||
-                          (wasInvitedToThisSlot
-                            ? inviteStatus === "joined"
-                            : inviteStatus !== "invited"));
+                        Boolean(seat?.isBot) ||
+                        (hasProfileId &&
+                          (i === 0 ||
+                            (wasInvitedToThisSlot
+                              ? inviteStatus === "joined"
+                              : inviteStatus !== "invited")));
                       const name =
                         seat?.name ||
                         (i === 0
@@ -10709,7 +11045,7 @@ const LudoGame = () => {
                 title={soundsEnabled ? "Disable sounds" : "Enable sounds"}
               >
                 <span className="ludo-tool__icon" aria-hidden="true">
-                  {soundsEnabled ? "🔊" : "🔇"}
+                  <LudoIcon name={soundsEnabled ? "volume" : "volumeOff"} />
                 </span>
                 <span className="ludo-tool__dot" />
                 <span className="ludo-tool__label">
@@ -10727,7 +11063,7 @@ const LudoGame = () => {
                   title="Reload game state from server"
                 >
                   <span className="ludo-tool__icon" aria-hidden="true">
-                    ↻
+                    <LudoIcon name="refresh" />
                   </span>
                   <span className="ludo-tool__label">Reload</span>
                 </button>
@@ -10743,7 +11079,7 @@ const LudoGame = () => {
                   title="Reconnect socket and sync"
                 >
                   <span className="ludo-tool__icon" aria-hidden="true">
-                    🔌
+                    <LudoIcon name="reconnect" />
                   </span>
                   <span className="ludo-tool__label">Reconnect</span>
                 </button>
@@ -10759,7 +11095,7 @@ const LudoGame = () => {
                   title="Re-invite players to fill empty slots"
                 >
                   <span className="ludo-tool__icon" aria-hidden="true">
-                    ✉️
+                    <LudoIcon name="invite" />
                   </span>
                   <span className="ludo-tool__label">Re-invite</span>
                 </button>
@@ -10920,6 +11256,14 @@ const LudoGame = () => {
         onFriendSearchChange={onChangeFriendSearch}
         onAssignFriendToSlot={assignFriendToSlot}
         onPlaySound={playSound}
+        canReplaceWithComputer={
+          myPlayerIndex === 0 &&
+          Number(editingPlayerIndex) > 0 &&
+          !isRollingRef.current &&
+          !isMovingRef.current &&
+          !isAutoMovingRef.current
+        }
+        onReplaceWithComputer={() => replacePlayerWithBot(editingPlayerIndex)}
         onSave={() => {
           if (editingPlayerIndex != null) {
             setPlayers((prev) => {

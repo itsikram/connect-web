@@ -44,7 +44,7 @@ export const PlayerSelectionModal = ({
       for (let i = 1; i < max; i++) {
         const p = players[i];
         if (!p) return i;
-        if (!p.profileId) return i;
+        if (!p.profileId && !p.isBot) return i;
       }
       return null;
     });
@@ -118,7 +118,12 @@ export const PlayerSelectionModal = ({
                       </span>
                     )}
                     <div className="ludo-choice__dots">
-                      {[0, 1, 3, 2].slice(0, count).map((idx) => (
+                      {(count === 2
+                        ? [0, 3]
+                        : count === 3
+                          ? [0, 1, 2]
+                          : [0, 1, 3, 2]
+                      ).map((idx) => (
                         <span
                           key={idx}
                           className="ludo-choice__dot"
@@ -228,11 +233,21 @@ export const PlayerSelectionModal = ({
                   const isSelected = selectedFriends.some(
                     (sf) => sf._id === f._id,
                   );
-                  const inviteStatus = invitedStatusByFriendId[f?._id];
+                  const storedInviteStatus = invitedStatusByFriendId[f?._id];
                   const maxPlayers = Math.max(
                     2,
                     Math.min(4, selectedPlayerCount),
                   );
+                  const isSeatedInCurrentGame = players
+                    .slice(1, maxPlayers)
+                    .some(
+                      (p) =>
+                        p?.profileId &&
+                        String(p.profileId) === String(f?._id),
+                    );
+                  const inviteStatus = isSeatedInCurrentGame
+                    ? storedInviteStatus
+                    : undefined;
                   const isAssignedOffline =
                     !onlineMode &&
                     players
@@ -337,7 +352,7 @@ export const PlayerSelectionModal = ({
                     const joined =
                       i === 0
                         ? Boolean(seat?.profileId || myProfile?._id)
-                        : Boolean(seat?.profileId);
+                        : Boolean(seat?.profileId || seat?.isBot);
                     const name =
                       seat?.name ||
                       (i === 0
@@ -496,7 +511,10 @@ export const PlayerSelectionModal = ({
               Tap an avatar to edit its name, photo, or color.
             </div>
             <div className="ludo-players-row">
-              {[0, 1, 3, 2].slice(0, selectedPlayerCount).map((idx) => (
+              {Array.from(
+                { length: selectedPlayerCount },
+                (_, index) => index,
+              ).map((idx) => (
                 <button
                   key={`preedit-${idx}`}
                   type="button"
