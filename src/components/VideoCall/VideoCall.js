@@ -64,10 +64,31 @@ const VideoCall = ({ myId }) => {
     const [localAspectRatio, setLocalAspectRatio] = useState(null);
     const callStartTime = useRef(null);
     const receivingCallRef = useRef(false);
+    const callAcceptedRef = useRef(callAccepted);
+    const currentChannelRef = useRef(currentChannel);
+    const isMountedRef = useRef(true);
 
     useEffect(() => {
         receivingCallRef.current = receivingCall;
     }, [receivingCall]);
+
+    useEffect(() => {
+        callAcceptedRef.current = callAccepted;
+    }, [callAccepted]);
+
+    useEffect(() => {
+        currentChannelRef.current = currentChannel;
+    }, [currentChannel]);
+
+    useEffect(() => {
+        isMountedRef.current = true;
+        if (process.env.NODE_ENV === 'development') {
+            console.log('VideoCall mounted with myId:', myId);
+        }
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, []);
 
     const myVideo = useRef();
     const userVideo = useRef();
@@ -110,6 +131,7 @@ const VideoCall = ({ myId }) => {
             const audio = ringtoneAudio.current;
             audio.pause();
             audio.currentTime = 0; // Reset to beginning
+            audio.loop = false; // Ensure it won't loop
         }
         closeCallNotification(); // Close notification when ringtone stops
     };
@@ -147,7 +169,7 @@ const VideoCall = ({ myId }) => {
         await unlockAudio();
 
         setTimeout(async () => {
-            if (ringtoneAudio?.current) {
+            if (ringtoneAudio?.current && receivingCallRef.current && !callAcceptedRef.current) {
                 const audio = ringtoneAudio.current;
 
                 // Check if audio has a valid source
@@ -159,31 +181,25 @@ const VideoCall = ({ myId }) => {
                 // Ensure audio is not muted and volume is set
                 audio.muted = false;
                 audio.volume = 1.0;
+                audio.loop = true; // Loop the ringtone
 
                 // Wait for audio to be ready if not already loaded
                 if (audio.readyState < 2) {
                     const handleCanPlay = async () => {
-                        try {
-                            // Try Web Audio API first for better background playback
-                            await playAudioWithWebAudio(audio);
-                            console.log('Ringtone playing successfully');
-                        } catch (error) {
-                            console.warn('Failed to play ringtone:', error);
-                            // Fallback: try regular play
+                        // Only play if still receiving and not accepted
+                        if (receivingCallRef.current && !callAcceptedRef.current) {
                             try {
-                                await audio.play();
-                                console.log('Ringtone playing with fallback method');
-                            } catch (fallbackError) {
-                                console.warn('Fallback play also failed:', fallbackError);
-                                // If autoplay is blocked, try again when tab becomes visible
-                                if (fallbackError.name === 'NotAllowedError' || fallbackError.name === 'NotSupportedError') {
-                                    const handleVisibilityChange = () => {
-                                        if (document.visibilityState === 'visible' && receivingCall && incomingCall) {
-                                            playAudioWithWebAudio(audio).catch(e => console.warn('Retry play failed:', e));
-                                            document.removeEventListener('visibilitychange', handleVisibilityChange);
-                                        }
-                                    };
-                                    document.addEventListener('visibilitychange', handleVisibilityChange);
+                                // Try Web Audio API first for better background playback
+                                await playAudioWithWebAudio(audio);
+                                console.log('Ringtone playing successfully');
+                            } catch (error) {
+                                console.warn('Failed to play ringtone:', error);
+                                // Fallback: try regular play
+                                try {
+                                    await audio.play();
+                                    console.log('Ringtone playing with fallback method');
+                                } catch (fallbackError) {
+                                    console.warn('Fallback play also failed:', fallbackError);
                                 }
                             }
                         }
@@ -196,43 +212,26 @@ const VideoCall = ({ myId }) => {
                         audio.removeEventListener('canplaythrough', handleCanPlay);
                     }, 3000);
                 } else {
-                    try {
-                        // Try Web Audio API first for better background playback
-                        await playAudioWithWebAudio(audio);
-                        console.log('Ringtone playing successfully');
-                    } catch (error) {
-                        console.warn('Failed to play ringtone:', error);
-                        // Fallback: try regular play
+                    // Only play if still receiving and not accepted
+                    if (receivingCallRef.current && !callAcceptedRef.current) {
                         try {
-                            await audio.play();
-                            console.log('Ringtone playing with fallback method');
-                        } catch (fallbackError) {
-                            console.warn('Fallback play also failed:', fallbackError);
-                            // If autoplay is blocked, try again when tab becomes visible
-                            if (fallbackError.name === 'NotAllowedError' || fallbackError.name === 'NotSupportedError') {
-                                const handleVisibilityChange = () => {
-                                    if (document.visibilityState === 'visible' && receivingCall && incomingCall) {
-                                        playAudioWithWebAudio(audio).catch(e => console.warn('Retry play failed:', e));
-                                        document.removeEventListener('visibilitychange', handleVisibilityChange);
-                                    }
-                                };
-                                document.addEventListener('visibilitychange', handleVisibilityChange);
+                            // Try Web Audio API first for better background playback
+                            await playAudioWithWebAudio(audio);
+                            console.log('Ringtone playing successfully');
+                        } catch (error) {
+                            console.warn('Failed to play ringtone:', error);
+                            // Fallback: try regular play
+                            try {
+                                await audio.play();
+                                console.log('Ringtone playing with fallback method');
+                            } catch (fallbackError) {
+                                console.warn('Fallback play also failed:', fallbackError);
                             }
                         }
                     }
                 }
-            } else {
-                // Retry after a short delay if audio element not yet mounted
-                setTimeout(async () => {
-                    if (ringtoneAudio?.current) {
-                        await unlockAudio();
-                        try {
-                            await playAudioWithWebAudio(ringtoneAudio.current);
-                        } catch (error) {
-                            ringtoneAudio.current.play().catch(e => console.warn('Failed to play ringtone after retry:', e));
-                        }
-                    }
-                }, 300);
+            } else if (ringtoneAudio?.current && !receivingCallRef.current) {
+                console.log('VideoCall: Not playing ringtone - not receiving a call');
             }
         }, 500);
     };
@@ -263,32 +262,65 @@ const VideoCall = ({ myId }) => {
         // Unpublish and leave Agora channel if connected, then dispose client
         try {
             if (clientRef.current && localTracks.current.length > 0) {
-                await clientRef.current.unpublish(localTracks.current);
+                try {
+                    console.log('VideoCall: Unpublishing local tracks...');
+                    await clientRef.current.unpublish(localTracks.current);
+                    console.log('VideoCall: Successfully unpublished tracks');
+                } catch (unpubError) {
+                    console.log('VideoCall: Error unpublishing:', unpubError?.message || unpubError);
+                }
             }
         } catch (e) { 
-            console.log('Error unpublishing tracks:', e);
+            console.log('VideoCall: Unpublish outer error:', e);
         }
+        
         try {
-            await clientRef.current?.leave();
-            clientRef.current?.removeAllListeners();
+            if (clientRef.current) {
+                const connectionState = clientRef.current?.connectionState;
+                console.log('VideoCall: Client connection state before leave:', connectionState);
+                
+                // Only try to leave if we're actually connected
+                if (connectionState === 'CONNECTED' || connectionState === 'CONNECTING') {
+                    try {
+                        console.log('VideoCall: Attempting to leave channel...');
+                        await clientRef.current.leave();
+                        console.log('VideoCall: Successfully left channel');
+                    } catch (leaveError) {
+                        console.log('VideoCall: Error leaving channel:', leaveError?.message || leaveError);
+                    }
+                } else {
+                    console.log('VideoCall: Client not connected, skipping leave()');
+                }
+                
+                try {
+                    clientRef.current.removeAllListeners();
+                } catch (e) {
+                    console.log('VideoCall: Error removing listeners:', e);
+                }
+            }
         } catch (error) {
-            console.log('Not connected to channel or already left');
+            console.log('VideoCall: Cleanup error:', error?.message || error);
         }
         clientRef.current = null;
 
         // Close local tracks AFTER unpublishing
-        localTracks.current.forEach((track) => {
-            try {
-                track.close();
-            } catch (e) {
-                console.log('Error closing track:', e);
-            }
-        });
+        try {
+            localTracks.current.forEach((track) => {
+                try {
+                    track.close();
+                } catch (e) {
+                    console.log('VideoCall: Error closing track:', e);
+                }
+            });
+        } catch (e) {
+            console.log('VideoCall: Error closing tracks:', e);
+        }
         localTracks.current = [];
 
         isJoiningOrJoined.current = false;
         hasBoundClientEvents.current = false;
         callStartTime.current = null;
+        console.log('VideoCall: Cleanup - reset call flags');
 
         // Clear video elements and stop all media streams
         if (myVideo.current) {
@@ -790,9 +822,20 @@ const VideoCall = ({ myId }) => {
 
         const applyIncomingVideoCall = async ({ from, channelName, callerName, callerProfilePic }) => {
             if (!from || !channelName) return;
+            // Don't process incoming calls if component is unmounting
+            if (!isMountedRef.current) {
+                console.log('VideoCall: Component unmounting, ignoring incoming call');
+                return;
+            }
+            // Don't process if already handling this same call (prevents duplicate from socket + push)
+            if (receivingCallRef.current && currentChannelRef.current === channelName) {
+                console.log('VideoCall: Already handling this call (from socket), ignoring duplicate from push');
+                return;
+            }
             // Already in a call — auto-reject so we don't corrupt the active Agora session
-            if (isJoiningOrJoined.current || callAccepted || (isVideoCall && receivingCallRef.current)) {
-                console.warn('VideoCall: Busy — rejecting incoming call');
+            // Only reject if: currently joined to a channel, accepted a call, or already receiving another incoming call
+            if (isJoiningOrJoined.current || callAcceptedRef.current || receivingCallRef.current) {
+                console.warn('VideoCall: Busy — rejecting incoming call', { isJoiningOrJoined: isJoiningOrJoined.current, callAccepted: callAcceptedRef.current, alreadyReceiving: receivingCallRef.current });
                 socket.emit('video-call-reject', { to: from, friendId: myId, channelName });
                 return;
             }
@@ -850,7 +893,8 @@ const VideoCall = ({ myId }) => {
         // Web Push → open app while backgrounded (iOS Home Screen)
         const onPushIncoming = (event) => {
             const detail = event.detail || {};
-            if (detail.isAudio) return;
+            if (!detail.isVideo) return;
+            console.log('VideoCall: Push notification received for incoming call:', detail.channelName);
             if (detail.autoAccept) pendingAutoAcceptRef.current = true;
             applyIncomingVideoCall({
                 from: detail.from,
@@ -958,6 +1002,7 @@ const VideoCall = ({ myId }) => {
             socket.off('video-call-rejected', onVideoCallRejected);
             socket.off('call-not-accepted', onCallNotAccepted);
             socket.off('apply-video-filter', onApplyVideoFilter);
+            isMountedRef.current = false;
             socket.off('updated-call-status', handleUpdatedCallStatus);
             window.removeEventListener('startVideoCall', handleOutgoingVideoCall);
             window.removeEventListener('incomingCallFromPush', onPushIncoming);
@@ -965,7 +1010,7 @@ const VideoCall = ({ myId }) => {
             stopRingtone(); // Stop ringtone on cleanup
             stopFlashingTitle();
         };
-    }, [startCall, cleanupVideoCall, myId, callAccepted, receivingCall, caller, mySettings, currentChannel, isVideoCall]);
+    }, []); // No dependencies - setup listeners once on mount only
 
     // Auto-answer when user pressed Accept on the system notification
     useEffect(() => {
@@ -986,10 +1031,12 @@ const VideoCall = ({ myId }) => {
     // Resume ringtone playback when tab becomes visible
     useEffect(() => {
         const handleVisibilityChange = async () => {
-            if (document.visibilityState === 'visible' && receivingCall && !callAccepted && incomingCall && ringtoneAudio?.current) {
+            // Only resume if tab is visible, we're receiving a call, and we haven't accepted yet
+            if (document.visibilityState === 'visible' && receivingCallRef.current && !callAcceptedRef.current && ringtoneAudio?.current) {
                 const audio = ringtoneAudio.current;
                 // Resume playback if it was paused due to tab being hidden
                 if (audio.paused && audio.src && audio.src !== window.location.href) {
+                    console.log('VideoCall: Resuming ringtone on visibility change');
                     await unlockAudio();
                     audio.muted = false;
                     audio.volume = 1.0;
@@ -1005,10 +1052,11 @@ const VideoCall = ({ myId }) => {
         };
 
         const handleWindowFocus = async () => {
-            // Also try to resume ringtone on window focus
-            if (receivingCall && !callAccepted && incomingCall && ringtoneAudio?.current) {
+            // Also try to resume ringtone on window focus - only if receiving and not accepted
+            if (receivingCallRef.current && !callAcceptedRef.current && ringtoneAudio?.current) {
                 const audio = ringtoneAudio.current;
                 if (audio.paused && audio.src && audio.src !== window.location.href) {
+                    console.log('VideoCall: Resuming ringtone on window focus');
                     await unlockAudio();
                     audio.muted = false;
                     audio.volume = 1.0;
@@ -1029,7 +1077,7 @@ const VideoCall = ({ myId }) => {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             window.removeEventListener('focus', handleWindowFocus);
         };
-    }, [receivingCall, callAccepted, incomingCall]);
+    }, []); // Empty deps - handlers use refs which are always current
 
     // Cleanup on component unmount
     useEffect(() => {
@@ -1303,33 +1351,103 @@ const VideoCall = ({ myId }) => {
                         ['--local-ar']: String(localAspectRatio || 0.75),
                     }}
                 >
-                    <h2 className='text-center vc-modal-heading'>
-                        Video Call - {callerName}
-                        {callAccepted ? ` • ${formatDuration(callDuration)}` : ''}
-                    </h2>
+                    {/* Header Section */}
+                    <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '12px 16px',
+                        background: 'linear-gradient(135deg, rgba(41, 177, 169, 0.1) 0%, rgba(41, 177, 169, 0.05) 100%)',
+                        borderBottom: '1px solid rgba(41, 177, 169, 0.2)',
+                        borderRadius: '8px 8px 0 0',
+                        backdropFilter: 'blur(8px)'
+                    }}>
+                        <div>
+                            <h2 className='text-center vc-modal-heading' style={{
+                                margin: 0,
+                                fontSize: isMobile ? '16px' : '18px',
+                                fontWeight: '600',
+                                color: '#fff',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px'
+                            }}>
+                                <span style={{
+                                    width: '8px',
+                                    height: '8px',
+                                    borderRadius: '50%',
+                                    background: '#29B1A9',
+                                    animation: 'pulse 2s infinite'
+                                }}></span>
+                                {callerName}
+                                {callAccepted && <span style={{ fontSize: '14px', color: '#29B1A9' }}>● {formatDuration(callDuration)}</span>}
+                            </h2>
+                        </div>
+                    </div>
+
+                    {/* Incoming Call Status */}
                     {!isFullscreen && (
-                        <p className='fs-4 text-center'>
-                            {receivingCall && !callAccepted && `${callerName} Calling you`}
-                            {!receivingCall && !callAccepted && `Calling ${callerName}${outgoingCallStatus ? ` • ${outgoingCallStatus}` : '...'}`}
-                        </p>
+                        <div style={{
+                            padding: '16px 12px',
+                            textAlign: 'center',
+                            background: callAccepted ? 'transparent' : 'rgba(41, 177, 169, 0.05)',
+                            borderRadius: '0 0 8px 8px',
+                            transition: 'all 0.3s ease'
+                        }}>
+                            <p className='fs-4 text-center' style={{
+                                margin: 0,
+                                fontSize: isMobile ? '14px' : '16px',
+                                color: callAccepted ? '#ccc' : '#fff',
+                                fontWeight: callAccepted ? '400' : '500',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '8px',
+                                flexWrap: 'wrap'
+                            }}>
+                                {receivingCall && !callAccepted && (
+                                    <>
+                                        <span style={{
+                                            display: 'inline-block',
+                                            animation: 'bounce 1.5s infinite'
+                                        }}>📞</span>
+                                        <span>{callerName} is calling...</span>
+                                    </>
+                                )}
+                                {!receivingCall && !callAccepted && (
+                                    <>
+                                        <span style={{
+                                            display: 'inline-block',
+                                            animation: 'spin 2s linear infinite'
+                                        }}>⏳</span>
+                                        <span>Calling {callerName}{outgoingCallStatus ? ` • ${outgoingCallStatus}` : ''}</span>
+                                    </>
+                                )}
+                            </p>
+                        </div>
                     )}
 
                     {/* Caller Profile Section - shown when receiving call but not accepted yet */}
-                    {/* {receivingCall && !callAccepted && (
+                    {receivingCall && !callAccepted && (
                         <div style={{ 
                             display: 'flex', 
                             flexDirection: 'column', 
                             alignItems: 'center', 
-                            marginBottom: '20px',
-                            padding: '20px'
+                            justifyContent: 'center',
+                            gap: '16px',
+                            padding: '24px 16px',
+                            background: 'linear-gradient(135deg, rgba(41, 177, 169, 0.15) 0%, rgba(15, 15, 23, 0.6) 100%)',
+                            borderRadius: '12px',
+                            margin: '8px'
                         }}>
                             <div style={{
-                                width: '120px',
-                                height: '120px',
+                                width: isMobile ? '100px' : '140px',
+                                height: isMobile ? '100px' : '140px',
                                 borderRadius: '50%',
                                 overflow: 'hidden',
-                                marginBottom: '15px',
-                                border: '3px solid #29B1A9'
+                                border: '4px solid #29B1A9',
+                                boxShadow: '0 0 30px rgba(41, 177, 169, 0.4)',
+                                animation: 'pulse 2s infinite'
                             }}>
                                 {callerProfilePic ? (
                                     <img 
@@ -1348,21 +1466,40 @@ const VideoCall = ({ myId }) => {
                                     <div style={{
                                         width: '100%',
                                         height: '100%',
-                                        backgroundColor: '#666',
+                                        background: 'linear-gradient(135deg, #29B1A9 0%, #1a8078 100%)',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
                                         color: 'white',
-                                        fontSize: '48px'
+                                        fontSize: isMobile ? '40px' : '56px'
                                     }}>
                                         <i className="fas fa-user"></i>
                                     </div>
                                 )}
                             </div>
-                            <h3 style={{ margin: '0', color: 'white', textAlign: 'center' }}>{callerName}</h3>
-                            <p style={{ margin: '5px 0 0 0', color: '#ccc', textAlign: 'center' }}>Incoming video call...</p>
+                            <div style={{ textAlign: 'center' }}>
+                                <h3 style={{ 
+                                    margin: '0 0 8px 0', 
+                                    color: '#fff', 
+                                    fontSize: isMobile ? '18px' : '22px',
+                                    fontWeight: '600'
+                                }}>{callerName}</h3>
+                                <p style={{ 
+                                    margin: 0, 
+                                    color: '#29B1A9', 
+                                    fontSize: isMobile ? '12px' : '14px',
+                                    fontWeight: '500',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '4px'
+                                }}>
+                                    <span style={{ display: 'inline-block', animation: 'pulse 1s infinite' }}>●</span>
+                                    Incoming video call
+                                </p>
+                            </div>
                         </div>
-                    )} */}
+                    )}
 
                     <div
                         className={`video-call-container ${isMobile ? 'mobile' : ''} fit-camera`}
@@ -1413,7 +1550,20 @@ const VideoCall = ({ myId }) => {
                         />
                     </div>
 
-                    <div className='call-buttons' style={isMobile ? { display: 'flex', gap: '10px', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(32,32,32,0.6)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', padding: '10px 12px', marginTop: '12px' } : {}}>
+                    <div className='call-buttons' style={{
+                        display: 'flex', 
+                        gap: isMobile ? '10px' : '12px', 
+                        justifyContent: 'center', 
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        background: 'linear-gradient(135deg, rgba(32, 32, 32, 0.9) 0%, rgba(15, 15, 23, 0.95) 100%)',
+                        backdropFilter: 'blur(16px)',
+                        border: '1px solid rgba(41, 177, 169, 0.2)',
+                        borderRadius: '16px',
+                        padding: isMobile ? '10px 12px' : '14px 16px',
+                        marginTop: '12px',
+                        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
+                    }}>
                         <button onClick={endCall} ref={callEndBtn} className='call-button-ends call-button bg-danger' style={mobileActionButtonStyle}>
                             <i className="fa fa-phone" style={{ color: 'white' }}></i>
                         </button>
@@ -1468,8 +1618,27 @@ const VideoCall = ({ myId }) => {
 
                         {!callAccepted && receivingCall && (
                             <>
-                                <button onClick={answerCall} className='call-button-receive call-button bg-success' style={mobileActionButtonStyle}>
-                                    <i className="fa fa-phone-volume" style={{ color: 'white' }}></i>
+                                <button 
+                                    onClick={answerCall} 
+                                    className='call-button-receive call-button bg-success' 
+                                    style={{
+                                        ...mobileActionButtonStyle,
+                                        background: 'linear-gradient(135deg, #29B1A9 0%, #1a8078 100%)',
+                                        boxShadow: '0 0 20px rgba(41, 177, 169, 0.4)',
+                                        transform: 'scale(1)',
+                                        transition: 'all 0.3s ease',
+                                        '&:hover': { transform: 'scale(1.1)', boxShadow: '0 0 30px rgba(41, 177, 169, 0.6)' }
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.target.style.transform = 'scale(1.1)';
+                                        e.target.style.boxShadow = '0 0 30px rgba(41, 177, 169, 0.6)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.target.style.transform = 'scale(1)';
+                                        e.target.style.boxShadow = '0 0 20px rgba(41, 177, 169, 0.4)';
+                                    }}
+                                >
+                                    <i className="fa fa-phone-volume" style={{ color: 'white', fontSize: isMobile ? '18px' : '20px' }}></i>
                                 </button>
                             </>
                         )}

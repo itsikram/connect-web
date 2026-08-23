@@ -26,10 +26,14 @@ const AudioCall = ({ myId }) => {
     }, [receivingCall]);
 
     useEffect(() => {
+        isMountedRef.current = true;
         if (process.env.NODE_ENV === 'development') {
             console.log('AudioCall mounted with myId:', myId);
         }
-    }, [myId]);
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, []);
     const [caller, setCaller] = useState('');
     const [callAccepted, setCallAccepted] = useState(false);
     const [isMicrophone, setIsMicrophone] = useState(true);
@@ -43,7 +47,10 @@ const AudioCall = ({ myId }) => {
     const callEndBtn = useRef();
     const ringtoneAudio = useRef();
     const isTerminating = useRef(false);
+    const isMountedRef = useRef(true);
     const receivingCallRef = useRef(receivingCall);
+    const callAcceptedRef = useRef(callAccepted);
+    const currentChannelRef = useRef(currentChannel);
     const pendingAutoAcceptRef = useRef(false);
     const answerCallRef = useRef(null);
     
@@ -62,6 +69,7 @@ const AudioCall = ({ myId }) => {
             const audio = ringtoneAudio.current;
             audio.pause();
             audio.currentTime = 0; // Reset to beginning
+            audio.loop = false; // Ensure it won't loop
         }
         closeCallNotification(); // Close notification when ringtone stops
     };
@@ -71,7 +79,7 @@ const AudioCall = ({ myId }) => {
         await unlockAudio();
         
         setTimeout(async () => {
-            if (ringtoneAudio?.current) {
+            if (ringtoneAudio?.current && receivingCallRef.current && !callAcceptedRef.current) {
                 const audio = ringtoneAudio.current;
                 
                 // Check if audio has a valid source
@@ -83,31 +91,25 @@ const AudioCall = ({ myId }) => {
                 // Ensure audio is not muted and volume is set
                 audio.muted = false;
                 audio.volume = 1.0;
+                audio.loop = true; // Loop the ringtone
                 
                 // Wait for audio to be ready if not already loaded
                 if (audio.readyState < 2) {
                     const handleCanPlay = async () => {
-                        try {
-                            // Try Web Audio API first for better background playback
-                            await playAudioWithWebAudio(audio);
-                            console.log('Ringtone playing successfully');
-                        } catch (error) {
-                            console.warn('Failed to play ringtone:', error);
-                            // Fallback: try regular play
+                        // Only play if still receiving and not accepted
+                        if (receivingCallRef.current && !callAcceptedRef.current) {
                             try {
-                                await audio.play();
-                                console.log('Ringtone playing with fallback method');
-                            } catch (fallbackError) {
-                                console.warn('Fallback play also failed:', fallbackError);
-                                // If autoplay is blocked, try again when tab becomes visible
-                                if (fallbackError.name === 'NotAllowedError' || fallbackError.name === 'NotSupportedError') {
-                                    const handleVisibilityChange = () => {
-                                        if (document.visibilityState === 'visible' && receivingCall && incomingCall) {
-                                            playAudioWithWebAudio(audio).catch(e => console.warn('Retry play failed:', e));
-                                            document.removeEventListener('visibilitychange', handleVisibilityChange);
-                                        }
-                                    };
-                                    document.addEventListener('visibilitychange', handleVisibilityChange);
+                                // Try Web Audio API first for better background playback
+                                await playAudioWithWebAudio(audio);
+                                console.log('Ringtone playing successfully');
+                            } catch (error) {
+                                console.warn('Failed to play ringtone:', error);
+                                // Fallback: try regular play
+                                try {
+                                    await audio.play();
+                                    console.log('Ringtone playing with fallback method');
+                                } catch (fallbackError) {
+                                    console.warn('Fallback play also failed:', fallbackError);
                                 }
                             }
                         }
@@ -120,43 +122,26 @@ const AudioCall = ({ myId }) => {
                         audio.removeEventListener('canplaythrough', handleCanPlay);
                     }, 3000);
                 } else {
-                    try {
-                        // Try Web Audio API first for better background playback
-                        await playAudioWithWebAudio(audio);
-                        console.log('Ringtone playing successfully');
-                    } catch (error) {
-                        console.warn('Failed to play ringtone:', error);
-                        // Fallback: try regular play
+                    // Only play if still receiving and not accepted
+                    if (receivingCallRef.current && !callAcceptedRef.current) {
                         try {
-                            await audio.play();
-                            console.log('Ringtone playing with fallback method');
-                        } catch (fallbackError) {
-                            console.warn('Fallback play also failed:', fallbackError);
-                            // If autoplay is blocked, try again when tab becomes visible
-                            if (fallbackError.name === 'NotAllowedError' || fallbackError.name === 'NotSupportedError') {
-                                const handleVisibilityChange = () => {
-                                    if (document.visibilityState === 'visible' && receivingCall && incomingCall) {
-                                        playAudioWithWebAudio(audio).catch(e => console.warn('Retry play failed:', e));
-                                        document.removeEventListener('visibilitychange', handleVisibilityChange);
-                                    }
-                                };
-                                document.addEventListener('visibilitychange', handleVisibilityChange);
+                            // Try Web Audio API first for better background playback
+                            await playAudioWithWebAudio(audio);
+                            console.log('Ringtone playing successfully');
+                        } catch (error) {
+                            console.warn('Failed to play ringtone:', error);
+                            // Fallback: try regular play
+                            try {
+                                await audio.play();
+                                console.log('Ringtone playing with fallback method');
+                            } catch (fallbackError) {
+                                console.warn('Fallback play also failed:', fallbackError);
                             }
                         }
                     }
                 }
-            } else {
-                // Retry after a short delay if audio element not yet mounted
-                setTimeout(async () => {
-                    if (ringtoneAudio?.current) {
-                        await unlockAudio();
-                        try {
-                            await playAudioWithWebAudio(ringtoneAudio.current);
-                        } catch (error) {
-                            ringtoneAudio.current.play().catch(e => console.warn('Failed to play ringtone after retry:', e));
-                        }
-                    }
-                }, 300);
+            } else if (ringtoneAudio?.current && !receivingCallRef.current) {
+                console.log('AudioCall: Not playing ringtone - not receiving a call');
             }
         }, 500);
     };
@@ -382,7 +367,10 @@ const AudioCall = ({ myId }) => {
             }, 2000);
         } catch (error) {
             console.error('Failed to start audio call:', error);
-            alert('Failed to start audio call. Please try again.');
+            // Only show alert for certain errors
+            if (!String(error?.message || error).includes('LEAVE')) {
+                alert('Failed to start audio call. Please try again.');
+            }
             setIsAudioCall(false);
             setCallAccepted(false);
             isJoiningOrJoined.current = false;
@@ -478,26 +466,66 @@ const AudioCall = ({ myId }) => {
         // Unpublish and close local tracks
         try {
             if (clientRef.current && localTracks.current.length > 0) {
-                await clientRef.current.unpublish(localTracks.current);
+                try {
+                    console.log('AudioCall: Unpublishing local tracks...');
+                    await clientRef.current.unpublish(localTracks.current);
+                    console.log('AudioCall: Successfully unpublished tracks');
+                } catch (unpubError) {
+                    console.log('AudioCall: Error unpublishing:', unpubError?.message || unpubError);
+                }
             }
         } catch (e) {
-            // Ignore unpublish errors
+            console.log('AudioCall: Unpublish outer error:', e);
         }
-        localTracks.current.forEach((track) => track.close());
+        
+        // Close local tracks
+        try {
+            localTracks.current.forEach((track) => {
+                try {
+                    track.close();
+                } catch (closeError) {
+                    console.log('AudioCall: Error closing track:', closeError);
+                }
+            });
+        } catch (e) {
+            console.log('AudioCall: Error closing tracks:', e);
+        }
         localTracks.current = [];
 
         // Leave Agora channel if connected and dispose client
         try {
-            await clientRef.current?.leave();
-            clientRef.current?.removeAllListeners();
+            if (clientRef.current) {
+                const connectionState = clientRef.current?.connectionState;
+                console.log('AudioCall: Client connection state before leave:', connectionState);
+                
+                // Only try to leave if we're actually connected
+                if (connectionState === 'CONNECTED' || connectionState === 'CONNECTING') {
+                    try {
+                        console.log('AudioCall: Attempting to leave channel...');
+                        await clientRef.current.leave();
+                        console.log('AudioCall: Successfully left channel');
+                    } catch (leaveError) {
+                        console.log('AudioCall: Error leaving channel:', leaveError?.message || leaveError);
+                    }
+                } else {
+                    console.log('AudioCall: Client not connected, skipping leave()');
+                }
+                
+                try {
+                    clientRef.current.removeAllListeners();
+                } catch (e) {
+                    console.log('AudioCall: Error removing listeners:', e);
+                }
+            }
         } catch (error) {
-            console.log('Not connected to channel or already left');
+            console.log('AudioCall: Cleanup error:', error?.message || error);
         }
         clientRef.current = null;
 
         isJoiningOrJoined.current = false;
         hasBoundClientEvents.current = false;
         callStartTime.current = null;
+        console.log('AudioCall: Cleanup - reset call flags');
         
         // Clear remote user check interval
         if (remoteUserCheckInterval.current) {
@@ -516,18 +544,45 @@ const AudioCall = ({ myId }) => {
         setIsMinimized(false);
         setCallDuration(0);
         isTerminating.current = false;
-    }, [currentChannel, endMinimizedCall]);
+        console.log('AudioCall: Cleanup - reset state variables');
+    }, [currentChannel, endMinimizedCall, isTerminating]);
+
+    // Keep receivingCallRef and callAcceptedRef in sync with state
+    useEffect(() => {
+        receivingCallRef.current = receivingCall;
+        console.log('AudioCall: receivingCall state changed to', receivingCall);
+    }, [receivingCall]);
+
+    useEffect(() => {
+        callAcceptedRef.current = callAccepted;
+    }, [callAccepted]);
+
+    useEffect(() => {
+        currentChannelRef.current = currentChannel;
+    }, [currentChannel]);
 
     useEffect(() => {        
         const applyIncomingAudioCall = ({ from, channelName, callerName, callerProfilePic }) => {
             if (!from || !channelName) return;
+            // Don't process incoming calls if component is unmounting
+            if (!isMountedRef.current || isTerminating.current) {
+                console.log('AudioCall: Component unmounting or terminating, ignoring incoming call');
+                return;
+            }
+            // Don't process if already handling this same call (prevents duplicate from socket + push)
+            if (receivingCallRef.current && currentChannelRef.current === channelName) {
+                console.log('AudioCall: Already handling this call (from socket), ignoring duplicate from push');
+                return;
+            }
             // Already in a call — auto-reject
-            if (isJoiningOrJoined.current || callAccepted || (isAudioCall && receivingCallRef.current)) {
-                console.warn('AudioCall: Busy — rejecting incoming call');
+            // Only reject if: currently joined to a channel, accepted a call, or already receiving another incoming call
+            if (isJoiningOrJoined.current || callAcceptedRef.current || receivingCallRef.current) {
+                console.warn('AudioCall: Busy — rejecting incoming call', { isJoiningOrJoined: isJoiningOrJoined.current, callAccepted: callAcceptedRef.current, alreadyReceiving: receivingCallRef.current });
                 socket.emit('audio-call-reject', { to: from, channelName });
                 return;
             }
             socket.emit('update-call-status', { to: from, status: "Ringing..." });
+            console.log('AudioCall: Accepting incoming call from', from, 'channel:', channelName);
             setIsAudioCall(true);
             setReceivingCall(true);
             setCaller(from);
@@ -548,6 +603,7 @@ const AudioCall = ({ myId }) => {
         };
 
         const onIncomingAudioCall = ({ from, channelName, isAudio, callerName, callerProfilePic }) => {
+            console.log('AudioCall - Received incoming-audio-call event from socket:', { from, channelName, isAudio });
             if (isAudio) {
                 applyIncomingAudioCall({ from, channelName, callerName, callerProfilePic });
             } else {
@@ -560,6 +616,7 @@ const AudioCall = ({ myId }) => {
         const onPushIncoming = (event) => {
             const detail = event.detail || {};
             if (!detail.isAudio) return;
+            console.log('AudioCall: Push notification received for incoming call:', detail.channelName);
             if (detail.autoAccept) pendingAutoAcceptRef.current = true;
             applyIncomingAudioCall({
                 from: detail.from,
@@ -588,6 +645,11 @@ const AudioCall = ({ myId }) => {
             const { to, channelName, callerName, callerProfilePic } = event.detail;
             console.log('AudioCall - Starting outgoing audio call to', to, 'channel:', channelName);
             console.log('AudioCall - Friend info:', { callerName, callerProfilePic });
+            // Only allow outgoing call if not already in a call or receiving a call
+            if (isJoiningOrJoined.current || callAcceptedRef.current || receivingCallRef.current) {
+                console.warn('AudioCall: Cannot start outgoing call - already busy');
+                return;
+            }
             setIsAudioCall(true);
             setReceivingCall(false);
             setCaller(to);
@@ -595,22 +657,26 @@ const AudioCall = ({ myId }) => {
             setCallerProfilePic(callerProfilePic || config?.defaultProfile);
             setCurrentChannel(channelName);
             setIncomingCall({ from: myId, to, channelName, name: callerName || 'Friend', profilePic: callerProfilePic });
-            console.log('AudioCall - Outgoing call modal should now be visible');
+            console.log('AudioCall - Outgoing call modal should now be visible, setting status to Calling...');
             setOutgoingCallStatus('Calling...');
         };
 
         window.addEventListener('startAudioCall', handleOutgoingAudioCall);
+        
+        console.log('AudioCall: Mounted and ready for calls');
 
         const onCallAccepted = ({ channelName, isAudio, callerId }) => {
             // Caller side should join upon acceptance; callee already joined in answerCall
-            if (isAudio && !receivingCallRef.current) {
-                console.log('Agora audio call accepted, joining channel:', channelName);
-                console.log('Call accepted data:', { channelName, isAudio, callerId });
-                stopRingtone();
-                setOutgoingCallStatus('');
-                startCall(channelName);
-            } else if (isAudio && receivingCallRef.current) {
-                console.log('Received call-accepted but we are the receiver (receivingCall=true), callee already joined in answerCall');
+            if (isAudio) {
+                if (!receivingCallRef.current) {
+                    console.log('AudioCall: Call accepted (caller side) - joining channel:', channelName);
+                    console.log('Call accepted data:', { channelName, isAudio, callerId });
+                    stopRingtone();
+                    setOutgoingCallStatus('');
+                    startCall(channelName);
+                } else {
+                    console.log('AudioCall: Call accepted but we are the receiver (receivingCall=true), already joined');
+                }
             }
         };
         socket.on('call-accepted', onCallAccepted);
@@ -631,18 +697,26 @@ const AudioCall = ({ myId }) => {
 
         const onAudioCallRejected = async () => {
             console.log('AudioCall: Received audio-call-rejected event from server');
+            console.warn('AudioCall: Call was rejected by recipient');
             stopRingtone();
-            await cleanupAudioCall();
+            setOutgoingCallStatus('Call rejected');
+            // Wait briefly before cleanup to let user see the rejection status
+            setTimeout(() => {
+                cleanupAudioCall();
+            }, 500);
         };
         socket.on('audio-call-rejected', onAudioCallRejected);
 
         const onCallNotAccepted = async ({ isAudio, channelName }) => {
             if (!isAudio) return;
             if (channelName && currentChannel && channelName !== currentChannel) return;
-            console.log('AudioCall: Call not accepted (timeout)');
+            console.log('AudioCall: Call not accepted (timeout)', { channelName, currentChannel });
             stopRingtone();
             setOutgoingCallStatus('No answer');
-            await cleanupAudioCall();
+            // Wait briefly before cleanup to let user see the timeout status
+            setTimeout(() => {
+                cleanupAudioCall();
+            }, 500);
         };
         socket.on('call-not-accepted', onCallNotAccepted);
 
@@ -655,6 +729,8 @@ const AudioCall = ({ myId }) => {
         socket.on('updated-call-status', handleUpdatedCallStatus);
 
         return () => {
+            isMountedRef.current = false;
+            console.log('AudioCall: Cleaning up socket listeners');
             socket.off('incoming-audio-call', onIncomingAudioCall);
             window.removeEventListener('incomingCallFromPush', onPushIncoming);
             window.removeEventListener('rejectCallFromPush', onRejectFromPush);
@@ -664,10 +740,11 @@ const AudioCall = ({ myId }) => {
             socket.off('audio-call-rejected', onAudioCallRejected);
             socket.off('call-not-accepted', onCallNotAccepted);
             window.removeEventListener('startAudioCall', handleOutgoingAudioCall);
+            console.log('AudioCall: All listeners removed');
             stopRingtone();
             socket.off('updated-call-status', handleUpdatedCallStatus);
         };
-    }, [startCall, cleanupAudioCall, caller, callAccepted, currentChannel, myId, isAudioCall]); // Include deps
+    }, []); // No dependencies - setup listeners once on mount only
 
     // Auto-answer when user pressed Accept on the system notification
     useEffect(() => {
@@ -688,10 +765,12 @@ const AudioCall = ({ myId }) => {
     // Resume ringtone playback when tab becomes visible
     useEffect(() => {
         const handleVisibilityChange = async () => {
-            if (document.visibilityState === 'visible' && receivingCall && !callAccepted && incomingCall && ringtoneAudio?.current) {
+            // Only resume if tab is visible, we're receiving a call, and we haven't accepted yet
+            if (document.visibilityState === 'visible' && receivingCallRef.current && !callAcceptedRef.current && ringtoneAudio?.current) {
                 const audio = ringtoneAudio.current;
                 // Resume playback if it was paused due to tab being hidden
                 if (audio.paused && audio.src && audio.src !== window.location.href) {
+                    console.log('AudioCall: Resuming ringtone on visibility change');
                     await unlockAudio();
                     audio.muted = false;
                     audio.volume = 1.0;
@@ -707,10 +786,11 @@ const AudioCall = ({ myId }) => {
         };
 
         const handleWindowFocus = async () => {
-            // Also try to resume ringtone on window focus
-            if (receivingCall && !callAccepted && incomingCall && ringtoneAudio?.current) {
+            // Also try to resume ringtone on window focus - only if receiving and not accepted
+            if (receivingCallRef.current && !callAcceptedRef.current && ringtoneAudio?.current) {
                 const audio = ringtoneAudio.current;
                 if (audio.paused && audio.src && audio.src !== window.location.href) {
+                    console.log('AudioCall: Resuming ringtone on window focus');
                     await unlockAudio();
                     audio.muted = false;
                     audio.volume = 1.0;
@@ -731,7 +811,7 @@ const AudioCall = ({ myId }) => {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             window.removeEventListener('focus', handleWindowFocus);
         };
-    }, [receivingCall, callAccepted, incomingCall]);
+    }, []);
 
     // Initialize audio unlock on component mount
     useEffect(() => {

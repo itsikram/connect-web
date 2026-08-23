@@ -922,7 +922,11 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
     }, [profileId]);
 
     const handleVideoCallBtn = useCallback(e => {
-        const id = e.currentTarget.dataset.id;
+        const id = friendId || e.currentTarget.dataset.id;
+        if (!id) {
+            console.error('Video call: No friend ID available');
+            return;
+        }
         setIncomingCall(null);
         // Use the global VideoCall component (same path as StickyChatBox) to avoid
         // dual Agora joins / conflicting socket handlers in ChatHeader.
@@ -939,10 +943,14 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
         }));
 
         socket.emit('video-call', { to: id, channelName, isAudio: false });
-    }, [profileId, friendProfile]);
+    }, [profileId, friendProfile, friendId]);
 
     const handleAudioCallBtn = useCallback(e => {
-        const id = e.currentTarget.dataset.id;
+        const id = friendId || e.currentTarget.dataset.id;
+        if (!id) {
+            console.error('Audio call: No friend ID available');
+            return;
+        }
         setIncomingCall(null);
         setIsVideoCalling(false);
 
@@ -958,7 +966,7 @@ const ChatHeader = ({ friendProfile, room, lastSeen, friendProfilePic }) => {
         }));
 
         socket.emit('audio-call', { to: id, channelName, isAudio: true });
-    }, [profileId, friendProfile]);
+    }, [profileId, friendProfile, friendId]);
 
     const minimizeVideoCall = useCallback(() => {
         if (!callAccepted || !currentChannel) return;
