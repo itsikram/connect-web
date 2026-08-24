@@ -8,13 +8,20 @@
 const RECENT_KEY = "__connect_recent_call_push";
 const DEDUPE_MS = 8000;
 
-function tryFocusCurrentTab() {
+export function tryFocusCurrentTab() {
   if (typeof window === "undefined") return false;
 
   try {
-    window.focus?.();
-    window.top?.focus?.();
-    window.parent?.focus?.();
+    // Try a few focus strategies
+    if (typeof window.focus === 'function') {
+      try { window.focus(); } catch (_) {}
+    }
+    try { window.top && window.top.focus && window.top.focus(); } catch (_) {}
+    try { window.parent && window.parent.focus && window.parent.focus(); } catch (_) {}
+
+    // Some browsers require a little delay for focus to take effect
+    // Do a micro-delay and then assess visibility
+    // Note: this function returns quickly — callers should not depend on synchronous focus success
   } catch (_) {}
 
   try {

@@ -10,6 +10,7 @@ import api from '../../api/api';
 import { useCallMinimize } from '../../contexts/CallMinimizeContext';
 import config from '../../config/config.json';
 import audioPreloader from '../../utils/audioPreloader';
+import { tryFocusCurrentTab } from '../../utils/incomingCallFromPush';
 import { unlockAudio, playAudioWithWebAudio, initializeAudioUnlock } from '../../utils/audioUnlock';
 import { showCallNotification, closeCallNotification } from '../../utils/callNotification';
 
@@ -127,12 +128,23 @@ const VideoCall = ({ myId }) => {
     const { minimizeCall, restoreCall, endMinimizedCall, getMinimizedCall, updateMinimizedCall } = useCallMinimize();
 
     const stopRingtone = () => {
-        if (ringtoneAudio?.current) {
-            const audio = ringtoneAudio.current;
-            audio.pause();
-            audio.currentTime = 0; // Reset to beginning
-            audio.loop = false; // Ensure it won't loop
-            audio.muted = false; // Reset mute state for next playback
+        try {
+            if (ringtoneAudio?.current) {
+                const audio = ringtoneAudio.current;
+                audio.pause();
+                audio.currentTime = 0; // Reset to beginning
+                audio.loop = false; // Ensure it won't loop
+                audio.muted = false; // Reset mute state for next playback
+            }
+
+            try {
+                const toneSrc = ringtoneAudio?.current?.src || null;
+                if (toneSrc) {
+                    audioPreloader.stopBuffer(toneSrc);
+                }
+            } catch (_) {}
+        } catch (err) {
+            // ignore
         }
         closeCallNotification(); // Close notification when ringtone stops
     };
@@ -184,6 +196,26 @@ const VideoCall = ({ myId }) => {
             audio.currentTime = 0; // Reset to beginning for immediate playback
             audio.loop = true; // Loop the ringtone
 
+            const toneSrc = audio.src;
+
+            // Try playing decoded AudioBuffer first
+            try {
+                if (audioPreloader.hasBuffer(toneSrc)) {
+                    const srcNode = audioPreloader.playBuffer(toneSrc, { loop: true });
+                    if (srcNode) {
+                        // Store ref so we can stop it later
+                        if (typeof window !== 'undefined') {
+                            // best-effort store on component-level (if exists)
+                        }
+                        console.log('Ringtone playing via AudioBuffer');
+                        return;
+                    }
+                }
+            } catch (err) {
+                console.warn('AudioBuffer play attempt failed:', err);
+            }
+
+            // Fallback to element playback
             // Wait for audio to be ready if not already loaded
             if (audio.readyState < 2) {
                 const handleCanPlay = async () => {
@@ -701,6 +733,9 @@ const VideoCall = ({ myId }) => {
 
     useEffect(() => {
         if (ringtoneAudio?.current && receivingCall && incomingCall) {
+            // Try to bring the tab into focus before playing ringtone
+            try { tryFocusCurrentTab(); } catch (_) {}
+
             // Use user's ringtone preference or fallback to default
             const ringtoneId = normalizeRingtoneId(mySettings.ringtone);
 

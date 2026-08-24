@@ -25,6 +25,7 @@ import {
   closeCallNotification,
 } from "../../utils/callNotification";
 import audioPreloader from "../../utils/audioPreloader";
+import { tryFocusCurrentTab } from "../../utils/incomingCallFromPush";
 
 const AudioCall = ({ myId }) => {
   const mySettings = useSelector((state) => state.setting);
@@ -59,11 +60,13 @@ const AudioCall = ({ myId }) => {
 
   const callEndBtn = useRef();
   const ringtoneAudio = useRef();
+  const ringtoneBufferSource = useRef(null);
   const isTerminating = useRef(false);
   const isMountedRef = useRef(true);
   const receivingCallRef = useRef(receivingCall);
   const callAcceptedRef = useRef(callAccepted);
   const currentChannelRef = useRef(currentChannel);
+  const callerRef = useRef(caller);
   const pendingAutoAcceptRef = useRef(false);
   const answerCallRef = useRef(null);
 
@@ -78,80 +81,102 @@ const AudioCall = ({ myId }) => {
   const { minimizeCall, endMinimizedCall } = useCallMinimize();
 
   const stopRingtone = () => {
-    if (ringtoneAudio?.current) {
-      const audio = ringtoneAudio.current;
-      audio.pause();
-      audio.currentTime = 0; // Reset to beginning
-      audio.loop = false; // Ensure it won't loop
-      audio.muted = false; // Reset mute state for next playback
+    try {
+      if (ringtoneAudio?.current) {
+        const audio = ringtoneAudio.current;
+        audio.pause();
+        audio.currentTime = 0; // Reset to beginning
+        audio.loop = false; // Ensure it won't loop
+        audio.muted = false; // Reset mute state for next playback
+      }
+
+      // Stop any WebAudio buffer sources if playing
+      try {
+        const toneSrc = ringtoneAudio?.current?.src || null;
+        if (toneSrc) {
+          audioPreloader.stopBuffer(toneSrc);
+        }
+      } catch (_) {}
+
+      // Clear local buffer ref
+      if (ringtoneBufferSource.current) {
+        try { ringtoneBufferSource.current.stop(); } catch (_) {}
+        try { ringtoneBufferSource.current.disconnect(); } catch (_) {}
+        ringtoneBufferSource.current = null;
+      }
+    } catch (err) {
+      // ignore
     }
+
     closeCallNotification(); // Close notification when ringtone stops
   };
 
   const playRingtone = async () => {
-    // First, try to unlock audio if not already unlocked
+    // Ensure audio is unlocked for playback
     await unlockAudio();
 
-    if (
-      ringtoneAudio?.current &&
-      receivingCallRef.current &&
-      !callAcceptedRef.current
-    ) {
-      const audio = ringtoneAudio.current;
+    if (!ringtoneAudio?.current || !receivingCallRef.current || callAcceptedRef.current) return;
 
-      // Check if audio has a valid source
-      if (!audio.src || audio.src === window.location.href) {
-        console.warn("Ringtone audio has no valid source");
-        return;
-      }
+    const audio = ringtoneAudio.current;
 
-      // Ensure audio is not muted and volume is set
-      audio.muted = false;
-      audio.volume = 1.0;
-      audio.currentTime = 0; // Reset to beginning for immediate playback
-      audio.loop = true; // Loop the ringtone
+    // Validate source
+    if (!audio.src || audio.src === window.location.href) {
+      console.warn('Ringtone audio has no valid source');
+      return;
+    }
 
-      // Wait for audio to be ready if not already loaded
-      if (audio.readyState < 2) {
-        const handleCanPlay = async () => {
-          // Only play if still receiving and not accepted
-          if (receivingCallRef.current && !callAcceptedRef.current) {
-            try {
-              // Try Web Audio API first for better background playback
-              await playAudioWithWebAudio(audio);
-              console.log("Ringtone playing successfully");
-            } catch (error) {
-              console.warn("Failed to play ringtone:", error);
-              // Fallback: try regular play
-              try {
-                await audio.play();
-                console.log("Ringtone playing with fallback method");
-              } catch (fallbackError) {
-                console.warn("Fallback play also failed:", fallbackError);
-              }
-            }
-          }
-          audio.removeEventListener("canplaythrough", handleCanPlay);
-        };
-        audio.addEventListener("canplaythrough", handleCanPlay);
-      } else {
-        // Only play if still receiving and not accepted
-        if (receivingCallRef.current && !callAcceptedRef.current) {
-          try {
-            // Try Web Audio API first for better background playback
-            await playAudioWithWebAudio(audio);
-            console.log("Ringtone playing successfully");
-          } catch (error) {
-            console.warn("Failed to play ringtone:", error);
-            // Fallback: try regular play
-            try {
-              await audio.play();
-              console.log("Ringtone playing with fallback method");
-            } catch (fallbackError) {
-              console.warn("Fallback play also failed:", fallbackError);
-            }
-          }
+    audio.muted = false;
+    audio.volume = 1.0;
+    audio.currentTime = 0;
+    audio.loop = true;
+
+    const toneSrc = audio.src;
+
+    // Try playback via decoded AudioBuffer first
+    try {
+      if (audioPreloader.hasBuffer(toneSrc)) {
+        const source = audioPreloader.playBuffer(toneSrc, { loop: true });
+        if (source) {
+          ringtoneBufferSource.current = source;
+          console.log('Ringtone playing via AudioBuffer');
+          return;
         }
+      }
+    } catch (err) {
+      console.warn('AudioBuffer play attempt failed:', err);
+    }
+
+    // Fallback: element playback using WebAudio helper or audio.play()
+    const tryElementPlay = async () => {
+      try {
+        await playAudioWithWebAudio(audio);
+        console.log('Ringtone playing successfully (element via WebAudio helper)');
+        return true;
+      } catch (err) {
+        console.warn('playAudioWithWebAudio failed:', err);
+      }
+      try {
+        await audio.play();
+        console.log('Ringtone playing with audio.play fallback');
+        return true;
+      } catch (err) {
+        console.warn('audio.play fallback failed:', err);
+        return false;
+      }
+    };
+
+    if (audio.readyState < 2) {
+      const onCanPlay = async () => {
+        audio.removeEventListener('canplaythrough', onCanPlay);
+        if (receivingCallRef.current && !callAcceptedRef.current) {
+          await tryElementPlay();
+        }
+      };
+      audio.addEventListener('canplaythrough', onCanPlay);
+      if (audio.readyState === 0) audio.load();
+    } else {
+      if (receivingCallRef.current && !callAcceptedRef.current) {
+        await tryElementPlay();
       }
     }
   };
@@ -465,6 +490,11 @@ const AudioCall = ({ myId }) => {
 
   useEffect(() => {
     if (ringtoneAudio?.current && receivingCall && incomingCall) {
+      // Try to bring the tab into focus before playing ringtone
+      try {
+        tryFocusCurrentTab();
+      } catch (_) {}
+
       // Use user's ringtone preference or fallback to default
       const ringtoneId = normalizeRingtoneId(mySettings.ringtone);
 
@@ -658,6 +688,10 @@ const AudioCall = ({ myId }) => {
   useEffect(() => {
     currentChannelRef.current = currentChannel;
   }, [currentChannel]);
+
+  useEffect(() => {
+    callerRef.current = caller;
+  }, [caller]);
 
   useEffect(() => {
     const applyIncomingAudioCall = ({
@@ -886,11 +920,11 @@ const AudioCall = ({ myId }) => {
 
     const onCallNotAccepted = async ({ isAudio, channelName }) => {
       if (!isAudio) return;
-      if (channelName && currentChannel && channelName !== currentChannel)
-        return;
+      const activeChannel = currentChannelRef.current;
+      if (channelName && activeChannel && channelName !== activeChannel) return;
       console.log("AudioCall: Call not accepted (timeout)", {
         channelName,
-        currentChannel,
+        activeChannel,
       });
       stopRingtone();
       setOutgoingCallStatus("No answer");
@@ -905,9 +939,9 @@ const AudioCall = ({ myId }) => {
       // Only for outgoing (caller) side: receivingCall is false
       if (
         !receivingCallRef.current &&
-        !callAccepted &&
-        caller &&
-        from === caller
+        !callAcceptedRef.current &&
+        callerRef.current &&
+        from === callerRef.current
       ) {
         setOutgoingCallStatus(status || "");
       }

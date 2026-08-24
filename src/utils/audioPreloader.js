@@ -1,6 +1,7 @@
 import config from '../config/config.json';
 import ringtones from '../config/ringtones.json';
 import { normalizeRingtoneId } from './normalizeRingtoneId';
+import { getAudioContext } from './audioUnlock';
 
 /**
  * Audio Preloader Service
@@ -10,9 +11,20 @@ import { normalizeRingtoneId } from './normalizeRingtoneId';
 class AudioPreloader {
     constructor() {
         this.audioCache = new Map(); // Store preloaded audio elements
+        this.bufferCache = new Map(); // Store decoded AudioBuffer for WebAudio playback
+        this.activeBufferSources = new Map(); // Active AudioBufferSourceNodes keyed by normalized src
         this.preloadingInProgress = false;
         this.preloadComplete = false;
         this.preloadPromise = null;
+    }
+
+    // Normalize a source to an absolute URL to keep keys consistent
+    _normalizeSrc(src) {
+        try {
+            return new URL(src, typeof window !== 'undefined' ? window.location.href : src).href;
+        } catch (e) {
+            return src;
+        }
     }
 
     /**
@@ -56,8 +68,44 @@ class AudioPreloader {
 
         const preloadPromises = Array.from(audioFiles).map(src => this._preloadAudio(src));
 
+        // Also attempt to fetch & decode audio into AudioBuffers for more reliable background playback
+        const decodePromises = Array.from(audioFiles).map(async (src) => {
+            try {
+                const context = getAudioContext();
+                if (!context) return null;
+                const key = this._normalizeSrc(src);
+                // If already decoded, skip
+                if (this.bufferCache.has(key)) return this.bufferCache.get(key);
+
+                // Try fetching the file as arrayBuffer
+                const res = await fetch(src, {cache: 'force-cache'}).catch(() => null);
+                if (!res || !res.ok) return null;
+                const arrayBuffer = await res.arrayBuffer().catch(() => null);
+                if (!arrayBuffer) return null;
+
+                // decodeAudioData supports Promise in modern browsers, but keep fallback
+                const decoded = await new Promise((resolve) => {
+                    context.decodeAudioData(
+                        arrayBuffer,
+                        (buf) => resolve(buf),
+                        () => resolve(null)
+                    );
+                });
+
+                if (decoded) {
+                    this.bufferCache.set(key, decoded);
+                    console.log(`🔉 Decoded audio buffer: ${src}`);
+                }
+
+                return decoded;
+            } catch (err) {
+                // ignore decode failures
+                return null;
+            }
+        });
+
         try {
-            await Promise.allSettled(preloadPromises);
+            await Promise.allSettled([...preloadPromises, ...decodePromises]);
             this.preloadComplete = true;
             console.log('✅ Audio preloading complete');
         } catch (error) {
@@ -201,6 +249,65 @@ class AudioPreloader {
         }
 
         return this.getAudio(src);
+    }
+
+    /**
+     * Check whether a decoded AudioBuffer exists for a source
+     */
+    hasBuffer(src) {
+        const key = this._normalizeSrc(src);
+        return this.bufferCache.has(key);
+    }
+
+    /**
+     * Play decoded AudioBuffer via Web Audio API (returns the created source node)
+     */
+    playBuffer(src, { loop = true } = {}) {
+        try {
+            const key = this._normalizeSrc(src);
+            const buffer = this.bufferCache.get(key);
+            if (!buffer) return null;
+            const context = getAudioContext();
+            if (!context) return null;
+
+            // Ensure context is resumed
+            if (context.state === 'suspended') {
+                context.resume().catch(() => {});
+            }
+
+            const source = context.createBufferSource();
+            source.buffer = buffer;
+            source.loop = !!loop;
+            source.connect(context.destination);
+            source.start(0);
+
+            // Track active source(s) so they can be stopped later
+            const list = this.activeBufferSources.get(key) || [];
+            list.push(source);
+            this.activeBufferSources.set(key, list);
+
+            return source;
+        } catch (err) {
+            console.warn('playBuffer failed for', src, err);
+            return null;
+        }
+    }
+
+    /**
+     * Stop all active buffer sources for a given src
+     */
+    stopBuffer(src) {
+        try {
+            const key = this._normalizeSrc(src);
+            const list = this.activeBufferSources.get(key) || [];
+            list.forEach((s) => {
+                try { s.stop(); } catch (_) {}
+                try { s.disconnect(); } catch (_) {}
+            });
+            this.activeBufferSources.delete(key);
+        } catch (err) {
+            // ignore
+        }
     }
 
     /**

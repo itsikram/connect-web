@@ -71,6 +71,123 @@ const api = axios.create({
   },
 });
 
+const inFlightGetRequests = new Map();
+const getResponseCache = new Map();
+
+const cloneAxiosResponse = (response) => ({
+  ...response,
+  headers: response.headers ? { ...response.headers } : response.headers,
+});
+
+const getRequestUrl = (requestConfig) => {
+  const requestUri = api.getUri(requestConfig);
+  const fallbackOrigin =
+    typeof window !== "undefined"
+      ? window.location.origin
+      : "http://localhost";
+
+  return new URL(requestUri, requestConfig.baseURL || baseURL || fallbackOrigin);
+};
+
+const getGetRequestOptimization = (requestConfig) => {
+  if (
+    requestConfig.method?.toLowerCase() !== "get" ||
+    requestConfig.signal ||
+    requestConfig.cancelToken
+  ) {
+    return null;
+  }
+
+  const requestUrl = getRequestUrl(requestConfig);
+  const { pathname, searchParams } = requestUrl;
+
+  // Never cache live inbox polling
+  if (pathname.includes("/message/new-messages")) {
+    return { cacheTtl: 0 };
+  }
+
+  if (pathname.includes("/message/chatList")) {
+    return { cacheTtl: 10000 };
+  }
+
+  if (pathname.includes("/story/")) {
+    return { cacheTtl: 30000 };
+  }
+
+  if (
+    pathname.endsWith("/profile") &&
+    (!requestUrl.search || searchParams.has("profileId"))
+  ) {
+    return { cacheTtl: 15000 };
+  }
+
+  if (
+    pathname.includes("/post/newsFeed/") &&
+    searchParams.get("pageNumber") === "1"
+  ) {
+    return { cacheTtl: 5000 };
+  }
+
+  return null;
+};
+
+const getRequestCacheKey = (requestConfig) => {
+  const requestUrl = getRequestUrl(requestConfig);
+  const authHeader =
+    requestConfig.headers?.Authorization ||
+    requestConfig.headers?.authorization ||
+    "";
+
+  return `get:${requestUrl.pathname}${requestUrl.search}:${authHeader}`;
+};
+
+const defaultAdapter = axios.getAdapter
+  ? axios.getAdapter(api.defaults.adapter || axios.defaults.adapter)
+  : api.defaults.adapter || axios.defaults.adapter;
+
+api.defaults.adapter = async (requestConfig) => {
+  const optimization = getGetRequestOptimization(requestConfig);
+
+  if (!optimization) {
+    return defaultAdapter(requestConfig);
+  }
+
+  const requestKey = getRequestCacheKey(requestConfig);
+  const cachedEntry = getResponseCache.get(requestKey);
+
+  if (optimization.cacheTtl > 0 && cachedEntry) {
+    if (cachedEntry.expiresAt > Date.now()) {
+      return cloneAxiosResponse(cachedEntry.response);
+    }
+
+    getResponseCache.delete(requestKey);
+  }
+
+  const inFlightRequest = inFlightGetRequests.get(requestKey);
+  if (inFlightRequest) {
+    return inFlightRequest.then((response) => cloneAxiosResponse(response));
+  }
+
+  const requestPromise = defaultAdapter(requestConfig)
+    .then((response) => {
+      if (optimization.cacheTtl > 0) {
+        getResponseCache.set(requestKey, {
+          expiresAt: Date.now() + optimization.cacheTtl,
+          response: cloneAxiosResponse(response),
+        });
+      }
+
+      return response;
+    })
+    .finally(() => {
+      inFlightGetRequests.delete(requestKey);
+    });
+
+  inFlightGetRequests.set(requestKey, requestPromise);
+
+  return requestPromise;
+};
+
 // Add request interceptor to dynamically get token from storage and handle load balancing
 api.interceptors.request.use(
   (requestConfig) => {
