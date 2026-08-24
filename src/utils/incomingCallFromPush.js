@@ -8,6 +8,24 @@
 const RECENT_KEY = "__connect_recent_call_push";
 const DEDUPE_MS = 8000;
 
+function tryFocusCurrentTab() {
+  if (typeof window === "undefined") return false;
+
+  try {
+    window.focus?.();
+    window.top?.focus?.();
+    window.parent?.focus?.();
+  } catch (_) {}
+
+  try {
+    return (
+      document.visibilityState === "visible" || document.hasFocus?.() === true
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
 function normalizePayload(raw = {}) {
   const isAudio =
     raw.isAudio === true ||
@@ -21,7 +39,10 @@ function normalizePayload(raw = {}) {
     channelName: raw.channelName || "",
     callerName: raw.callerName || "Someone",
     callerProfilePic: raw.callerProfilePic || "",
-    autoAccept: raw.autoAccept === true || raw.autoAccept === "true" || raw.autoAccept === "1",
+    autoAccept:
+      raw.autoAccept === true ||
+      raw.autoAccept === "true" ||
+      raw.autoAccept === "1",
   };
 }
 
@@ -55,7 +76,9 @@ export function dispatchIncomingCallFromPush(raw, options = {}) {
   const payload = normalizePayload(raw);
 
   if (action === "reject" || action === "reject_call") {
-    window.dispatchEvent(new CustomEvent("rejectCallFromPush", { detail: payload }));
+    window.dispatchEvent(
+      new CustomEvent("rejectCallFromPush", { detail: payload }),
+    );
     // Ensure caller is notified even if call UI is not mounted yet
     rejectViaApi(payload);
     return true;
@@ -66,7 +89,10 @@ export function dispatchIncomingCallFromPush(raw, options = {}) {
   }
 
   if (!shouldAccept(payload)) return false;
-  window.dispatchEvent(new CustomEvent("incomingCallFromPush", { detail: payload }));
+  tryFocusCurrentTab();
+  window.dispatchEvent(
+    new CustomEvent("incomingCallFromPush", { detail: payload }),
+  );
   return true;
 }
 
@@ -99,7 +125,7 @@ export function initIncomingCallPushBridge() {
           isAudio: params.get("isAudio"),
           callerName: params.get("callerName"),
         },
-        { action: params.get("call_action") || "" }
+        { action: params.get("call_action") || "" },
       );
       params.delete("incoming_call");
       params.delete("channelName");
