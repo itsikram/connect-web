@@ -83,7 +83,7 @@ const speechLog = (...args) => {
   console.log("[speech-client]", ...args);
 };
 
-const getSpeechWebSocketUrl = () => {
+const getSpeechWebSocketUrls = () => {
   const base = getSocketUrl();
   const url = new URL(base);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
@@ -100,8 +100,75 @@ const getSpeechWebSocketUrl = () => {
     // noop
   }
 
-  return url.toString();
+  const urls = [url.toString()];
+  if (url.hostname === "localhost") {
+    const ipv4Url = new URL(url.toString());
+    ipv4Url.hostname = "127.0.0.1";
+    urls.push(ipv4Url.toString());
+  }
+
+  return urls;
 };
+
+const openSpeechWebSocket = (socketUrl, onMessage) =>
+  new Promise((resolve, reject) => {
+    const ws = new WebSocket(socketUrl);
+    ws.onmessage = onMessage;
+
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      try {
+        ws.close();
+      } catch {
+        // noop
+      }
+      reject(new Error("Speech socket connection timed out"));
+    }, 5000);
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      ws.removeEventListener("open", handleOpen);
+      ws.removeEventListener("error", handleError);
+      ws.removeEventListener("close", handleClose);
+    };
+
+    const handleOpen = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(ws);
+    };
+
+    const handleError = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      try {
+        ws.close();
+      } catch {
+        // noop
+      }
+      reject(new Error("Unable to connect to speech server"));
+    };
+
+    const handleClose = (event) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(
+        new Error(
+          `Speech socket closed during connection (${event.code || "unknown"})`,
+        ),
+      );
+    };
+
+    ws.addEventListener("open", handleOpen);
+    ws.addEventListener("error", handleError);
+    ws.addEventListener("close", handleClose);
+  });
 
 const ChatInput = ({
   value,
@@ -136,6 +203,7 @@ const ChatInput = ({
   const activeStopRef = useRef(() => {});
   const modelLoadingRef = useRef(false);
   const autoSendTimeoutRef = useRef(null);
+  const autoRunActionsRef = useRef(autoRunActions);
   const modalInteractionVersionRef = useRef(modalInteractionVersion);
   const maybeScheduleAutoSendRef = useRef(() => {});
 
@@ -143,6 +211,10 @@ const ChatInput = ({
     onChangeRef.current = onChange;
     onSendRef.current = onSend;
   }, [onChange, onSend]);
+
+  useEffect(() => {
+    autoRunActionsRef.current = autoRunActions;
+  }, [autoRunActions]);
 
   useEffect(() => {
     modalInteractionVersionRef.current = modalInteractionVersion;
@@ -185,7 +257,7 @@ const ChatInput = ({
   // Helper to trigger auto-send if enabled
   const scheduleAutoSend = (finalText) => {
     const nextText = typeof finalText === "string" ? finalText.trim() : "";
-    if (!autoRunActions || !nextText) return;
+    if (!autoRunActionsRef.current || !nextText) return;
 
     clearAutoSendTimeout();
 
@@ -199,6 +271,11 @@ const ChatInput = ({
 
       if (modalInteractionVersionRef.current !== scheduledInteractionVersion) {
         speechLog("[auto-run] Cancelled because the modal was touched/clicked");
+        return;
+      }
+
+      if (!autoRunActionsRef.current) {
+        speechLog("[auto-run] Cancelled because auto-run was disabled");
         return;
       }
 
@@ -263,6 +340,17 @@ const ChatInput = ({
       onChangeRef.current(appendTranscript(withFinal, interimTranscript));
     };
 
+    recognition.onspeechend = () => {
+      if (!autoRunActionsRef.current) return;
+
+      speechLog("Browser SpeechRecognition detected end of speech");
+      try {
+        recognition.stop();
+      } catch (err) {
+        speechLog("Failed to stop recognition after speech ended", err);
+      }
+    };
+
     recognition.onerror = (err) => {
       speechLog("Browser SpeechRecognition error", err?.error || err);
       setIsListening(false);
@@ -283,6 +371,7 @@ const ChatInput = ({
 
     return () => {
       recognition.onresult = null;
+      recognition.onspeechend = null;
       recognition.onerror = null;
       recognition.onend = null;
       try {
@@ -398,12 +487,22 @@ const ChatInput = ({
       return;
     }
 
+    if (payload.type === "utterance-end") {
+      if (autoRunActionsRef.current && isListeningRef.current) {
+        speechLog("Silence detected; finalizing voice input for auto-run");
+        stopBanglaVoiceInput();
+      }
+      return;
+    }
+
     if (payload.type === "final") {
       const finalText = (payload.text || "").trim();
       speechLog("Final transcript:", finalText);
       finalTranscriptRef.current = finalText;
       const withFinal = finalizeWithText(finalText);
       clearStopTimeout();
+      stopMediaRecorder();
+      stopMediaStream();
       closeWebSocket();
       setIsListening(false);
       setIsFinalizing(false);
@@ -464,40 +563,33 @@ const ChatInput = ({
       mediaStreamRef.current = stream;
       speechLog("Microphone permission granted");
 
-      const socketUrl = getSpeechWebSocketUrl();
-      speechLog("Connecting to speech WebSocket:", socketUrl);
-      const ws = new WebSocket(socketUrl);
-      wsRef.current = ws;
-      // Attach the message handler immediately (before awaiting "open") so we
-      // never miss a message the server sends right after the handshake
-      // completes (e.g. a "status" notice that the model is still loading).
-      ws.onmessage = handleSocketMessage;
+      const socketUrls = getSpeechWebSocketUrls();
+      let ws = null;
+      let connectionError = null;
 
-      await new Promise((resolve, reject) => {
-        const timer = setTimeout(
-          () => reject(new Error("Speech socket timeout")),
-          8000,
+      for (let index = 0; index < socketUrls.length; index += 1) {
+        const socketUrl = socketUrls[index];
+        speechLog(
+          "Connecting to speech WebSocket:",
+          socketUrl.replace(/\?.*$/, ""),
         );
+        try {
+          ws = await openSpeechWebSocket(socketUrl, handleSocketMessage);
+          break;
+        } catch (error) {
+          connectionError = error;
+          speechLog("WebSocket connection attempt failed", error);
+        }
+      }
 
-        const handleOpen = () => {
-          clearTimeout(timer);
-          ws.removeEventListener("open", handleOpen);
-          ws.removeEventListener("error", handleBootError);
-          speechLog("WebSocket connected");
-          resolve();
-        };
+      if (!ws) {
+        throw (
+          connectionError || new Error("Unable to connect to speech server")
+        );
+      }
 
-        const handleBootError = (err) => {
-          clearTimeout(timer);
-          ws.removeEventListener("open", handleOpen);
-          ws.removeEventListener("error", handleBootError);
-          speechLog("WebSocket connect error", err);
-          reject(new Error("Unable to connect to speech server"));
-        };
-
-        ws.addEventListener("open", handleOpen);
-        ws.addEventListener("error", handleBootError);
-      });
+      wsRef.current = ws;
+      speechLog("WebSocket connected");
 
       ws.onerror = (err) => {
         speechLog("WebSocket error during session", err);

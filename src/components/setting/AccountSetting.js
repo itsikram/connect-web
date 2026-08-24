@@ -334,7 +334,7 @@ const AccountSetting = () => {
             <label htmlFor="banglaName" className="form-label">
               Bengali Name
             </label>
-            <div className="input-group">
+            <div className="input-group bengali-name-input-group">
               <input
                 type="text"
                 className="form-control"

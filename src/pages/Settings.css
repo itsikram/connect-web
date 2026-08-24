@@ -460,6 +460,18 @@
         font-size: 16px !important; /* prevent iOS zoom */
     }
 
+    .setting-page .bengali-name-input-group {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .setting-page .bengali-name-input-group .form-control,
+    .setting-page .bengali-name-input-group .btn {
+        flex: 1 0 100%;
+        width: 100%;
+        border-radius: 12px !important;
+    }
+
     .setting-page .form-check small,
     .setting-page .form-check .form-text {
         padding-left: 0;

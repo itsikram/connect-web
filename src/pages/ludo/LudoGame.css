@@ -501,6 +501,10 @@
     margin-top: 4px;
 }
 
+.ludo-waiting-replace {
+    margin-top: 12px;
+}
+
 .ludo-seat {
     display: flex;
     align-items: center;
