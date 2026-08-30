@@ -76,18 +76,17 @@ const PostComment = ({
     [setAllCommentsProp],
   );
 
-  const commitComments = useCallback(
-    (updater) => {
-      setComments((prev) => {
-        const current = Array.isArray(prev) ? prev : [];
-        const next = typeof updater === "function" ? updater(current) : updater;
-        const safeNext = Array.isArray(next) ? next : current;
-        syncParentComments(safeNext);
-        return safeNext;
-      });
-    },
-    [syncParentComments],
-  );
+  const commitComments = useCallback((updater) => {
+    setComments((prev) => {
+      const current = Array.isArray(prev) ? prev : [];
+      const next = typeof updater === "function" ? updater(current) : updater;
+      return Array.isArray(next) ? next : current;
+    });
+  }, []);
+
+  useEffect(() => {
+    syncParentComments(comments);
+  }, [comments, syncParentComments]);
 
   useEffect(() => {
     setIsSingle(

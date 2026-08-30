@@ -73,6 +73,9 @@ const ChatHeader = ({
   const [liveVoiceDuration, setLiveVoiceDuration] = useState(0);
   const [mapLoading, setMapLoading] = useState(false);
   const liveVoiceDurationTimerRef = useRef(null);
+  const liveVoiceClientRef = useRef(null);
+  const liveVoiceLocalTrackRef = useRef(null);
+  const liveVoiceChannelRef = useRef(null);
   const callStartTime = useRef(null);
 
   const cameraVideoRef = useRef(null);
@@ -786,6 +789,76 @@ const ChatHeader = ({
     await cleanupVideoCall();
   }, [friendId, cleanupVideoCall, callAccepted, currentChannel]);
 
+  const subscribeLiveVoiceRemoteAudio = useCallback(async (client) => {
+    if (!client) return;
+
+    client.on("user-published", async (user, mediaType) => {
+      if (mediaType !== "audio") return;
+      try {
+        await client.subscribe(user, "audio");
+        user.audioTrack?.play();
+      } catch (e) {
+        console.warn("Live voice subscribe error:", e);
+      }
+    });
+
+    for (const user of client.remoteUsers || []) {
+      if (!user?.hasAudio) continue;
+      try {
+        await client.subscribe(user, "audio");
+        user.audioTrack?.play();
+      } catch (e) {
+        console.warn("Live voice subscribe existing user error:", e);
+      }
+    }
+  }, []);
+
+  const ensureLeaveLiveVoice = useCallback(async () => {
+    try {
+      if (liveVoiceClientRef.current && liveVoiceLocalTrackRef.current) {
+        await liveVoiceClientRef.current.unpublish([
+          liveVoiceLocalTrackRef.current,
+        ]);
+      }
+    } catch (_e) {}
+
+    try {
+      liveVoiceLocalTrackRef.current?.close();
+    } catch (_e) {}
+    liveVoiceLocalTrackRef.current = null;
+
+    try {
+      await liveVoiceClientRef.current?.leave();
+      liveVoiceClientRef.current?.removeAllListeners();
+    } catch (_e) {}
+
+    liveVoiceClientRef.current = null;
+    liveVoiceChannelRef.current = null;
+  }, []);
+
+  const stopLiveVoiceSession = useCallback(
+    async (notifyPeer = true) => {
+      const channelName = liveVoiceChannelRef.current;
+
+      if (notifyPeer && friendId && channelName) {
+        socket.emit("live-voice-stop", {
+          to: String(friendId),
+          channelName,
+        });
+      }
+
+      await ensureLeaveLiveVoice();
+      setIsLiveVoiceActive(false);
+      setIsLiveVoiceModalOpen(false);
+      setLiveVoiceDuration(0);
+      if (liveVoiceDurationTimerRef.current) {
+        clearInterval(liveVoiceDurationTimerRef.current);
+        liveVoiceDurationTimerRef.current = null;
+      }
+    },
+    [friendId, ensureLeaveLiveVoice],
+  );
+
   useEffect(() => {
     // ChatHeader no longer owns 1:1 video calls (VideoCall.js does).
     // Keep live-voice + call-status display helpers only.
@@ -797,94 +870,66 @@ const ChatHeader = ({
     };
     socket.on("updated-call-status", handleUpdatedCallStatus);
 
-    // Live voice: when friend starts/stops, we join/leave and play their audio
-    const liveVoiceClientRef = { current: null };
-    const ensureLeaveLiveVoice = async () => {
+    const onLiveVoiceStart = async ({ from, channelName }) => {
       try {
-        await liveVoiceClientRef.current?.leave();
-      } catch (e) {
-        // Ignore leave errors
-      }
-      try {
-        liveVoiceClientRef.current?.removeAllListeners();
-      } catch (e) {
-        // Ignore listener removal errors
-      }
-      liveVoiceClientRef.current = null;
-    };
+        if (!channelName) return;
+        if (friendId && from && String(from) !== String(friendId)) return;
 
-    const onLiveVoiceStart = async ({ channelName }) => {
-      try {
-        // Create a new lightweight client for voice-only playback
         await ensureLeaveLiveVoice();
+
         const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
         liveVoiceClientRef.current = client;
-        // Use existing numericUid for subscriber (publisher uses numericUid + 1 to avoid conflict)
+        liveVoiceChannelRef.current = channelName;
+
+        // Join as publisher to allow two-way live voice (like audio call).
         const { data } = await api.post("/agora/token", {
           channelName,
           uid: numericUid,
-          role: "subscriber",
+          role: "publisher",
         });
         await client.join(data.appId, channelName, data.token, numericUid);
+
+        // Try publishing local mic; if denied, still stay connected for receive-only.
+        try {
+          const mic = await AgoraRTC.createMicrophoneAudioTrack();
+          liveVoiceLocalTrackRef.current = mic;
+          await client.publish([mic]);
+        } catch (micErr) {
+          console.warn(
+            "Live voice mic publish failed (receive-only mode):",
+            micErr,
+          );
+          liveVoiceLocalTrackRef.current = null;
+        }
+
+        await subscribeLiveVoiceRemoteAudio(client);
+
         setIsLiveVoiceActive(true);
         setLiveVoiceDuration(0);
         setIsLiveVoiceModalOpen(true);
-        // Start duration timer
         if (liveVoiceDurationTimerRef.current) {
           clearInterval(liveVoiceDurationTimerRef.current);
         }
         liveVoiceDurationTimerRef.current = setInterval(() => {
           setLiveVoiceDuration((prev) => prev + 1);
         }, 1000);
-        client.on("user-published", async (user, mediaType) => {
-          if (mediaType === "audio") {
-            await client.subscribe(user, "audio");
-            user.audioTrack?.play();
-          }
-        });
-        // Also subscribe existing remote users if already in channel
-        for (const user of client.remoteUsers) {
-          if (user.hasAudio) {
-            await client.subscribe(user, "audio");
-            user.audioTrack?.play();
-          }
-        }
       } catch (e) {
-        console.error("Live voice subscribe failed:", e);
-        setIsLiveVoiceActive(false);
-        setIsLiveVoiceModalOpen(false);
+        console.error("Live voice connect failed:", e);
+        await stopLiveVoiceSession(false);
       }
     };
 
-    socket.on("live-voice-start", onLiveVoiceStart);
-
-    const onLiveVoiceStop = async () => {
-      await ensureLeaveLiveVoice();
-      setIsLiveVoiceActive(false);
-      setIsLiveVoiceModalOpen(false);
-      setLiveVoiceDuration(0);
-      if (liveVoiceDurationTimerRef.current) {
-        clearInterval(liveVoiceDurationTimerRef.current);
-        liveVoiceDurationTimerRef.current = null;
+    const onLiveVoiceStop = async ({ from, channelName }) => {
+      if (friendId && from && String(from) !== String(friendId)) return;
+      if (
+        channelName &&
+        liveVoiceChannelRef.current &&
+        String(channelName) !== String(liveVoiceChannelRef.current)
+      ) {
+        return;
       }
+      await stopLiveVoiceSession(false);
     };
-    socket.on("live-voice-stop", onLiveVoiceStop);
-
-    // Listen for local request to leave subscriber (when user wants to start publishing)
-    const onLiveVoiceLeaveSubscriber = async ({ channelName }) => {
-      // Only leave if we're currently receiving on this channel
-      if (liveVoiceClientRef.current && isLiveVoiceActive) {
-        await ensureLeaveLiveVoice();
-        setIsLiveVoiceActive(false);
-        setIsLiveVoiceModalOpen(false);
-        setLiveVoiceDuration(0);
-        if (liveVoiceDurationTimerRef.current) {
-          clearInterval(liveVoiceDurationTimerRef.current);
-          liveVoiceDurationTimerRef.current = null;
-        }
-      }
-    };
-    socket.on("live-voice-leave-subscriber", onLiveVoiceLeaveSubscriber);
 
     const onApplyVideoFilter = ({ filter }) => {
       if (filter !== "") {
@@ -893,23 +938,27 @@ const ChatHeader = ({
         setFilterFriendVideo("");
       }
     };
-    // apply-video-filter may still be used if peer emits via other paths
+
+    socket.on("live-voice-start", onLiveVoiceStart);
+    socket.on("live-voice-stop", onLiveVoiceStop);
     socket.on("apply-video-filter", onApplyVideoFilter);
 
     return () => {
       socket.off("apply-video-filter", onApplyVideoFilter);
       socket.off("live-voice-start", onLiveVoiceStart);
       socket.off("live-voice-stop", onLiveVoiceStop);
-      socket.off("live-voice-leave-subscriber", onLiveVoiceLeaveSubscriber);
       socket.off("updated-call-status", handleUpdatedCallStatus);
-      // Cleanup live voice duration timer
-      if (liveVoiceDurationTimerRef.current) {
-        clearInterval(liveVoiceDurationTimerRef.current);
-        liveVoiceDurationTimerRef.current = null;
-      }
-      ensureLeaveLiveVoice();
+      stopLiveVoiceSession(false);
     };
-  }, [isVideoCalling, callAccepted, friendId, numericUid, isLiveVoiceActive]);
+  }, [
+    isVideoCalling,
+    callAccepted,
+    friendId,
+    numericUid,
+    ensureLeaveLiveVoice,
+    stopLiveVoiceSession,
+    subscribeLiveVoiceRemoteAudio,
+  ]);
 
   // Notify caller when user focuses the tab during an incoming ringing call
   const notifyFocusDuringIncomingCall = useCallback(() => {
@@ -3239,7 +3288,13 @@ const ChatHeader = ({
 
         <LiveVoiceModal
           isOpen={isLiveVoiceModalOpen}
-          onClose={() => setIsLiveVoiceModalOpen(false)}
+          onClose={() => {
+            if (isLiveVoiceActive) {
+              stopLiveVoiceSession(true);
+            } else {
+              setIsLiveVoiceModalOpen(false);
+            }
+          }}
           isActive={isLiveVoiceActive}
           duration={liveVoiceDuration}
           isConnecting={false}
@@ -3249,6 +3304,7 @@ const ChatHeader = ({
             friendProfile?.user?.firstName ||
             "Friend"
           }
+          onStop={() => stopLiveVoiceSession(true)}
         />
       </div>
     </>

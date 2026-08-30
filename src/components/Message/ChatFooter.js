@@ -325,81 +325,117 @@ const ChatFooter = ({
     // Handle image change
   };
 
-  // Live voice (push-to-talk) via Agora
+  // Live voice (full-duplex) via Agora
   const liveVoiceClientRef = useRef(null);
   const liveVoiceLocalTrackRef = useRef(null);
+  const liveVoiceChannelRef = useRef(null);
   const isLiveVoiceActiveRef = useRef(false);
 
-  const getAgoraToken = useCallback(async (channelName, uid) => {
-    try {
-      const { data } = await api.post("/agora/token", {
-        channelName,
-        uid,
-        role: "publisher",
-      });
-      if (!data || !data.appId || !data.token) {
-        throw new Error("Invalid token response from server");
+  const getAgoraToken = useCallback(
+    async (channelName, uid, role = "publisher") => {
+      try {
+        const { data } = await api.post("/agora/token", {
+          channelName,
+          uid,
+          role,
+        });
+        if (!data || !data.appId || !data.token) {
+          throw new Error("Invalid token response from server");
+        }
+        return data; // { appId, token }
+      } catch (error) {
+        console.error("Failed to get Agora token:", error);
+        throw error;
       }
-      return data; // { appId, token }
-    } catch (error) {
-      console.error("Failed to get Agora token:", error);
-      throw error;
+    },
+    [],
+  );
+
+  const subscribeToRemoteAudio = useCallback(async (client) => {
+    if (!client) return;
+
+    client.on("user-published", async (user, mediaType) => {
+      if (mediaType !== "audio") return;
+      try {
+        await client.subscribe(user, "audio");
+        user.audioTrack?.play();
+      } catch (e) {
+        console.warn("Live voice subscribe error:", e);
+      }
+    });
+
+    for (const user of client.remoteUsers || []) {
+      if (!user?.hasAudio) continue;
+      try {
+        await client.subscribe(user, "audio");
+        user.audioTrack?.play();
+      } catch (e) {
+        console.warn("Live voice subscribe existing user error:", e);
+      }
     }
   }, []);
+
+  const ensureLeaveLiveVoice = useCallback(async () => {
+    try {
+      if (liveVoiceClientRef.current && liveVoiceLocalTrackRef.current) {
+        await liveVoiceClientRef.current.unpublish([
+          liveVoiceLocalTrackRef.current,
+        ]);
+      }
+    } catch (_e) {}
+
+    try {
+      liveVoiceLocalTrackRef.current?.close();
+    } catch (_e) {}
+    liveVoiceLocalTrackRef.current = null;
+
+    try {
+      await liveVoiceClientRef.current?.leave();
+      liveVoiceClientRef.current?.removeAllListeners();
+    } catch (_e) {}
+    liveVoiceClientRef.current = null;
+    liveVoiceChannelRef.current = null;
+  }, []);
+
+  const stopLiveVoiceSession = useCallback(
+    async (notifyPeer = true) => {
+      const channelName =
+        liveVoiceChannelRef.current ||
+        room ||
+        [userId, friendId].sort().join("_");
+
+      if (notifyPeer && friendId && channelName) {
+        socket.emit("live-voice-stop", { to: String(friendId), channelName });
+      }
+
+      await ensureLeaveLiveVoice();
+      isLiveVoiceActiveRef.current = false;
+      setIsLiveVoiceActive(false);
+      setIsLiveVoiceModalOpen(false);
+      setLiveVoiceDuration(0);
+      if (liveVoiceDurationTimerRef.current) {
+        clearInterval(liveVoiceDurationTimerRef.current);
+        liveVoiceDurationTimerRef.current = null;
+      }
+      setIsLiveVoiceConnecting(false);
+    },
+    [ensureLeaveLiveVoice, room, userId, friendId],
+  );
 
   const handleLiveVoiceButtonClick = async () => {
     try {
       if (isLiveVoiceActiveRef.current) {
-        // Stop live voice
-        try {
-          if (liveVoiceClientRef.current && liveVoiceLocalTrackRef.current) {
-            await liveVoiceClientRef.current.unpublish([
-              liveVoiceLocalTrackRef.current,
-            ]);
-          }
-        } catch (e) {
-          // Ignore unpublish errors
-        }
-        try {
-          liveVoiceLocalTrackRef.current?.close();
-        } catch (e) {
-          // Ignore close errors
-        }
-        liveVoiceLocalTrackRef.current = null;
-        try {
-          await liveVoiceClientRef.current?.leave();
-          liveVoiceClientRef.current?.removeAllListeners();
-        } catch (e) {
-          // Ignore leave/listener errors
-        }
-        liveVoiceClientRef.current = null;
-        isLiveVoiceActiveRef.current = false;
-        setIsLiveVoiceActive(false);
-        setIsLiveVoiceModalOpen(false);
-        setLiveVoiceDuration(0);
-        if (liveVoiceDurationTimerRef.current) {
-          clearInterval(liveVoiceDurationTimerRef.current);
-          liveVoiceDurationTimerRef.current = null;
-        }
-        // Live voice stop - HTTP-based notification could be implemented here
-        // For now, we'll just stop the local voice session
-        console.log("Stopping live voice session");
+        await stopLiveVoiceSession(true);
         return;
       }
 
-      // Start live voice
       setIsLiveVoiceConnecting(true);
       const channelName = room || [userId, friendId].sort().join("_");
+      if (!channelName || !friendId || !userId) {
+        setIsLiveVoiceConnecting(false);
+        return;
+      }
 
-      // Live voice start - HTTP-based notification could be implemented here
-      // For now, we'll just start the local voice session
-      console.log("Starting live voice session for channel:", channelName);
-
-      // Small delay to ensure subscriber connection is closed
-      await new Promise((resolve) => setTimeout(resolve, 300));
-
-      // Generate consistent UID from userId hash
-      // Add 1 to publisher UID to avoid conflict with subscriber UID in ChatHeader
       const generateUid = (str) => {
         let hash = 0;
         for (let i = 0; i < str.length; i++) {
@@ -408,73 +444,65 @@ const ChatFooter = ({
         }
         return Math.abs(hash);
       };
-      const baseUid = generateUid(userId);
-      // Use baseUid + 1 for publisher to avoid conflict with subscriber (baseUid) in ChatHeader
-      const uid = baseUid + 1;
-      const { appId, token } = await getAgoraToken(channelName, uid);
+      const uid = generateUid(userId) + 1;
+      const { appId, token } = await getAgoraToken(
+        channelName,
+        uid,
+        "publisher",
+      );
 
-      // Dispose previous if any
-      if (liveVoiceClientRef.current) {
-        try {
-          await liveVoiceClientRef.current.leave();
-        } catch (e) {
-          /* Ignore leave errors */
-        }
-        try {
-          liveVoiceClientRef.current.removeAllListeners();
-        } catch (e) {
-          /* Ignore listener removal errors */
-        }
-        liveVoiceClientRef.current = null;
-      }
+      await ensureLeaveLiveVoice();
 
       const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
       liveVoiceClientRef.current = client;
+      liveVoiceChannelRef.current = channelName;
+
       await client.join(appId, channelName, token, uid);
       const mic = await AgoraRTC.createMicrophoneAudioTrack();
       liveVoiceLocalTrackRef.current = mic;
       await client.publish([mic]);
+      await subscribeToRemoteAudio(client);
+
       isLiveVoiceActiveRef.current = true;
       setIsLiveVoiceActive(true);
       setLiveVoiceDuration(0);
       setIsLiveVoiceModalOpen(true);
-      // Start duration timer
+
+      socket.emit("live-voice-start", { to: String(friendId), channelName });
+
       if (liveVoiceDurationTimerRef.current) {
         clearInterval(liveVoiceDurationTimerRef.current);
       }
       liveVoiceDurationTimerRef.current = setInterval(() => {
         setLiveVoiceDuration((prev) => prev + 1);
       }, 1000);
-      // Live voice started - HTTP-based notification could be implemented here
-      console.log("Live voice session started");
     } catch (err) {
       console.error("Live voice error:", err);
-      setIsLiveVoiceActive(false);
-      isLiveVoiceActiveRef.current = false;
-      setIsLiveVoiceModalOpen(false);
-      setLiveVoiceDuration(0);
-      if (liveVoiceDurationTimerRef.current) {
-        clearInterval(liveVoiceDurationTimerRef.current);
-        liveVoiceDurationTimerRef.current = null;
-      }
-      // Cleanup on error
-      try {
-        if (liveVoiceClientRef.current) {
-          await liveVoiceClientRef.current.leave().catch((e) => {});
-          liveVoiceClientRef.current.removeAllListeners();
-          liveVoiceClientRef.current = null;
-        }
-        if (liveVoiceLocalTrackRef.current) {
-          liveVoiceLocalTrackRef.current.close();
-          liveVoiceLocalTrackRef.current = null;
-        }
-      } catch (cleanupErr) {
-        console.error("Error during cleanup:", cleanupErr);
-      }
+      await stopLiveVoiceSession(false);
     } finally {
       setIsLiveVoiceConnecting(false);
     }
   };
+
+  useEffect(() => {
+    const handlePeerLiveVoiceStop = async ({ from, channelName }) => {
+      if (String(from) !== String(friendId)) return;
+      if (
+        liveVoiceChannelRef.current &&
+        channelName &&
+        String(channelName) !== String(liveVoiceChannelRef.current)
+      ) {
+        return;
+      }
+      if (!isLiveVoiceActiveRef.current) return;
+      await stopLiveVoiceSession(false);
+    };
+
+    socket.on("live-voice-stop", handlePeerLiveVoiceStop);
+    return () => {
+      socket.off("live-voice-stop", handlePeerLiveVoiceStop);
+    };
+  }, [friendId, stopLiveVoiceSession]);
 
   // ---------------- Voice Message (MediaRecorder) -----------------
   const pickSupportedMimeType = () => {
@@ -698,34 +726,10 @@ const ChatFooter = ({
       stopWaveform();
       if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
 
-      // Cleanup live voice duration timer
-      if (liveVoiceDurationTimerRef.current) {
-        clearInterval(liveVoiceDurationTimerRef.current);
-        liveVoiceDurationTimerRef.current = null;
-      }
-
       // Cleanup live voice
-      if (isLiveVoiceActiveRef.current) {
-        try {
-          if (liveVoiceClientRef.current && liveVoiceLocalTrackRef.current) {
-            liveVoiceClientRef.current
-              .unpublish([liveVoiceLocalTrackRef.current])
-              .catch((e) => {});
-          }
-        } catch (e) {}
-        try {
-          liveVoiceLocalTrackRef.current?.close();
-        } catch (e) {}
-        try {
-          liveVoiceClientRef.current?.leave().catch((e) => {});
-          liveVoiceClientRef.current?.removeAllListeners();
-        } catch (e) {}
-        liveVoiceLocalTrackRef.current = null;
-        liveVoiceClientRef.current = null;
-        isLiveVoiceActiveRef.current = false;
-      }
+      stopLiveVoiceSession(false);
     };
-  }, [removeTyping]);
+  }, [removeTyping, stopLiveVoiceSession]);
 
   const handleEmojiBtnClick = useCallback(() => {
     setIsEmojiContainer(true);
@@ -1331,7 +1335,13 @@ const ChatFooter = ({
       <div className="chat-footer-portals" aria-hidden={!isLiveVoiceModalOpen}>
         <LiveVoiceModal
           isOpen={isLiveVoiceModalOpen}
-          onClose={() => setIsLiveVoiceModalOpen(false)}
+          onClose={() => {
+            if (isLiveVoiceActiveRef.current) {
+              handleLiveVoiceButtonClick();
+            } else {
+              setIsLiveVoiceModalOpen(false);
+            }
+          }}
           isActive={isLiveVoiceActive}
           duration={liveVoiceDuration}
           isConnecting={isLiveVoiceConnecting}
