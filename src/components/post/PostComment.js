@@ -1,302 +1,402 @@
-import React, { useState, Fragment, useEffect, useRef, useCallback } from 'react';
-import $ from 'jquery'
-import UserPP from '../UserPP';
-import api from '../../api/api';
-import SingleComment from './SingleComment';
-import { Link, useLocation } from 'react-router-dom';
-import CommentSkeleton from '../loading/CommentSkeleton';
-import LoadingSpinner, { TypingIndicator } from '../loading/LoadingSpinner';
-import './CommentStyles.css';
-import config from '../../config/config.json';
+import React, {
+  useState,
+  Fragment,
+  useEffect,
+  useRef,
+  useCallback,
+} from "react";
+import $ from "jquery";
+import UserPP from "../UserPP";
+import api from "../../api/api";
+import SingleComment from "./SingleComment";
+import { Link, useLocation } from "react-router-dom";
+import CommentSkeleton from "../loading/CommentSkeleton";
+import LoadingSpinner, { TypingIndicator } from "../loading/LoadingSpinner";
+import "./CommentStyles.css";
+import config from "../../config/config.json";
 
 const loadingUrl = config?.loadingUrl;
 
 const PostComment = ({
-    post,
-    authProfilePicture,
-    authProfile,
-    myProfile,
-    setAllComments: setAllCommentsProp,
-    allComments: allCommentsProp,
-    commentState,
-    isEditMode,
+  post,
+  authProfilePicture,
+  authProfile,
+  myProfile,
+  setAllComments: setAllCommentsProp,
+  allComments: allCommentsProp,
+  commentState,
+  isEditMode,
+  initialVisibleCount = null,
 }) => {
-    const location = useLocation();
-    const postId = post?._id ? String(post._id) : '';
-    const [isSingle, setIsSingle] = useState(
-        Boolean(postId) && location.pathname.includes(`/post/${postId}`)
-    );
-    const [isLoadingInitial, setIsLoadingInitial] = useState(false);
-    const [isLoadingMoreComments] = useState(false);
+  const location = useLocation();
+  const postId = post?._id ? String(post._id) : "";
+  const [isSingle, setIsSingle] = useState(
+    Boolean(postId) && location.pathname.includes(`/post/${postId}`),
+  );
+  const [isLoadingInitial, setIsLoadingInitial] = useState(false);
+  const [isLoadingMoreComments, setIsLoadingMoreComments] = useState(false);
 
-    // Always keep a local list so posting never depends on a parent setter existing.
-    const [comments, setComments] = useState(() => {
-        if (Array.isArray(allCommentsProp)) return allCommentsProp;
-        if (Array.isArray(post?.comments)) return post.comments;
-        return [];
+  const parsedInitialVisibleCount =
+    Number.isFinite(initialVisibleCount) && initialVisibleCount > 0
+      ? initialVisibleCount
+      : null;
+
+  // Always keep a local list so posting never depends on a parent setter existing.
+  const [comments, setComments] = useState(() => {
+    if (Array.isArray(allCommentsProp)) return allCommentsProp;
+    if (Array.isArray(post?.comments)) return post.comments;
+    return [];
+  });
+
+  const originalCommentsCount = useRef(
+    post?.comments?.length ||
+      (Array.isArray(allCommentsProp) ? allCommentsProp.length : 0) ||
+      0,
+  );
+  const [visibleCommentsCount, setVisibleCommentsCount] = useState(() =>
+    isSingle && parsedInitialVisibleCount
+      ? parsedInitialVisibleCount
+      : Number.POSITIVE_INFINITY,
+  );
+
+  const [uploadedImageUrl, setUploadedImageUrl] = useState(null);
+  const [commentData, setCommentData] = useState({
+    body: "",
+    attachment: null,
+  });
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+
+  const syncParentComments = useCallback(
+    (next) => {
+      if (typeof setAllCommentsProp === "function") {
+        setAllCommentsProp(next);
+      }
+    },
+    [setAllCommentsProp],
+  );
+
+  const commitComments = useCallback(
+    (updater) => {
+      setComments((prev) => {
+        const current = Array.isArray(prev) ? prev : [];
+        const next = typeof updater === "function" ? updater(current) : updater;
+        const safeNext = Array.isArray(next) ? next : current;
+        syncParentComments(safeNext);
+        return safeNext;
+      });
+    },
+    [syncParentComments],
+  );
+
+  useEffect(() => {
+    setIsSingle(
+      Boolean(postId) && location.pathname.includes(`/post/${postId}`),
+    );
+  }, [location.pathname, postId]);
+
+  useEffect(() => {
+    if (isSingle && parsedInitialVisibleCount) {
+      setVisibleCommentsCount(parsedInitialVisibleCount);
+      return;
+    }
+
+    setVisibleCommentsCount(Number.POSITIVE_INFINITY);
+  }, [postId, isSingle, parsedInitialVisibleCount]);
+
+  useEffect(() => {
+    originalCommentsCount.current = post?.comments?.length || 0;
+  }, [postId, post?.comments?.length]);
+
+  const prevPostIdRef = useRef(postId);
+
+  const resolveIncomingComments = useCallback(() => {
+    if (Array.isArray(allCommentsProp)) return allCommentsProp;
+    if (Array.isArray(post?.comments)) return post.comments;
+    return [];
+  }, [allCommentsProp, post?.comments]);
+
+  // Reset when switching posts; also sync when parent data arrives after first paint.
+  useEffect(() => {
+    const incoming = resolveIncomingComments();
+    const postChanged = prevPostIdRef.current !== postId;
+    prevPostIdRef.current = postId;
+
+    setComments((prev) => {
+      if (postChanged) return incoming;
+      if (prev.length === 0) return incoming;
+      if (incoming.length >= prev.length) return incoming;
+      return prev;
     });
+    originalCommentsCount.current =
+      post?.comments?.length || incoming.length || 0;
+  }, [postId, resolveIncomingComments, post?.comments?.length]);
 
-    const originalCommentsCount = useRef(
-        post?.comments?.length || (Array.isArray(allCommentsProp) ? allCommentsProp.length : 0) || 0
-    );
-    const [uploadedImageUrl, setUploadedImageUrl] = useState(null);
-    const [commentData, setCommentData] = useState({ body: '', attachment: null });
-    const [isSubmittingComment, setIsSubmittingComment] = useState(false);
-    const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  useEffect(() => {
+    if ((comments?.length || 0) === 0 && (post?.comments?.length || 0) > 0) {
+      setIsLoadingInitial(true);
+      const t = setTimeout(() => setIsLoadingInitial(false), 400);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [comments?.length, post?.comments?.length]);
 
-    const syncParentComments = useCallback((next) => {
-        if (typeof setAllCommentsProp === 'function') {
-            setAllCommentsProp(next);
-        }
-    }, [setAllCommentsProp]);
+  const handleAttachChange = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingAttachment(true);
+    setCommentData((state) => ({ ...state, attachment: loadingUrl }));
+    try {
+      const imageFormData = new FormData();
+      imageFormData.append("image", file);
+      const uploadImageRes = await api.post("/upload/", imageFormData, {
+        headers: { "content-type": "multipart/form-data" },
+      });
+      if (uploadImageRes?.data?.secure_url) {
+        const uploadImgUrl = uploadImageRes.data.secure_url;
+        setUploadedImageUrl(uploadImgUrl);
+        setCommentData((state) => ({ ...state, attachment: uploadImgUrl }));
+      }
+    } catch (error) {
+      console.log("Error uploading attachment:", error);
+      setCommentData((state) => ({ ...state, attachment: null }));
+    } finally {
+      setIsUploadingAttachment(false);
+      e.target.value = "";
+    }
+  }, []);
 
-    const commitComments = useCallback((updater) => {
-        setComments((prev) => {
-            const current = Array.isArray(prev) ? prev : [];
-            const next = typeof updater === 'function' ? updater(current) : updater;
-            const safeNext = Array.isArray(next) ? next : current;
-            syncParentComments(safeNext);
-            return safeNext;
+  const submitComment = useCallback(async () => {
+    if (isSubmittingComment) return;
+    const body = (commentData.body || "").trim();
+    if (!body && !uploadedImageUrl) return;
+    if (!postId) return;
+
+    setIsSubmittingComment(true);
+    try {
+      const res = await api.post("/comment/addComment", {
+        body: body || "",
+        attachment: uploadedImageUrl,
+        post: postId,
+      });
+
+      if (res.status === 200) {
+        const data = res.data || {};
+        if (!data.author) data.author = myProfile;
+        if (!data.reacts) data.reacts = [];
+        if (!data.replies) data.replies = [];
+
+        commitComments((state) => {
+          const list = Array.isArray(state) ? state : [];
+          const exists = list.some((c) => c?._id === data._id);
+          if (exists) {
+            return list.map((c) => (c?._id === data._id ? data : c));
+          }
+          return [...list, data];
         });
-    }, [syncParentComments]);
 
-    useEffect(() => {
-        setIsSingle(Boolean(postId) && location.pathname.includes(`/post/${postId}`));
-    }, [location.pathname, postId]);
-
-    useEffect(() => {
-        originalCommentsCount.current = post?.comments?.length || 0;
-    }, [postId, post?.comments?.length]);
-
-    const prevPostIdRef = useRef(postId);
-
-    const resolveIncomingComments = useCallback(() => {
-        if (Array.isArray(allCommentsProp)) return allCommentsProp;
-        if (Array.isArray(post?.comments)) return post.comments;
-        return [];
-    }, [allCommentsProp, post?.comments]);
-
-    // Reset when switching posts; also sync when parent data arrives after first paint.
-    useEffect(() => {
-        const incoming = resolveIncomingComments();
-        const postChanged = prevPostIdRef.current !== postId;
-        prevPostIdRef.current = postId;
-
-        setComments((prev) => {
-            if (postChanged) return incoming;
-            if (prev.length === 0) return incoming;
-            if (incoming.length >= prev.length) return incoming;
-            return prev;
-        });
-        originalCommentsCount.current = post?.comments?.length || incoming.length || 0;
-    }, [postId, resolveIncomingComments, post?.comments?.length]);
-
-    useEffect(() => {
-        if ((comments?.length || 0) === 0 && (post?.comments?.length || 0) > 0) {
-            setIsLoadingInitial(true);
-            const t = setTimeout(() => setIsLoadingInitial(false), 400);
-            return () => clearTimeout(t);
+        setCommentData({ body: "", attachment: null });
+        setUploadedImageUrl(null);
+        if (typeof commentState === "function") {
+          commentState((state) => (typeof state === "number" ? state + 1 : 1));
         }
-        return undefined;
-    }, [comments?.length, post?.comments?.length]);
+      }
+    } catch (error) {
+      console.log(error);
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  }, [
+    isSubmittingComment,
+    commentData.body,
+    uploadedImageUrl,
+    postId,
+    myProfile,
+    commitComments,
+    commentState,
+  ]);
 
-    const handleAttachChange = useCallback(async (e) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        setIsUploadingAttachment(true);
-        setCommentData((state) => ({ ...state, attachment: loadingUrl }));
-        try {
-            const imageFormData = new FormData();
-            imageFormData.append('image', file);
-            const uploadImageRes = await api.post('/upload/', imageFormData, {
-                headers: { 'content-type': 'multipart/form-data' },
-            });
-            if (uploadImageRes?.data?.secure_url) {
-                const uploadImgUrl = uploadImageRes.data.secure_url;
-                setUploadedImageUrl(uploadImgUrl);
-                setCommentData((state) => ({ ...state, attachment: uploadImgUrl }));
-            }
-        } catch (error) {
-            console.log('Error uploading attachment:', error);
-            setCommentData((state) => ({ ...state, attachment: null }));
-        } finally {
-            setIsUploadingAttachment(false);
-            e.target.value = '';
-        }
-    }, []);
+  const handleCommentKeyUp = useCallback(
+    async (e) => {
+      if (e.key === "Enter" || e.keyCode === 13) {
+        e.preventDefault();
+        await submitComment();
+      }
+    },
+    [submitComment],
+  );
 
-    const submitComment = useCallback(async () => {
-        if (isSubmittingComment) return;
-        const body = (commentData.body || '').trim();
-        if (!body && !uploadedImageUrl) return;
-        if (!postId) return;
+  const clickCommentAttachBtn = useCallback((e) => {
+    $(e.currentTarget).children("input").trigger("click");
+  }, []);
 
-        setIsSubmittingComment(true);
-        try {
-            const res = await api.post('/comment/addComment', {
-                body: body || '',
-                attachment: uploadedImageUrl,
-                post: postId,
-            });
+  const commentsList = Array.isArray(comments) ? comments.filter(Boolean) : [];
 
-            if (res.status === 200) {
-                const data = res.data || {};
-                if (!data.author) data.author = myProfile;
-                if (!data.reacts) data.reacts = [];
-                if (!data.replies) data.replies = [];
+  const commentsToRender = (() => {
+    if (isSingle && parsedInitialVisibleCount) {
+      return commentsList.slice(0, visibleCommentsCount);
+    }
 
-                commitComments((state) => {
-                    const list = Array.isArray(state) ? state : [];
-                    const exists = list.some((c) => c?._id === data._id);
-                    if (exists) {
-                        return list.map((c) => (c?._id === data._id ? data : c));
-                    }
-                    return [...list, data];
-                });
+    if (isSingle) return commentsList;
 
-                setCommentData({ body: '', attachment: null });
-                setUploadedImageUrl(null);
-                if (typeof commentState === 'function') {
-                    commentState((state) => (typeof state === 'number' ? state + 1 : 1));
-                }
-            }
-        } catch (error) {
-            console.log(error);
-        } finally {
-            setIsSubmittingComment(false);
-        }
-    }, [
-        isSubmittingComment,
-        commentData.body,
-        uploadedImageUrl,
-        postId,
-        myProfile,
-        commitComments,
-        commentState,
-    ]);
+    const previous3 = commentsList
+      .slice(0, originalCommentsCount.current)
+      .slice(-3);
+    const newer = commentsList.slice(originalCommentsCount.current);
+    return [...previous3, ...newer];
+  })();
 
-    const handleCommentKeyUp = useCallback(async (e) => {
-        if (e.key === 'Enter' || e.keyCode === 13) {
-            e.preventDefault();
-            await submitComment();
-        }
-    }, [submitComment]);
+  const canLoadMoreComments =
+    isSingle &&
+    Boolean(parsedInitialVisibleCount) &&
+    commentsList.length > commentsToRender.length;
 
-    const clickCommentAttachBtn = useCallback((e) => {
-        $(e.currentTarget).children('input').trigger('click');
-    }, []);
+  const handleLoadMoreComments = useCallback(() => {
+    if (!canLoadMoreComments || isLoadingMoreComments) return;
 
-    const commentsList = Array.isArray(comments) ? comments.filter(Boolean) : [];
+    setIsLoadingMoreComments(true);
+    setTimeout(() => {
+      setVisibleCommentsCount((prev) => prev + parsedInitialVisibleCount);
+      setIsLoadingMoreComments(false);
+    }, 350);
+  }, [canLoadMoreComments, isLoadingMoreComments, parsedInitialVisibleCount]);
 
-    const commentsToRender = (() => {
-        if (isSingle) return commentsList;
-        const previous3 = commentsList.slice(0, originalCommentsCount.current).slice(-3);
-        const newer = commentsList.slice(originalCommentsCount.current);
-        return [...previous3, ...newer];
-    })();
+  return (
+    <Fragment>
+      <div className="comments">
+        {isLoadingInitial && <CommentSkeleton count={isSingle ? 3 : 2} />}
 
-    return (
-        <Fragment>
-            <div className="comments">
-                {isLoadingInitial && <CommentSkeleton count={isSingle ? 3 : 2} />}
+        {!isLoadingInitial &&
+          commentsToRender.map(
+            (comment) =>
+              comment && (
+                <SingleComment
+                  isEditMode={isEditMode}
+                  comment={comment}
+                  postData={post}
+                  key={comment._id || comment.createdAt}
+                  myProfile={myProfile}
+                />
+              ),
+          )}
 
-                {!isLoadingInitial && commentsToRender.map((comment) => (
-                    comment && (
-                        <SingleComment
-                            isEditMode={isEditMode}
-                            comment={comment}
-                            postData={post}
-                            key={comment._id || comment.createdAt}
-                            myProfile={myProfile}
-                        />
-                    )
-                ))}
+        {!isLoadingInitial && commentsToRender.length === 0 && (
+          <div className="no-comments-yet">No comments yet</div>
+        )}
 
-                {isLoadingMoreComments && (
-                    <div className="loading-more-comments">
-                        <LoadingSpinner size="small" inline={true} text="Loading more comments..." />
-                    </div>
-                )}
+        {isLoadingMoreComments && isSingle && (
+          <div className="sp-comment-skeleton-wrap" aria-hidden="true">
+            {Array.from({ length: 3 }).map((_, idx) => (
+              <div
+                className="sp-comment-skeleton"
+                key={`comment-skeleton-${idx}`}
+              >
+                <span className="sp-comment-skeleton-avatar" />
+                <span className="sp-comment-skeleton-line" />
+              </div>
+            ))}
+          </div>
+        )}
 
-                {!isLoadingInitial && originalCommentsCount.current > 3 && !isSingle && (
-                    <div className="more-comment-button">
-                        <Link to={`/post/${postId}`}>View more comments</Link>
-                    </div>
-                )}
+        {!isLoadingInitial &&
+          originalCommentsCount.current > 3 &&
+          !isSingle && (
+            <div className="more-comment-button">
+              <Link to={`/post/${postId}`}>View more comments</Link>
             </div>
+          )}
 
-            <div className="new-comment">
-                <div className="user-pp">
-                    <UserPP profilePic={authProfilePicture} profile={authProfile} />
-                </div>
-                <div className={`comment-field ${isSubmittingComment || isUploadingAttachment ? 'loading-input' : ''}`}>
-                    <input
-                        onKeyDown={handleCommentKeyUp}
-                        onChange={(e) => setCommentData((s) => ({ ...s, body: e.target.value }))}
-                        className="field-comment-text"
-                        type="text"
-                        value={commentData.body || ''}
-                        placeholder={
-                            isSubmittingComment
-                                ? 'Posting comment...'
-                                : isUploadingAttachment
-                                    ? 'Uploading image...'
-                                    : 'Write a public comment…'
-                        }
-                        disabled={isSubmittingComment || isUploadingAttachment}
-                    />
+        {isSingle && canLoadMoreComments && !isLoadingMoreComments && (
+          <div className="sp-load-more-wrap">
+            <button
+              type="button"
+              className="sp-load-more-btn"
+              onClick={handleLoadMoreComments}
+            >
+              Load more comments
+            </button>
+          </div>
+        )}
+      </div>
 
-                    {!isSubmittingComment && (
-                        <div
-                            onClick={isUploadingAttachment ? null : clickCommentAttachBtn}
-                            className={`comment-attachment ${isUploadingAttachment ? 'loading-button' : ''}`}
-                            style={{ cursor: isUploadingAttachment ? 'not-allowed' : 'pointer' }}
-                            title={isUploadingAttachment ? 'Uploading...' : 'Add photo'}
-                            role="button"
-                            tabIndex={isUploadingAttachment ? -1 : 0}
-                        >
-                            <input
-                                onChange={handleAttachChange}
-                                className="attachment"
-                                type="file"
-                                accept="image/*"
-                                disabled={isUploadingAttachment}
-                            />
-                            <span className="icon">
-                                {isUploadingAttachment ? (
-                                    <LoadingSpinner size="small" variant="primary" />
-                                ) : (
-                                    <i className="far fa-camera"></i>
-                                )}
-                            </span>
-                        </div>
-                    )}
-                    {isSubmittingComment && (
-                        <div className="comment-loading-overlay" style={{ right: 10 }}>
-                            <TypingIndicator text="Posting..." />
-                        </div>
-                    )}
-                </div>
+      <div className="new-comment">
+        <div className="user-pp">
+          <UserPP profilePic={authProfilePicture} profile={authProfile} />
+        </div>
+        <div
+          className={`comment-field ${isSubmittingComment || isUploadingAttachment ? "loading-input" : ""}`}
+        >
+          <input
+            onKeyDown={handleCommentKeyUp}
+            onChange={(e) =>
+              setCommentData((s) => ({ ...s, body: e.target.value }))
+            }
+            className="field-comment-text"
+            type="text"
+            value={commentData.body || ""}
+            placeholder={
+              isSubmittingComment
+                ? "Posting comment..."
+                : isUploadingAttachment
+                  ? "Uploading image..."
+                  : "Write a public comment…"
+            }
+            disabled={isSubmittingComment || isUploadingAttachment}
+          />
+
+          {!isSubmittingComment && (
+            <div
+              onClick={isUploadingAttachment ? null : clickCommentAttachBtn}
+              className={`comment-attachment ${isUploadingAttachment ? "loading-button" : ""}`}
+              style={{
+                cursor: isUploadingAttachment ? "not-allowed" : "pointer",
+              }}
+              title={isUploadingAttachment ? "Uploading..." : "Add photo"}
+              role="button"
+              tabIndex={isUploadingAttachment ? -1 : 0}
+            >
+              <input
+                onChange={handleAttachChange}
+                className="attachment"
+                type="file"
+                accept="image/*"
+                disabled={isUploadingAttachment}
+              />
+              <span className="icon">
+                {isUploadingAttachment ? (
+                  <LoadingSpinner size="small" variant="primary" />
+                ) : (
+                  <i className="far fa-camera"></i>
+                )}
+              </span>
             </div>
+          )}
+          {isSubmittingComment && (
+            <div className="comment-loading-overlay" style={{ right: 10 }}>
+              <TypingIndicator text="Posting..." />
+            </div>
+          )}
+        </div>
+      </div>
 
-            {commentData.attachment && (
-                <div className="comment-attachment-preview">
-                    <img alt="comment attachment" src={commentData.attachment} />
-                    <button
-                        type="button"
-                        className="remove-attachment-btn"
-                        onClick={() => {
-                            setCommentData((s) => ({ ...s, attachment: null }));
-                            setUploadedImageUrl(null);
-                        }}
-                        aria-label="Remove attachment"
-                    >
-                        <i className="fas fa-times"></i>
-                    </button>
-                </div>
-            )}
-        </Fragment>
-    );
+      {commentData.attachment && (
+        <div className="comment-attachment-preview">
+          <img alt="comment attachment" src={commentData.attachment} />
+          <button
+            type="button"
+            className="remove-attachment-btn"
+            onClick={() => {
+              setCommentData((s) => ({ ...s, attachment: null }));
+              setUploadedImageUrl(null);
+            }}
+            aria-label="Remove attachment"
+          >
+            <i className="fas fa-times"></i>
+          </button>
+        </div>
+      )}
+    </Fragment>
+  );
 };
 
 export default React.memo(PostComment);

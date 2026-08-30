@@ -1849,6 +1849,24 @@ body {
 .nf-watch .body .watch-caption-editor .watch-caption-editor-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
+}
+
+.nf-watch .body .watch-caption-editor .watch-caption-editor-actions .btn-primary,
+#edit-watch-audience-modal .btn-primary {
+  background-color: #29B1A9;
+  border-color: #29B1A9;
+}
+
+.nf-watch .body .watch-caption-editor .watch-caption-editor-actions .btn-primary:hover,
+.nf-watch .body .watch-caption-editor .watch-caption-editor-actions .btn-primary:focus,
+.nf-watch .body .watch-caption-editor .watch-caption-editor-actions .btn-primary:active,
+#edit-watch-audience-modal .btn-primary:hover,
+#edit-watch-audience-modal .btn-primary:focus,
+#edit-watch-audience-modal .btn-primary:active {
+  background-color: #29B1A9;
+  border-color: #29B1A9;
+  box-shadow: 0 0 0 0.25rem rgba(41, 177, 169, 0.25);
 }
 .nf-watch .body .attachment img {
   width: 100%;
@@ -1941,10 +1959,10 @@ body {
   margin-right: 5px;
 }
 .nf-watch .footer .like-comment-share .buttons-container .button:hover {
-  background-color: #3B3C3C;
+  background-color: rgba(58, 196, 187, 0.2);
 }
 .nf-watch .footer .like-comment-share .buttons-container .button.reacted {
-  background-color: #3B3C3C;
+  background-color: rgba(58, 196, 187, 0.2);
 }
 .nf-watch .footer .like-comment-share .buttons-container .react-buttons {
   position: relative;

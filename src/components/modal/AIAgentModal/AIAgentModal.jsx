@@ -549,8 +549,19 @@ const AIAgentModal = ({ isOpen, onClose }) => {
                 className="ai-agent-sidebar-toggle"
                 onClick={toggleSidebar}
                 aria-label="Open quick actions"
+                type="button"
               >
-                <i className="fas fa-chevron-right" />
+                <span
+                  className="ai-agent-sidebar-toggle-icon-wrap"
+                  style={{ boxShadow: "inset 0 0 0 1px #7C3AED22" }}
+                >
+                  <i
+                    className="fas fa-robot"
+                    style={{ color: "#7C3AED" }}
+                    aria-hidden="true"
+                  />
+                </span>
+                <span className="ai-agent-sidebar-toggle-label">AI Agent</span>
               </button>
             )}
           </motion.div>

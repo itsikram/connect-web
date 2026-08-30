@@ -25,7 +25,10 @@ import {
   closeCallNotification,
 } from "../../utils/callNotification";
 import audioPreloader from "../../utils/audioPreloader";
-import { tryFocusCurrentTab } from "../../utils/incomingCallFromPush";
+
+const RINGTONE_DB_NAME = "connect-audio-cache";
+const RINGTONE_DB_VERSION = 1;
+const RINGTONE_STORE_NAME = "ringtones";
 
 const AudioCall = ({ myId }) => {
   const mySettings = useSelector((state) => state.setting);
@@ -61,6 +64,8 @@ const AudioCall = ({ myId }) => {
   const callEndBtn = useRef();
   const ringtoneAudio = useRef();
   const ringtoneBufferSource = useRef(null);
+  const ringtoneObjectUrlRef = useRef(null);
+  const ringtoneObjectUrlSourceRef = useRef("");
   const isTerminating = useRef(false);
   const isMountedRef = useRef(true);
   const receivingCallRef = useRef(receivingCall);
@@ -80,17 +85,189 @@ const AudioCall = ({ myId }) => {
   const isMobile = useIsMobile();
   const { minimizeCall, endMinimizedCall } = useCallMinimize();
 
+  const normalizeAudioSrc = (src) => {
+    try {
+      return new URL(src, window.location.href).href;
+    } catch (error) {
+      return src;
+    }
+  };
+
+  const openRingtoneDb = useCallback(
+    () =>
+      new Promise((resolve) => {
+        if (typeof window === "undefined" || !window.indexedDB) {
+          resolve(null);
+          return;
+        }
+
+        try {
+          const request = window.indexedDB.open(
+            RINGTONE_DB_NAME,
+            RINGTONE_DB_VERSION,
+          );
+
+          request.onupgradeneeded = () => {
+            const db = request.result;
+            if (!db.objectStoreNames.contains(RINGTONE_STORE_NAME)) {
+              db.createObjectStore(RINGTONE_STORE_NAME);
+            }
+          };
+
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => {
+            console.warn(
+              "AudioCall: Failed to open ringtone IndexedDB",
+              request.error,
+            );
+            resolve(null);
+          };
+        } catch (error) {
+          console.warn(
+            "AudioCall: IndexedDB unavailable for ringtone cache",
+            error,
+          );
+          resolve(null);
+        }
+      }),
+    [],
+  );
+
+  const getCachedRingtoneBlob = useCallback(
+    async (src) => {
+      const normalizedSrc = normalizeAudioSrc(src);
+      const db = await openRingtoneDb();
+      if (!db) return null;
+
+      return new Promise((resolve) => {
+        try {
+          const tx = db.transaction(RINGTONE_STORE_NAME, "readonly");
+          const store = tx.objectStore(RINGTONE_STORE_NAME);
+          const request = store.get(normalizedSrc);
+
+          request.onsuccess = () => resolve(request.result || null);
+          request.onerror = () => resolve(null);
+        } catch (error) {
+          resolve(null);
+        }
+      });
+    },
+    [openRingtoneDb],
+  );
+
+  const saveRingtoneBlob = useCallback(
+    async (src, blob) => {
+      const normalizedSrc = normalizeAudioSrc(src);
+      const db = await openRingtoneDb();
+      if (!db) return false;
+
+      return new Promise((resolve) => {
+        try {
+          const tx = db.transaction(RINGTONE_STORE_NAME, "readwrite");
+          const store = tx.objectStore(RINGTONE_STORE_NAME);
+          store.put(blob, normalizedSrc);
+
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => resolve(false);
+          tx.onabort = () => resolve(false);
+        } catch (error) {
+          resolve(false);
+        }
+      });
+    },
+    [openRingtoneDb],
+  );
+
+  const cacheRingtoneInIndexedDb = useCallback(
+    async (src) => {
+      if (!src) return false;
+
+      const normalizedSrc = normalizeAudioSrc(src);
+      const existing = await getCachedRingtoneBlob(normalizedSrc);
+      if (existing) return true;
+
+      try {
+        const response = await fetch(normalizedSrc, { cache: "force-cache" });
+        if (!response.ok) return false;
+        const blob = await response.blob();
+        if (!blob) return false;
+        return saveRingtoneBlob(normalizedSrc, blob);
+      } catch (error) {
+        console.warn("AudioCall: Failed to cache ringtone in IndexedDB", error);
+        return false;
+      }
+    },
+    [getCachedRingtoneBlob, saveRingtoneBlob],
+  );
+
+  const resolveIncomingRingtoneSrc = useCallback(() => {
+    const ringtoneId = normalizeRingtoneId(mySettings?.ringtone);
+
+    const preloadedAudio = audioPreloader.getRingtone(ringtoneId);
+    if (preloadedAudio?.src) {
+      return preloadedAudio.src;
+    }
+
+    const ringtone = ringtones.find((r) => r.id === ringtoneId);
+    return (
+      ringtone?.src || config?.defaultRingtone || config?.callingBeep || ""
+    );
+  }, [mySettings?.ringtone]);
+
+  const ensureRingtoneSourceReady = useCallback(async () => {
+    if (!ringtoneAudio?.current) return "";
+
+    const sourceSrc = resolveIncomingRingtoneSrc();
+    if (!sourceSrc) return "";
+
+    const normalizedSourceSrc = normalizeAudioSrc(sourceSrc);
+    const audio = ringtoneAudio.current;
+
+    let playbackSrc = normalizedSourceSrc;
+
+    try {
+      const cachedBlob = await getCachedRingtoneBlob(normalizedSourceSrc);
+      if (cachedBlob) {
+        if (
+          !ringtoneObjectUrlRef.current ||
+          ringtoneObjectUrlSourceRef.current !== normalizedSourceSrc
+        ) {
+          if (ringtoneObjectUrlRef.current) {
+            URL.revokeObjectURL(ringtoneObjectUrlRef.current);
+          }
+          ringtoneObjectUrlRef.current = URL.createObjectURL(cachedBlob);
+          ringtoneObjectUrlSourceRef.current = normalizedSourceSrc;
+        }
+        playbackSrc = ringtoneObjectUrlRef.current;
+      } else {
+        cacheRingtoneInIndexedDb(normalizedSourceSrc).catch(() => {});
+      }
+    } catch (_) {
+      cacheRingtoneInIndexedDb(normalizedSourceSrc).catch(() => {});
+    }
+
+    if (!audio.src || audio.src !== playbackSrc) {
+      audio.setAttribute("src", playbackSrc);
+      audio.load();
+    }
+
+    return playbackSrc;
+  }, [
+    cacheRingtoneInIndexedDb,
+    getCachedRingtoneBlob,
+    resolveIncomingRingtoneSrc,
+  ]);
+
   const stopRingtone = () => {
     try {
       if (ringtoneAudio?.current) {
         const audio = ringtoneAudio.current;
         audio.pause();
-        audio.currentTime = 0; // Reset to beginning
-        audio.loop = false; // Ensure it won't loop
-        audio.muted = false; // Reset mute state for next playback
+        audio.currentTime = 0;
+        audio.loop = false;
+        audio.muted = false;
       }
 
-      // Stop any WebAudio buffer sources if playing
       try {
         const toneSrc = ringtoneAudio?.current?.src || null;
         if (toneSrc) {
@@ -98,30 +275,40 @@ const AudioCall = ({ myId }) => {
         }
       } catch (_) {}
 
-      // Clear local buffer ref
       if (ringtoneBufferSource.current) {
-        try { ringtoneBufferSource.current.stop(); } catch (_) {}
-        try { ringtoneBufferSource.current.disconnect(); } catch (_) {}
+        try {
+          ringtoneBufferSource.current.stop();
+        } catch (_) {}
+        try {
+          ringtoneBufferSource.current.disconnect();
+        } catch (_) {}
         ringtoneBufferSource.current = null;
       }
     } catch (err) {
       // ignore
     }
 
-    closeCallNotification(); // Close notification when ringtone stops
+    closeCallNotification();
   };
 
-  const playRingtone = async () => {
-    // Ensure audio is unlocked for playback
+  const playRingtone = useCallback(async () => {
     await unlockAudio();
 
-    if (!ringtoneAudio?.current || !receivingCallRef.current || callAcceptedRef.current) return;
+    if (
+      !ringtoneAudio?.current ||
+      !receivingCallRef.current ||
+      callAcceptedRef.current
+    )
+      return;
 
     const audio = ringtoneAudio.current;
 
-    // Validate source
     if (!audio.src || audio.src === window.location.href) {
-      console.warn('Ringtone audio has no valid source');
+      await ensureRingtoneSourceReady();
+    }
+
+    if (!audio.src || audio.src === window.location.href) {
+      console.warn("Ringtone audio has no valid source");
       return;
     }
 
@@ -132,54 +319,52 @@ const AudioCall = ({ myId }) => {
 
     const toneSrc = audio.src;
 
-    // Try playback via decoded AudioBuffer first
     try {
       if (audioPreloader.hasBuffer(toneSrc)) {
         const source = audioPreloader.playBuffer(toneSrc, { loop: true });
         if (source) {
           ringtoneBufferSource.current = source;
-          console.log('Ringtone playing via AudioBuffer');
+          console.log("Ringtone playing via AudioBuffer");
           return;
         }
       }
     } catch (err) {
-      console.warn('AudioBuffer play attempt failed:', err);
+      console.warn("AudioBuffer play attempt failed:", err);
     }
 
-    // Fallback: element playback using WebAudio helper or audio.play()
     const tryElementPlay = async () => {
       try {
         await playAudioWithWebAudio(audio);
-        console.log('Ringtone playing successfully (element via WebAudio helper)');
+        console.log(
+          "Ringtone playing successfully (element via WebAudio helper)",
+        );
         return true;
       } catch (err) {
-        console.warn('playAudioWithWebAudio failed:', err);
+        console.warn("playAudioWithWebAudio failed:", err);
       }
       try {
         await audio.play();
-        console.log('Ringtone playing with audio.play fallback');
+        console.log("Ringtone playing with audio.play fallback");
         return true;
       } catch (err) {
-        console.warn('audio.play fallback failed:', err);
+        console.warn("audio.play fallback failed:", err);
         return false;
       }
     };
 
     if (audio.readyState < 2) {
       const onCanPlay = async () => {
-        audio.removeEventListener('canplaythrough', onCanPlay);
+        audio.removeEventListener("canplaythrough", onCanPlay);
         if (receivingCallRef.current && !callAcceptedRef.current) {
           await tryElementPlay();
         }
       };
-      audio.addEventListener('canplaythrough', onCanPlay);
+      audio.addEventListener("canplaythrough", onCanPlay);
       if (audio.readyState === 0) audio.load();
-    } else {
-      if (receivingCallRef.current && !callAcceptedRef.current) {
-        await tryElementPlay();
-      }
+    } else if (receivingCallRef.current && !callAcceptedRef.current) {
+      await tryElementPlay();
     }
-  };
+  }, [ensureRingtoneSourceReady]);
 
   const closeAudioCall = () => {
     console.log("AudioCall - Closing audio call modal");
@@ -489,81 +674,46 @@ const AudioCall = ({ myId }) => {
   );
 
   useEffect(() => {
-    if (ringtoneAudio?.current && receivingCall && incomingCall) {
-      // Try to bring the tab into focus before playing ringtone
-      try {
-        tryFocusCurrentTab();
-      } catch (_) {}
-
-      // Use user's ringtone preference or fallback to default
-      const ringtoneId = normalizeRingtoneId(mySettings.ringtone);
-
-      // Get preloaded ringtone audio
-      const preloadedAudio = audioPreloader.getRingtone(ringtoneId);
-      if (preloadedAudio) {
-        const audio = ringtoneAudio.current;
-        const toneSrc = preloadedAudio.src;
-
-        // Only load if source hasn't been set yet
-        if (!audio.src || audio.src !== toneSrc) {
-          audio.setAttribute("src", toneSrc);
-          audio.load(); // Ensure the audio is loaded
-
-          // Handle loading errors
-          const handleError = () => {
-            console.error("Failed to load preloaded ringtone:", toneSrc);
-          };
-
-          // Handle successful load
-          const handleLoadStart = () => {
-            console.log("Loading preloaded ringtone:", toneSrc);
-          };
-
-          const handleCanPlay = () => {
-            console.log("Preloaded ringtone ready");
-            audio.removeEventListener("canplaythrough", handleCanPlay);
-            audio.removeEventListener("error", handleError);
-            audio.removeEventListener("loadstart", handleLoadStart);
-          };
-
-          audio.addEventListener("error", handleError);
-          audio.addEventListener("loadstart", handleLoadStart);
-          audio.addEventListener("canplaythrough", handleCanPlay);
-        }
-      } else {
-        // Fallback to legacy method
-        const ringtone = ringtones.find((r) => r.id === ringtoneId);
-        const toneSrc = ringtone?.src || config?.callingBeep || "";
-
-        if (toneSrc) {
-          const audio = ringtoneAudio.current;
-          if (!audio.src || audio.src !== toneSrc) {
-            audio.setAttribute("src", toneSrc);
-            audio.load();
-
-            const handleError = () => {
-              console.error("Failed to load ringtone:", toneSrc);
-            };
-
-            const handleLoadStart = () => {
-              console.log("Loading ringtone:", toneSrc);
-            };
-
-            const handleCanPlay = () => {
-              console.log("Ringtone loaded successfully");
-              audio.removeEventListener("canplaythrough", handleCanPlay);
-              audio.removeEventListener("error", handleError);
-              audio.removeEventListener("loadstart", handleLoadStart);
-            };
-
-            audio.addEventListener("error", handleError);
-            audio.addEventListener("loadstart", handleLoadStart);
-            audio.addEventListener("canplaythrough", handleCanPlay);
-          }
-        }
-      }
+    const defaultRingtoneSrc =
+      config?.defaultRingtone || ringtones.find((r) => r.id === 1)?.src;
+    if (defaultRingtoneSrc) {
+      cacheRingtoneInIndexedDb(defaultRingtoneSrc).catch(() => {});
     }
-  }, [mySettings, receivingCall, incomingCall]);
+  }, [cacheRingtoneInIndexedDb]);
+
+  useEffect(() => {
+    const selectedRingtoneSrc = resolveIncomingRingtoneSrc();
+    if (selectedRingtoneSrc) {
+      cacheRingtoneInIndexedDb(selectedRingtoneSrc).catch(() => {});
+    }
+  }, [cacheRingtoneInIndexedDb, resolveIncomingRingtoneSrc]);
+
+  useEffect(() => {
+    if (!ringtoneAudio?.current || !receivingCall || !incomingCall) return;
+
+    let isCancelled = false;
+    const prepareAndPlay = async () => {
+      try {
+        await ensureRingtoneSourceReady();
+
+        if (
+          !isCancelled &&
+          receivingCallRef.current &&
+          !callAcceptedRef.current
+        ) {
+          await playRingtone();
+        }
+      } catch (error) {
+        console.warn("AudioCall: Failed to prepare/play ringtone", error);
+      }
+    };
+
+    prepareAndPlay();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [receivingCall, incomingCall, ensureRingtoneSourceReady, playRingtone]);
 
   // Local cleanup without emitting to server
   // IMPORTANT: Define this BEFORE the useEffect that uses it
@@ -743,6 +893,10 @@ const AudioCall = ({ myId }) => {
         "channel:",
         channelName,
       );
+      receivingCallRef.current = true;
+      callAcceptedRef.current = false;
+      currentChannelRef.current = channelName;
+
       setIsAudioCall(true);
       setReceivingCall(true);
       setCaller(from);
@@ -755,10 +909,16 @@ const AudioCall = ({ myId }) => {
       setCallerName(callerName || "Unknown Caller");
       setCallerProfilePic(callerProfilePic || config?.defaultProfile);
       setCurrentChannel(channelName);
-      try {
-        window.focus();
-      } catch (e) {}
-      playRingtone();
+
+      (async () => {
+        try {
+          await ensureRingtoneSourceReady();
+          await playRingtone();
+        } catch (error) {
+          console.warn("AudioCall: Failed immediate ringtone playback", error);
+        }
+      })();
+
       showCallNotification({
         callerName: callerName || "Unknown Caller",
         callerProfilePic: callerProfilePic || config?.defaultProfile,
@@ -1054,6 +1214,11 @@ const AudioCall = ({ myId }) => {
   useEffect(() => {
     return () => {
       stopRingtone();
+      if (ringtoneObjectUrlRef.current) {
+        URL.revokeObjectURL(ringtoneObjectUrlRef.current);
+        ringtoneObjectUrlRef.current = null;
+      }
+      ringtoneObjectUrlSourceRef.current = "";
     };
   }, []);
 

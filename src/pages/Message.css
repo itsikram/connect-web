@@ -1105,7 +1105,6 @@
     text-align: left;
 }
 
-
 .message-meta {
     display: flex;
     align-items: center;
@@ -1295,7 +1294,7 @@
     }
 
     .message-text {
-        max-width: 150px;
+        max-width: 230px;
     }
 }
 
@@ -2072,7 +2071,11 @@
     .chat-message {
     /* Keep the same blue color but make it translucent to match the "glass" effect
        used by received messages (backdrop-filter + border). */
-    background: linear-gradient(135deg, rgba(0,212,255,0.12) 0%, rgba(0,153,204,0.12) 100%) !important;
+    background: linear-gradient(
+        135deg,
+        rgba(0, 212, 255, 0.12) 0%,
+        rgba(0, 153, 204, 0.12) 100%
+    ) !important;
     border-color: rgba(0, 212, 255, 0.18);
     color: white;
     box-shadow: 0 8px 24px rgba(0, 212, 255, 0.12);
@@ -2092,7 +2095,11 @@
 
 .message-sent .chat-message::before {
     /* Use translucent gradient for the bubble tail so it matches the bubble background */
-    background: linear-gradient(135deg, rgba(0,212,255,0.12) 0%, rgba(0,153,204,0.12) 100%);
+    background: linear-gradient(
+        135deg,
+        rgba(0, 212, 255, 0.12) 0%,
+        rgba(0, 153, 204, 0.12) 100%
+    );
     border-color: rgba(0, 212, 255, 0.18);
 }
 

@@ -256,12 +256,24 @@ let HeaderLeft = () => {
           onTouchCancel={handleLogoTouchCancel}
           onContextMenu={handleLogoContextMenu}
           title="Long press for AI Agent"
-          style={{ userSelect: "none", WebkitUserSelect: "none", position: "relative" }}
+          style={{
+            userSelect: "none",
+            WebkitUserSelect: "none",
+            position: "relative",
+          }}
         >
           <Link
             to="/"
             onClick={handleLogoClick}
             onDragStart={handleLogoDragStart}
+            onContextMenu={handleLogoContextMenu}
+            style={{
+              userSelect: "none",
+              WebkitUserSelect: "none",
+              WebkitTouchCallout: "none",
+              WebkitUserDrag: "none",
+              touchAction: "manipulation",
+            }}
           >
             <img
               className="header-logo"

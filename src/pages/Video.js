@@ -10,40 +10,47 @@ import Rs from "../partials/sidebar/Rs";
 import useIsMobile from "../utils/useIsMobile";
 
 const Video = () => {
-    let myProfile = useSelector(state => state.profile)
-    let myId = myProfile._id;
-    let isMobile = useIsMobile();
-    const [watches, setWatches] = useState([])
-    const [activeView, setActiveView] = useState('feed')
+  let myProfile = useSelector((state) => state.profile);
+  let myId = myProfile._id;
+  let isMobile = useIsMobile();
+  const [watches, setWatches] = useState([]);
+  const [activeView, setActiveView] = useState("feed");
 
-    const handleTabKeyDown = useCallback((e) => {
-        // Left/Right arrow navigate between Feed and Album
-        const views = ['feed', 'album'];
-        const idx = views.indexOf(activeView);
-        if (e.key === 'ArrowRight') {
-            setActiveView(views[(idx + 1) % views.length]);
-        } else if (e.key === 'ArrowLeft') {
-            setActiveView(views[(idx - 1 + views.length) % views.length]);
-        }
-    }, [activeView]);
+  const handleTabKeyDown = useCallback(
+    (e) => {
+      // Left/Right arrow navigate between Feed and Album
+      const views = ["feed", "album"];
+      const idx = views.indexOf(activeView);
+      if (e.key === "ArrowRight") {
+        setActiveView(views[(idx + 1) % views.length]);
+      } else if (e.key === "ArrowLeft") {
+        setActiveView(views[(idx - 1 + views.length) % views.length]);
+      }
+    },
+    [activeView],
+  );
 
-    let loadData = async () => {
-        let response = await api.get('watch/related', { params: { profile_id: myId } })
-        if (response.status === 200) {
-            setWatches(response.data)
-        }
+  let loadData = async () => {
+    let response = await api.get("watch/related", {
+      params: { profile_id: myId },
+    });
+    if (response.status === 200) {
+      setWatches(response.data);
     }
-    useEffect(() => {
-        loadData()
-    }, [])
+  };
+  useEffect(() => {
+    loadData();
+  }, []);
 
-    const handleWatchUpdate = useCallback((watchId, updates) => {
-        setWatches(prev => prev.map(item =>
-            item._id === watchId ? { ...item, ...updates } : item
-        ))
-    }, [])
+  const handleWatchUpdate = useCallback((watchId, updates) => {
+    setWatches((prev) =>
+      prev.map((item) =>
+        item._id === watchId ? { ...item, ...updates } : item,
+      ),
+    );
+  }, []);
 
-    const styles = `
+  const styles = `
         /* Shell and tab styles */
         .watch-view-shell {
             margin-top: 10px;
@@ -79,10 +86,13 @@ const Video = () => {
             box-shadow: 0 6px 20px rgba(59,130,246,0.18);
         }
         .watch-view-button.active {
-            background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
-            color: #ffffff;
-            box-shadow: 0 12px 30px rgba(59, 130, 246, 0.22);
+
             transform: translateY(-2px);
+
+            color: #00D4FF !important;
+              background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(0, 212, 255, 0.12));
+              box-shadow: 0 2px 8px rgba(0, 212, 255, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+              border: 1px solid rgba(0, 212, 255, 0.2);
         }
 
         /* Album grid - polished card layout */
@@ -142,14 +152,14 @@ const Video = () => {
             width: 56px;
             height: 56px;
             border-radius: 50%;
-            background: linear-gradient(135deg, rgba(37,99,235,0.95), rgba(124,58,237,0.95));
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            color: #fff;
-            box-shadow: 0 12px 30px rgba(37,99,235,0.24);
             opacity: 0.98;
-            transition: transform 0.18s ease;
+            color: #fff !important;
+            background: linear-gradient(135deg, rgba(0, 212, 255, 0.5), rgba(0, 212, 255, 0.5));
+            box-shadow: 0 2px 8px rgba(0, 212, 255, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+            border: 1px solid rgba(0, 212, 255, 0.2);
         }
         .watch-album-play i { font-size: 18px; }
         .watch-album-thumb::after {
@@ -212,8 +222,12 @@ const Video = () => {
             font-size: 0.79rem;
             font-weight: 700;
             color: #ffffff;
-            background: linear-gradient(135deg, #60a5fa, #8b5cf6);
-            box-shadow: 0 8px 18px rgba(96, 165, 250, 0.12);
+            transform: translateY(-2px);
+            color: #fff !important;
+            background: linear-gradient(135deg, rgba(0, 212, 255, 0.5), rgba(0, 212, 255, 0.5));
+            box-shadow: 0 2px 8px rgba(0, 212, 255, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            margin-right: 10px;
         }
         .watch-album-author-name {
             white-space: nowrap;
@@ -351,98 +365,147 @@ const Video = () => {
         }
     `;
 
-    return (
-        <Fragment>
-            <style>{styles}</style>
-            <div className="container mb-3" style={ isMobile ? { maxWidth: '100%', width: '100%' } : { maxWidth: '90%', width: '90%' } }>
-                <div className="row">
-                    <div className="col-md-3">
-                        { !isMobile && <Ls />}
-                    </div>
-                    <div className="col-md-6">
-                        <div className="watch-view-shell">
-                            <div className="watch-view-toggle" role="tablist" aria-label="Watch view toggle">
-                                    <button
-                                    type="button"
-                                        role="tab"
-                                        tabIndex={activeView === 'feed' ? 0 : -1}
-                                        className={`watch-view-button ${activeView === 'feed' ? 'active' : ''}`}
-                                        onClick={() => setActiveView('feed')}
-                                        onKeyDown={handleTabKeyDown}
-                                        aria-selected={activeView === 'feed'}
-                                    >
-                                        Feed
-                                    </button>
-                                    <button
-                                        type="button"
-                                        role="tab"
-                                        tabIndex={activeView === 'album' ? 0 : -1}
-                                        className={`watch-view-button ${activeView === 'album' ? 'active' : ''}`}
-                                        onClick={() => setActiveView('album')}
-                                        onKeyDown={handleTabKeyDown}
-                                        aria-selected={activeView === 'album'}
-                                    >
-                                        Album
-                                    </button>
-                            </div>
+  return (
+    <Fragment>
+      <style>{styles}</style>
+      <div
+        className="container mb-3"
+        style={
+          isMobile
+            ? { maxWidth: "100%", width: "100%" }
+            : { maxWidth: "90%", width: "90%" }
+        }
+      >
+        <div className="row">
+          <div className="col-md-3">{!isMobile && <Ls />}</div>
+          <div className="col-md-6">
+            <div className="watch-view-shell">
+              <div
+                className="watch-view-toggle"
+                role="tablist"
+                aria-label="Watch view toggle"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  tabIndex={activeView === "feed" ? 0 : -1}
+                  className={`watch-view-button ${activeView === "feed" ? "active" : ""}`}
+                  onClick={() => setActiveView("feed")}
+                  onKeyDown={handleTabKeyDown}
+                  aria-selected={activeView === "feed"}
+                >
+                  Feed
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  tabIndex={activeView === "album" ? 0 : -1}
+                  className={`watch-view-button ${activeView === "album" ? "active" : ""}`}
+                  onClick={() => setActiveView("album")}
+                  onKeyDown={handleTabKeyDown}
+                  aria-selected={activeView === "album"}
+                >
+                  Album
+                </button>
+              </div>
 
-                            <CreateWatch setWatches={setWatches} />
+              <CreateWatch setWatches={setWatches} />
 
-                            {activeView === 'feed' ? (
-                                watches.length > 0 ? watches.map((video, i) => (
-                                    <Watch
-                                        key={video._id || i}
-                                        watch={video}
-                                        type="watch"
-                                        onDelete={(deletedId) => setWatches(prev => prev.filter(item => item._id !== deletedId))}
-                                        onUpdate={handleWatchUpdate}
-                                    />
-                                )) : <WatchSkeleton count={3} />
-                            ) : (
-                                watches.length > 0 ? (
-                                    <div className="watch-album-grid">
-                                        {watches.map((video, i) => {
-                                            const authorName = video?.author?.user ? `${video.author.user.firstName || ''} ${video.author.user.surname || ''}`.trim() : 'Creator';
-                                            const initials = authorName.split(' ').filter(Boolean).slice(0, 2).map(part => part[0]?.toUpperCase()).join('') || 'C';
-                                            const poster = video.thumbnail || video.author?.profilePic || 'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?auto=format&fit=crop&w=900&q=80';
+              {activeView === "feed" ? (
+                watches.length > 0 ? (
+                  watches.map((video, i) => (
+                    <Watch
+                      key={video._id || i}
+                      watch={video}
+                      type="watch"
+                      onDelete={(deletedId) =>
+                        setWatches((prev) =>
+                          prev.filter((item) => item._id !== deletedId),
+                        )
+                      }
+                      onUpdate={handleWatchUpdate}
+                    />
+                  ))
+                ) : (
+                  <WatchSkeleton count={3} />
+                )
+              ) : watches.length > 0 ? (
+                <div className="watch-album-grid">
+                  {watches.map((video, i) => {
+                    const authorName = video?.author?.user
+                      ? `${video.author.user.firstName || ""} ${video.author.user.surname || ""}`.trim()
+                      : "Creator";
+                    const initials =
+                      authorName
+                        .split(" ")
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .map((part) => part[0]?.toUpperCase())
+                        .join("") || "C";
+                    const poster =
+                      video.thumbnail ||
+                      video.author?.profilePic ||
+                      "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?auto=format&fit=crop&w=900&q=80";
 
-                                            return (
-                                                <Link key={video._id || i} to={`/watch/${video._id}`} className="watch-album-card" aria-label={video.caption || 'Watch video'}>
-                                                    <div className="watch-album-thumb">
-                                                        <img src={poster} alt={video.caption || 'Watch video'} loading="lazy" />
-                                                        <div className="watch-album-play" aria-hidden="true"><i className="fas fa-play"></i></div>
-                                                        <div className="watch-album-overlay">
-                                                            <span><i className="fas fa-heart"></i> {video.reacts?.length || 0}</span>
-                                                            <span><i className="fas fa-comment"></i> {video.comments?.length || 0}</span>
-                                                        </div>
-                                                    </div>
-                                                    <div className="watch-album-content">
-                                                        <h6 className="watch-album-title">{video.caption || 'Untitled video'}</h6>
-                                                        <div className="watch-album-author-row">
-                                                            <div className="watch-album-author">
-                                                                <span className="watch-album-avatar">{initials}</span>
-                                                                <span className="watch-album-author-name">{authorName}</span>
-                                                            </div>
-                                                            <span><i className="fas fa-play-circle"></i></span>
-                                                        </div>
-                                                    </div>
-                                                </Link>
-                                            )
-                                        })}
-                                    </div>
-                                ) : <WatchSkeleton count={6} variant="album" />
-                            )}
+                    return (
+                      <Link
+                        key={video._id || i}
+                        to={`/watch/${video._id}`}
+                        className="watch-album-card"
+                        aria-label={video.caption || "Watch video"}
+                      >
+                        <div className="watch-album-thumb">
+                          <img
+                            src={poster}
+                            alt={video.caption || "Watch video"}
+                            loading="lazy"
+                          />
+                          <div className="watch-album-play" aria-hidden="true">
+                            <i className="fas fa-play"></i>
+                          </div>
+                          <div className="watch-album-overlay">
+                            <span>
+                              <i className="fas fa-heart"></i>{" "}
+                              {video.reacts?.length || 0}
+                            </span>
+                            <span>
+                              <i className="fas fa-comment"></i>{" "}
+                              {video.comments?.length || 0}
+                            </span>
+                          </div>
                         </div>
-                    </div>
-                    <div className="col-md-3">
-
-                    {!isMobile && <Rs />}
-
-                    </div>
+                        <div className="watch-album-content">
+                          <h6 className="watch-album-title">
+                            {video.caption || "Untitled video"}
+                          </h6>
+                          <div className="watch-album-author-row">
+                            <div className="watch-album-author">
+                              <span className="watch-album-avatar">
+                                {initials}
+                              </span>
+                              <span className="watch-album-author-name">
+                                {authorName}
+                              </span>
+                            </div>
+                            <span>
+                              <i className="fas fa-play-circle"></i>
+                            </span>
+                          </div>
+                        </div>
+                      </Link>
+                    );
+                  })}
                 </div>
+              ) : (
+                <WatchSkeleton count={6} variant="album" />
+              )}
             </div>
-        </Fragment>
-    )
-}
+          </div>
+          <div className="col-md-3">{!isMobile && <Rs />}</div>
+        </div>
+      </div>
+    </Fragment>
+  );
+};
 
 export default Video;
