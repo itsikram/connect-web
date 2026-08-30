@@ -26,6 +26,12 @@ import {
   getTypeLabel,
   getSourceLabel,
   normalizePlaylistItem,
+  loadPlayQueue,
+  savePlayQueue,
+  videoToQueueItem,
+  clampPlayCount,
+  MIN_PLAY_COUNT,
+  MAX_PLAY_COUNT,
   FILTER_OPTIONS,
   SORT_OPTIONS,
 } from "../utils/videoPlayerLibrary";
@@ -61,13 +67,20 @@ const VideoPlayer = () => {
   const [sortMode, setSortMode] = useState("custom");
   const [searchQuery, setSearchQuery] = useState("");
   const [playlistOrder, setPlaylistOrder] = useState(() => loadPlaylistOrder());
+  const [playQueue, setPlayQueue] = useState(() => loadPlayQueue());
+  const [queueIndex, setQueueIndex] = useState(0);
+  const [playPass, setPlayPass] = useState(1);
   const [dragIndex, setDragIndex] = useState(null);
+  const [queueDragIndex, setQueueDragIndex] = useState(null);
 
   const videoRef = useRef(null);
   const fileInputRef = useRef(null);
   const blobUrlsRef = useRef(new Set());
   const skipPipOnUnmount = useRef(false);
   const currentVideoRef = useRef(null);
+  const playlistPipRef = useRef([]);
+  const loopingRef = useRef(false);
+  const pipReturnRef = useRef(null);
   const resumeHandledRef = useRef(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -99,11 +112,21 @@ const VideoPlayer = () => {
     ? `${currentVideo.id}:${currentVideo.url}`
     : "";
   currentVideoRef.current = currentVideo;
+  loopingRef.current = isLooping;
 
-  const isThisPip =
-    watchPip?.pip?.source === "library" &&
-    currentVideo &&
-    watchPip.pip.libraryVideoId === currentVideo.id;
+  const libraryPipPlaylist = useMemo(
+    () =>
+      filteredVideos.map((video) => ({
+        id: video.id,
+        url: video.url,
+        title: video.title,
+        thumbnail: video.thumbnail || "",
+      })),
+    [filteredVideos],
+  );
+  playlistPipRef.current = libraryPipPlaylist;
+
+  const isThisPip = watchPip?.pip?.source === "library" && !!watchPip.pip.videoUrl;
 
   useEffect(() => {
     setPlaylistOrder((prev) => {
@@ -256,6 +279,76 @@ const VideoPlayer = () => {
     watchPip?.closePip?.();
   }, [location.state, filteredVideos, watchPip]);
 
+  useEffect(() => {
+    if (!isThisPip || !watchPip?.pip?.libraryVideoId) return;
+    const idx = filteredVideos.findIndex(
+      (video) => video.id === watchPip.pip.libraryVideoId,
+    );
+    if (idx >= 0 && idx !== currentVideoIndex) {
+      setCurrentVideoIndex(idx);
+    }
+  }, [
+    isThisPip,
+    watchPip?.pip?.libraryVideoId,
+    filteredVideos,
+    currentVideoIndex,
+  ]);
+
+  useEffect(() => {
+    if (!isThisPip) return;
+    watchPip?.updatePip?.({
+      playlist: libraryPipPlaylist,
+    });
+  }, [isThisPip, libraryPipPlaylist, watchPip?.updatePip]);
+
+  useEffect(() => {
+    if (!isThisPip || typeof watchPip?.pip?.looping !== "boolean") return;
+    if (watchPip.pip.looping !== isLooping) {
+      setIsLooping(watchPip.pip.looping);
+    }
+  }, [isThisPip, watchPip?.pip?.looping, isLooping]);
+
+  const restoreFromPip = useCallback(() => {
+    const pipData = watchPip?.pip;
+    if (!pipData) return;
+
+    const idx = filteredVideos.findIndex(
+      (video) => video.id === pipData.libraryVideoId,
+    );
+    if (idx >= 0) setCurrentVideoIndex(idx);
+    if (typeof pipData.looping === "boolean") setIsLooping(pipData.looping);
+
+    pipReturnRef.current = {
+      resumeAt: Number(pipData.currentTime) || 0,
+      autoplay: pipData.playing !== false,
+    };
+    watchPip.closePip();
+  }, [watchPip, filteredVideos]);
+
+  useEffect(() => {
+    const resume = pipReturnRef.current;
+    if (!resume || isThisPip) return;
+
+    const video = videoRef.current;
+    if (!video) return;
+
+    const applyResume = () => {
+      try {
+        video.currentTime = resume.resumeAt || 0;
+        if (resume.autoplay) {
+          video
+            .play()
+            .then(() => setIsPlaying(true))
+            .catch(() => setIsPlaying(false));
+        }
+      } catch (_) {}
+    };
+
+    pipReturnRef.current = null;
+    if (video.readyState >= 1) applyResume();
+    else video.addEventListener("loadedmetadata", applyResume, { once: true });
+  }, [isThisPip, currentTrackKey]);
+
   const minimizeToPip = useCallback(() => {
     if (!watchPip?.startPip || !currentVideoRef.current) return;
     const video = videoRef.current;
@@ -272,7 +365,12 @@ const VideoPlayer = () => {
     skipPipOnUnmount.current = true;
     video.pause();
     setIsPlaying(false);
-    watchPip.startPip({ ...payload, playing: true });
+    watchPip.startPip({
+      ...payload,
+      playing: true,
+      looping: loopingRef.current,
+      playlist: playlistPipRef.current,
+    });
   }, [watchPip]);
 
   useEffect(() => {
@@ -288,7 +386,13 @@ const VideoPlayer = () => {
         title: cv.title,
         thumbnail: cv.thumbnail,
       });
-      if (payload) watchPip.startPip(payload);
+      if (payload) {
+        watchPip.startPip({
+          ...payload,
+          looping: loopingRef.current,
+          playlist: playlistPipRef.current,
+        });
+      }
     };
   }, [watchPip]);
 
@@ -305,17 +409,51 @@ const VideoPlayer = () => {
     setCurrentVideoIndex((prev) => (prev + 1) % filteredVideos.length);
   }, [filteredVideos.length, isLooping]);
 
+  const switchLibraryPipByOffset = useCallback(
+    (offset) => {
+      const list = watchPip?.pip?.playlist;
+      if (!watchPip?.updatePip || !Array.isArray(list) || list.length <= 1) {
+        return;
+      }
+      const currentId = watchPip.pip.libraryVideoId;
+      const idx = Math.max(
+        0,
+        list.findIndex((item) => item.id === currentId),
+      );
+      const next = list[(idx + offset + list.length) % list.length];
+      if (!next) return;
+      watchPip.updatePip({
+        libraryVideoId: next.id,
+        videoUrl: next.url,
+        title: next.title,
+        thumbnail: next.thumbnail || "",
+        currentTime: 0,
+        playing: true,
+      });
+    },
+    [watchPip],
+  );
+
   const handlePrev = useCallback(() => {
+    if (isThisPip) {
+      switchLibraryPipByOffset(-1);
+      return;
+    }
     if (filteredVideos.length <= 1) return;
     setCurrentVideoIndex(
       (prev) => (prev - 1 + filteredVideos.length) % filteredVideos.length,
     );
-  }, [filteredVideos.length]);
+  }, [filteredVideos.length, isThisPip, switchLibraryPipByOffset]);
 
   const handleNext = useCallback(() => {
+    if (isThisPip) {
+      if (isLooping) return;
+      switchLibraryPipByOffset(1);
+      return;
+    }
     if (filteredVideos.length <= 1 || isLooping) return;
     setCurrentVideoIndex((prev) => (prev + 1) % filteredVideos.length);
-  }, [filteredVideos.length, isLooping]);
+  }, [filteredVideos.length, isLooping, isThisPip, switchLibraryPipByOffset]);
 
   const focusVideoInList = (videoId, nextCustomVideos = customVideos) => {
     const merged = mergePlaylist(watchVideos, savedVideos, nextCustomVideos);
@@ -412,6 +550,17 @@ const VideoPlayer = () => {
   };
 
   const handlePlayVideo = (index) => {
+    const video = filteredVideos[index];
+    if (isThisPip && video && watchPip?.updatePip) {
+      watchPip.updatePip({
+        libraryVideoId: video.id,
+        videoUrl: video.url,
+        title: video.title,
+        thumbnail: video.thumbnail || "",
+        currentTime: 0,
+        playing: true,
+      });
+    }
     setCurrentVideoIndex(index);
   };
 
@@ -429,6 +578,10 @@ const VideoPlayer = () => {
   }, []);
 
   const togglePlayPause = () => {
+    if (isThisPip) {
+      watchPip?.updatePip?.({ playing: watchPip.pip?.playing === false });
+      return;
+    }
     const video = videoRef.current;
     if (!video) return;
     if (video.paused) {
@@ -614,6 +767,10 @@ const VideoPlayer = () => {
     video.currentTime = target;
   }, []);
 
+  const playerIsPlaying = isThisPip
+    ? watchPip?.pip?.playing !== false
+    : isPlaying;
+
   const mediaSessionHandlers = useMemo(
     () => ({
       play: () => playCurrent().catch(() => {}),
@@ -652,10 +809,7 @@ const VideoPlayer = () => {
         <div className="video-player-main">
           <div className="video-player-header">
             <h1>Video Player</h1>
-            <p>
-              Play Watch videos, saved offline videos, and custom URLs in one
-              playlist
-            </p>
+
           </div>
 
           <div className="video-player-stats">
@@ -697,10 +851,7 @@ const VideoPlayer = () => {
                 {isThisPip ? (
                   <div className="video-pip-inline-placeholder">
                     <span>Playing in pop-out mode</span>
-                    <button
-                      type="button"
-                      onClick={() => watchPip?.closePip?.()}
-                    >
+                    <button type="button" onClick={restoreFromPip}>
                       Return here
                     </button>
                   </div>
@@ -734,9 +885,11 @@ const VideoPlayer = () => {
                   type="button"
                   className="video-tool-btn video-tool-btn-primary"
                   onClick={togglePlayPause}
-                  title={isPlaying ? "Pause" : "Play"}
+                  title={playerIsPlaying ? "Pause" : "Play"}
                 >
-                  <i className={`fas ${isPlaying ? "fa-pause" : "fa-play"}`} />
+                  <i
+                    className={`fas ${playerIsPlaying ? "fa-pause" : "fa-play"}`}
+                  />
                 </button>
                 <button
                   type="button"
@@ -750,7 +903,13 @@ const VideoPlayer = () => {
                 <button
                   type="button"
                   className={`video-tool-btn ${isLooping ? "active" : ""}`}
-                  onClick={() => setIsLooping((prev) => !prev)}
+                  onClick={() => {
+                    setIsLooping((prev) => {
+                      const next = !prev;
+                      if (isThisPip) watchPip?.updatePip?.({ looping: next });
+                      return next;
+                    });
+                  }}
                   title={isLooping ? "Loop on" : "Loop off"}
                 >
                   <i className="fas fa-redo" />
@@ -890,7 +1049,7 @@ const VideoPlayer = () => {
                     <div className="playlist-item-thumbnail">
                       {video.thumbnail ? (
                         <img src={video.thumbnail} alt="" />
-                      ) : index === currentVideoIndex && isPlaying ? (
+                      ) : index === currentVideoIndex && playerIsPlaying ? (
                         <div className="playing-indicator">▶</div>
                       ) : (
                         <div className="play-number">{index + 1}</div>

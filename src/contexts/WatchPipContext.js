@@ -43,6 +43,8 @@ export const WatchPipProvider = ({ children }) => {
       title: data.title || (source === "library" ? "Video" : "Watch"),
       thumbnail: data.thumbnail || "",
       muted: !!data.muted,
+      looping: !!data.looping,
+      playlist: Array.isArray(data.playlist) ? data.playlist : [],
     });
   }, []);
 

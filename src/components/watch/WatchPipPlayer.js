@@ -25,6 +25,9 @@ const WatchPipPlayer = () => {
     ? `${pip.source}:${pip.watchId || pip.libraryVideoId}:${pip.videoUrl}`
     : "";
   const initialPlaybackRef = useRef(null);
+  const playlist = Array.isArray(pip?.playlist) ? pip.playlist : [];
+  const isLibrary = pip?.source === "library";
+  const looping = !!pip?.looping;
 
   if (pip && initialPlaybackRef.current?.trackKey !== pipTrackKey) {
     initialPlaybackRef.current = {
@@ -60,6 +63,22 @@ const WatchPipPlayer = () => {
   }, [pipTrackKey]);
 
   useEffect(() => {
+    const video = videoRef.current;
+    if (video) video.loop = looping;
+  }, [looping, pipTrackKey]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || pip?.playing === undefined) return;
+
+    if (pip.playing && video.paused) {
+      video.play().catch(() => setPaused(true));
+    } else if (!pip.playing && !video.paused) {
+      video.pause();
+    }
+  }, [pip?.playing, pipTrackKey]);
+
+  useEffect(() => {
     if (!pipTrackKey) return undefined;
     const video = videoRef.current;
     if (!video) return undefined;
@@ -76,6 +95,14 @@ const WatchPipPlayer = () => {
       setPlaybackRate(Number.isFinite(nextRate) && nextRate > 0 ? nextRate : 1);
     };
 
+    const persistProgress = () => {
+      updatePip({
+        currentTime: video.currentTime,
+        playing: !video.paused,
+        muted: video.muted,
+      });
+    };
+
     const onPlay = () => {
       setPaused(false);
       sync();
@@ -85,11 +112,7 @@ const WatchPipPlayer = () => {
     const onPause = () => {
       setPaused(true);
       sync();
-      updatePip({
-        currentTime: video.currentTime,
-        playing: false,
-        muted: video.muted,
-      });
+      persistProgress();
     };
 
     sync();
@@ -101,6 +124,8 @@ const WatchPipPlayer = () => {
     video.addEventListener("play", onPlay);
     video.addEventListener("pause", onPause);
 
+    const progressTimer = window.setInterval(persistProgress, 1000);
+
     return () => {
       video.removeEventListener("timeupdate", sync);
       video.removeEventListener("durationchange", sync);
@@ -108,6 +133,7 @@ const WatchPipPlayer = () => {
       video.removeEventListener("loadedmetadata", sync);
       video.removeEventListener("play", onPlay);
       video.removeEventListener("pause", onPause);
+      window.clearInterval(progressTimer);
     };
   }, [pipTrackKey, updatePip]);
 
@@ -163,15 +189,60 @@ const WatchPipPlayer = () => {
     video.currentTime = target;
   }, []);
 
+  const switchPlaylistByOffset = useCallback(
+    (offset) => {
+      if (playlist.length <= 1) return;
+      const currentId = pip?.libraryVideoId;
+      const idx = Math.max(
+        0,
+        playlist.findIndex((item) => item.id === currentId),
+      );
+      const next = playlist[(idx + offset + playlist.length) % playlist.length];
+      if (!next) return;
+      updatePip({
+        libraryVideoId: next.id,
+        videoUrl: next.url,
+        title: next.title,
+        thumbnail: next.thumbnail || "",
+        currentTime: 0,
+        playing: true,
+      });
+    },
+    [playlist, pip?.libraryVideoId, updatePip],
+  );
+
+  const handlePrev = useCallback(() => {
+    switchPlaylistByOffset(-1);
+  }, [switchPlaylistByOffset]);
+
+  const handleNext = useCallback(() => {
+    if (looping) return;
+    switchPlaylistByOffset(1);
+  }, [looping, switchPlaylistByOffset]);
+
+  const handleEnded = useCallback(() => {
+    if (looping) {
+      const video = videoRef.current;
+      if (video) {
+        video.currentTime = 0;
+        video.play().catch(() => {});
+      }
+      return;
+    }
+    handleNext();
+  }, [looping, handleNext]);
+
   const mediaSessionHandlers = useMemo(
     () => ({
       play: () => playCurrent().catch(() => {}),
       pause: () => pauseCurrent(),
+      previoustrack: () => handlePrev(),
+      nexttrack: () => handleNext(),
       seekbackward: (details) => seekBy(-(Number(details?.seekOffset) || 10)),
       seekforward: (details) => seekBy(Number(details?.seekOffset) || 10),
       seekto: (details) => seekTo(details),
     }),
-    [playCurrent, pauseCurrent, seekBy, seekTo],
+    [playCurrent, pauseCurrent, handlePrev, handleNext, seekBy, seekTo],
   );
 
   const mediaArtwork = useMemo(() => {
@@ -244,10 +315,19 @@ const WatchPipPlayer = () => {
     }
   };
 
-  const handleExpand = () => {
+  const persistNow = () => {
     const video = videoRef.current;
-    const time = video ? video.currentTime : pip.currentTime;
-    updatePip({ currentTime: time, playing: video ? !video.paused : true });
+    if (!video) return pip.currentTime;
+    updatePip({
+      currentTime: video.currentTime,
+      playing: !video.paused,
+      muted: video.muted,
+    });
+    return video.currentTime;
+  };
+
+  const handleExpand = () => {
+    const time = persistNow();
     closePip();
 
     if (pip.source === "library" && pip.libraryVideoId) {
@@ -273,7 +353,7 @@ const WatchPipPlayer = () => {
   };
 
   const onPointerDown = (e) => {
-    if (e.target.closest(".watch-pip-btn")) return;
+    if (!e.target.closest(".watch-pip-drag")) return;
     const el = dragRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
@@ -282,6 +362,8 @@ const WatchPipPlayer = () => {
       startY: e.clientY,
       origX: pos ? pos.x : rect.left,
       origY: pos ? pos.y : rect.top,
+      width: rect.width,
+      height: rect.height,
       moved: false,
     };
     el.setPointerCapture?.(e.pointerId);
@@ -292,62 +374,55 @@ const WatchPipPlayer = () => {
     const dx = e.clientX - dragState.current.startX;
     const dy = e.clientY - dragState.current.startY;
     if (Math.abs(dx) + Math.abs(dy) > 6) dragState.current.moved = true;
+    const width = dragState.current.width || 220;
+    const height = dragState.current.height || 180;
     const nextX = Math.max(
       8,
-      Math.min(window.innerWidth - 180, dragState.current.origX + dx),
+      Math.min(window.innerWidth - width - 8, dragState.current.origX + dx),
     );
     const nextY = Math.max(
       8,
-      Math.min(window.innerHeight - 140, dragState.current.origY + dy),
+      Math.min(window.innerHeight - height - 8, dragState.current.origY + dy),
     );
     setPos({ x: nextX, y: nextY });
   };
 
-  const onPointerUp = (e) => {
-    const wasDrag = dragState.current?.moved;
+  const onPointerUp = () => {
     dragState.current = null;
-    if (!wasDrag && !e.target.closest(".watch-pip-btn")) {
-      handleExpand();
-    }
   };
 
   const style = pos
     ? { left: pos.x, top: pos.y, right: "auto", bottom: "auto" }
     : undefined;
 
+  const playlistIndex = playlist.findIndex(
+    (item) => item.id === pip.libraryVideoId,
+  );
+  const canSkip = isLibrary && playlist.length > 1;
+
   return (
     <div
       ref={dragRef}
-      className="watch-pip-player"
+      className={`watch-pip-player ${isLibrary ? "is-library" : "is-watch"}`}
       style={style}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       role="dialog"
       aria-label={
-        pip.source === "library"
-          ? "Video pop-out player"
-          : "Watch picture in picture"
+        isLibrary ? "Video pop-out player" : "Watch picture in picture"
       }
     >
-      <video
-        ref={videoRef}
-        className="watch-pip-video"
-        src={pip.videoUrl}
-        playsInline
-        webkit-playsinline="true"
-        preload="auto"
-        poster={pip.thumbnail || undefined}
-      />
-      <div className="watch-pip-controls">
+      <div className="watch-pip-chrome">
         <button
           type="button"
-          className="watch-pip-btn"
-          onClick={togglePlay}
-          aria-label={paused ? "Play" : "Pause"}
+          className="watch-pip-btn watch-pip-drag"
+          aria-label="Move player"
+          title="Drag to move"
         >
-          <i className={`fas ${paused ? "fa-play" : "fa-pause"}`} />
+          <i className="fas fa-grip-vertical" />
         </button>
+        <span className="watch-pip-chrome-title">{pip.title}</span>
         <button
           type="button"
           className="watch-pip-btn"
@@ -368,7 +443,74 @@ const WatchPipPlayer = () => {
           <i className="fas fa-times" />
         </button>
       </div>
-      <div className="watch-pip-title">{pip.title}</div>
+      <div className="watch-pip-video-wrap">
+        <video
+          key={pipTrackKey}
+          ref={videoRef}
+          className="watch-pip-video"
+          src={pip.videoUrl}
+          controls
+          playsInline
+          webkit-playsinline="true"
+          preload="auto"
+          poster={pip.thumbnail || undefined}
+          onEnded={handleEnded}
+        />
+      </div>
+      <div className="watch-pip-toolbar">
+        <button
+          type="button"
+          className="watch-pip-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            handlePrev();
+          }}
+          disabled={!canSkip}
+          title="Previous"
+          aria-label="Previous"
+        >
+          <i className="fas fa-step-backward" />
+        </button>
+        <button
+          type="button"
+          className="watch-pip-btn watch-pip-btn-primary"
+          onClick={togglePlay}
+          title={paused ? "Play" : "Pause"}
+          aria-label={paused ? "Play" : "Pause"}
+        >
+          <i className={`fas ${paused ? "fa-play" : "fa-pause"}`} />
+        </button>
+        <button
+          type="button"
+          className="watch-pip-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleNext();
+          }}
+          disabled={!canSkip || looping}
+          title="Next"
+          aria-label="Next"
+        >
+          <i className="fas fa-step-forward" />
+        </button>
+        <button
+          type="button"
+          className={`watch-pip-btn ${looping ? "is-active" : ""}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            updatePip({ looping: !looping });
+          }}
+          title={looping ? "Loop on" : "Loop off"}
+          aria-label={looping ? "Loop on" : "Loop off"}
+        >
+          <i className="fas fa-redo" />
+        </button>
+        {canSkip ? (
+          <span className="watch-pip-index">
+            {playlistIndex >= 0 ? playlistIndex + 1 : 1}/{playlist.length}
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 };

@@ -10,7 +10,7 @@ import api from "../../api/api";
 import siteConfig from "../../config/config.json";
 import { io } from "socket.io-client";
 import { getSocketUrl } from "../../utils/offlineUtils";
-import { unlockAudio } from "../../utils/audioUnlock";
+import { unlockAudio, playTone, resumeAudioFromGesture } from "../../utils/audioUnlock";
 
 // Import extracted modules
 import {
@@ -844,54 +844,10 @@ const LudoGame = () => {
     pieceOut: null,
   });
 
-  // Initialize audio elements for sound effects
+  // Initialize audio for iOS PWA: keep a shared context and resume on gestures.
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // Create audio elements for each sound effect
-    // Using data URIs for simple beep sounds (can be replaced with actual sound files)
-    const createBeepSound = (frequency, duration, type = "sine") => {
-      try {
-        const audioContext = new (
-          window.AudioContext || window.webkitAudioContext
-        )();
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-
-        oscillator.frequency.value = frequency;
-        oscillator.type = type;
-
-        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(
-          0.01,
-          audioContext.currentTime + duration,
-        );
-
-        oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + duration);
-
-        return audioContext;
-      } catch (e) {
-        // Failed to create beep sound
-        return null;
-      }
-    };
-
-    // Create HTML5 Audio elements for sound effects (using simple tones)
-    // In production, replace these with actual sound file URLs
-    const createAudioElement = (frequency, duration, volume = 0.5) => {
-      const audio = new Audio();
-      audio.volume = volume;
-      audio.preload = "auto";
-      // For now, we'll use Web Audio API directly in play functions
-      // This is just a placeholder structure
-      return audio;
-    };
-
-    // Initialize sound refs (will be created on-demand)
     soundRefs.current = {
       diceRoll: null,
       pieceMove: null,
@@ -902,102 +858,72 @@ const LudoGame = () => {
       pieceOut: null,
     };
 
-    // Unlock audio on first user interaction
+    resumeAudioFromGesture();
     unlockAudio().catch(() => {});
+
+    const resumeOnForeground = () => {
+      if (document.visibilityState === "hidden") return;
+      resumeAudioFromGesture();
+    };
+    document.addEventListener("visibilitychange", resumeOnForeground);
+    window.addEventListener("pageshow", resumeOnForeground);
+    window.addEventListener("focus", resumeOnForeground);
+
+    return () => {
+      document.removeEventListener("visibilitychange", resumeOnForeground);
+      window.removeEventListener("pageshow", resumeOnForeground);
+      window.removeEventListener("focus", resumeOnForeground);
+    };
   }, []);
 
-  // Play sound effect helper
   const playSound = useCallback(
-    async (soundType, options = {}) => {
+    (soundType, options = {}) => {
       if (!soundsEnabled) return;
 
-      try {
-        await unlockAudio();
+      resumeAudioFromGesture();
 
-        const audioContext = new (
-          window.AudioContext || window.webkitAudioContext
-        )();
-        if (audioContext.state === "suspended") {
-          await audioContext.resume();
-        }
-
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-
-        // Sound configurations
-        const soundConfigs = {
+      const soundConfigs = {
           diceRoll: {
             frequency: 400,
             duration: 0.2,
             type: "sine",
-            volume: 0.3,
+            volume: 0.45,
           },
           pieceMove: {
             frequency: 300,
             duration: 0.15,
             type: "sine",
-            volume: 0.25,
+            volume: 0.4,
           },
           capture: {
             frequency: 200,
             duration: 0.3,
             type: "square",
-            volume: 0.4,
+            volume: 0.5,
           },
-          win: { frequency: 600, duration: 0.5, type: "sine", volume: 0.5 },
+          win: { frequency: 600, duration: 0.5, type: "sine", volume: 0.6 },
           turnChange: {
             frequency: 350,
             duration: 0.2,
             type: "sine",
-            volume: 0.3,
+            volume: 0.4,
           },
           buttonClick: {
             frequency: 500,
             duration: 0.1,
             type: "sine",
-            volume: 0.2,
+            volume: 0.35,
           },
           pieceOut: {
             frequency: 450,
             duration: 0.25,
             type: "sine",
-            volume: 0.35,
+            volume: 0.45,
           },
-        };
+      };
 
-        const config = soundConfigs[soundType] || soundConfigs.buttonClick;
-        const { frequency, duration, type, volume } = { ...config, ...options };
-
-        oscillator.frequency.value = frequency;
-        oscillator.type = type;
-
-        gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(
-          0.01,
-          audioContext.currentTime + duration,
-        );
-
-        oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + duration);
-
-        // Clean up after sound finishes
-        setTimeout(
-          () => {
-            try {
-              audioContext.close();
-            } catch (e) {
-              // Ignore cleanup errors
-            }
-          },
-          duration * 1000 + 100,
-        );
-      } catch (error) {
-        // Silently fail if audio can't be played (e.g., autoplay restrictions)
-        console.debug("Sound playback failed:", error);
-      }
+      const config = soundConfigs[soundType] || soundConfigs.buttonClick;
+      playTone({ ...config, ...options }).catch(() => {});
     },
     [soundsEnabled],
   );
@@ -4548,6 +4474,7 @@ const LudoGame = () => {
    * Handles both offline and online modes with proper synchronization
    */
   const rollDice = (controlledValue = null, bypassControlModal = false) => {
+    resumeAudioFromGesture();
     const chosenDiceValue =
       Number.isInteger(controlledValue) &&
       controlledValue >= 1 &&
@@ -5178,6 +5105,7 @@ const LudoGame = () => {
   };
 
   const movePiece = (pieceId) => {
+    resumeAudioFromGesture();
     // Prevent multiple moves from a single dice roll - check moving flag
     // But allow automatic moves to proceed (they set isAutoMovingRef instead)
     if (isMovingRef.current && !isAutoMovingRef.current) {
@@ -8838,6 +8766,7 @@ const LudoGame = () => {
   );
 
   const startNewGame = () => {
+    resumeAudioFromGesture();
     const previousGameId = gameIdRef.current || gameId;
 
     // Invalidate every delayed restore/invite action before clearing the room
@@ -9155,6 +9084,7 @@ const LudoGame = () => {
   };
 
   const confirmPlayerCount = () => {
+    resumeAudioFromGesture();
     clearHiddenBoardGameId();
 
     // Starting from the player picker always creates a brand-new match. Do not
@@ -10906,7 +10836,11 @@ const LudoGame = () => {
   // Screens
   if (gameEnded) {
     return (
-      <div className="ludo-root">
+      <div
+        className="ludo-root"
+        onPointerDown={resumeAudioFromGesture}
+        onTouchStart={resumeAudioFromGesture}
+      >
         <AnimatedBackground />
         <GameEndedScreen winners={winners} onResetGame={resetGame} />
       </div>
@@ -10915,7 +10849,11 @@ const LudoGame = () => {
 
   if (showPlayerSelection) {
     return (
-      <div className="ludo-root">
+      <div
+        className="ludo-root"
+        onPointerDown={resumeAudioFromGesture}
+        onTouchStart={resumeAudioFromGesture}
+      >
         <AnimatedBackground />
         <PlayerSelectionModal
           show={showPlayerSelection}
@@ -11087,6 +11025,8 @@ const LudoGame = () => {
     <div
       className="ludo-root"
       style={{ "--ludo-board-size": `${BOARD_SIZE}px` }}
+      onPointerDown={resumeAudioFromGesture}
+      onTouchStart={resumeAudioFromGesture}
     >
       <AnimatedBackground />
       <GameHeader
@@ -11256,6 +11196,8 @@ const LudoGame = () => {
             paddingLeft: responsivePadding,
             paddingRight: responsivePadding,
           }}
+          onPointerDown={resumeAudioFromGesture}
+          onTouchStart={resumeAudioFromGesture}
         >
           <div className="ludo-board-wrap" style={boardStyle}>
             <svg

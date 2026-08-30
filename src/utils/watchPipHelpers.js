@@ -27,6 +27,8 @@ export const buildPipPayloadFromVideo = (videoEl, meta = {}) => {
     muted: !!videoEl.muted,
     title: meta.title || (watchId ? "Watch" : "Video"),
     thumbnail: meta.thumbnail || "",
+    looping: !!meta.looping,
+    playlist: Array.isArray(meta.playlist) ? meta.playlist : [],
   };
 };
 

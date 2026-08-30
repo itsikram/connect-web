@@ -3,6 +3,10 @@ import { getAllSavedVideos } from './useSavedVideos';
 
 const PLAYLIST_STORAGE_KEY = 'videoPlayerCustomPlaylist';
 const PLAYLIST_ORDER_KEY = 'videoPlayerPlaylistOrder';
+const PLAY_QUEUE_KEY = 'videoPlayerPlayQueue';
+
+export const MIN_PLAY_COUNT = 1;
+export const MAX_PLAY_COUNT = 99;
 
 export const SORT_OPTIONS = [
     { id: 'custom', label: 'Custom order' },
@@ -210,6 +214,73 @@ export const getSourceLabel = (video) => {
     if (video.type === 'file') return 'Local · File';
     return video.online === false ? 'Local · URL' : 'Server · URL';
 };
+
+export const clampPlayCount = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed)) return MIN_PLAY_COUNT;
+    return Math.min(MAX_PLAY_COUNT, Math.max(MIN_PLAY_COUNT, parsed));
+};
+
+export const normalizeQueueItem = (item) => {
+    if (!item?.url) return null;
+    const videoId = String(item.videoId || item.id || '');
+    if (!videoId) return null;
+    return {
+        queueId: String(
+            item.queueId ||
+                `${videoId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        ),
+        videoId,
+        url: item.url,
+        title: item.title || 'Untitled video',
+        thumbnail: item.thumbnail || '',
+        type: item.type || 'url',
+        playCount: clampPlayCount(item.playCount),
+    };
+};
+
+export const loadPlayQueue = () => {
+    try {
+        const raw = localStorage.getItem(PLAY_QUEUE_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed.map(normalizeQueueItem).filter(Boolean);
+    } catch (_) {
+        return [];
+    }
+};
+
+export const savePlayQueue = (items) => {
+    if (!Array.isArray(items) || items.length === 0) {
+        localStorage.removeItem(PLAY_QUEUE_KEY);
+        return;
+    }
+    localStorage.setItem(
+        PLAY_QUEUE_KEY,
+        JSON.stringify(
+            items.map(({ queueId, videoId, url, title, thumbnail, type, playCount }) => ({
+                queueId,
+                videoId,
+                url,
+                title,
+                thumbnail,
+                type,
+                playCount: clampPlayCount(playCount),
+            })),
+        ),
+    );
+};
+
+export const videoToQueueItem = (video, playCount = MIN_PLAY_COUNT) =>
+    normalizeQueueItem({
+        videoId: video?.id,
+        url: video?.url,
+        title: video?.title,
+        thumbnail: video?.thumbnail,
+        type: video?.type,
+        playCount,
+    });
 
 export const getTypeLabel = (type) => {
     switch (type) {

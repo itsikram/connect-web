@@ -2,35 +2,69 @@
   position: fixed;
   right: 12px;
   bottom: calc(72px + env(safe-area-inset-bottom, 0px));
-  width: min(46vw, 180px);
-  aspect-ratio: 9 / 16;
-  max-height: 280px;
+  width: min(92vw, 420px);
   z-index: 10050;
   border-radius: 14px;
   overflow: hidden;
-  background: #000;
+  background: #0b1220;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  touch-action: none;
   user-select: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.watch-pip-player.is-watch {
+  width: min(46vw, 240px);
+}
+
+.watch-pip-chrome {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.55);
+  touch-action: none;
+}
+
+.watch-pip-chrome-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.watch-pip-video-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+}
+
+.watch-pip-player.is-watch .watch-pip-video-wrap {
+  aspect-ratio: 9 / 16;
+  max-height: min(46vh, 360px);
 }
 
 .watch-pip-video {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
-  pointer-events: none;
   background: #000;
 }
 
-.watch-pip-controls {
-  position: absolute;
-  top: 6px;
-  right: 6px;
+.watch-pip-toolbar {
   display: flex;
-  gap: 4px;
-  z-index: 2;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.45);
 }
 
 .watch-pip-btn {
@@ -38,7 +72,7 @@
   height: 28px;
   border: none;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(255, 255, 255, 0.12);
   color: #fff;
   display: grid;
   place-items: center;
@@ -47,28 +81,42 @@
   padding: 0;
 }
 
-.watch-pip-btn:active {
+.watch-pip-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.watch-pip-btn:active:not(:disabled) {
   transform: scale(0.94);
+}
+
+.watch-pip-btn-primary {
+  width: 34px;
+  height: 34px;
+  background: rgba(59, 130, 246, 0.45);
+}
+
+.watch-pip-btn.is-active {
+  background: rgba(59, 130, 246, 0.7);
 }
 
 .watch-pip-close {
   background: rgba(220, 38, 38, 0.85);
 }
 
-.watch-pip-title {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 18px 8px 8px;
+.watch-pip-drag {
+  cursor: grab;
+  border-radius: 8px;
+}
+
+.watch-pip-drag:active {
+  cursor: grabbing;
+}
+
+.watch-pip-index {
+  margin-left: 4px;
   font-size: 11px;
-  font-weight: 600;
-  color: #fff;
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.75));
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  pointer-events: none;
+  color: rgba(255, 255, 255, 0.72);
 }
 
 html.standalone-ios .watch-pip-player,
@@ -78,9 +126,12 @@ html.standalone-pwa .watch-pip-player {
 
 @media (min-width: 769px) {
   .watch-pip-player {
-    width: 220px;
-    max-height: 320px;
+    width: min(46vw, 440px);
     bottom: 24px;
     right: 24px;
+  }
+
+  .watch-pip-player.is-watch {
+    width: 240px;
   }
 }
