@@ -203,9 +203,9 @@ const speakText = (textOrMsg) => {
 
 // Track message notifications to prevent duplicate toasts across page reloads
 // Store message IDs and last notification time for persistence
-const DEDUP_STORAGE_KEY = 'notifiedMessageIds'; // Store set of notified message IDs
-const DEDUP_NOTIFICATIONS_KEY = 'notifiedNotificationIds'; // Store set of notified notification IDs
-const LAST_NOTIFICATION_FETCH_KEY = 'lastNotificationFetchTime'; // Store last fetch timestamp
+const DEDUP_STORAGE_KEY = "notifiedMessageIds"; // Store set of notified message IDs
+const DEDUP_NOTIFICATIONS_KEY = "notifiedNotificationIds"; // Store set of notified notification IDs
+const LAST_NOTIFICATION_FETCH_KEY = "lastNotificationFetchTime"; // Store last fetch timestamp
 const DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000; // Keep notified IDs for 24 hours, then auto-cleanup
 
 const getNotifiedMessages = () => {
@@ -216,12 +216,14 @@ const getNotifiedMessages = () => {
       // Clean up very old entries (more than 24 hours old)
       const now = Date.now();
       const cleaned = Object.fromEntries(
-        Object.entries(parsed).filter(([, timestamp]) => now - timestamp < DEDUP_WINDOW_MS)
+        Object.entries(parsed).filter(
+          ([, timestamp]) => now - timestamp < DEDUP_WINDOW_MS,
+        ),
       );
       return cleaned;
     }
   } catch (error) {
-    console.error('Error loading notified messages:', error);
+    console.error("Error loading notified messages:", error);
   }
   return {};
 };
@@ -230,7 +232,7 @@ const saveNotifiedMessages = (obj) => {
   try {
     localStorage.setItem(DEDUP_STORAGE_KEY, JSON.stringify(obj));
   } catch (error) {
-    console.error('Error saving notified messages:', error);
+    console.error("Error saving notified messages:", error);
   }
 };
 
@@ -239,7 +241,7 @@ const getLastNotificationFetchTime = () => {
     const stored = localStorage.getItem(LAST_NOTIFICATION_FETCH_KEY);
     return stored ? parseInt(stored, 10) : 0;
   } catch (error) {
-    console.error('Error loading last notification fetch time:', error);
+    console.error("Error loading last notification fetch time:", error);
     return 0;
   }
 };
@@ -248,7 +250,7 @@ const saveLastNotificationFetchTime = (timestamp) => {
   try {
     localStorage.setItem(LAST_NOTIFICATION_FETCH_KEY, String(timestamp));
   } catch (error) {
-    console.error('Error saving last notification fetch time:', error);
+    console.error("Error saving last notification fetch time:", error);
   }
 };
 
@@ -260,12 +262,14 @@ const getNotifiedNotifications = () => {
       // Clean up very old entries (more than 24 hours old)
       const now = Date.now();
       const cleaned = Object.fromEntries(
-        Object.entries(parsed).filter(([, timestamp]) => now - timestamp < DEDUP_WINDOW_MS)
+        Object.entries(parsed).filter(
+          ([, timestamp]) => now - timestamp < DEDUP_WINDOW_MS,
+        ),
       );
       return cleaned;
     }
   } catch (error) {
-    console.error('Error loading notified notifications:', error);
+    console.error("Error loading notified notifications:", error);
   }
   return {};
 };
@@ -274,7 +278,7 @@ const saveNotifiedNotifications = (obj) => {
   try {
     localStorage.setItem(DEDUP_NOTIFICATIONS_KEY, JSON.stringify(obj));
   } catch (error) {
-    console.error('Error saving notified notifications:', error);
+    console.error("Error saving notified notifications:", error);
   }
 };
 
@@ -650,7 +654,7 @@ const Main = () => {
   // HTTP-based notification polling - memoized to prevent recreation on every render
   const fetchNotifications = useCallback(async () => {
     if (!profileId) return;
-    
+
     // Skip fetch if tab is not active (optimization for background tabs)
     if (!isTabActive) return;
 
@@ -666,11 +670,12 @@ const Main = () => {
         response.data.notifications.forEach((notification) => {
           dispatch(addNotification(notification));
 
-          const notificationId = notification._id?.toString() || notification._id;
-          
+          const notificationId =
+            notification._id?.toString() || notification._id;
+
           // Skip if this notification was already shown before
           if (notifiedNotificationIds[notificationId]) {
-            console.log('⏭️ Skipping duplicate notification:', notificationId);
+            console.log("⏭️ Skipping duplicate notification:", notificationId);
             return;
           }
 
@@ -679,8 +684,8 @@ const Main = () => {
             // Mark as notified
             notifiedNotificationIds[notificationId] = Date.now();
             saveNotifiedNotifications(notifiedNotificationIds);
-            
-            console.log('📢 Showing notification:', notificationId);
+
+            console.log("📢 Showing notification:", notificationId);
             const notificationLink = getNotificationLink(notification);
             notify(
               notification.text,
@@ -690,8 +695,11 @@ const Main = () => {
             );
 
             // Mark notification as seen on backend (prevent re-showing on reload)
-            api.post('/notification/view', { notificationId })
-              .catch(err => console.warn('Failed to mark notification as seen:', err));
+            api
+              .post("/notification/view", { notificationId })
+              .catch((err) =>
+                console.warn("Failed to mark notification as seen:", err),
+              );
 
             // Skip page Notification when Web Push is subscribed (SW already shows it)
             if (
@@ -739,31 +747,43 @@ const Main = () => {
 
       if (response.data.messages && response.data.messages.length > 0) {
         const fetchTime = Date.now();
-        
+
         response.data.messages.forEach((updatedMessage) => {
           // Validate message has required fields (senderId or receiverId)
           if (!updatedMessage.senderId && !updatedMessage.receiverId) {
-            console.warn('Skipping invalid message - missing senderId and receiverId:', updatedMessage._id);
+            console.warn(
+              "Skipping invalid message - missing senderId and receiverId:",
+              updatedMessage._id,
+            );
             return;
           }
-          
+
           // Always dispatch to update state (for message history/storage)
           dispatch(newMessage(updatedMessage, profileId));
-          
-          const messageId = updatedMessage._id?.toString() || updatedMessage._id;
-          
+
+          const messageId =
+            updatedMessage._id?.toString() || updatedMessage._id;
+
           // Only show notification if message has NOT been notified before
           if (notifiedMessageIds[messageId]) {
             // Message was already notified, skip
-            console.log('⏭️ Skipping duplicate notification for message:', messageId);
+            console.log(
+              "⏭️ Skipping duplicate notification for message:",
+              messageId,
+            );
             return;
           }
-          
+
           // Mark this message as notified with timestamp
           notifiedMessageIds[messageId] = Date.now();
           saveNotifiedMessages(notifiedMessageIds);
-          
-          console.log('📬 API: Showing notification for message:', messageId, 'from:', updatedMessage.senderId);
+
+          console.log(
+            "📬 API: Showing notification for message:",
+            messageId,
+            "from:",
+            updatedMessage.senderId,
+          );
 
           // Update sender's online status
           if (updatedMessage.senderId) {
@@ -774,7 +794,7 @@ const Main = () => {
           }
 
           // Show notification only if message is not empty
-          const messageText = String(updatedMessage.message || '').trim();
+          const messageText = String(updatedMessage.message || "").trim();
           if (messageText) {
             const senderName = updatedMessage.senderName || "Friend";
             const senderPP = updatedMessage.senderPP || "/default-avatar.png";
@@ -785,11 +805,11 @@ const Main = () => {
               "/message/" + updatedMessage.senderId,
             );
           }
-          
+
           // Note: Do NOT open sticky chat here - socket handler will handle it
           // This prevents duplicate sticky chat boxes from API polling
         });
-        
+
         // Update the last fetch time
         lastNotificationFetchTime = fetchTime;
         saveLastNotificationFetchTime(fetchTime);
@@ -835,10 +855,13 @@ const Main = () => {
 
         // Validate message has required fields
         if (!updatedMessage.senderId) {
-          console.warn('Skipping socket message - missing senderId:', updatedMessage._id);
+          console.warn(
+            "Skipping socket message - missing senderId:",
+            updatedMessage._id,
+          );
           return;
         }
-        
+
         // Update sender's online status
         if (updatedMessage.senderId) {
           const friendOnlineEvent = new CustomEvent("friend_online_client", {
@@ -852,18 +875,26 @@ const Main = () => {
 
         if (notifiedMessageIds[messageId]) {
           // Message was already notified before
-          console.log('⏭️ Skipping duplicate socket notification for message:', messageId);
+          console.log(
+            "⏭️ Skipping duplicate socket notification for message:",
+            messageId,
+          );
           return;
         }
 
         // Mark this message as notified with timestamp
         notifiedMessageIds[messageId] = Date.now();
         saveNotifiedMessages(notifiedMessageIds);
-        
-        console.log('📬 Socket: Showing notification for message:', messageId, 'from:', updatedMessage.senderId);
+
+        console.log(
+          "📬 Socket: Showing notification for message:",
+          messageId,
+          "from:",
+          updatedMessage.senderId,
+        );
 
         // Show notification only if message is not empty
-        const messageText = String(updatedMessage.message || '').trim();
+        const messageText = String(updatedMessage.message || "").trim();
         if (messageText) {
           const senderName = data.senderName || "Friend";
           const senderPP = data.senderPP || "/default-avatar.png";
@@ -885,21 +916,26 @@ const Main = () => {
                 ? window.isStickyChatOpen(updatedMessage.senderId)
                 : false;
           } catch (error) {
-            console.warn('Error checking if chat is open:', error);
+            console.warn("Error checking if chat is open:", error);
             isChatOpen = false;
           }
 
           if (!isChatOpen) {
-            console.log('💬 Dispatching openStickyChat for:', updatedMessage.senderId);
+            console.log(
+              "💬 Dispatching openStickyChat for:",
+              updatedMessage.senderId,
+            );
             const openChatEvent = new CustomEvent("openStickyChat", {
               detail: { profileId: updatedMessage.senderId },
             });
             window.dispatchEvent(openChatEvent);
           } else {
-            console.log('✅ Chat already open for:', updatedMessage.senderId);
+            console.log("✅ Chat already open for:", updatedMessage.senderId);
           }
         } else {
-          console.log('📄 On message page or no senderId, skipping sticky chat');
+          console.log(
+            "📄 On message page or no senderId, skipping sticky chat",
+          );
         }
 
         // Update last notification fetch time for persistence
@@ -964,7 +1000,12 @@ const Main = () => {
         }
 
         playSound();
-        notify(truncateToTenWords(msg.message), senderName, senderPP, "/message/" + msg.senderId);
+        notify(
+          truncateToTenWords(msg.message),
+          senderName,
+          senderPP,
+          "/message/" + msg.senderId,
+        );
         dispatch(newMessage(msg));
       } else {
         if (Notification && Notification.permission === "granted") {
@@ -1005,7 +1046,12 @@ const Main = () => {
 
       if (document.visibilityState === "visible") {
         const notificationLink = getNotificationLink(notification);
-        notify(truncateToTenWords(notification.text), false, notification.icon, notificationLink);
+        notify(
+          truncateToTenWords(notification.text),
+          false,
+          notification.icon,
+          notificationLink,
+        );
       }
     };
 
@@ -1182,8 +1228,7 @@ const Main = () => {
         }
 
         // Create unique key for this invite
-        const inviteKey =
-          payload.inviteId || `${payload.gameId}:${payload.by}`;
+        const inviteKey = payload.inviteId || `${payload.gameId}:${payload.by}`;
         const now = Date.now();
 
         // Check if we've already shown a toast for this invite recently (30 seconds)
@@ -1492,12 +1537,114 @@ const Main = () => {
 
   // Listen for auth logout events from API interceptor
   useEffect(() => {
-    const handleAuthLogout = () => {
+    // Clear browser storage, caches, indexedDB and service workers
+    const clearAllClientCaches = async () => {
+      try {
+        // Clear synchronous storages
+        try {
+          localStorage.clear();
+        } catch (e) {
+          console.warn("Failed to clear localStorage:", e);
+        }
+        try {
+          sessionStorage.clear();
+        } catch (e) {
+          console.warn("Failed to clear sessionStorage:", e);
+        }
+
+        // Clear CacheStorage (registered service worker caches)
+        if (typeof caches !== "undefined" && caches.keys) {
+          try {
+            const cacheKeys = await caches.keys();
+            await Promise.all(cacheKeys.map((key) => caches.delete(key)));
+          } catch (e) {
+            console.warn("Failed to clear CacheStorage:", e);
+          }
+        }
+
+        // Delete all IndexedDB databases (when supported)
+        if (typeof indexedDB !== "undefined") {
+          try {
+            if (indexedDB.databases) {
+              const dbs = await indexedDB.databases();
+              await Promise.all(
+                dbs
+                  .filter((d) => d && d.name)
+                  .map(
+                    (d) =>
+                      new Promise((res) => {
+                        const req = indexedDB.deleteDatabase(d.name);
+                        req.onsuccess = () => res();
+                        req.onerror = () => res();
+                        req.onblocked = () => res();
+                      }),
+                  ),
+              );
+            }
+          } catch (e) {
+            console.warn("Failed to clear IndexedDB databases:", e);
+          }
+        }
+
+        // Unregister service workers (best-effort)
+        if (navigator?.serviceWorker?.getRegistrations) {
+          try {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map((r) => r.unregister().catch(() => {})));
+          } catch (e) {
+            console.warn("Failed to unregister service workers:", e);
+          }
+        }
+      } catch (err) {
+        console.warn("Error while clearing client caches:", err);
+      }
+    };
+
+    const handleAuthLogout = async () => {
       console.log("🔄 Auth logout event received, logging out user...");
+      try {
+        // Try to disconnect socket to stop realtime events immediately
+        try {
+          if (socket && typeof socket.disconnect === "function") {
+            socket.disconnect();
+          }
+        } catch (_e) {
+          // ignore
+        }
+
+        await clearAllClientCaches();
+
+        // Clear in-memory deduplication caches
+        try {
+          Object.keys(notifiedMessageIds).forEach(
+            (k) => delete notifiedMessageIds[k],
+          );
+        } catch (e) {}
+        try {
+          Object.keys(notifiedNotificationIds).forEach(
+            (k) => delete notifiedNotificationIds[k],
+          );
+        } catch (e) {}
+        try {
+          lastNotificationFetchTime = 0;
+        } catch (e) {}
+      } catch (e) {
+        console.warn("Error during logout cleanup:", e);
+      }
+
       if (logout) {
-        logout();
-        // Redirect to login page
+        try {
+          logout();
+        } catch (e) {
+          console.warn("logout() threw an error:", e);
+        }
+      }
+
+      // Redirect to login page
+      try {
         window.location.href = "/login";
+      } catch (e) {
+        console.warn("Failed to redirect after logout:", e);
       }
     };
 

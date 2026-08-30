@@ -85,6 +85,7 @@ const VideoCall = ({ myId }) => {
   const currentChannelRef = useRef(currentChannel);
   const callerRef = useRef(caller);
   const callSeenStatusSentRef = useRef(false);
+  const callIgnoredStatusSentRef = useRef(false);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -381,6 +382,26 @@ const VideoCall = ({ myId }) => {
     });
   }, []);
 
+  const markCallIgnoredIfNeeded = useCallback(() => {
+    if (
+      callIgnoredStatusSentRef.current ||
+      !callSeenStatusSentRef.current ||
+      !receivingCallRef.current ||
+      callAcceptedRef.current
+    ) {
+      return;
+    }
+
+    const to = callerRef.current;
+    if (!to) return;
+
+    callIgnoredStatusSentRef.current = true;
+    socket.emit("update-call-status", {
+      to: String(to),
+      status: "Call ignored",
+    });
+  }, []);
+
   const startFlashingTitle = useCallback((name = "Someone") => {
     try {
       if (titleFlashIntervalRef.current) return;
@@ -630,6 +651,7 @@ const VideoCall = ({ myId }) => {
     setCallDuration(0);
     setOutgoingCallStatus("");
     callSeenStatusSentRef.current = false;
+    callIgnoredStatusSentRef.current = false;
     if (minimizedDurationInterval.current) {
       clearInterval(minimizedDurationInterval.current);
       minimizedDurationInterval.current = null;
@@ -1129,6 +1151,7 @@ const VideoCall = ({ myId }) => {
       );
       console.log("VideoCall - Friend info:", { callerName, callerProfilePic });
       callSeenStatusSentRef.current = false;
+      callIgnoredStatusSentRef.current = false;
       setIsVideoCall(true);
       setReceivingCall(false);
       setCaller(to);
@@ -1218,6 +1241,7 @@ const VideoCall = ({ myId }) => {
       callAcceptedRef.current = false;
       currentChannelRef.current = channelName;
       callSeenStatusSentRef.current = false;
+      callIgnoredStatusSentRef.current = false;
 
       setIsVideoCall(true);
       setReceivingCall(true);
@@ -1491,6 +1515,11 @@ const VideoCall = ({ myId }) => {
   // Resume ringtone playback when tab becomes visible
   useEffect(() => {
     const handleVisibilityChange = async () => {
+      if (document.visibilityState === "hidden") {
+        markCallIgnoredIfNeeded();
+        return;
+      }
+
       // Only resume if tab is visible, we're receiving a call, and we haven't accepted yet
       if (
         document.visibilityState === "visible" &&
@@ -1545,13 +1574,19 @@ const VideoCall = ({ myId }) => {
       }
     };
 
+    const handleWindowBlur = () => {
+      markCallIgnoredIfNeeded();
+    };
+
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("focus", handleWindowFocus);
+    window.addEventListener("blur", handleWindowBlur);
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleWindowFocus);
+      window.removeEventListener("blur", handleWindowBlur);
     };
-  }, [markCallSeenIfNeeded]); // Handlers use refs; include seen-status callback
+  }, [markCallIgnoredIfNeeded, markCallSeenIfNeeded]); // Handlers use refs; include status callbacks
 
   // Cleanup on component unmount
   useEffect(() => {

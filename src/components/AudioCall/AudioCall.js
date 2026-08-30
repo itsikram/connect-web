@@ -73,6 +73,7 @@ const AudioCall = ({ myId }) => {
   const currentChannelRef = useRef(currentChannel);
   const callerRef = useRef(caller);
   const callSeenStatusSentRef = useRef(false);
+  const callIgnoredStatusSentRef = useRef(false);
   const pendingAutoAcceptRef = useRef(false);
   const answerCallRef = useRef(null);
 
@@ -308,6 +309,26 @@ const AudioCall = ({ myId }) => {
     socket.emit("update-call-status", {
       to: String(to),
       status: "Call seen",
+    });
+  }, []);
+
+  const markCallIgnoredIfNeeded = useCallback(() => {
+    if (
+      callIgnoredStatusSentRef.current ||
+      !callSeenStatusSentRef.current ||
+      !receivingCallRef.current ||
+      callAcceptedRef.current
+    ) {
+      return;
+    }
+
+    const to = callerRef.current;
+    if (!to) return;
+
+    callIgnoredStatusSentRef.current = true;
+    socket.emit("update-call-status", {
+      to: String(to),
+      status: "Call ignored",
     });
   }, []);
 
@@ -842,6 +863,7 @@ const AudioCall = ({ myId }) => {
     setIsMinimized(false);
     setCallDuration(0);
     callSeenStatusSentRef.current = false;
+    callIgnoredStatusSentRef.current = false;
     isTerminating.current = false;
     console.log("AudioCall: Cleanup - reset state variables");
   }, [currentChannel, endMinimizedCall, isTerminating]);
@@ -918,6 +940,7 @@ const AudioCall = ({ myId }) => {
       callAcceptedRef.current = false;
       currentChannelRef.current = channelName;
       callSeenStatusSentRef.current = false;
+      callIgnoredStatusSentRef.current = false;
 
       setIsAudioCall(true);
       setReceivingCall(true);
@@ -1027,6 +1050,7 @@ const AudioCall = ({ myId }) => {
         return;
       }
       callSeenStatusSentRef.current = false;
+      callIgnoredStatusSentRef.current = false;
       setIsAudioCall(true);
       setReceivingCall(false);
       setCaller(to);
@@ -1168,6 +1192,11 @@ const AudioCall = ({ myId }) => {
   // Resume ringtone playback when tab becomes visible
   useEffect(() => {
     const handleVisibilityChange = async () => {
+      if (document.visibilityState === "hidden") {
+        markCallIgnoredIfNeeded();
+        return;
+      }
+
       // Only resume if tab is visible, we're receiving a call, and we haven't accepted yet
       if (
         document.visibilityState === "visible" &&
@@ -1222,13 +1251,19 @@ const AudioCall = ({ myId }) => {
       }
     };
 
+    const handleWindowBlur = () => {
+      markCallIgnoredIfNeeded();
+    };
+
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("focus", handleWindowFocus);
+    window.addEventListener("blur", handleWindowBlur);
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleWindowFocus);
+      window.removeEventListener("blur", handleWindowBlur);
     };
-  }, [markCallSeenIfNeeded]);
+  }, [markCallIgnoredIfNeeded, markCallSeenIfNeeded]);
 
   // Initialize audio unlock on component mount
   useEffect(() => {
