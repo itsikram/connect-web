@@ -166,22 +166,6 @@ let CreatePost = ({ setPosts = null }) => {
     }, [showAudienceMenu])
 
 
-    const useMediaQuery = (query) => {
-        const [matches, setMatches] = useState(window.matchMedia(query).matches);
-
-        useEffect(() => {
-            const media = window.matchMedia(query);
-            const listener = (e) => setMatches(e.matches);
-            media.addEventListener("change", listener);
-            return () => media.removeEventListener("change", listener);
-        }, [query]);
-
-        return matches;
-    };
-
-    var isMobile = useMediaQuery("(max-width: 768px)");
-
-
     let profileName = profileData.user && profileData.user.firstName + ' ' + profileData.user.surname || ''
 
 
@@ -439,12 +423,12 @@ let CreatePost = ({ setPosts = null }) => {
                         </li>
                     </ul>
                 </div>
+                {isPostModal && (
                 <ModalContainer
-                    isOpen={isPostModal}
+                    isOpen
                     id="create-post-modal"
                     onRequestClose={closeCreatePostModal}
                     title="Create A Post"
-                    style={{ width: isMobile ? '95%' : '600px' }}
                 >
                     <div className="modal-header">
                         <div className="modal-title">
@@ -661,6 +645,7 @@ let CreatePost = ({ setPosts = null }) => {
                         </div>
                     </div>
                 </ModalContainer>
+                )}
             </div>
         </Fragment>
     )

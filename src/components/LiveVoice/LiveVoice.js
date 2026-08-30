@@ -386,9 +386,9 @@ const LiveVoice = ({ myId }) => {
     };
   }, []);
 
-  return (
+  return isOpen ? (
     <LiveVoiceModal
-      isOpen={isOpen}
+      isOpen
       onClose={() => stopSession(true)}
       isActive={isActive}
       duration={duration}
@@ -398,7 +398,7 @@ const LiveVoice = ({ myId }) => {
       connectionQuality={connectionQuality}
       onStop={() => stopSession(true)}
     />
-  );
+  ) : null;
 };
 
 export default LiveVoice;

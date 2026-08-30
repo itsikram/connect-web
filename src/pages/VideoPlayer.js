@@ -269,21 +269,20 @@ const VideoPlayer = () => {
 
     const onCanPlay = () => {
       setMediaReady(true);
+      if (document.hidden) {
+        try {
+          video.muted = true;
+          video.pause();
+        } catch (_) {}
+        backgroundAudio.wantPlayingRef.current = true;
+        backgroundAudio.playBackgroundAudio({ fromStart: true });
+        setIsPlaying(true);
+        return;
+      }
       video
         .play()
         .then(() => setIsPlaying(true))
-        .catch(() => {
-          if (document.hidden) {
-            backgroundAudio.wantPlayingRef.current = true;
-            backgroundAudio.playBackgroundAudio({
-              unmuted: true,
-              fromStart: true,
-            });
-            setIsPlaying(true);
-            return;
-          }
-          setIsPlaying(false);
-        });
+        .catch(() => setIsPlaying(false));
     };
 
     video.addEventListener("canplay", onCanPlay, { once: true });
@@ -654,7 +653,17 @@ const VideoPlayer = () => {
   );
 
   const handlePrev = useCallback(() => {
-    if (playbackList.length <= 1) return;
+    const livePosition = backgroundAudio.mediaPosition.playing
+      ? backgroundAudio.mediaPosition.position
+      : currentTime;
+    if (livePosition > 3) {
+      replayCurrent();
+      return;
+    }
+    if (playbackList.length <= 1) {
+      replayCurrent();
+      return;
+    }
     if (isThisPip) {
       switchLibraryPipByOffset(-1);
       return;
@@ -668,10 +677,16 @@ const VideoPlayer = () => {
     isThisPip,
     switchLibraryPipByOffset,
     setPlaybackIndex,
+    backgroundAudio,
+    currentTime,
+    replayCurrent,
   ]);
 
   const handleNext = useCallback(() => {
-    if (playbackList.length <= 1) return;
+    if (playbackList.length <= 1) {
+      replayCurrent();
+      return;
+    }
     if (isThisPip) {
       switchLibraryPipByOffset(1);
       return;
@@ -683,6 +698,7 @@ const VideoPlayer = () => {
     isThisPip,
     switchLibraryPipByOffset,
     setPlaybackIndex,
+    replayCurrent,
   ]);
 
   const addToPlayQueue = useCallback((video, playCount = MIN_PLAY_COUNT) => {
@@ -884,7 +900,7 @@ const VideoPlayer = () => {
     backgroundAudio.wantPlayingRef.current = true;
     if (document.hidden) {
       return backgroundAudio
-        .playBackgroundAudio({ unmuted: true })
+        .playBackgroundAudio()
         .then(() => setIsPlaying(true));
     }
     const video = videoRef.current;
@@ -1135,7 +1151,21 @@ const VideoPlayer = () => {
 
   const playerIsPlaying = isThisPip
     ? watchPip?.pip?.playing !== false
-    : isPlaying;
+    : isPlaying || backgroundAudio.mediaPosition.playing;
+
+  const sessionDuration =
+    backgroundAudio.mediaPosition.playing &&
+    backgroundAudio.mediaPosition.duration > 0
+      ? backgroundAudio.mediaPosition.duration
+      : duration;
+  const sessionPosition =
+    backgroundAudio.mediaPosition.playing &&
+    backgroundAudio.mediaPosition.duration > 0
+      ? backgroundAudio.mediaPosition.position
+      : currentTime;
+  const sessionRate = backgroundAudio.mediaPosition.playing
+    ? backgroundAudio.mediaPosition.playbackRate
+    : playbackRate;
 
   const mediaSessionHandlers = useMemo(
     () => ({
@@ -1152,6 +1182,7 @@ const VideoPlayer = () => {
 
   useMediaSession({
     enabled: !!currentVideo && !isThisPip,
+    bindKey: `${currentTrackKey}:${backgroundAudio.sessionBindKey}`,
     metadata: currentVideo
       ? {
           title: currentVideo.title,
@@ -1160,11 +1191,11 @@ const VideoPlayer = () => {
           artwork: mediaArtwork,
         }
       : null,
-    playbackState: isPlaying ? "playing" : "paused",
+    playbackState: playerIsPlaying ? "playing" : "paused",
     positionState: {
-      duration,
-      position: currentTime,
-      playbackRate,
+      duration: sessionDuration,
+      position: sessionPosition,
+      playbackRate: sessionRate,
     },
     handlers: mediaSessionHandlers,
   });

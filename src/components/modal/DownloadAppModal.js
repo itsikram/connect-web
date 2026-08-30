@@ -97,6 +97,8 @@ const DownloadAppModal = ({ isOpen, onClose }) => {
     <ModalContainer
       isOpen={isOpen}
       onRequestClose={onClose}
+      title="Get our mobile app"
+      size="sm"
       style={{
         borderRadius: "16px",
         padding: 0,

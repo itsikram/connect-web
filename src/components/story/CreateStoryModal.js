@@ -3,7 +3,6 @@ import ModalContainer from '../modal/ModalContainer';
 import UserPP from '../UserPP';
 import api from "../../api/api";
 import { fetchProfileHasStoryCached } from "../../utils/requestCache";
-import useIsMobile from '../../utils/useIsMobile';
 import { showErrorToast, showSuccessToast } from '../../utils/toastUtils';
 
 const STORY_INIT = {
@@ -66,7 +65,6 @@ const extractStoryGradient = (imageUrl) => new Promise((resolve) => {
 });
 
 const CreateStoryModal = ({ isOpen, onRequestClose, profileData, onStoryCreated }) => {
-    const isMobile = useIsMobile();
     const [storyData, setStoryData] = useState(STORY_INIT);
     const [isUploading, setIsUploading] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -213,7 +211,6 @@ const CreateStoryModal = ({ isOpen, onRequestClose, profileData, onStoryCreated 
             id="create-story-modal"
             onRequestClose={handleClose}
             title="Add to Story"
-            style={{ width: isMobile ? '95%' : '600px' }}
         >
             <div className="modal-header">
                 <div className="modal-title">Add to Story</div>

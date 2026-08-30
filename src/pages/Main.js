@@ -4,6 +4,8 @@ import React, {
   useState,
   useRef,
   useCallback,
+  lazy,
+  Suspense,
 } from "react";
 import { ToastContainer } from "react-toastify";
 import {
@@ -34,7 +36,6 @@ import EnablePushBanner from "../components/EnablePushBanner";
 import { initIncomingCallPushBridge } from "../utils/incomingCallFromPush";
 import socket from "../common/socket";
 import Header from "../partials/header/Header";
-import AIAgentModal from "../components/modal/AIAgentModal/AIAgentModal";
 import ProtectedRoute from "../components/ProtectedRoute.js";
 import { useAuth } from "../hooks/useAuth";
 import Home from "./Home";
@@ -112,6 +113,10 @@ import MessageSetting from "../components/setting/MessageSetting.js";
 import PreferenceSetting from "../components/setting/PreferenceSetting.js";
 import SoundSetting from "../components/setting/SoundSetting.js";
 import CacheSetting from "../components/setting/CacheSetting.js";
+
+const AIAgentModal = lazy(() =>
+  import("../components/modal/AIAgentModal/AIAgentModal"),
+);
 
 import VideoCallPage from "./VideoCallPage.js";
 
@@ -1930,6 +1935,12 @@ const Main = () => {
   // AI Agent Modal State
   const [isAIAgentModalOpen, setIsAIAgentModalOpen] = useState(false);
 
+  useEffect(() => {
+    const openAgent = () => setIsAIAgentModalOpen(true);
+    window.addEventListener("openAIAgent", openAgent);
+    return () => window.removeEventListener("openAIAgent", openAgent);
+  }, []);
+
   // Cleanup audio elements on unmount
   useEffect(() => {
     return () => {
@@ -2273,10 +2284,14 @@ const Main = () => {
         <LiveVoice myId={profileId}></LiveVoice>
       </>
       <StickyChatBoxContainer />
-      <AIAgentModal
-        isOpen={isAIAgentModalOpen}
-        onClose={() => setIsAIAgentModalOpen(false)}
-      />
+      {isAIAgentModalOpen && (
+        <Suspense fallback={null}>
+          <AIAgentModal
+            isOpen
+            onClose={() => setIsAIAgentModalOpen(false)}
+          />
+        </Suspense>
+      )}
       <ToastContainer
         position="top-center"
         autoClose={5000}

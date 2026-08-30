@@ -218,10 +218,10 @@ setUploadProgress(0)
 
 
 
+                {isPPViewModal && (
                 <ModalContainer
                     title="View Profile Picture"
-                    style={{ width: isMobile ? '95%' : "600px", top: "50%" }}
-                    isOpen={isPPViewModal}
+                    isOpen
                     onRequestClose={closePPViewModal}
                     id="pp-view-modal"
                 >
@@ -229,21 +229,22 @@ setUploadProgress(0)
                     <div className="modal-header">
                         <div className="modal-title" style={PPViewModalTitleStyles}> View
                             Profile Picture</div>
-                        <div onClick={closePPViewModal} className="modal-close-btn">
+                        <button type="button" onClick={closePPViewModal} className="modal-close-btn" aria-label="Close">
                             <i className="far fa-times"></i>
-                        </div>
+                        </button>
 
                     </div>
                     <div className="modal-body text-center">
-                        <img src={displayPpUrl} className="w-100" alt="Ikram" />
+                        <img src={displayPpUrl} className="w-100" alt="Profile" />
 
                     </div>
                 </ModalContainer>
+                )}
 
+                {isPPModal && (
                 <ModalContainer
                     title="Upload Profile Pics"
-                    style={{ width: "600px", maxWidth: '95%', top: "50%" }}
-                    isOpen={isPPModal}
+                    isOpen
                     onRequestClose={closePPModal}
                     id="pp-upload-modal"
 
@@ -252,9 +253,9 @@ setUploadProgress(0)
                     <div className="modal-header">
                         <div className="modal-title"> Upload
                             Profile Picture</div>
-                        <div onClick={closePPModal} className="modal-close-btn">
+                        <button type="button" onClick={closePPModal} className="modal-close-btn" aria-label="Close">
                             <i className="far fa-times"></i>
-                        </div>
+                        </button>
 
                     </div>
                     <div className="modal-body">
@@ -286,6 +287,7 @@ setUploadProgress(0)
                         </form>
                     </div>
                 </ModalContainer>
+                )}
 
 
 

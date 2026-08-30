@@ -2426,18 +2426,23 @@ select {
                     .post-react-container {
                         position: absolute;
                         bottom: 100%;
-                        width: 150px;
+                        width: max-content;
                         background-color: $bbgc;
                         padding: 10px;
                         border-radius: 10px;
                         display: none;
+                        flex-direction: row;
+                        flex-wrap: nowrap;
+                        align-items: center;
+                        gap: 2px;
 
                         .react {
-                            width: 31%;
-                            float: left;
-                            margin-right: 2%;
-                            padding: 5px;
+                            width: 34px;
+                            float: none;
+                            margin-right: 0;
+                            padding: 3px;
                             border-radius: 5px;
+                            flex: 0 0 auto;
                         }
 
                         .reacted {
@@ -2447,7 +2452,7 @@ select {
                 }
 
                 .react-buttons:hover .post-react-container {
-                    display: block !important;
+                    display: flex !important;
                 }
 
                 .reacted {
@@ -3199,18 +3204,23 @@ select {
                     .watch-react-container {
                         position: absolute;
                         bottom: 100%;
-                        width: 150px;
+                        width: max-content;
                         background-color: $bbgc;
                         padding: 10px;
                         border-radius: 10px;
                         display: none;
+                        flex-direction: row;
+                        flex-wrap: nowrap;
+                        align-items: center;
+                        gap: 2px;
 
                         .react {
-                            width: 31%;
-                            float: left;
-                            margin-right: 2%;
-                            padding: 5px;
+                            width: 34px;
+                            float: none;
+                            margin-right: 0;
+                            padding: 3px;
                             border-radius: 5px;
+                            flex: 0 0 auto;
                         }
 
                         .reacted {
@@ -3220,7 +3230,7 @@ select {
                 }
 
                 .react-buttons:hover .watch-react-container {
-                    display: block !important;
+                    display: flex !important;
                 }
 
                 .reacted {
@@ -4783,18 +4793,23 @@ select {
                         .post-react-container {
                             position: absolute;
                             bottom: 100%;
-                            width: 150px;
+                            width: max-content;
                             background-color: $bbgc;
                             padding: 10px;
                             border-radius: 10px;
                             display: none;
+                            flex-direction: row;
+                            flex-wrap: nowrap;
+                            align-items: center;
+                            gap: 2px;
 
                             .react {
-                                width: 31%;
-                                float: left;
-                                margin-right: 2%;
-                                padding: 5px;
+                                width: 34px;
+                                float: none;
+                                margin-right: 0;
+                                padding: 3px;
                                 border-radius: 5px;
+                                flex: 0 0 auto;
                             }
 
                             .reacted {
@@ -4804,7 +4819,7 @@ select {
                     }
 
                     .react-buttons:hover .post-react-container {
-                        display: block !important;
+                        display: flex !important;
                     }
 
                     .reacted {
@@ -8158,48 +8173,54 @@ select {
     }
 }
 
-.ReactModal__Content {
+.ReactModal__Content,
+.app-modal-content {
     .modal-header {
-        border-bottom: 1px solid #999;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 0 5px 10px 5px;
+        gap: 12px;
+        padding: 0 0 12px;
 
         .modal-title {
-            font-size: 30px;
-            color: #DFE1E6;
-            padding-bottom: 5px;
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #f2f4f7;
+            padding-bottom: 0;
             margin: 0;
             flex: 1;
         }
 
         .modal-close-btn {
-            font-size: 20px;
-            color: #DFE1E6;
+            font-size: 16px;
+            color: #e4e6eb;
             cursor: pointer;
-            padding: 5px;
+            padding: 0;
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 32px;
-            height: 32px;
+            width: 36px;
+            height: 36px;
             border-radius: 50%;
-            transition: background-color 0.2s ease;
+            background: rgba(255, 255, 255, 0.06);
+            border: none;
+            transition: background-color 0.2s ease, color 0.2s ease;
 
             &:hover {
-                background-color: rgba(255, 255, 255, 0.1);
+                background-color: rgba(255, 255, 255, 0.12);
+                color: #fff;
             }
 
             i {
-                font-size: 18px;
+                font-size: 16px;
             }
         }
 
     }
 
     .modal-body {
-        padding: 10px 0;
+        padding: 8px 0 0;
     }
 }
 

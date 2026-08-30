@@ -177,6 +177,12 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       
       // Fetch chat history from database
       fetchChatHistory();
+      document.body.classList.add("app-modal-open");
+      document.documentElement.classList.add("app-modal-open-html");
+      return () => {
+        document.body.classList.remove("app-modal-open");
+        document.documentElement.classList.remove("app-modal-open-html");
+      };
     }
   }, [isOpen, fetchChatHistory]);
 

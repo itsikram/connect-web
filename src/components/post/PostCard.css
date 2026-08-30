@@ -401,7 +401,7 @@
 
 .nf-post .footer .like-comment-share .buttons-container .react-buttons.show-reacts .post-react-container,
 .nf-post .footer .like-comment-share .buttons-container .react-buttons.show-reacts:hover .post-react-container {
-  display: block !important;
+  display: flex !important;
 }
 
 @media (max-width: 768px) {
@@ -412,7 +412,7 @@
   .nf-post .footer .like-comment-share .buttons-container .react-buttons.show-reacts .post-react-container,
   .nf-post .footer .like-comment-share .buttons-container .react-buttons.button.show-reacts .post-react-container,
   .nf-post .footer .like-comment-share .buttons-container .react-buttons.button.show-reacts:hover .post-react-container {
-    display: block !important;
+    display: flex !important;
   }
 }
 

@@ -2909,14 +2909,11 @@ const ChatHeader = ({
         </audio>
 
         {/* User Info Modal */}
+        {isUserInfoModalOpen && (
         <ModalContainer
           title="User Information"
-          style={{
-            width: isMobile ? "95%" : "500px",
-            maxHeight: "90vh",
-            overflow: "auto",
-          }}
-          isOpen={isUserInfoModalOpen}
+          size="sm"
+          isOpen
           onRequestClose={() => setIsUserInfoModalOpen(false)}
           id="userInfoModal"
         >
@@ -3149,6 +3146,7 @@ const ChatHeader = ({
             )}
           </div>
         </ModalContainer>
+        )}
 
       </div>
     </>

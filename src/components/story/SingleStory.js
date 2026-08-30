@@ -8,9 +8,7 @@ import StoryEngagementPanel, { StoryEngagementSkeleton } from './StoryEngagement
 import SingleStorySkeleton from '../../skletons/story/SingleStorySkeleton';
 import { confirmAlert } from 'react-confirm-alert';
 import $ from 'jquery';
-import Rlike from "../../assets/images/reacts/reactLike.svg";
-import Rlove from "../../assets/images/reacts/reactLove.svg";
-import Rhaha from "../../assets/images/reacts/reactHaha.svg";
+import { REACT_LIST } from '../../utils/reactTypes';
 import '../post/CommentStyles.css';
 import './StoryComments.css';
 
@@ -121,36 +119,11 @@ const SingleStory = () => {
         return false;
     };
 
-    const clickLikeBtn = async (e) => {
-        const currentTarget = e.currentTarget;
-        if (!currentTarget.classList.contains('reacted')) {
-            if (await placeReact(storyId, 'like', 'story')) {
-                currentTarget.classList.add('reacted');
-            }
-        } else if (await removeReact(storyId)) {
-            currentTarget.classList.remove('reacted');
-        }
-    };
-
-    const clickLoveBtn = async (e) => {
-        const currentTarget = e.currentTarget;
-        if (!currentTarget.classList.contains('reacted')) {
-            if (await placeReact(storyId, 'love', 'story')) {
-                currentTarget.classList.add('reacted');
-            }
-        } else if (await removeReact(storyId)) {
-            currentTarget.classList.remove('reacted');
-        }
-    };
-
-    const clickHahaBtn = async (e) => {
-        const currentTarget = e.currentTarget;
-        if (!currentTarget.classList.contains('reacted')) {
-            if (await placeReact(storyId, 'haha', 'story')) {
-                currentTarget.classList.add('reacted');
-            }
-        } else if (await removeReact(storyId)) {
-            currentTarget.classList.remove('reacted');
+    const clickStoryReact = async (type) => {
+        if (reactType === type) {
+            await removeReact(storyId);
+        } else {
+            await placeReact(storyId, type, 'story');
         }
     };
 
@@ -254,24 +227,16 @@ const SingleStory = () => {
 
                     <div className="single-story-meta-container">
                         <div className="single-story-reacts-buttons">
-                            <div
-                                className={`single-story-react-button ${reactType === 'like' ? 'reacted' : ''}`}
-                                onClick={clickLikeBtn}
-                            >
-                                <img src={Rlike} alt="Like" />
-                            </div>
-                            <div
-                                className={`single-story-react-button ${reactType === 'love' ? 'reacted' : ''}`}
-                                onClick={clickLoveBtn}
-                            >
-                                <img src={Rlove} alt="Love" />
-                            </div>
-                            <div
-                                className={`single-story-react-button ${reactType === 'haha' ? 'reacted' : ''}`}
-                                onClick={clickHahaBtn}
-                            >
-                                <img src={Rhaha} alt="Haha" />
-                            </div>
+                            {REACT_LIST.map((react) => (
+                                <div
+                                    key={react.key}
+                                    className={`single-story-react-button ${reactType === react.key ? 'reacted' : ''}`}
+                                    onClick={() => clickStoryReact(react.key)}
+                                    title={react.label}
+                                >
+                                    <img src={react.icon} alt={react.label} />
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>

@@ -13,6 +13,9 @@
     "reactLike": "/assets/images/reacts/reactLike.svg",
     "reactLove": "/assets/images/reacts/reactLove.svg",
     "reactHaha": "/assets/images/reacts/reactHaha.svg",
+    "reactWow": "/assets/images/reacts/reactWow.svg",
+    "reactSad": "/assets/images/reacts/reactSad.svg",
+    "reactAngry": "/assets/images/reacts/reactAngry.svg",
     "mailApiUrl": "https://storefrontsignonline.com/wp-json/connect/v1/send-mail",
     "portfolioPP": "/assets/images/portfolio-pp.png"
 }

@@ -10,6 +10,9 @@ const ACTIONS = [
   "seekto",
 ];
 
+let sessionOwnerSeq = 0;
+let activeSessionOwner = 0;
+
 const isFiniteNumber = (value) =>
   typeof value === "number" && Number.isFinite(value);
 
@@ -17,7 +20,7 @@ const sanitizePositionState = (positionState) => {
   if (!positionState) return null;
 
   const duration = Number(positionState.duration);
-  const position = Number(positionState.position);
+  let position = Number(positionState.position);
   const playbackRateRaw = Number(positionState.playbackRate);
   const playbackRate =
     isFiniteNumber(playbackRateRaw) && playbackRateRaw > 0
@@ -25,8 +28,8 @@ const sanitizePositionState = (positionState) => {
       : 1;
 
   if (!isFiniteNumber(duration) || duration <= 0) return null;
-  if (!isFiniteNumber(position) || position < 0 || position > duration)
-    return null;
+  if (!isFiniteNumber(position) || position < 0) return null;
+  position = Math.min(position, duration);
 
   return { duration, position, playbackRate };
 };
@@ -73,12 +76,29 @@ const setActionHandlerSafely = (mediaSession, action, handler) => {
   }
 };
 
+const bindActionHandlers = (mediaSession, handlersRef) => {
+  ACTIONS.forEach((action) => {
+    const actionHandler = handlersRef.current?.[action];
+    setActionHandlerSafely(
+      mediaSession,
+      action,
+      typeof actionHandler === "function"
+        ? (details) => {
+            const latest = handlersRef.current?.[action];
+            if (typeof latest === "function") latest(details);
+          }
+        : null,
+    );
+  });
+};
+
 const useMediaSession = ({
   enabled = true,
   metadata,
   playbackState,
   positionState,
   handlers,
+  bindKey,
 }) => {
   const handlersRef = useRef(handlers || {});
 
@@ -98,34 +118,31 @@ const useMediaSession = ({
     [positionState],
   );
 
+  const metadataTitle = metadata?.title || "";
+  const metadataArtist = metadata?.artist || "";
+
   useEffect(() => {
     if (!supported) return undefined;
 
     const mediaSession = navigator.mediaSession;
+    const ownerId = (sessionOwnerSeq += 1);
+    activeSessionOwner = ownerId;
 
-    ACTIONS.forEach((action) => {
-      setActionHandlerSafely(mediaSession, action, (details) => {
-        const actionHandler = handlersRef.current?.[action];
-        if (typeof actionHandler === "function") {
-          actionHandler(details);
-        }
-      });
-    });
+    bindActionHandlers(mediaSession, handlersRef);
 
     return () => {
+      if (activeSessionOwner !== ownerId) return;
       ACTIONS.forEach((action) => {
         setActionHandlerSafely(mediaSession, action, null);
       });
     };
-  }, [supported]);
+  }, [supported, bindKey, metadataTitle, metadataArtist, playbackState]);
 
   useEffect(() => {
-    if (!mediaSessionAvailable) return;
+    if (!mediaSessionAvailable || !enabled) return;
 
     try {
-      navigator.mediaSession.metadata = enabled
-        ? resolveMediaMetadata(metadata)
-        : null;
+      navigator.mediaSession.metadata = resolveMediaMetadata(metadata);
     } catch (error) {
       if (process.env.NODE_ENV !== "production") {
         console.debug("Failed to set Media Session metadata", error);
@@ -134,11 +151,10 @@ const useMediaSession = ({
   }, [mediaSessionAvailable, enabled, metadata]);
 
   useEffect(() => {
-    if (!mediaSessionAvailable) return;
+    if (!mediaSessionAvailable || !enabled) return;
 
     try {
-      navigator.mediaSession.playbackState =
-        enabled && playbackState ? playbackState : "none";
+      navigator.mediaSession.playbackState = playbackState || "none";
     } catch (error) {
       if (process.env.NODE_ENV !== "production") {
         console.debug("Failed to set Media Session playbackState", error);
@@ -147,18 +163,27 @@ const useMediaSession = ({
   }, [mediaSessionAvailable, enabled, playbackState]);
 
   useEffect(() => {
-    if (!supported) return;
-    if (typeof navigator.mediaSession.setPositionState !== "function") return;
-    if (!safePositionState) return;
-
-    try {
-      navigator.mediaSession.setPositionState(safePositionState);
-    } catch (error) {
-      if (process.env.NODE_ENV !== "production") {
-        console.debug("Failed to set Media Session position state", error);
-      }
+    if (!supported) return undefined;
+    if (typeof navigator.mediaSession.setPositionState !== "function") {
+      return undefined;
     }
-  }, [supported, safePositionState]);
+    if (!safePositionState) return undefined;
+
+    const apply = () => {
+      try {
+        navigator.mediaSession.setPositionState(safePositionState);
+      } catch (error) {
+        if (process.env.NODE_ENV !== "production") {
+          console.debug("Failed to set Media Session position state", error);
+        }
+      }
+    };
+
+    apply();
+    if (playbackState !== "playing") return undefined;
+    const timer = window.setInterval(apply, 1000);
+    return () => window.clearInterval(timer);
+  }, [supported, safePositionState, playbackState]);
 };
 
 export default useMediaSession;

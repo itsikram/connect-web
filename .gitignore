@@ -2,6 +2,7 @@
 
 node_modules
 build/
+certs/ios-profile-signer.*
 .env
 .env.production
 .env.local

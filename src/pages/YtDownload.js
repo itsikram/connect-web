@@ -623,11 +623,13 @@ const YtDownload = () => {
 
   return (
     <div className="yt-download-page">
-      <VideoDownloadModal
-        isOpen={showDownloadModal}
-        onClose={() => setShowDownloadModal(false)}
-        downloadInfo={completedDownload}
-      />
+      {showDownloadModal && (
+        <VideoDownloadModal
+          isOpen
+          onClose={() => setShowDownloadModal(false)}
+          downloadInfo={completedDownload}
+        />
+      )}
 
       <div className="container my-4">
         <div className="row justify-content-center">

@@ -30,18 +30,6 @@ const CreateWatch = ({ setWatches = null }) => {
     }
     const [watchData, setWatchData] = useState(watchDataInit)
 
-    const useMediaQuery = (query) => {
-        const [matches, setMatches] = useState(window.matchMedia(query).matches);
-        useEffect(() => {
-            const media = window.matchMedia(query);
-            const listener = (e) => setMatches(e.matches);
-            media.addEventListener("change", listener);
-            return () => media.removeEventListener("change", listener);
-        }, [query]);
-        return matches;
-    };
-    const isMobile = useMediaQuery("(max-width: 768px)");
-
     useEffect(() => {
         if (!profileId) return;
         fetchProfileHasStoryCached(profileId, { ttlMs: 60000, storageTtlMs: 300000 })
@@ -278,13 +266,12 @@ const CreateWatch = ({ setWatches = null }) => {
                     </ul>
                 </div>
 
-                {/* Reuse create-post-modal styles so Watch matches Create Post */}
+                {isWatchModal && (
                 <ModalContainer
-                    isOpen={isWatchModal}
+                    isOpen
                     id="create-post-modal"
                     onRequestClose={closeCreateWatchModal}
                     title="Create A Watch"
-                    style={{ width: isMobile ? '95%' : '600px' }}
                 >
                     <div className="modal-header">
                         <div className="modal-title">Create a Watch</div>
@@ -458,6 +445,7 @@ const CreateWatch = ({ setWatches = null }) => {
                         </div>
                     </div>
                 </ModalContainer>
+                )}
             </div>
         </Fragment>
     )

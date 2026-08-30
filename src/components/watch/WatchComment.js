@@ -1,4 +1,4 @@
-import React, { useState, Fragment } from 'react';
+import React, { useState, Fragment, useEffect } from 'react';
 import $ from 'jquery'
 import UserPP from '../UserPP';
 import api from '../../api/api';
@@ -6,39 +6,29 @@ import SingleComment from './SingleComment';
 import config from '../../config/config.json';
 const loadingUrl = config?.loadingUrl;
 
+const populatedComments = (comments) =>
+    Array.isArray(comments)
+        ? comments.filter((comment) => comment && typeof comment === 'object')
+        : []
+
 const WatchComment = (props) => {
     const watch = props.watch || {}
     const authProfilePicture = props.authProfilePicture
     const authProfileId = props.authProfile;
     const myProfile = props.myProfile ? props.myProfile : {}
-    const isAuth = myProfile._id === authProfileId
 
-    // handle all comment state 
-
-    const [allComments, setAllComments] = useState(watch.comments)
+    const [allComments, setAllComments] = useState(() => populatedComments(watch.comments))
     const [uploadedImageUrl, setUploadedImageUrl] = useState(null);
 
-    
     let [commentData, setCommentData] = useState({
         body: null,
         attachment: null
     })
 
+    useEffect(() => {
+        setAllComments(populatedComments(watch.comments))
+    }, [watch._id, watch.comments])
 
-    // // handle add attachmenent to comment on click
-    // let clickCommentOption = (e) => {
-    //     if($(e.currentTarget).children('.options-container').hasClass('open')) {
-    //         $(e.currentTarget).children('.options-container').removeClass('open');
-    //     }else {
-    //         $(e.currentTarget).children('.options-container').addClass('open');
-    //     }
-    // }
-    // let clickCommentAttachBtn = async (e) => {
-    //     let target = e.currentTarget
-    //     $(target).children('input').trigger('click')
-    // }
-
-    // handle comment attachment change
     const handleAttachChange = async (e) => {
         setCommentData(state => {
             return {
@@ -80,40 +70,29 @@ const WatchComment = (props) => {
         if (e.keyCode === 13) {
             try {
                 e.target.value = ''
-                const commentFormData = new FormData()
-                commentFormData.append('body', commentData.body == null ? '' : commentData.body)
-                commentFormData.append('attachment', uploadedImageUrl == null ? '' : uploadedImageUrl)
-                commentFormData.append('watch', watch._id)
-
                 const res = await api.post('/comment/addComment', {
                     body: commentData.body,
                     attachment: uploadedImageUrl,
                     watch: (watch._id).toString()
                 })
                 if (res.status === 200) {
-                    const data = res.data
-                    data.author = myProfile
-                    const newComment = data
-                    setAllComments(state => {
-                        const oldComments = [...state].slice(-3)
-                        const cr = [
-                            ...state,
-                            ...[newComment]
-                        ]
-
-                        setCommentData([])
-                        props.commentState(state => state + 1);
-                        return cr;
-
-                    })
+                    const newComment = {
+                        ...res.data,
+                        author: res.data?.author || myProfile,
+                        reacts: Array.isArray(res.data?.reacts) ? res.data.reacts : [],
+                        replies: Array.isArray(res.data?.replies) ? res.data.replies : [],
+                    }
+                    setAllComments(state => [...(Array.isArray(state) ? state : []), newComment])
+                    setCommentData({ body: null, attachment: null })
+                    setUploadedImageUrl(null)
+                    if (typeof props.commentState === 'function') {
+                        props.commentState(state => Number(state || 0) + 1);
+                    }
                 }
             } catch (error) {
                 console.log(error)
             }
-
-
         }
-
     }
 
     const clickCommentAttachBtn = async (e) => {
@@ -121,20 +100,20 @@ const WatchComment = (props) => {
         $(target).children('input').trigger('click')
     }
 
+    const commentCount = Array.isArray(watch.comments) ? watch.comments.length : 0
 
     return (
         <Fragment>
             <div className="comments">
 
                 {
-                   allComments && allComments.map((comment, index) => {
-                        
-                        return comment && <SingleComment comment={comment} watch={watch} key={index} myProfile={myProfile}></SingleComment>
+                   allComments && allComments.map((comment) => {
+                        return comment && <SingleComment comment={comment} watch={watch} key={comment._id || comment.id} myProfile={myProfile}></SingleComment>
                     })
                 }
 
                 {
-                    watch.comments.length > allComments.length && <div className="more-comment-button"> View more comments</div>
+                    commentCount > (allComments?.length || 0) && <div className="more-comment-button"> View more comments</div>
 
                 }
             </div>

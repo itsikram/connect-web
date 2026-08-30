@@ -11,7 +11,6 @@ import api from "../../api/api";
 import UserPP from "../../components/UserPP";
 import useIsMobile from "../../utils/useIsMobile";
 import AppMenuModal from "./AppMenuModal";
-import AIAgentModal from "../../components/modal/AIAgentModal/AIAgentModal";
 import config from "../../config/config.json";
 
 const RECENT_SEARCH_KEY = "headerRecentSearches";
@@ -146,12 +145,11 @@ const resultTypeMeta = {
   post: { icon: "fal fa-file-alt", label: "Post" },
 };
 
-let HeaderLeft = () => {
+let HeaderLeft = ({ onAIAgentOpen }) => {
   let [searchedData, setSearchedData] = useState(emptySearchData);
   let [isSearchOpen, setIsSearchOpen] = useState(false);
   let [mobileSearchMenu, setMobileSearchMenu] = useState(false);
   let [isAppMenuOpen, setIsAppMenuOpen] = useState(false);
-  let [isAIAgentModalOpen, setIsAIAgentModalOpen] = useState(false);
   let [searchQuery, setSearchQuery] = useState("");
   let [isSearching, setIsSearching] = useState(false);
   let [searchError, setSearchError] = useState("");
@@ -234,14 +232,18 @@ let HeaderLeft = () => {
   }, []);
 
   const handleOpenAIAgent = useCallback(() => {
-    setIsAIAgentModalOpen(true);
-  }, []);
+    setIsAppMenuOpen(false);
+    onAIAgentOpen?.();
+  }, [onAIAgentOpen]);
 
   useEffect(() => {
-    const openAgent = () => setIsAIAgentModalOpen(true);
+    const openAgent = () => {
+      setIsAppMenuOpen(false);
+      onAIAgentOpen?.();
+    };
     window.addEventListener("openAIAgent", openAgent);
     return () => window.removeEventListener("openAIAgent", openAgent);
-  }, []);
+  }, [onAIAgentOpen]);
 
   const startLogoLongPress = useCallback(
     (event) => {
@@ -618,13 +620,6 @@ let HeaderLeft = () => {
     );
   };
 
-  // Close app menu when AI agent modal opens
-  useEffect(() => {
-    if (isAIAgentModalOpen) {
-      setIsAppMenuOpen(false);
-    }
-  }, [isAIAgentModalOpen]);
-
   return (
     <Fragment>
       <div
@@ -690,17 +685,15 @@ let HeaderLeft = () => {
         <div className="header-app-menu-container">
           <MenuButton />
         </div>
-        <AppMenuModal
-          isOpen={isAppMenuOpen}
-          onRequestClose={() => setIsAppMenuOpen(false)}
-          onAIAgentOpen={() => {
-            handleOpenAIAgent();
-          }}
-        />
-        <AIAgentModal
-          isOpen={isAIAgentModalOpen}
-          onClose={() => setIsAIAgentModalOpen(false)}
-        />
+        {isAppMenuOpen && (
+          <AppMenuModal
+            isOpen
+            onRequestClose={() => setIsAppMenuOpen(false)}
+            onAIAgentOpen={() => {
+              handleOpenAIAgent();
+            }}
+          />
+        )}
         <div className="header-search-back-container">
           <button
             type="button"

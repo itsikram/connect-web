@@ -1,6 +1,9 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import useBackgroundAudioHandoff from '../../hooks/useBackgroundAudioHandoff';
 
+/** After the user starts a watch, keep playing the next in-view video while scrolling. */
+let feedWatchAutoplay = false;
+
 /**
  * Lazy-loads watch video on play, pauses when off-screen, and keeps one feed video playing at a time.
  */
@@ -18,6 +21,7 @@ const WatchVideoPlayer = ({
     const internalVideoRef = useRef(null);
     const videoRef = externalVideoRef || internalVideoRef;
     const wrapRef = useRef(null);
+    const inViewRef = useRef(false);
     const [isAttached, setIsAttached] = useState(eager);
     const [isPlaying, setIsPlaying] = useState(false);
     const [isBuffering, setIsBuffering] = useState(false);
@@ -36,6 +40,34 @@ const WatchVideoPlayer = ({
         setIsBuffering(false);
     }, [videoUrl, eager]);
 
+    const tryPlayInView = useCallback(async () => {
+        const video = videoRef.current;
+        if (!video || !videoUrl || isPipActive) return;
+        if (!inViewRef.current || !feedWatchAutoplay) return;
+
+        setIsAttached(true);
+        setIsBuffering(true);
+        try {
+            if (!video.getAttribute('src') && !video.src) {
+                video.src = videoUrl;
+            }
+            if (video.paused) {
+                try {
+                    await video.play();
+                } catch (error) {
+                    if (error?.name === 'NotAllowedError') {
+                        video.muted = true;
+                        await video.play();
+                    } else {
+                        throw error;
+                    }
+                }
+            }
+        } catch (_) {
+            setIsBuffering(false);
+        }
+    }, [videoUrl, videoRef, isPipActive]);
+
     useEffect(() => {
         const wrap = wrapRef.current;
         if (!wrap) return undefined;
@@ -43,22 +75,40 @@ const WatchVideoPlayer = ({
         const observer = new IntersectionObserver(
             ([entry]) => {
                 const video = videoRef.current;
-                if (!video || !isAttached) return;
+                const ratio = entry.intersectionRatio;
+                inViewRef.current = entry.isIntersecting && ratio >= 0.5;
+
                 if (
-                    !entry.isIntersecting &&
+                    (!entry.isIntersecting || ratio < 0.4) &&
+                    video &&
                     !video.paused &&
-                    typeof document !== "undefined" &&
+                    typeof document !== 'undefined' &&
                     !document.hidden
                 ) {
                     video.pause();
+                    return;
+                }
+
+                if (inViewRef.current && feedWatchAutoplay && !isPipActive && videoUrl) {
+                    if (!isAttached) {
+                        setIsAttached(true);
+                    } else {
+                        tryPlayInView();
+                    }
                 }
             },
-            { threshold: 0.4, rootMargin: '0px 0px -8% 0px' }
+            { threshold: [0, 0.4, 0.5, 0.75, 1], rootMargin: '0px 0px -8% 0px' }
         );
 
         observer.observe(wrap);
         return () => observer.disconnect();
-    }, [isAttached]);
+    }, [isAttached, isPipActive, videoUrl, tryPlayInView, videoRef]);
+
+    useEffect(() => {
+        if (!isAttached || isPipActive || !feedWatchAutoplay) return undefined;
+        tryPlayInView();
+        return undefined;
+    }, [isAttached, isPipActive, tryPlayInView]);
 
     useEffect(() => {
         const video = videoRef.current;
@@ -73,10 +123,14 @@ const WatchVideoPlayer = ({
         const onPlay = () => {
             setIsPlaying(true);
             pauseOthers();
+            feedWatchAutoplay = true;
         };
         const onPause = () => {
             if (typeof document !== 'undefined' && document.hidden) return;
             setIsPlaying(false);
+            if (inViewRef.current) {
+                feedWatchAutoplay = false;
+            }
         };
         const onWaiting = () => setIsBuffering(true);
         const onPlaying = () => setIsBuffering(false);
@@ -95,7 +149,7 @@ const WatchVideoPlayer = ({
             video.removeEventListener('playing', onPlaying);
             video.removeEventListener('canplay', onCanPlay);
         };
-    }, [isAttached, watchId]);
+    }, [isAttached, watchId, videoRef]);
 
     const handlePlayClick = useCallback(async (e) => {
         e?.preventDefault?.();
@@ -105,6 +159,7 @@ const WatchVideoPlayer = ({
 
         setIsAttached(true);
         setIsBuffering(true);
+        feedWatchAutoplay = true;
 
         try {
             if (!video.src) {

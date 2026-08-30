@@ -2,46 +2,26 @@ import React, { useEffect, useState } from 'react';
 import api from '../../api/api';
 import UserPP from '../UserPP';
 import { Link } from 'react-router-dom';
-import config from '../../config/config.json';
-const Rlike = config?.reactLike;    
-const Rlove = config?.reactLove;
-const Rhaha = config?.reactHaha;
-
+import { getReactIcon, getReactLabel } from '../../utils/reactTypes';
 
 const SingleReactor = ({ reactor }) => {
 
     let [profileData, setProfileData] = useState(false);
     let [reactImg, setReactImg] = useState('')
 
-    let loadProfileData = async (id) => {
+    let loadProfileData = async () => {
 
         let res = await api.get('profile', { params: { profileId: reactor.profile } })
         if (res.status == 200) {
             setProfileData(res.data)
-            switch (reactor.type) {
-                case 'like':
-                    setReactImg(Rlike)
-                    break;
-                case 'love':
-                    setReactImg(Rlove)
-
-                    break;
-                case 'haha':
-                    setReactImg(Rhaha)
-
-                    break;
-                default:
-                    setReactImg(Rlike)
-
-                    break;
-            }
+            setReactImg(getReactIcon(reactor.type))
         }
 
     }
 
     useEffect(() => {
         loadProfileData()
-    }, [])
+    }, [reactor.profile, reactor.type])
     return (
         <div>
             {profileData && (
@@ -57,11 +37,12 @@ const SingleReactor = ({ reactor }) => {
                     </div>
                     <span className='reactor-react'>
 
-                        <img src={reactImg} alt="love" />
+                        <img src={reactImg} alt={getReactLabel(reactor.type)} />
                     </span>
 
                 </li>
             )}
+
 
 
         </div>

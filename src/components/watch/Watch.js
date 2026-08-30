@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import $ from "jquery";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import UserPP from "../UserPP";
 import { Link } from "react-router-dom";
 
@@ -13,9 +13,15 @@ import socket from "../../common/socket";
 import WatchSkeleton from "../../skletons/watch/WatchSkeleton";
 import ImageSkleton from "../../skletons/ImageSkleton";
 import { saveVideoFromUrl } from "../../utils/useSavedVideos";
-import Rlike from "../../assets/images/reacts/reactLike.svg";
-import Rlove from "../../assets/images/reacts/reactLove.svg";
-import Rhaha from "../../assets/images/reacts/reactHaha.svg";
+import {
+  uniquePlacedReacts,
+  getReactLabel,
+} from "../../utils/reactTypes";
+import {
+  ReactPicker,
+  PlacedReactIcons,
+  CurrentReactIcon,
+} from "../post/ReactPicker";
 import config from "../../config/config.json";
 import { useWatchPipOptional } from "../../contexts/WatchPipContext";
 import {
@@ -27,6 +33,8 @@ import useIsMobile from "../../utils/useIsMobile";
 import WatchVideoPlayer from "./WatchVideoPlayer";
 import WatchCacheManager from "../../utils/watchCacheManager";
 import OptionsDropdown from "../post/OptionsDropdown";
+import { addPost } from "../../services/actions/postActions";
+import "../post/SharePostModal.css";
 const default_pp_src = config?.defaultProfile;
 const APP_PRIMARY_COLOR = "#29B1A9";
 const APP_PRIMARY_TINT = "rgba(41, 177, 169, 0.12)";
@@ -34,10 +42,11 @@ const APP_PRIMARY_TINT = "rgba(41, 177, 169, 0.12)";
 const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) => {
   let myProfile = useSelector((state) => state.profile);
   let myProfileId = myProfile._id;
+  const dispatch = useDispatch();
   let watchAuthorProfileId = watch.author?._id || "";
-  let [totalReacts, setTotalReacts] = useState(watch.reacts.length);
-  let [totalShares, setTotalShares] = useState(watch.shares.length);
-  let [totalComments, setTotalComments] = useState(watch.comments.length);
+  let [totalReacts, setTotalReacts] = useState(watch.reacts?.length || 0);
+  let [totalShares, setTotalShares] = useState(watch.shares?.length || 0);
+  let [totalComments, setTotalComments] = useState(watch.comments?.length || 0);
   let [isActive, setIsActive] = useState(false);
   let [reactType, setReactType] = useState(false);
   let [placedReacts, setPlacedReacts] = useState([]);
@@ -51,6 +60,9 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
   const [isEditAudienceModal, setIsEditAudienceModal] = useState(false);
   const [selectedAudience, setSelectedAudience] = useState(watch.audience || 1);
   const [isUpdatingAudience, setIsUpdatingAudience] = useState(false);
+  const [shareCap, setShareCap] = useState("");
+  const [isShareModal, setIsShareModal] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
   const displayedWatch = useRef(null); // document.getElementById(`watch-${watch._id}`)
   const nfwatch = useRef(null); // document.getElementById(`watch-${watch._id}`)
   const watchPip = useWatchPipOptional();
@@ -174,32 +186,12 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
   }, [watch._id, selectedAudience, onUpdate, myProfileId]);
 
   useEffect(() => {
-    let storedReacts = [];
-    watch.reacts.map((react) => {
-      if (react.profile) {
-        switch (react.type) {
-          case "like":
-            if (!storedReacts.includes("like")) {
-              storedReacts.push("like");
-            }
-            break;
-          case "love":
-            if (!storedReacts.includes("love")) {
-              storedReacts.push("love");
-            }
-            break;
-          case "haha":
-            if (!storedReacts.includes("haha")) {
-              storedReacts.push("haha");
-            }
-            break;
-        }
-        if (react.profile === myProfileId) {
-          setReactType(react.type);
-        }
+    let storedReacts = uniquePlacedReacts(watch.reacts || []);
+    (watch.reacts || []).forEach((react) => {
+      if (react.profile === myProfileId) {
+        setReactType(react.type);
       }
     });
-
     setPlacedReacts(storedReacts);
   }, []);
 
@@ -288,7 +280,8 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
 
     let res = await api.post("/react/removeReact", {
       id: watch._id,
-      watchType: "watch",
+      postType: "watch",
+      reactor: myProfileId,
     });
     if (res.status === 200) {
       setTotalReacts(res.data.reacts.length);
@@ -304,7 +297,7 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
 
     let placeRes = await api.post("/react/addReact", {
       id: watch._id,
-      watchType,
+      postType: "watch",
       reactType,
     });
     if (placeRes.status === 200) {
@@ -329,50 +322,16 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
     }
   };
 
-  let likeOnClick = async (e) => {
-    let target = e.currentTarget;
+  let pickerReactOnClick = (type, e) => {
+    const target = e.currentTarget;
     $(target).parents(".watch-react-container").css("visibility", "hidden");
     if ($(target).hasClass("reacted")) {
       removeReact("watch");
       $(target).removeClass("reacted");
     } else {
-      placeReact("like", "watch", target);
+      placeReact(type, "watch", target);
+      $(target).siblings().removeClass("reacted");
       $(target).addClass("reacted");
-      $(e.currentTarget).siblings().removeClass("reacted");
-    }
-    setTimeout(() => {
-      $(target).parents(".watch-react-container").css("visibility", "visible");
-    }, 500);
-  };
-
-  let loveOnClick = (e) => {
-    let target = e.currentTarget;
-    $(target).parents(".watch-react-container").css("visibility", "hidden");
-    if ($(e.currentTarget).hasClass("reacted")) {
-      removeReact("watch");
-      $(e.currentTarget).removeClass("reacted");
-    } else {
-      placeReact("love", "watch");
-      $(e.currentTarget).siblings().removeClass("reacted");
-      $(e.currentTarget).addClass("reacted");
-    }
-    setTimeout(() => {
-      $(target).parents(".watch-react-container").css("visibility", "visible");
-    }, 500);
-  };
-
-  let hahaOnClick = (e) => {
-    let target = e.currentTarget;
-    $(target).parents(".watch-react-container").css("visibility", "hidden");
-
-    if ($(e.currentTarget).hasClass("reacted")) {
-      removeReact();
-      $(e.currentTarget).removeClass("reacted");
-    } else {
-      placeReact("haha", "watch", target);
-      $(e.currentTarget).siblings().removeClass("reacted");
-
-      $(e.currentTarget).addClass("reacted");
     }
     setTimeout(() => {
       $(target).parents(".watch-react-container").css("visibility", "visible");
@@ -388,7 +347,35 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
 
     $(target).parents(".footer").find(".field-comment-text").focus();
   };
-  let shareOnClick = (e) => {};
+  let shareOnClick = () => {
+    setIsShareModal(true);
+  };
+  let onCloseShareReq = () => {
+    setIsShareModal(false);
+  };
+  let onClickShareNow = async (e) => {
+    e.preventDefault();
+    setIsSharing(true);
+    try {
+      const res = await api.post("/watch/share", {
+        watchId: watch._id,
+        caption: shareCap,
+      });
+      if (res.status === 200) {
+        setTotalShares((state) => Number(state || 0) + 1);
+        if (res.data?.post) {
+          dispatch(addPost(res.data.post));
+        }
+        setIsShareModal(false);
+        setShareCap("");
+      }
+    } catch (error) {
+      console.error("Error sharing watch:", error);
+      alert("Failed to share video. Please try again.");
+    } finally {
+      setIsSharing(false);
+    }
+  };
 
   let authProfilePicture = useSelector((state) => state.profile.profilePic);
   let authProfileId = useSelector((state) => state.profile._id);
@@ -588,30 +575,7 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
         <div className="footer">
           <div className="react-count">
             <div className="reacts">
-              {placedReacts.includes("like") ? (
-                <div className="react">
-                  {" "}
-                  <img src={Rlike} alt="like" />{" "}
-                </div>
-              ) : (
-                <span></span>
-              )}
-              {placedReacts.includes("love") ? (
-                <div className="react">
-                  {" "}
-                  <img src={Rlove} alt="love" />{" "}
-                </div>
-              ) : (
-                <span></span>
-              )}
-              {placedReacts.includes("haha") ? (
-                <div className="react">
-                  {" "}
-                  <img src={Rhaha} alt="love" />{" "}
-                </div>
-              ) : (
-                <span></span>
-              )}
+              <PlacedReactIcons placedReacts={placedReacts} />
 
               <span className="text">
                 {watch.reacts && totalReacts}{" "}
@@ -644,52 +608,17 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
                   className={`react-like ${reactType == true ? "reacted" : ""}`}
                 >
                   <span className="react-icon" datatype={reactType || ""}>
-                    {reactType == "haha" ? (
-                      <img src={Rhaha} alt="haha" />
-                    ) : (
-                      <span></span>
-                    )}
-                    {reactType == "love" ? (
-                      <img src={Rlove} alt="love" />
-                    ) : (
-                      <span></span>
-                    )}
-                    {reactType == false || reactType == "like" ? (
-                      <img src={Rlike} alt="like" />
-                    ) : (
-                      <span></span>
-                    )}
+                    <CurrentReactIcon reactType={reactType} />
                   </span>
                   <span className="text text-capitalize">
-                    {reactType ? reactType : "like"}
+                    {getReactLabel(reactType)}
                   </span>
                 </div>
-                <div className="watch-react-container">
-                  <div
-                    className={`react react-like ${reactType == "like" ? "reacted" : ""}`}
-                    onClick={likeOnClick}
-                    id="watchReactLike"
-                    title="Like"
-                  >
-                    <img src={Rlike} alt="love" />
-                  </div>
-                  <div
-                    className={`react react-love ${reactType == "love" ? "reacted" : ""}`}
-                    onClick={loveOnClick}
-                    id="watchReactLove"
-                    title="Love"
-                  >
-                    <img src={Rlove} alt="love" />
-                  </div>
-                  <div
-                    className={`react react-haha ${reactType == "haha" ? "reacted" : ""}`}
-                    onClick={hahaOnClick}
-                    id="watchReactHaha"
-                    title="Haha"
-                  >
-                    <img src={Rhaha} alt="haha" />
-                  </div>
-                </div>
+                <ReactPicker
+                  reactType={reactType}
+                  onSelect={pickerReactOnClick}
+                  className="watch-react-container"
+                />
               </div>
               <div onClick={commentOnClick} className="comment button">
                 <span className="icon">
@@ -703,6 +632,87 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
                 </span>
                 <span className="text">Share</span>
               </div>
+              {isShareModal && (
+                <ModalContainer
+                  title="Share Video"
+                  isOpen
+                  onRequestClose={onCloseShareReq}
+                  id="cp-view-modal"
+                >
+                  <div className="modal-header">
+                    <h3 className="modal-title">Share Video</h3>
+                    <button
+                      type="button"
+                      onClick={onCloseShareReq}
+                      className="modal-close-btn"
+                      aria-label="Close"
+                    >
+                      <i className="far fa-times"></i>
+                    </button>
+                  </div>
+                  <div className="modal-body">
+                    <div className="share-post-container">
+                      <div className="share-post-header">
+                        <div className="share-post-user">
+                          <div className="share-post-avatar">
+                            <UserPP
+                              profilePic={myProfile.profilePic}
+                              profile={myProfile._id}
+                            />
+                          </div>
+                          <div className="share-post-user-meta">
+                            <h3
+                              className="share-post-name"
+                              title={myProfile.fullName}
+                            >
+                              {myProfile.fullName}
+                            </h3>
+                            <p className="share-post-context">
+                              You're sharing{" "}
+                              {watch.author?.fullName || "Someone"}'s video
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="share-post-body">
+                        <textarea
+                          className="form-control"
+                          rows="3"
+                          placeholder={
+                            isSharing
+                              ? "Sharing..."
+                              : "What's on your mind?"
+                          }
+                          onChange={(e) => setShareCap(e.target.value)}
+                          value={shareCap}
+                          disabled={isSharing}
+                          style={{ opacity: isSharing ? 0.7 : 1 }}
+                        ></textarea>
+                        <div className="share-post-button">
+                          <button
+                            className="btn btn-primary"
+                            onClick={onClickShareNow}
+                            disabled={isSharing}
+                          >
+                            {isSharing ? (
+                              <>
+                                <span
+                                  className="spinner-border spinner-border-sm me-2"
+                                  role="status"
+                                  aria-hidden="true"
+                                ></span>
+                                Sharing...
+                              </>
+                            ) : (
+                              "Share Now"
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </ModalContainer>
+              )}
             </div>
           </div>
           <WatchComment
@@ -715,21 +725,24 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
         </div>
       </div>
 
+      {isEditAudienceModal && (
       <ModalContainer
         title="Edit Audience"
-        style={{ width: isMobile ? "95%" : "500px", top: "50%" }}
-        isOpen={isEditAudienceModal}
+        size="sm"
+        isOpen
         onRequestClose={onCloseEditAudience}
         id="edit-watch-audience-modal"
       >
         <div className="modal-header">
           <h3 className="modal-title">Edit Audience</h3>
-          <div
+          <button
+            type="button"
             onClick={onCloseEditAudience}
-            className="modal-close-btn text-danger"
+            className="modal-close-btn"
+            aria-label="Close"
           >
             <i className="far fa-times"></i>
-          </div>
+          </button>
         </div>
         <div className="modal-body">
           <div className="edit-audience-container">
@@ -878,6 +891,7 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
           </div>
         </div>
       </ModalContainer>
+      )}
     </>
   );
 };

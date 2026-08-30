@@ -45,19 +45,9 @@ const SinglePostSkeleton = () => {
         <section className="sp-panel sp-views-panel">
           <div className="sp-panel-head">
             <span className="sp-skel-bone sp-skel-title" />
-            <span className="sp-skel-bone sp-skel-count" />
-          </div>
-          <div className="sp-filter-wrap">
-            <div className="sp-filter-head">
-              <span className="sp-skel-bone sp-skel-filter-label" />
-            </div>
-            <div className="sp-filter-grid">
-              {Array.from({ length: 6 }).map((_, idx) => (
-                <span
-                  className="sp-skel-bone sp-skel-chip"
-                  key={`chip-skel-${idx}`}
-                />
-              ))}
+            <div className="sp-panel-head-actions">
+              <span className="sp-skel-bone sp-skel-count" />
+              <span className="sp-skel-bone sp-skel-filter-btn" />
             </div>
           </div>
           <div className="sp-viewer-skeleton-wrap">

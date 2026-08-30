@@ -33,9 +33,15 @@ import { AuthorDisplayName } from "../feed/OfficialBadge";
 import "./CommentStyles.css";
 import "./PostCard.css";
 import "./SharePostModal.css";
-import Rlike from "../../assets/images/reacts/reactLike.svg";
-import Rlove from "../../assets/images/reacts/reactLove.svg";
-import Rhaha from "../../assets/images/reacts/reactHaha.svg";
+import {
+  uniquePlacedReacts,
+  getReactLabel,
+} from "../../utils/reactTypes";
+import {
+  ReactPicker,
+  PlacedReactIcons,
+  CurrentReactIcon,
+} from "./ReactPicker";
 
 const default_pp_src = config?.defaultProfile;
 const REACT_LONG_PRESS_MS = 450;
@@ -160,33 +166,13 @@ const Post = React.memo(
     var pp_url = post.author.profilePic;
 
     useEffect(() => {
-      let storedReacts = [];
-      post.reacts.map((react) => {
-        if (react.profile) {
-          switch (react.type) {
-            case "like":
-              if (!storedReacts.includes("like")) {
-                storedReacts.push("like");
-              }
-              break;
-            case "love":
-              if (!storedReacts.includes("love")) {
-                storedReacts.push("love");
-              }
-              break;
-            case "haha":
-              if (!storedReacts.includes("haha")) {
-                storedReacts.push("haha");
-              }
-              break;
-          }
-          if (react.profile === myProfileId) {
-            setReactType(react.type);
-            setIsReacted(true);
-          }
+      let storedReacts = uniquePlacedReacts(post.reacts || []);
+      (post.reacts || []).forEach((react) => {
+        if (react.profile === myProfileId) {
+          setReactType(react.type);
+          setIsReacted(true);
         }
       });
-
       setPlacedReacts(storedReacts);
     }, []);
 
@@ -382,50 +368,17 @@ const Post = React.memo(
       [removeReact, placeReact, hideReactContainer],
     );
 
-    let likeOnClick = useCallback(
-      async (e) => {
-        let target = e.currentTarget;
+    let pickerReactOnClick = useCallback(
+      (type, e) => {
+        const target = e.currentTarget;
         hideReactContainer();
         if ($(target).hasClass("reacted")) {
           removeReact("post");
           $(target).removeClass("reacted");
         } else {
-          placeReact("like", "post", target);
+          placeReact(type, "post", target);
+          $(target).siblings().removeClass("reacted");
           $(target).addClass("reacted");
-          $(e.currentTarget).siblings().removeClass("reacted");
-        }
-      },
-      [removeReact, placeReact, hideReactContainer],
-    );
-
-    let loveOnClick = useCallback(
-      (e) => {
-        hideReactContainer();
-        if ($(e.currentTarget).hasClass("reacted")) {
-          removeReact("post");
-          $(e.currentTarget).removeClass("reacted");
-        } else {
-          placeReact("love", "post");
-          $(e.currentTarget).siblings().removeClass("reacted");
-          $(e.currentTarget).addClass("reacted");
-        }
-      },
-      [removeReact, placeReact, hideReactContainer],
-    );
-
-    let hahaOnClick = useCallback(
-      (e) => {
-        let target = e.currentTarget;
-        hideReactContainer();
-
-        if ($(e.currentTarget).hasClass("reacted")) {
-          removeReact();
-          $(e.currentTarget).removeClass("reacted");
-        } else {
-          placeReact("haha", "post", target);
-          $(e.currentTarget).siblings().removeClass("reacted");
-
-          $(e.currentTarget).addClass("reacted");
         }
       },
       [removeReact, placeReact, hideReactContainer],
@@ -766,30 +719,7 @@ const Post = React.memo(
                     }
                     style={{ cursor: "pointer" }}
                   >
-                    {placedReacts.includes("like") ? (
-                      <div className="react">
-                        {" "}
-                        <img src={Rlike} alt="like" />{" "}
-                      </div>
-                    ) : (
-                      <span></span>
-                    )}
-                    {placedReacts.includes("love") ? (
-                      <div className="react">
-                        {" "}
-                        <img src={Rlove} alt="love" />{" "}
-                      </div>
-                    ) : (
-                      <span></span>
-                    )}
-                    {placedReacts.includes("haha") ? (
-                      <div className="react">
-                        {" "}
-                        <img src={Rhaha} alt="love" />{" "}
-                      </div>
-                    ) : (
-                      <span></span>
-                    )}
+                    <PlacedReactIcons placedReacts={placedReacts} />
 
                     <span className="text">
                       {post.reacts && totalReacts}{" "}
@@ -850,52 +780,16 @@ const Post = React.memo(
                         className={`react-like ${reactType == true ? "reacted" : ""}`}
                       >
                         <span className="react-icon" datatype={reactType || ""}>
-                          {reactType == "haha" ? (
-                            <img src={Rhaha} alt="haha" />
-                          ) : (
-                            <span></span>
-                          )}
-                          {reactType == "love" ? (
-                            <img src={Rlove} alt="love" />
-                          ) : (
-                            <span></span>
-                          )}
-                          {reactType == false || reactType == "like" ? (
-                            <img src={Rlike} alt="like" />
-                          ) : (
-                            <span></span>
-                          )}
+                          <CurrentReactIcon reactType={reactType} />
                         </span>
                         <span className="text text-capitalize">
-                          {reactType ? reactType : "like"}
+                          {getReactLabel(reactType)}
                         </span>
                       </div>
-                      <div className="post-react-container">
-                        <div
-                          className={`react react-like ${reactType == "like" ? "reacted" : ""}`}
-                          onClick={likeOnClick}
-                          id="postReactLike"
-                          title="Like"
-                        >
-                          <img src={Rlike} alt="love" />
-                        </div>
-                        <div
-                          className={`react react-love ${reactType == "love" ? "reacted" : ""}`}
-                          onClick={loveOnClick}
-                          id="postReactLove"
-                          title="Love"
-                        >
-                          <img src={Rlove} alt="love" />
-                        </div>
-                        <div
-                          className={`react react-haha ${reactType == "haha" ? "reacted" : ""}`}
-                          onClick={hahaOnClick}
-                          id="postReactHaha"
-                          title="Haha"
-                        >
-                          <img src={Rhaha} alt="haha" />
-                        </div>
-                      </div>
+                      <ReactPicker
+                        reactType={reactType}
+                        onSelect={pickerReactOnClick}
+                      />
                     </div>
                     <div onClick={commentOnClick} className="comment button">
                       <span className="icon">
@@ -912,24 +806,23 @@ const Post = React.memo(
                           </span>
                           <span className="text">Share</span>
                         </div>
+                        {isShareModal && (
                         <ModalContainer
                           title="Share Post"
-                          style={{
-                            width: isMobile ? "95%" : "600px",
-                            top: "50%",
-                          }}
-                          isOpen={isShareModal}
+                          isOpen
                           onRequestClose={onCloseShareReq}
                           id="cp-view-modal"
                         >
                           <div className="modal-header">
-                            <div></div>
-                            <div
+                            <h3 className="modal-title">Share Post</h3>
+                            <button
+                              type="button"
                               onClick={onCloseShareReq}
-                              className="modal-close-btn text-danger"
+                              className="modal-close-btn"
+                              aria-label="Close"
                             >
                               <i className="far fa-times"></i>
-                            </div>
+                            </button>
                           </div>
                           <div className="modal-body">
                             <div className="share-post-container">
@@ -993,6 +886,7 @@ const Post = React.memo(
                             </div>
                           </div>
                         </ModalContainer>
+                        )}
                       </>
                     )}
                   </div>
@@ -1127,24 +1021,7 @@ const Post = React.memo(
                     }
                     style={{ cursor: "pointer" }}
                   >
-                    {placedReacts.includes("like") ? (
-                      <div className="react">
-                        {" "}
-                        <img src={Rlike} alt="like" />{" "}
-                      </div>
-                    ) : null}
-                    {placedReacts.includes("love") ? (
-                      <div className="react">
-                        {" "}
-                        <img src={Rlove} alt="love" />{" "}
-                      </div>
-                    ) : null}
-                    {placedReacts.includes("haha") ? (
-                      <div className="react">
-                        {" "}
-                        <img src={Rhaha} alt="haha" />{" "}
-                      </div>
-                    ) : null}
+                    <PlacedReactIcons placedReacts={placedReacts} />
                     <span className="text">
                       {totalReacts > 0
                         ? `${totalReacts} ${totalReacts > 1 ? "Reacts" : "React"}`
@@ -1203,52 +1080,16 @@ const Post = React.memo(
                         className={`react-like ${reactType == true ? "reacted" : ""}`}
                       >
                         <span className="react-icon" datatype={reactType || ""}>
-                          {reactType == "haha" ? (
-                            <img src={Rhaha} alt="haha" />
-                          ) : (
-                            <span></span>
-                          )}
-                          {reactType == "love" ? (
-                            <img src={Rlove} alt="love" />
-                          ) : (
-                            <span></span>
-                          )}
-                          {reactType == false || reactType == "like" ? (
-                            <img src={Rlike} alt="like" />
-                          ) : (
-                            <span></span>
-                          )}
+                          <CurrentReactIcon reactType={reactType} />
                         </span>
                         <span className="text text-capitalize">
-                          {reactType ? reactType : "like"}
+                          {getReactLabel(reactType)}
                         </span>
                       </div>
-                      <div className="post-react-container">
-                        <div
-                          className={`react react-like ${reactType == "like" ? "reacted" : ""}`}
-                          onClick={likeOnClick}
-                          id="postReactLike"
-                          title="Like"
-                        >
-                          <img src={Rlike} alt="love" />
-                        </div>
-                        <div
-                          className={`react react-love ${reactType == "love" ? "reacted" : ""}`}
-                          onClick={loveOnClick}
-                          id="postReactLove"
-                          title="Love"
-                        >
-                          <img src={Rlove} alt="love" />
-                        </div>
-                        <div
-                          className={`react react-haha ${reactType == "haha" ? "reacted" : ""}`}
-                          onClick={hahaOnClick}
-                          id="postReactHaha"
-                          title="Haha"
-                        >
-                          <img src={Rhaha} alt="haha" />
-                        </div>
-                      </div>
+                      <ReactPicker
+                        reactType={reactType}
+                        onSelect={pickerReactOnClick}
+                      />
                     </div>
                     <div onClick={commentOnClick} className="comment button">
                       <span className="icon">
@@ -1262,20 +1103,23 @@ const Post = React.memo(
                       </span>
                       <span className="text">Share</span>
                     </div>
+                    {isShareModal && (
                     <ModalContainer
                       title="Share Post"
-                      style={{ width: isMobile ? "95%" : "600px", top: "50%" }}
-                      isOpen={isShareModal}
+                      isOpen
                       onRequestClose={onCloseShareReq}
                       id="cp-view-modal"
                     >
-                      <div className="modal">
-                        <div className="modal-header">
-                          <h3 className="modal-title"></h3>
-                          <div className="modal-close-btn">
-                            <i className="far fa-times"></i>
-                          </div>
-                        </div>
+                      <div className="modal-header">
+                        <h3 className="modal-title">Share Post</h3>
+                        <button
+                          type="button"
+                          onClick={onCloseShareReq}
+                          className="modal-close-btn"
+                          aria-label="Close"
+                        >
+                          <i className="far fa-times"></i>
+                        </button>
                       </div>
 
                       <div className="share-post-container">
@@ -1337,6 +1181,7 @@ const Post = React.memo(
                         </div>
                       </div>
                     </ModalContainer>
+                    )}
                   </div>
                 </div>
                 <PostComment
@@ -1386,9 +1231,7 @@ const Post = React.memo(
       allComments,
       authProfileId,
       authProfilePicture,
-      likeOnClick,
-      loveOnClick,
-      hahaOnClick,
+      pickerReactOnClick,
       hideReactPicker,
       showReactPicker,
       resetReactPickerVisibility,
@@ -1404,22 +1247,24 @@ const Post = React.memo(
     return (
       <>
         {PostContent}
-        {/* Edit Audience Modal */}
+        {isEditAudienceModal && (
         <ModalContainer
           title="Edit Audience"
-          style={{ width: isMobile ? "95%" : "500px", top: "50%" }}
-          isOpen={isEditAudienceModal}
+          size="sm"
+          isOpen
           onRequestClose={onCloseEditAudience}
           id="edit-audience-modal"
         >
           <div className="modal-header">
             <h3 className="modal-title">Edit Audience</h3>
-            <div
+            <button
+              type="button"
               onClick={onCloseEditAudience}
-              className="modal-close-btn text-danger"
+              className="modal-close-btn"
+              aria-label="Close"
             >
               <i className="far fa-times"></i>
-            </div>
+            </button>
           </div>
           <div className="modal-body">
             <div className="edit-audience-container">
@@ -1595,6 +1440,7 @@ const Post = React.memo(
             </div>
           </div>
         </ModalContainer>
+        )}
       </>
     );
   },

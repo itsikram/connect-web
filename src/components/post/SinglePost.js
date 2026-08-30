@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 
 import { useParams, useLocation, useNavigate } from "react-router-dom";
 import api from "../../api/api";
@@ -20,9 +20,18 @@ import { confirmAlert } from "react-confirm-alert";
 import "react-confirm-alert/src/react-confirm-alert.css";
 import checkImgLoading from "../../utils/checkImgLoading";
 import { showSuccessToast, showErrorToast } from "../../utils/toastUtils";
-import Rlike from "../../assets/images/reacts/reactLike.svg";
-import Rlove from "../../assets/images/reacts/reactLove.svg";
-import Rhaha from "../../assets/images/reacts/reactHaha.svg";
+import {
+  uniquePlacedReacts,
+  getReactLabel,
+  REACT_LIST,
+  REACT_TYPES,
+  emptyReactCounts,
+} from "../../utils/reactTypes";
+import {
+  ReactPicker,
+  PlacedReactIcons,
+  CurrentReactIcon,
+} from "./ReactPicker";
 import config from "../../config/config.json";
 import "./PostCard.css";
 import "./SharePostModal.css";
@@ -94,33 +103,12 @@ const SinglePost = () => {
   }, [postPhoto]);
 
   useEffect(() => {
-    let storedReacts = [];
-    postData &&
-      postData.reacts.map((react) => {
-        if (react.profile) {
-          switch (react.type) {
-            case "like":
-              if (!storedReacts.includes("like")) {
-                storedReacts.push("like");
-              }
-              break;
-            case "love":
-              if (!storedReacts.includes("love")) {
-                storedReacts.push("love");
-              }
-              break;
-            case "haha":
-              if (!storedReacts.includes("haha")) {
-                storedReacts.push("haha");
-              }
-              break;
-          }
-          if (react.profile === myProfileId) {
-            setReactType(react.type);
-          }
-        }
-      });
-
+    let storedReacts = uniquePlacedReacts(postData?.reacts || []);
+    (postData?.reacts || []).forEach((react) => {
+      if (react.profile === myProfileId) {
+        setReactType(react.type);
+      }
+    });
     setPlacedReacts(storedReacts);
   }, []);
   let type = postData && (postData.type || "post");
@@ -174,6 +162,7 @@ const SinglePost = () => {
     let res = await api.post("/react/removeReact", {
       id: postData._id,
       postType: "post",
+      reactor: myProfileId,
     });
     if (res.status === 200) {
       setTotalReacts(res.data.reacts.length);
@@ -214,50 +203,16 @@ const SinglePost = () => {
     }
   };
 
-  let likeOnClick = async (e) => {
-    let target = e.currentTarget;
+  let pickerReactOnClick = (type, e) => {
+    const target = e.currentTarget;
     $(target).parents(".post-react-container").css("visibility", "hidden");
     if ($(target).hasClass("reacted")) {
       removeReact("post");
       $(target).removeClass("reacted");
     } else {
-      placeReact("like", "post", target);
+      placeReact(type, "post", target);
+      $(target).siblings().removeClass("reacted");
       $(target).addClass("reacted");
-      $(e.currentTarget).siblings().removeClass("reacted");
-    }
-    setTimeout(() => {
-      $(target).parents(".post-react-container").css("visibility", "visible");
-    }, 500);
-  };
-
-  let loveOnClick = (e) => {
-    let target = e.currentTarget;
-    $(target).parents(".post-react-container").css("visibility", "hidden");
-    if ($(e.currentTarget).hasClass("reacted")) {
-      removeReact("post");
-      $(e.currentTarget).removeClass("reacted");
-    } else {
-      placeReact("love", "post");
-      $(e.currentTarget).siblings().removeClass("reacted");
-      $(e.currentTarget).addClass("reacted");
-    }
-    setTimeout(() => {
-      $(target).parents(".post-react-container").css("visibility", "visible");
-    }, 500);
-  };
-
-  let hahaOnClick = (e) => {
-    let target = e.currentTarget;
-    $(target).parents(".post-react-container").css("visibility", "hidden");
-
-    if ($(e.currentTarget).hasClass("reacted")) {
-      removeReact();
-      $(e.currentTarget).removeClass("reacted");
-    } else {
-      placeReact("haha", "post", target);
-      $(e.currentTarget).siblings().removeClass("reacted");
-
-      $(e.currentTarget).addClass("reacted");
     }
     setTimeout(() => {
       $(target).parents(".post-react-container").css("visibility", "visible");
@@ -559,30 +514,7 @@ const SinglePost = () => {
             <div className="footer">
               <div className="react-count">
                 <div className="reacts">
-                  {placedReacts.includes("like") ? (
-                    <div className="react">
-                      {" "}
-                      <img src={Rlike} alt="like" />{" "}
-                    </div>
-                  ) : (
-                    <span></span>
-                  )}
-                  {placedReacts.includes("love") ? (
-                    <div className="react">
-                      {" "}
-                      <img src={Rlove} alt="love" />{" "}
-                    </div>
-                  ) : (
-                    <span></span>
-                  )}
-                  {placedReacts.includes("haha") ? (
-                    <div className="react">
-                      {" "}
-                      <img src={Rhaha} alt="love" />{" "}
-                    </div>
-                  ) : (
-                    <span></span>
-                  )}
+                  <PlacedReactIcons placedReacts={placedReacts} />
 
                   <span className="text">
                     {postData.reacts && totalReacts}{" "}
@@ -617,52 +549,16 @@ const SinglePost = () => {
                       className={`react-like ${reactType == true ? "reacted" : ""}`}
                     >
                       <span className="react-icon" datatype={reactType || ""}>
-                        {reactType == "haha" ? (
-                          <img src={Rhaha} alt="haha" />
-                        ) : (
-                          <span></span>
-                        )}
-                        {reactType == "love" ? (
-                          <img src={Rlove} alt="love" />
-                        ) : (
-                          <span></span>
-                        )}
-                        {reactType == false || reactType == "like" ? (
-                          <img src={Rlike} alt="like" />
-                        ) : (
-                          <span></span>
-                        )}
+                        <CurrentReactIcon reactType={reactType} />
                       </span>
                       <span className="text text-capitalize">
-                        {reactType ? reactType : "like"}
+                        {getReactLabel(reactType)}
                       </span>
                     </div>
-                    <div className="post-react-container">
-                      <div
-                        className={`react react-like ${reactType == "like" ? "reacted" : ""}`}
-                        onClick={likeOnClick}
-                        id="postReactLike"
-                        title="Like"
-                      >
-                        <img src={Rlike} alt="love" />
-                      </div>
-                      <div
-                        className={`react react-love ${reactType == "love" ? "reacted" : ""}`}
-                        onClick={loveOnClick}
-                        id="postReactLove"
-                        title="Love"
-                      >
-                        <img src={Rlove} alt="love" />
-                      </div>
-                      <div
-                        className={`react react-haha ${reactType == "haha" ? "reacted" : ""}`}
-                        onClick={hahaOnClick}
-                        id="postReactHaha"
-                        title="Haha"
-                      >
-                        <img src={Rhaha} alt="haha" />
-                      </div>
-                    </div>
+                    <ReactPicker
+                      reactType={reactType}
+                      onSelect={pickerReactOnClick}
+                    />
                   </div>
                   <div onClick={commentOnClick} className="comment button">
                     <span className="icon">
@@ -676,21 +572,23 @@ const SinglePost = () => {
                     </span>
                     <span className="text">Share</span>
                   </div>
+                  {isShareModal && (
                   <ModalContainer
-                    title="View Cover Photo"
-                    style={{ width: isMobile ? "95%" : "600px", top: "50%" }}
-                    isOpen={isShareModal}
+                    title="Share Post"
+                    isOpen
                     onRequestClose={onCloseShareReq}
                     id="cp-view-modal"
                   >
                     <div className="modal-header">
-                      <div></div>
-                      <div
+                      <h3 className="modal-title">Share Post</h3>
+                      <button
+                        type="button"
                         onClick={onCloseShareReq}
-                        className="modal-close-btn text-danger"
+                        className="modal-close-btn"
+                        aria-label="Close"
                       >
                         <i className="far fa-times"></i>
-                      </div>
+                      </button>
                     </div>
 
                     <div className="modal-body">
@@ -736,6 +634,7 @@ const SinglePost = () => {
                       </div>
                     </div>
                   </ModalContainer>
+                  )}
                 </div>
               </div>
               {/* <PostComment post={postData} commentState={setTotalComments} myProfile={myProfile} authProfile={authProfileId} authProfilePicture={authProfilePicture}></PostComment> */}
@@ -923,30 +822,7 @@ const SinglePost = () => {
             <div className="footer">
               <div className="react-count">
                 <div className="reacts">
-                  {placedReacts.includes("like") ? (
-                    <div className="react">
-                      {" "}
-                      <img src={Rlike} alt="like" />{" "}
-                    </div>
-                  ) : (
-                    <span></span>
-                  )}
-                  {placedReacts.includes("love") ? (
-                    <div className="react">
-                      {" "}
-                      <img src={Rlove} alt="love" />{" "}
-                    </div>
-                  ) : (
-                    <span></span>
-                  )}
-                  {placedReacts.includes("haha") ? (
-                    <div className="react">
-                      {" "}
-                      <img src={Rhaha} alt="love" />{" "}
-                    </div>
-                  ) : (
-                    <span></span>
-                  )}
+                  <PlacedReactIcons placedReacts={placedReacts} />
 
                   <span className="text">
                     {postData.reacts && totalReacts}{" "}
@@ -981,52 +857,16 @@ const SinglePost = () => {
                       className={`react-like ${reactType == true ? "reacted" : ""}`}
                     >
                       <span className="react-icon" datatype={reactType || ""}>
-                        {reactType == "haha" ? (
-                          <img src={Rhaha} alt="haha" />
-                        ) : (
-                          <span></span>
-                        )}
-                        {reactType == "love" ? (
-                          <img src={Rlove} alt="love" />
-                        ) : (
-                          <span></span>
-                        )}
-                        {reactType == false || reactType == "like" ? (
-                          <img src={Rlike} alt="like" />
-                        ) : (
-                          <span></span>
-                        )}
+                        <CurrentReactIcon reactType={reactType} />
                       </span>
                       <span className="text text-capitalize">
-                        {reactType ? reactType : "like"}
+                        {getReactLabel(reactType)}
                       </span>
                     </div>
-                    <div className="post-react-container">
-                      <div
-                        className={`react react-like ${reactType == "like" ? "reacted" : ""}`}
-                        onClick={likeOnClick}
-                        id="postReactLike"
-                        title="Like"
-                      >
-                        <img src={Rlike} alt="love" />
-                      </div>
-                      <div
-                        className={`react react-love ${reactType == "love" ? "reacted" : ""}`}
-                        onClick={loveOnClick}
-                        id="postReactLove"
-                        title="Love"
-                      >
-                        <img src={Rlove} alt="love" />
-                      </div>
-                      <div
-                        className={`react react-haha ${reactType == "haha" ? "reacted" : ""}`}
-                        onClick={hahaOnClick}
-                        id="postReactHaha"
-                        title="Haha"
-                      >
-                        <img src={Rhaha} alt="haha" />
-                      </div>
-                    </div>
+                    <ReactPicker
+                      reactType={reactType}
+                      onSelect={pickerReactOnClick}
+                    />
                   </div>
                   <div onClick={commentOnClick} className="comment button">
                     <span className="icon">
@@ -1039,21 +879,23 @@ const SinglePost = () => {
                       <i className="far fa-share"></i>
                     </span>
                     <span className="text">Share</span>
+                    {isShareModal && (
                     <ModalContainer
                       title="Share Post"
-                      style={{ width: isMobile ? "95%" : "600px", top: "50%" }}
-                      isOpen={isShareModal}
+                      isOpen
                       onRequestClose={onCloseShareReq}
                       id="cp-view-modal"
                     >
                       <div className="modal-header">
-                        <div></div>
-                        <div
+                        <h3 className="modal-title">Share Post</h3>
+                        <button
+                          type="button"
                           onClick={onCloseShareReq}
-                          className="modal-close-btn text-danger"
+                          className="modal-close-btn"
+                          aria-label="Close"
                         >
                           <i className="far fa-times"></i>
-                        </div>
+                        </button>
                       </div>
                       <div className="modal-body">
                         <div className="share-post-container">
@@ -1099,6 +941,7 @@ const SinglePost = () => {
                         </div>
                       </div>
                     </ModalContainer>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1114,7 +957,11 @@ const SinglePost = () => {
     () => (Array.isArray(postData?.viewers) ? postData.viewers : []),
     [postData?.viewers],
   );
+  const getViewerId = (viewer) =>
+    String(viewer?._id || viewer?.id || viewer || "");
   const [viewFilter, setViewFilter] = useState("all");
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+  const filterMenuRef = useRef(null);
   const [visibleViewersCount, setVisibleViewersCount] = useState(PAGE_SIZE);
   const [isLoadingMoreViewers, setIsLoadingMoreViewers] = useState(false);
   const [isViewersLoading, setIsViewersLoading] = useState(true);
@@ -1131,7 +978,9 @@ const SinglePost = () => {
     const map = new Map();
 
     reacts.forEach((react) => {
-      const reactProfileId = react?.profile?._id || react?.profile || react;
+      const reactProfileId = String(
+        react?.profile?._id || react?.profile || react || "",
+      );
       if (reactProfileId && react?.type) {
         map.set(reactProfileId, react.type);
       }
@@ -1142,27 +991,30 @@ const SinglePost = () => {
 
   const filterOptions = useMemo(() => {
     const reactedCount = viewers.filter((viewer) =>
-      viewerReactMap.has(viewer?._id || viewer),
+      viewerReactMap.has(getViewerId(viewer)),
     ).length;
     const unreactedCount = viewers.length - reactedCount;
     const typeCounts = viewers.reduce(
       (counts, viewer) => {
-        const reactType = viewerReactMap.get(viewer?._id || viewer);
+        const reactType = viewerReactMap.get(getViewerId(viewer));
         if (reactType && counts[reactType] !== undefined) {
           counts[reactType] += 1;
         }
         return counts;
       },
-      { like: 0, love: 0, haha: 0 },
+      emptyReactCounts(),
     );
 
     return [
       { key: "all", label: "All Views", count: viewers.length },
       { key: "reacted", label: "Reacted", count: reactedCount },
       { key: "unreacted", label: "No React", count: unreactedCount },
-      { key: "like", label: "Like", count: typeCounts.like, icon: Rlike },
-      { key: "love", label: "Love", count: typeCounts.love, icon: Rlove },
-      { key: "haha", label: "Haha", count: typeCounts.haha, icon: Rhaha },
+      ...REACT_LIST.map((react) => ({
+        key: react.key,
+        label: react.label,
+        count: typeCounts[react.key],
+        icon: react.icon,
+      })),
     ];
   }, [viewerReactMap, viewers]);
 
@@ -1170,12 +1022,12 @@ const SinglePost = () => {
     if (viewFilter === "all") return viewers;
 
     return viewers.filter((viewer) => {
-      const viewerId = viewer?._id || viewer;
+      const viewerId = getViewerId(viewer);
       const reactType = viewerReactMap.get(viewerId);
 
       if (viewFilter === "reacted") return Boolean(reactType);
       if (viewFilter === "unreacted") return !reactType;
-      if (["like", "love", "haha"].includes(viewFilter))
+      if (REACT_TYPES.includes(viewFilter))
         return reactType === viewFilter;
       return true;
     });
@@ -1190,7 +1042,28 @@ const SinglePost = () => {
 
   useEffect(() => {
     setVisibleViewersCount(PAGE_SIZE);
+    setIsFilterMenuOpen(false);
   }, [postId, viewFilter]);
+
+  useEffect(() => {
+    if (!isFilterMenuOpen) return undefined;
+
+    const onPointerDown = (event) => {
+      if (!filterMenuRef.current?.contains(event.target)) {
+        setIsFilterMenuOpen(false);
+      }
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") setIsFilterMenuOpen(false);
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isFilterMenuOpen]);
 
   useEffect(() => {
     setIsViewersLoading(true);
@@ -1271,49 +1144,62 @@ const SinglePost = () => {
               >
                 <div className="sp-panel-head">
                   <h2 className="section-title">Views</h2>
-                  <span className="sp-panel-count">
-                    {filteredViewers.length}
-                  </span>
-                </div>
-                {viewers.length > 0 && (
-                  <div className="sp-filter-wrap">
-                    <div className="sp-filter-head">
-                      <span className="sp-filter-label">Filter viewers</span>
-                      <button
-                        type="button"
-                        className="sp-filter-reset"
-                        onClick={() => setViewFilter("all")}
-                        disabled={viewFilter === "all"}
-                      >
-                        Reset
-                      </button>
-                    </div>
-                    <div className="sp-filter-grid">
-                      {filterOptions.map((option) => (
+                  <div className="sp-panel-head-actions">
+                    <span className="sp-panel-count">
+                      {filteredViewers.length}
+                    </span>
+                    {viewers.length > 0 && (
+                      <div className="sp-filter-menu" ref={filterMenuRef}>
                         <button
-                          key={option.key}
                           type="button"
-                          className={`sp-filter-chip ${viewFilter === option.key ? "is-active" : ""}`}
-                          onClick={() => setViewFilter(option.key)}
+                          className={`sp-filter-btn${viewFilter !== "all" ? " is-active" : ""}${isFilterMenuOpen ? " is-open" : ""}`}
+                          onClick={() => setIsFilterMenuOpen((open) => !open)}
+                          aria-expanded={isFilterMenuOpen}
+                          aria-haspopup="listbox"
+                          aria-label="Filter viewers"
                         >
-                          <span className="sp-filter-chip-main">
-                            {option.icon ? (
-                              <span className="sp-filter-chip-icon">
-                                <img src={option.icon} alt={option.label} />
-                              </span>
-                            ) : null}
-                            <span className="sp-filter-chip-text">
-                              {option.label}
-                            </span>
-                          </span>
-                          <span className="sp-filter-chip-count">
-                            {option.count}
-                          </span>
+                          <i className="fas fa-filter" aria-hidden="true"></i>
+                          Filter
+                          {viewFilter !== "all" ? (
+                            <span className="sp-filter-btn-dot" />
+                          ) : null}
                         </button>
-                      ))}
-                    </div>
+                        {isFilterMenuOpen && (
+                          <div className="sp-filter-dropdown" role="listbox">
+                            {filterOptions.map((option) => (
+                              <button
+                                key={option.key}
+                                type="button"
+                                role="option"
+                                aria-selected={viewFilter === option.key}
+                                className={`sp-filter-option${viewFilter === option.key ? " is-active" : ""}`}
+                                onClick={() => {
+                                  setViewFilter(option.key);
+                                  setIsFilterMenuOpen(false);
+                                }}
+                              >
+                                <span className="sp-filter-option-main">
+                                  {option.icon ? (
+                                    <span className="sp-filter-option-icon">
+                                      <img
+                                        src={option.icon}
+                                        alt=""
+                                      />
+                                    </span>
+                                  ) : null}
+                                  <span>{option.label}</span>
+                                </span>
+                                <span className="sp-filter-option-count">
+                                  {option.count}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
                 {isViewersLoading ? (
                   <div className="sp-viewer-skeleton-wrap" aria-hidden="true">
                     {Array.from({ length: 6 }).map((_, idx) => (
@@ -1330,16 +1216,17 @@ const SinglePost = () => {
                   filteredViewers.length > 0 ? (
                     <>
                       <ul className="sp-reacts">
-                        {visibleViewers.map((item) => (
-                          <SingleReactor
-                            key={item._id || item}
-                            reacts={postData.reacts}
-                            viewer={item._id || item}
-                            reactType={
-                              viewerReactMap.get(item._id || item) || ""
-                            }
-                          />
-                        ))}
+                        {visibleViewers.map((item) => {
+                          const viewerId = getViewerId(item);
+                          return (
+                            <SingleReactor
+                              key={viewerId}
+                              reacts={postData.reacts}
+                              viewer={item}
+                              reactType={viewerReactMap.get(viewerId) || ""}
+                            />
+                          );
+                        })}
                       </ul>
 
                       {isLoadingMoreViewers && (

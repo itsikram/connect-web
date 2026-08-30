@@ -55,7 +55,7 @@
     flex-direction: column;
     overflow: hidden;
     background: var(--ai-bg);
-    top: 420px;
+    top: 0;
 
     /* Centered modal height - use max-height to allow flexing */
     height: auto;

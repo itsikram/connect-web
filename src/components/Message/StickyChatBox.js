@@ -1636,14 +1636,11 @@ const StickyChatBox = ({
         )}
 
       {/* User Info Modal */}
+      {isUserInfoModalOpen && (
       <ModalContainer
         title="User Information"
-        style={{
-          width: isMobile ? "95%" : "700px",
-          maxHeight: "90vh",
-          overflow: "auto",
-        }}
-        isOpen={isUserInfoModalOpen}
+        size="lg"
+        isOpen
         onRequestClose={() => setIsUserInfoModalOpen(false)}
         id="stickyUserInfoModal"
       >
@@ -1839,6 +1836,7 @@ const StickyChatBox = ({
           )}
         </div>
       </ModalContainer>
+      )}
 
     </div>
   );

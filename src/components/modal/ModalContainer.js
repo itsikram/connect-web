@@ -1,87 +1,120 @@
-import React,{Fragment,useState,useEffect} from "react";
+import React, { useEffect, useState } from "react";
 import Modal from "react-modal";
-import $ from 'jquery'
+import "./ModalContainer.css";
 
-Modal.setAppElement('#root')
+const CLOSE_MS = 180;
 
-let ModalContainer = ({children,title,style,isOpen,onRequestClose,id,onClose,isFullscreen},props) => {
+const POSITION_KEYS = new Set([
+  "top",
+  "left",
+  "right",
+  "bottom",
+  "inset",
+  "marginRight",
+  "transform",
+]);
 
-let subtitle = title || 'Modal'
-
-
-const useMediaQuery = (query) => {
-  const [matches, setMatches] = useState(window.matchMedia(query).matches);
-
-  useEffect(() => {
-    const media = window.matchMedia(query);
-    const listener = (e) => setMatches(e.matches);
-    media.addEventListener("change", listener);
-    return () => media.removeEventListener("change", listener);
-  }, [query]);
-
-  return matches;
-};
-
-var isMobile = useMediaQuery("(max-width: 768px)");
-
-
-  const customStyles = {
-    content: isFullscreen ? {
-      inset: 0,
-      margin: 0,
-      transform: 'none',
-      backgroundColor: 'rgb(36,37,38)',
-      zIndex: '99',
-      width: 'auto',
-      height: 'auto',
-      maxWidth: '100%',
-      maxHeight: '100dvh',
-      padding: 0,
-      border: 'none',
-      borderRadius: 0,
-      overflow: 'hidden',
-      boxSizing: 'border-box',
-      ...style,
-    } : {
-      top: '50%',
-      left: '50%',
-      right: 'auto',
-      bottom: 'auto',
-      marginRight: '-50%',
-      transform: 'translate(-50%, -50%)',
-      backgroundColor: 'rgb(36,37,38)',
-      zIndex: '99',
-      maxHeight: '100%',
-      ...style,
-      width: isMobile ? '95%' : '600px',
-    },
-    overlay: {
-      backgroundColor: "rgba(0,0,0,0.8)",
-      zIndex: '1004'
-    }
-  };
-
-  let closeModal  = (e) => {
-    let target = e.currentTarget
-  }
-
- 
-
-  return (
-        <div>
-          <Modal
-            shouldCloseOnOverlayClick={true}
-            shouldCloseOnEsc ={true}
-            style={customStyles} 
-            isOpen={isOpen}
-            onRequestClose={onRequestClose}
-            id = {id || "profile-modal"}
-            className={isFullscreen ? "fullscreen-modal" : ""}
-          >
-            {children}
-          </Modal>
-        </div>
-      );
+if (typeof document !== "undefined" && document.getElementById("root")) {
+  Modal.setAppElement("#root");
 }
 
-export default ModalContainer
+const resetOverlayStyle = {
+  position: "fixed",
+  inset: 0,
+  backgroundColor: "transparent",
+};
+
+const resetContentStyle = {
+  position: "relative",
+  top: "auto",
+  left: "auto",
+  right: "auto",
+  bottom: "auto",
+  border: "none",
+  background: "transparent",
+  overflow: "auto",
+  borderRadius: 0,
+  padding: 0,
+  inset: "auto",
+};
+
+const pickContentStyle = (style) => {
+  if (!style) return resetContentStyle;
+  const next = { ...resetContentStyle };
+  Object.keys(style).forEach((key) => {
+    if (!POSITION_KEYS.has(key)) {
+      next[key] = style[key];
+    }
+  });
+  return next;
+};
+
+const ModalContainer = ({
+  children,
+  title,
+  style,
+  isOpen,
+  onRequestClose,
+  id,
+  isFullscreen,
+  size,
+  className = "",
+}) => {
+  const [mounted, setMounted] = useState(!!isOpen);
+
+  useEffect(() => {
+    if (isOpen) {
+      setMounted(true);
+      return undefined;
+    }
+    const timer = setTimeout(() => setMounted(false), CLOSE_MS);
+    return () => clearTimeout(timer);
+  }, [isOpen]);
+
+  if (!isOpen && !mounted) {
+    return null;
+  }
+
+  const contentClass = [
+    "app-modal-content",
+    isFullscreen ? "is-fullscreen" : "",
+    size === "sm" ? "is-sm" : "",
+    size === "lg" ? "is-lg" : "",
+    style?.padding === 0 || style?.padding === "0" ? "is-flush" : "",
+    className,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <Modal
+      isOpen={!!isOpen}
+      onRequestClose={onRequestClose}
+      shouldCloseOnOverlayClick
+      shouldCloseOnEsc
+      closeTimeoutMS={CLOSE_MS}
+      contentLabel={title || "Dialog"}
+      id={id}
+      className={{
+        base: contentClass,
+        afterOpen: "app-modal-content--open",
+        beforeClose: "app-modal-content--close",
+      }}
+      overlayClassName={{
+        base: "app-modal-overlay",
+        afterOpen: "app-modal-overlay--open",
+        beforeClose: "app-modal-overlay--close",
+      }}
+      bodyOpenClassName="app-modal-open"
+      htmlOpenClassName="app-modal-open-html"
+      style={{
+        overlay: resetOverlayStyle,
+        content: pickContentStyle(style),
+      }}
+    >
+      {children}
+    </Modal>
+  );
+};
+
+export default ModalContainer;

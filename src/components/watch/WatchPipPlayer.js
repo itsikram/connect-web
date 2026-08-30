@@ -119,17 +119,17 @@ const WatchPipPlayer = () => {
         }
         video.muted = !!initialPlayback?.muted;
         if (initialPlayback?.playing !== false) {
-          video.play().catch(() => {
-            if (document.hidden) {
-              backgroundAudio.wantPlayingRef.current = true;
-              backgroundAudio.playBackgroundAudio({
-                unmuted: true,
-                fromStart: true,
-              });
-              return;
-            }
-            setPaused(true);
-          });
+          if (document.hidden) {
+            try {
+              video.muted = true;
+              video.pause();
+            } catch (_) {}
+            backgroundAudio.wantPlayingRef.current = true;
+            backgroundAudio.playBackgroundAudio({ fromStart: true });
+            setPaused(false);
+          } else {
+            video.play().catch(() => setPaused(true));
+          }
         } else {
           setPaused(true);
         }
@@ -166,7 +166,7 @@ const WatchPipPlayer = () => {
     if (pip.playing && video.paused && video.readyState >= 2) {
       if (document.hidden) {
         if (!backgroundAudio.isAudioPlaying()) {
-          backgroundAudio.playBackgroundAudio({ unmuted: true });
+          backgroundAudio.playBackgroundAudio();
         }
       } else if (!backgroundAudio.handingOffRef.current) {
         video.play().catch(() => setPaused(true));
@@ -362,14 +362,6 @@ const WatchPipPlayer = () => {
     [playlist, pip, updatePip],
   );
 
-  const handlePrev = useCallback(() => {
-    switchPlaylistByOffset(-1);
-  }, [switchPlaylistByOffset]);
-
-  const handleNext = useCallback(() => {
-    switchPlaylistByOffset(1);
-  }, [switchPlaylistByOffset]);
-
   const replayCurrent = useCallback(() => {
     const video = videoRef.current;
     if (video) {
@@ -387,6 +379,31 @@ const WatchPipPlayer = () => {
     if (!video) return;
     video.play().catch(() => {});
   }, [backgroundAudio, updatePip]);
+
+  const handlePrev = useCallback(() => {
+    const livePosition = backgroundAudio.mediaPosition.playing
+      ? backgroundAudio.mediaPosition.position
+      : currentTime;
+    if (livePosition > 3 || playlist.length <= 1) {
+      replayCurrent();
+      return;
+    }
+    switchPlaylistByOffset(-1);
+  }, [
+    backgroundAudio,
+    currentTime,
+    playlist.length,
+    replayCurrent,
+    switchPlaylistByOffset,
+  ]);
+
+  const handleNext = useCallback(() => {
+    if (playlist.length <= 1) {
+      replayCurrent();
+      return;
+    }
+    switchPlaylistByOffset(1);
+  }, [playlist.length, replayCurrent, switchPlaylistByOffset]);
 
   const handleEnded = useCallback(() => {
     const idx = getPipPlaylistIndex(playlist, pip);
@@ -485,6 +502,7 @@ const WatchPipPlayer = () => {
 
   useMediaSession({
     enabled: !!pip,
+    bindKey: `${pipTrackKey}:${backgroundAudio.sessionBindKey}`,
     metadata: pip
       ? {
           title: pip.title || "Connect Watch",
@@ -494,11 +512,22 @@ const WatchPipPlayer = () => {
           artwork: mediaArtwork,
         }
       : null,
-    playbackState: paused ? "paused" : "playing",
+    playbackState:
+      paused && !backgroundAudio.mediaPosition.playing ? "paused" : "playing",
     positionState: {
-      duration,
-      position: currentTime,
-      playbackRate,
+      duration:
+        backgroundAudio.mediaPosition.playing &&
+        backgroundAudio.mediaPosition.duration > 0
+          ? backgroundAudio.mediaPosition.duration
+          : duration,
+      position:
+        backgroundAudio.mediaPosition.playing &&
+        backgroundAudio.mediaPosition.duration > 0
+          ? backgroundAudio.mediaPosition.position
+          : currentTime,
+      playbackRate: backgroundAudio.mediaPosition.playing
+        ? backgroundAudio.mediaPosition.playbackRate
+        : playbackRate,
     },
     handlers: mediaSessionHandlers,
   });

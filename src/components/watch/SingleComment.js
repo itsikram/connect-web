@@ -26,10 +26,11 @@ const SingleComment = (props) => {
 
     useEffect(() => {
         setComment(props.comment)
-        setTotalComment(props.comment.reacts.length || 0)
-        setIsReacted(props.comment.reacts.includes(myId))
-        // setReplies(props.comment.replies)
-    },[props])
+        const reacts = Array.isArray(props.comment?.reacts) ? props.comment.reacts : []
+        setTotalComment(reacts.length || 0)
+        setIsReacted(reacts.includes(myId))
+        setReplies(Array.isArray(props.comment?.replies) ? props.comment.replies : [])
+    },[props, myId])
 
     let handleCommentReplyBtnClick = async (e) => {
         setIsReply(!isReply)
@@ -41,7 +42,7 @@ const SingleComment = (props) => {
             let watchId = watch._id;
 
             $(e.currentTarget).parents('.comment-container').remove();
-            let dltRes = await api.post('/comment/deleteComment', { commentId, watchId })
+            let dltRes = await api.post('/comment/deleteComment', { commentId, watchId, parentType: 'watch' })
             if (dltRes.status === 200) {
                 let data = dltRes.data
                 data.author = myProfile
@@ -121,6 +122,8 @@ const SingleComment = (props) => {
 
     }
 
+
+    if (!comment?.author) return null
 
     return (
         <>

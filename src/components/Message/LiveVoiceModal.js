@@ -106,7 +106,7 @@ const LiveVoiceModal = ({
       isOpen={isOpen}
       onRequestClose={onClose}
       title="Live Voice Transfer"
-      style={{ maxWidth: "450px" }}
+      size="sm"
     >
       <div className="live-voice-modal">
         <div className="live-voice-modal-header">

@@ -239,20 +239,20 @@ const CoverPic = ({ profileData }) => {
                     </div>
                 }
 
+                {isCPViewModal && (
                 <ModalContainer
                     title="View Cover Photo"
-                    style={{ width: isMobile ? '95%' : "600px", top: "50%" }}
-                    isOpen={isCPViewModal}
+                    isOpen
                     onRequestClose={closeCPViewModal}
                     id="cp-view-modal"
                 >
 
                     <div className="modal-header">
                         <div className="modal-title" style={CPViewModalTitleStyles}> View
-                            Profile Picture</div>
-                        <div onClick={closeCPViewModal} className="modal-close-btn">
+                            Cover Photo</div>
+                        <button type="button" onClick={closeCPViewModal} className="modal-close-btn" aria-label="Close">
                             <i className="far fa-times"></i>
-                        </div>
+                        </button>
 
                     </div>
                     <div className="modal-body text-center">
@@ -260,11 +260,12 @@ const CoverPic = ({ profileData }) => {
 
                     </div>
                 </ModalContainer>
+                )}
 
+                {isCpModal && (
                 <ModalContainer
                     title={"Upload Cover Photo"}
-                    style={{ width: "500px", top: "20%", top: '50%' }}
-                    isOpen={isCpModal}
+                    isOpen
                     onRequestClose={closeCpModal}
                     id='cp-upload-modal'
                 >
@@ -273,9 +274,9 @@ const CoverPic = ({ profileData }) => {
                         <div className="modal-title">
                             Upload Cover Photo
                         </div>
-                        <div onClick={hideCpModal} className="modal-close-btn">
+                        <button type="button" onClick={hideCpModal} className="modal-close-btn" aria-label="Close">
                             <i className="far fa-times"></i>
-                        </div>
+                        </button>
                     </div>
                     <div className="modal-body">
                         <div className="modal-upload-preview">
@@ -308,6 +309,7 @@ const CoverPic = ({ profileData }) => {
                     </div>
 
                 </ModalContainer>
+                )}
 
             </div>
 

@@ -1,4 +1,4 @@
-import React, { Fragment, useEffect, useState } from 'react';
+import React, { Fragment, useEffect, useState, lazy, Suspense } from 'react';
 import Main from './pages/Main';
 import './App.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -12,10 +12,13 @@ import process from 'process';
 import { AuthProvider } from './contexts/AuthContext';
 import { CallMinimizeProvider } from './contexts/CallMinimizeContext';
 import { WatchPipProvider } from './contexts/WatchPipContext';
-import DownloadAppModal from './components/modal/DownloadAppModal';
 import ErrorBoundary from './components/ErrorBoundary';
 import './utils/configValidation';
 window.process = process;
+
+const DownloadAppModal = lazy(() =>
+  import('./components/modal/DownloadAppModal')
+);
 
 function App() {
   const [showDownloadModal, setShowDownloadModal] = useState(false);
@@ -82,7 +85,11 @@ function App() {
             <Fragment>
               {/* <SimpleEmotionTest /> */}
               <Main />
-              <DownloadAppModal isOpen={showDownloadModal} onClose={handleCloseDownloadModal} />
+              {showDownloadModal && (
+                <Suspense fallback={null}>
+                  <DownloadAppModal isOpen onClose={handleCloseDownloadModal} />
+                </Suspense>
+              )}
             </Fragment>
           </WatchPipProvider>
         </CallMinimizeProvider>

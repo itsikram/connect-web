@@ -102,8 +102,10 @@
     position: sticky;
     top: 72px;
     z-index: 2;
+    height: calc(100dvh - 88px);
     max-height: calc(100dvh - 88px);
     overflow: hidden;
+    min-height: 0;
 }
 
 .sp-panel {
@@ -145,6 +147,13 @@
     color: var(--sp-accent);
     font-size: 0.75rem;
     font-weight: 700;
+}
+
+.sp-panel-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
 }
 
 /* Post card inside single page */
@@ -298,7 +307,7 @@
     flex-direction: column;
     flex: 1 1 auto;
     min-height: 0;
-    max-height: none;
+    overflow: hidden;
     position: relative;
     top: auto;
 }
@@ -308,16 +317,21 @@
     flex-direction: column;
     min-height: 0;
     flex: 1;
+    overflow: hidden;
 }
 
 .sp-comments-panel .comments {
     flex: 1 1 auto;
-    min-height: 60px;
+    min-height: 0 !important;
     max-height: none !important;
-    height: auto !important;
+    height: 0 !important;
     overflow-y: auto !important;
     padding: 10px 12px !important;
     overscroll-behavior: contain;
+}
+
+.sp-comments-panel .new-comment-assist {
+    flex-shrink: 0;
 }
 
 .sp-comments-panel .new-comment {
@@ -334,163 +348,153 @@
 }
 
 /* Views / reactors */
-.sp-filter-wrap {
-    padding: 12px 14px 0;
+.sp-filter-menu {
+    position: relative;
 }
 
-.sp-filter-head {
-    display: flex;
+.sp-filter-btn {
+    display: inline-flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    margin-bottom: 10px;
-}
-
-.sp-filter-label {
+    gap: 6px;
+    border: 1px solid var(--sp-border);
+    background: rgba(255, 255, 255, 0.04);
     color: var(--sp-text);
-    font-size: 0.82rem;
-    font-weight: 700;
-    letter-spacing: 0.01em;
-    text-transform: uppercase;
-    opacity: 0.9;
-}
-
-.sp-filter-reset {
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(255, 255, 255, 0.03);
-    color: var(--sp-muted);
     border-radius: 999px;
-    padding: 6px 12px;
+    padding: 6px 11px;
     font-size: 0.78rem;
-    font-weight: 600;
+    font-weight: 650;
     cursor: pointer;
-    transition: all 0.2s ease;
+    position: relative;
+    transition:
+        background 0.15s ease,
+        border-color 0.15s ease,
+        color 0.15s ease;
 }
 
-.sp-filter-reset:hover:not(:disabled) {
-    color: var(--sp-text);
+.sp-filter-btn i {
+    font-size: 0.72rem;
+    color: var(--sp-accent);
+}
+
+.sp-filter-btn:hover,
+.sp-filter-btn.is-open {
+    background: rgba(255, 255, 255, 0.08);
     border-color: rgba(255, 255, 255, 0.16);
-    background: rgba(255, 255, 255, 0.06);
 }
 
-.sp-filter-reset:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
+.sp-filter-btn.is-active {
+    border-color: rgba(0, 212, 255, 0.38);
+    background: rgba(0, 212, 255, 0.12);
 }
 
-.sp-filter-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+.sp-filter-btn-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--sp-accent);
 }
 
-.sp-filter-chip {
+.sp-filter-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 40;
+    width: min(260px, 78vw);
+    padding: 6px;
+    border-radius: 14px;
+    border: 1px solid var(--sp-border);
+    background: rgba(18, 20, 24, 0.98);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+
+.sp-filter-option {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 10px;
     width: 100%;
-    padding: 10px 12px;
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: linear-gradient(
-        180deg,
-        rgba(255, 255, 255, 0.04),
-        rgba(255, 255, 255, 0.02)
-    );
+    padding: 8px 10px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
     color: var(--sp-text);
     cursor: pointer;
     text-align: left;
-    transition:
-        transform 0.18s ease,
-        border-color 0.18s ease,
-        background 0.18s ease,
-        box-shadow 0.18s ease;
 }
 
-.sp-filter-chip:hover {
-    transform: translateY(-1px);
-    border-color: rgba(0, 212, 255, 0.24);
-    background: linear-gradient(
-        180deg,
-        rgba(0, 212, 255, 0.08),
-        rgba(255, 255, 255, 0.03)
-    );
+.sp-filter-option:hover {
+    background: rgba(255, 255, 255, 0.06);
 }
 
-.sp-filter-chip.is-active {
-    border-color: rgba(0, 212, 255, 0.38);
-    background: linear-gradient(
-        180deg,
-        rgba(0, 212, 255, 0.16),
-        rgba(0, 212, 255, 0.08)
-    );
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.08),
-        0 8px 20px rgba(0, 212, 255, 0.08);
+.sp-filter-option.is-active {
+    background: rgba(0, 212, 255, 0.12);
 }
 
-.sp-filter-chip-main {
+.sp-filter-option-main {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     min-width: 0;
+    font-size: 0.84rem;
+    font-weight: 600;
 }
 
-.sp-filter-chip-icon {
-    width: 22px;
-    height: 22px;
+.sp-filter-option-icon {
+    width: 18px;
+    height: 18px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
 }
 
-.sp-filter-chip-icon img {
+.sp-filter-option-icon img {
     width: 100%;
     height: 100%;
     object-fit: contain;
 }
 
-.sp-filter-chip-text {
-    font-size: 0.88rem;
-    font-weight: 600;
-    line-height: 1.1;
-}
-
-.sp-filter-chip-count {
+.sp-filter-option-count {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 28px;
-    height: 24px;
-    padding: 0 8px;
+    min-width: 22px;
+    height: 20px;
+    padding: 0 6px;
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.07);
-    color: var(--sp-text);
-    font-size: 0.76rem;
+    color: var(--sp-muted);
+    font-size: 0.72rem;
     font-weight: 700;
-    flex-shrink: 0;
 }
 
-.sp-filter-chip.is-active .sp-filter-chip-count {
-    background: rgba(255, 255, 255, 0.12);
-    color: #dff9ff;
+.sp-filter-option.is-active .sp-filter-option-count {
+    background: rgba(0, 212, 255, 0.18);
+    color: var(--sp-accent);
 }
 
-.sp-views-panel {
-    flex: 0 1 auto;
+.sp-panel.sp-views-panel {
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     min-height: 0;
-    max-height: 42%;
+    max-height: min(280px, 36%);
+    overflow: visible;
+    z-index: 3;
+}
+
+.sp-views-panel .sp-panel-head {
+    position: relative;
+    z-index: 5;
 }
 
 .sp-views-panel .sp-reacts {
     list-style: none;
     margin: 0;
-    padding: 8px 10px;
-    max-height: none;
+    padding: 8px 10px 12px;
+    flex: 1 1 auto;
+    min-height: 72px;
+    max-height: 210px;
     overflow-y: auto;
     overscroll-behavior: contain;
 }
@@ -507,6 +511,10 @@
 
 .sp-views-panel .sp-reacts-item:hover {
     background: rgba(255, 255, 255, 0.04);
+}
+
+.sp-views-panel .sp-reacts-item--pending {
+    pointer-events: none;
 }
 
 .sp-views-panel .reactor-pp {
@@ -713,14 +721,9 @@
     height: 22px;
 }
 
-.sp-skel-filter-label {
-    width: 96px;
-    height: 11px;
-}
-
-.sp-skel-chip {
-    height: 34px;
-    border-radius: 10px;
+.sp-skel-filter-btn {
+    width: 72px;
+    height: 28px;
 }
 
 .sp-skel-composer {
@@ -784,6 +787,7 @@
         position: relative;
         top: auto;
         z-index: auto;
+        height: auto;
         max-height: none;
         overflow: visible;
     }
@@ -797,14 +801,20 @@
         max-height: none;
         position: relative;
         top: auto;
+        flex: 0 0 auto;
+        overflow: visible;
     }
 
     .sp-comments-panel .comments {
         max-height: 55vh !important;
+        height: auto !important;
+        min-height: 120px !important;
     }
 
-    .sp-views-panel {
+    .sp-panel.sp-views-panel {
         max-height: none;
+        min-height: 0;
+        flex: 0 0 auto;
     }
 
     .sp-views-panel .sp-reacts {
@@ -844,18 +854,6 @@
 
     .sp-panel-head {
         padding: 10px 12px;
-    }
-
-    .sp-filter-wrap {
-        padding: 10px 12px 0;
-    }
-
-    .sp-filter-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .sp-filter-chip {
-        padding: 10px 11px;
     }
 
     .sp-views-panel .sp-reacts {

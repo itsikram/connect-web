@@ -103,11 +103,13 @@ const ProfileButtons = (props) => {
                             <i className="fas fa-plus-circle" />
                             <span>Add to story</span>
                         </div>
+                        {isStoryModal && (
                         <CreateStoryModal
-                            isOpen={isStoryModal}
+                            isOpen
                             onRequestClose={() => setIsStoryModal(false)}
                             profileData={profileData}
                         />
+                        )}
                         <div onClick={() => navigate('/settings')} className="normal-btn button edit-profile">
                             <i className="fas fa-pen" />
                             <span>Edit Profile</span>

@@ -1345,24 +1345,29 @@ body {
 .nf-post .footer .like-comment-share .buttons-container .react-buttons .post-react-container {
   position: absolute;
   bottom: 100%;
-  width: 150px;
+  width: max-content;
   background-color: #18191A;
   padding: 10px;
   border-radius: 10px;
   display: none;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 2px;
 }
 .nf-post .footer .like-comment-share .buttons-container .react-buttons .post-react-container .react {
-  width: 31%;
-  float: left;
-  margin-right: 2%;
-  padding: 5px;
+  width: 34px;
+  float: none;
+  margin-right: 0;
+  padding: 3px;
   border-radius: 5px;
+  flex: 0 0 auto;
 }
 .nf-post .footer .like-comment-share .buttons-container .react-buttons .post-react-container .reacted {
   background-color: #3B3C3C;
 }
 .nf-post .footer .like-comment-share .buttons-container .react-buttons:hover .post-react-container {
-  display: block !important;
+  display: flex !important;
 }
 .nf-post .footer .like-comment-share .buttons-container .reacted {
   color: #29B1A9 !important;
@@ -1970,24 +1975,29 @@ body {
 .nf-watch .footer .like-comment-share .buttons-container .react-buttons .watch-react-container {
   position: absolute;
   bottom: 100%;
-  width: 150px;
+  width: max-content;
   background-color: #18191A;
   padding: 10px;
   border-radius: 10px;
   display: none;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 2px;
 }
 .nf-watch .footer .like-comment-share .buttons-container .react-buttons .watch-react-container .react {
-  width: 31%;
-  float: left;
-  margin-right: 2%;
-  padding: 5px;
+  width: 34px;
+  float: none;
+  margin-right: 0;
+  padding: 3px;
   border-radius: 5px;
+  flex: 0 0 auto;
 }
 .nf-watch .footer .like-comment-share .buttons-container .react-buttons .watch-react-container .reacted {
   background-color: #3B3C3C;
 }
 .nf-watch .footer .like-comment-share .buttons-container .react-buttons:hover .watch-react-container {
-  display: block !important;
+  display: flex !important;
 }
 .nf-watch .footer .like-comment-share .buttons-container .reacted {
   color: #29B1A9 !important;
@@ -3138,24 +3148,29 @@ body {
 .single-post-container .nf-post .footer .like-comment-share .buttons-container .react-buttons .post-react-container {
   position: absolute;
   bottom: 100%;
-  width: 150px;
+  width: max-content;
   background-color: #18191A;
   padding: 10px;
   border-radius: 10px;
   display: none;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 2px;
 }
 .single-post-container .nf-post .footer .like-comment-share .buttons-container .react-buttons .post-react-container .react {
-  width: 31%;
-  float: left;
-  margin-right: 2%;
-  padding: 5px;
+  width: 34px;
+  float: none;
+  margin-right: 0;
+  padding: 3px;
   border-radius: 5px;
+  flex: 0 0 auto;
 }
 .single-post-container .nf-post .footer .like-comment-share .buttons-container .react-buttons .post-react-container .reacted {
   background-color: #3B3C3C;
 }
 .single-post-container .nf-post .footer .like-comment-share .buttons-container .react-buttons:hover .post-react-container {
-  display: block !important;
+  display: flex !important;
 }
 .single-post-container .nf-post .footer .like-comment-share .buttons-container .reacted {
   color: #29B1A9 !important;
