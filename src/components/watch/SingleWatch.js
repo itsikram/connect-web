@@ -17,7 +17,7 @@ import Rlove from "../../assets/images/reacts/reactLove.svg";
 import Rhaha from "../../assets/images/reacts/reactHaha.svg";
 import config from "../../config/config.json";
 import { useWatchPipOptional } from "../../contexts/WatchPipContext";
-import { buildPipPayloadFromVideo, shouldAutoWatchPip } from "../../utils/watchPipHelpers";
+import { buildPipPayloadFromVideo, shouldAutoWatchPip, watchesToPipPlaylist } from "../../utils/watchPipHelpers";
 import WatchVideoPlayer from "./WatchVideoPlayer";
 const default_pp_src = config?.defaultProfile;
 
@@ -32,6 +32,7 @@ const SinglePost = (watch) => {
     const skipPipOnUnmount = useRef(false)
     const watchPip = useWatchPipOptional()
     const { watchId } = useParams()
+    const [relatedWatches, setRelatedWatches] = useState([])
     let loadData = async () => {
 
         let res = await api.get('watch/single', { params: { watchId } })
@@ -77,12 +78,32 @@ const SinglePost = (watch) => {
         return () => video.removeEventListener("loadedmetadata", apply);
     }, [watchUrl, location.state, watchPip]);
 
-    const getPipMeta = useCallback(() => ({
-        watchId: watchData?._id || watchId,
-        videoUrl: watchUrl || watchData?.videoUrl,
-        title: watchData?.caption || "Watch",
-        thumbnail: watchData?.thumbnail || "",
-    }), [watchData, watchId, watchUrl]);
+    const getPipMeta = useCallback(() => {
+        const currentId = watchData?._id || watchId;
+        const current = currentId && (watchUrl || watchData?.videoUrl)
+            ? {
+                id: String(currentId),
+                watchId: String(currentId),
+                url: watchUrl || watchData?.videoUrl,
+                title: watchData?.caption || "Watch",
+                thumbnail: watchData?.thumbnail || "",
+                playCount: 1,
+            }
+            : null;
+        const related = watchesToPipPlaylist(relatedWatches);
+        const playlist = current
+            ? related.some((item) => item.id === current.id)
+                ? related
+                : [current, ...related.filter((item) => item.id !== current.id)]
+            : related;
+        return {
+            watchId: currentId,
+            videoUrl: watchUrl || watchData?.videoUrl,
+            title: watchData?.caption || "Watch",
+            thumbnail: watchData?.thumbnail || "",
+            playlist,
+        };
+    }, [watchData, watchId, watchUrl, relatedWatches]);
 
     const minimizeToPip = useCallback(() => {
         if (!watchPip?.startPip || !displayedWatch.current) return;
@@ -127,6 +148,21 @@ const SinglePost = (watch) => {
 
     let myProfile = useSelector(state => state.profile)
     let myProfileId = myProfile._id;
+
+    useEffect(() => {
+        if (!myProfileId) return undefined;
+        let cancelled = false;
+        api.get("watch/related", { params: { profile_id: myProfileId } })
+            .then((res) => {
+                if (!cancelled && res.status === 200 && Array.isArray(res.data)) {
+                    setRelatedWatches(res.data);
+                }
+            })
+            .catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    }, [myProfileId]);
     let postAuthorProfileId = watchData && watchData?.author._id
     let [totalReacts, setTotalReacts] = useState(watchData && watchData.reacts.length)
     let [totalShares, setTotalShares] = useState(watchData && watchData.shares.length)

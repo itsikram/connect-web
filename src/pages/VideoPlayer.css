@@ -176,6 +176,23 @@
     display: block;
 }
 
+.video-media-cover {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    display: grid;
+    place-items: center;
+    z-index: 2;
+    pointer-events: none;
+    color: #fff;
+}
+
+.video-media-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
 .video-pip-inline-placeholder {
     width: 100%;
     height: 100%;
@@ -566,12 +583,87 @@
     color: #FFFFFF;
 }
 
-.playlist-count {
-    font-size: clamp(10px, 2.5vw, 12px);
-    opacity: 0.7;
-    background: rgba(255, 255, 255, 0.1);
-    padding: clamp(2px, 0.5vw, 4px) clamp(6px, 1.5vw, 8px);
-    border-radius: 12px;
+.playlist-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.playlist-queue-actions {
+    margin: 0 0 10px;
+}
+
+.playlist-queue-actions .btn {
+    flex: none;
+    width: auto;
+    padding: 6px 12px;
+    font-size: 12px;
+}
+
+.video-play-queue {
+    max-height: min(42vh, 42dvh, 420px);
+}
+
+.playlist-repeat-control {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.playlist-repeat-btn {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+}
+
+.playlist-repeat-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.playlist-repeat-input {
+    width: 42px;
+    height: 28px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.35);
+    color: #fff;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 0;
+    -moz-appearance: textfield;
+}
+
+.playlist-repeat-input::-webkit-outer-spin-button,
+.playlist-repeat-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.playlist-add-btn {
+    flex-shrink: 0;
+    border: 1px solid rgba(59, 130, 246, 0.45);
+    background: rgba(59, 130, 246, 0.2);
+    color: #dbeafe;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.playlist-add-btn:hover {
+    background: rgba(59, 130, 246, 0.35);
 }
 
 .playlist-items {

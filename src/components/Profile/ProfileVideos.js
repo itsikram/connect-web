@@ -61,6 +61,16 @@ let ProfileVideos = () => {
                             key={data._id || index}
                             myProfile={myProfileData}
                             watch={data}
+                            pipPlaylist={watches
+                                .filter((item) => item?._id && item?.videoUrl)
+                                .map((item) => ({
+                                    id: String(item._id),
+                                    watchId: String(item._id),
+                                    url: item.videoUrl,
+                                    title: item.caption || `${item.author?.user?.firstName || "Watch"} video`,
+                                    thumbnail: item.thumbnail || "",
+                                    playCount: 1,
+                                }))}
                             onDelete={(deletedId) => setWatches(prev => prev.filter(item => item._id !== deletedId))}
                         ></Watch>
                     })

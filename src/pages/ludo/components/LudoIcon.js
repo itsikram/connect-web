@@ -40,6 +40,19 @@ const iconPaths = {
       <path d="m16 10 4 4m0-4-4 4" />
     </>
   ),
+  mic: (
+    <>
+      <path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3Z" />
+      <path d="M19 11a7 7 0 0 1-14 0M12 18v3" />
+    </>
+  ),
+  micOff: (
+    <>
+      <path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3Z" />
+      <path d="M19 11a7 7 0 0 1-14 0M12 18v3" />
+      <path d="m5 5 14 14" />
+    </>
+  ),
   refresh: (
     <>
       <path d="M20 7v5h-5" />

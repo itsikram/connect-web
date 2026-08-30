@@ -1,12 +1,10 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
-import AgoraRTC from "agora-rtc-sdk-ng";
 import api from "../../api/api";
 import $ from "jquery";
 import { useDispatch, useSelector } from "react-redux";
 import { loadSettings } from "../../services/actions/settingsActions";
 import EmojiPicker from "emoji-picker-react";
 import { useParams } from "react-router-dom";
-import LiveVoiceModal from "./LiveVoiceModal";
 import socket from "../../common/socket";
 
 const ChatFooter = ({
@@ -45,9 +43,6 @@ const ChatFooter = ({
   const [showAttachTray, setShowAttachTray] = useState(false);
   const [isLiveVoiceConnecting, setIsLiveVoiceConnecting] = useState(false);
   const [isLiveVoiceActive, setIsLiveVoiceActive] = useState(false);
-  const [isLiveVoiceModalOpen, setIsLiveVoiceModalOpen] = useState(false);
-  const [liveVoiceDuration, setLiveVoiceDuration] = useState(0);
-  const liveVoiceDurationTimerRef = useRef(null);
   // Voice message recording
   const [isRecording, setIsRecording] = useState(false);
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
@@ -325,184 +320,58 @@ const ChatFooter = ({
     // Handle image change
   };
 
-  // Live voice (full-duplex) via Agora
-  const liveVoiceClientRef = useRef(null);
-  const liveVoiceLocalTrackRef = useRef(null);
-  const liveVoiceChannelRef = useRef(null);
   const isLiveVoiceActiveRef = useRef(false);
 
-  const getAgoraToken = useCallback(
-    async (channelName, uid, role = "publisher") => {
-      try {
-        const { data } = await api.post("/agora/token", {
-          channelName,
-          uid,
-          role,
-        });
-        if (!data || !data.appId || !data.token) {
-          throw new Error("Invalid token response from server");
-        }
-        return data; // { appId, token }
-      } catch (error) {
-        console.error("Failed to get Agora token:", error);
-        throw error;
-      }
-    },
-    [],
-  );
-
-  const subscribeToRemoteAudio = useCallback(async (client) => {
-    if (!client) return;
-
-    client.on("user-published", async (user, mediaType) => {
-      if (mediaType !== "audio") return;
-      try {
-        await client.subscribe(user, "audio");
-        user.audioTrack?.play();
-      } catch (e) {
-        console.warn("Live voice subscribe error:", e);
-      }
-    });
-
-    for (const user of client.remoteUsers || []) {
-      if (!user?.hasAudio) continue;
-      try {
-        await client.subscribe(user, "audio");
-        user.audioTrack?.play();
-      } catch (e) {
-        console.warn("Live voice subscribe existing user error:", e);
-      }
-    }
-  }, []);
-
-  const ensureLeaveLiveVoice = useCallback(async () => {
-    try {
-      if (liveVoiceClientRef.current && liveVoiceLocalTrackRef.current) {
-        await liveVoiceClientRef.current.unpublish([
-          liveVoiceLocalTrackRef.current,
-        ]);
-      }
-    } catch (_e) {}
-
-    try {
-      liveVoiceLocalTrackRef.current?.close();
-    } catch (_e) {}
-    liveVoiceLocalTrackRef.current = null;
-
-    try {
-      await liveVoiceClientRef.current?.leave();
-      liveVoiceClientRef.current?.removeAllListeners();
-    } catch (_e) {}
-    liveVoiceClientRef.current = null;
-    liveVoiceChannelRef.current = null;
-  }, []);
-
-  const stopLiveVoiceSession = useCallback(
-    async (notifyPeer = true) => {
-      const channelName =
-        liveVoiceChannelRef.current ||
-        room ||
-        [userId, friendId].sort().join("_");
-
-      if (notifyPeer && friendId && channelName) {
-        socket.emit("live-voice-stop", { to: String(friendId), channelName });
-      }
-
-      await ensureLeaveLiveVoice();
-      isLiveVoiceActiveRef.current = false;
-      setIsLiveVoiceActive(false);
-      setIsLiveVoiceModalOpen(false);
-      setLiveVoiceDuration(0);
-      if (liveVoiceDurationTimerRef.current) {
-        clearInterval(liveVoiceDurationTimerRef.current);
-        liveVoiceDurationTimerRef.current = null;
-      }
-      setIsLiveVoiceConnecting(false);
-    },
-    [ensureLeaveLiveVoice, room, userId, friendId],
-  );
-
-  const handleLiveVoiceButtonClick = async () => {
-    try {
-      if (isLiveVoiceActiveRef.current) {
-        await stopLiveVoiceSession(true);
-        return;
-      }
-
-      setIsLiveVoiceConnecting(true);
-      const channelName = room || [userId, friendId].sort().join("_");
-      if (!channelName || !friendId || !userId) {
-        setIsLiveVoiceConnecting(false);
-        return;
-      }
-
-      const generateUid = (str) => {
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-          hash = (hash << 5) - hash + str.charCodeAt(i);
-          hash |= 0;
-        }
-        return Math.abs(hash);
-      };
-      const uid = generateUid(userId) + 1;
-      const { appId, token } = await getAgoraToken(
-        channelName,
-        uid,
-        "publisher",
-      );
-
-      await ensureLeaveLiveVoice();
-
-      const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
-      liveVoiceClientRef.current = client;
-      liveVoiceChannelRef.current = channelName;
-
-      await client.join(appId, channelName, token, uid);
-      const mic = await AgoraRTC.createMicrophoneAudioTrack();
-      liveVoiceLocalTrackRef.current = mic;
-      await client.publish([mic]);
-      await subscribeToRemoteAudio(client);
-
-      isLiveVoiceActiveRef.current = true;
-      setIsLiveVoiceActive(true);
-      setLiveVoiceDuration(0);
-      setIsLiveVoiceModalOpen(true);
-
-      socket.emit("live-voice-start", { to: String(friendId), channelName });
-
-      if (liveVoiceDurationTimerRef.current) {
-        clearInterval(liveVoiceDurationTimerRef.current);
-      }
-      liveVoiceDurationTimerRef.current = setInterval(() => {
-        setLiveVoiceDuration((prev) => prev + 1);
-      }, 1000);
-    } catch (err) {
-      console.error("Live voice error:", err);
-      await stopLiveVoiceSession(false);
-    } finally {
-      setIsLiveVoiceConnecting(false);
-    }
-  };
-
   useEffect(() => {
-    const handlePeerLiveVoiceStop = async ({ from, channelName }) => {
-      if (String(from) !== String(friendId)) return;
-      if (
-        liveVoiceChannelRef.current &&
-        channelName &&
-        String(channelName) !== String(liveVoiceChannelRef.current)
-      ) {
+    const onLiveVoiceStatus = (event) => {
+      const { active, connecting, peerId } = event.detail || {};
+      const isThisChat =
+        !peerId || !friendId || String(peerId) === String(friendId);
+      if (!isThisChat) {
+        if (isLiveVoiceActiveRef.current) {
+          isLiveVoiceActiveRef.current = false;
+          setIsLiveVoiceActive(false);
+          setIsLiveVoiceConnecting(false);
+        }
         return;
       }
-      if (!isLiveVoiceActiveRef.current) return;
-      await stopLiveVoiceSession(false);
+      isLiveVoiceActiveRef.current = !!active;
+      setIsLiveVoiceActive(!!active);
+      setIsLiveVoiceConnecting(!!connecting);
     };
 
-    socket.on("live-voice-stop", handlePeerLiveVoiceStop);
+    window.addEventListener("liveVoiceStatus", onLiveVoiceStatus);
     return () => {
-      socket.off("live-voice-stop", handlePeerLiveVoiceStop);
+      window.removeEventListener("liveVoiceStatus", onLiveVoiceStatus);
     };
-  }, [friendId, stopLiveVoiceSession]);
+  }, [friendId]);
+
+  const handleLiveVoiceButtonClick = () => {
+    if (isLiveVoiceActiveRef.current) {
+      window.dispatchEvent(new CustomEvent("stopLiveVoice"));
+      return;
+    }
+
+    const channelName = room || [userId, friendId].sort().join("_");
+    if (!channelName || !friendId || !userId) return;
+
+    setIsLiveVoiceConnecting(true);
+
+    const friendName =
+      friendProfile?.fullName ||
+      friendProfile?.user?.firstName ||
+      "Friend";
+
+    window.dispatchEvent(
+      new CustomEvent("startLiveVoice", {
+        detail: {
+          to: String(friendId),
+          channelName,
+          friendName,
+        },
+      }),
+    );
+  };
 
   // ---------------- Voice Message (MediaRecorder) -----------------
   const pickSupportedMimeType = () => {
@@ -725,11 +594,8 @@ const ChatFooter = ({
       cleanupStream();
       stopWaveform();
       if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-
-      // Cleanup live voice
-      stopLiveVoiceSession(false);
     };
-  }, [removeTyping, stopLiveVoiceSession]);
+  }, [removeTyping]);
 
   const handleEmojiBtnClick = useCallback(() => {
     setIsEmojiContainer(true);
@@ -1330,29 +1196,6 @@ const ChatFooter = ({
             disabled={isUploadingImage}
           />
         </div>
-      </div>
-
-      <div className="chat-footer-portals" aria-hidden={!isLiveVoiceModalOpen}>
-        <LiveVoiceModal
-          isOpen={isLiveVoiceModalOpen}
-          onClose={() => {
-            if (isLiveVoiceActiveRef.current) {
-              handleLiveVoiceButtonClick();
-            } else {
-              setIsLiveVoiceModalOpen(false);
-            }
-          }}
-          isActive={isLiveVoiceActive}
-          duration={liveVoiceDuration}
-          isConnecting={isLiveVoiceConnecting}
-          role="sender"
-          friendName={
-            friendProfile?.fullName ||
-            friendProfile?.user?.firstName ||
-            "Friend"
-          }
-          onStop={handleLiveVoiceButtonClick}
-        />
       </div>
     </>
   );

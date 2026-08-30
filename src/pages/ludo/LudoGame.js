@@ -44,7 +44,7 @@ import {
   generateGameId,
   createInviteToken,
 } from "./utils/socketHelpers";
-import { DiceSVG } from "./components/DiceSVG";
+import { DiceSVG, Dice3D, DICE_LAND_ROTATION } from "./components/DiceSVG";
 import { AnimatedBackground } from "./components/AnimatedBackground";
 import { WinnerConfetti } from "./components/WinnerConfetti";
 import { ConnectionStatus } from "./components/ConnectionStatus";
@@ -58,6 +58,7 @@ import { LudoIcon } from "./components/LudoIcon";
 import { PendingInvitesBanner } from "./components/PendingInvitesBanner";
 import { PlayerSelectionModal } from "./components/PlayerSelectionModal";
 import { useAudio } from "./hooks/useAudio";
+import { useLudoVoice } from "./hooks/useLudoVoice";
 import { showLudoInviteToast } from "../../utils/toastUtils";
 import {
   shouldShowLudoInviteAlert,
@@ -833,7 +834,20 @@ const LudoGame = () => {
   // ============================================================================
 
   const [soundsEnabled, setSoundsEnabled] = useState(true);
+  const {
+    micOn,
+    voiceConnecting,
+    voiceError,
+    toggleMic,
+    isSpeakingUid,
+  } = useLudoVoice({
+    enabled: Boolean(onlineMode && gameId && !gameEnded && myProfile?._id),
+    gameId,
+    profileId: myProfile?._id,
+  });
   const [rollingFace, setRollingFace] = useState(1);
+  const [diceRotation, setDiceRotation] = useState({ x: 0, y: 0, z: 0 });
+  const diceRotationRef = useRef({ x: 0, y: 0, z: 0 });
   const soundRefs = useRef({
     diceRoll: null,
     pieceMove: null,
@@ -1574,8 +1588,7 @@ const LudoGame = () => {
    * Animation timing for piece movement
    */
   const stepDurationMs = STEP_DURATION_MS;
-  const DICE_ROLL_ANIMATION_MS = 450;
-  const DICE_FACE_INTERVAL_MS = 60;
+  const DICE_ROLL_ANIMATION_MS = 950;
   const AUTO_MOVE_DELAY_MS = 120;
   const TURN_TRANSITION_DELAY_MS = 200;
   const ROLL_UNLOCK_DELAY_MS = 100;
@@ -4703,18 +4716,31 @@ const LudoGame = () => {
     const value = chosenDiceValue || Math.floor(Math.random() * 6) + 1;
 
     const currentRollPlayer = currentPlayerRef.current;
-    const animationDuration = onlineMode ? 300 : DICE_ROLL_ANIMATION_MS;
-    const faceIntervalMs = onlineMode ? 50 : DICE_FACE_INTERVAL_MS;
-    const rollingFaces = [1, 2, 3, 4, 5, 6];
-    let rollingTick = 0;
-
-    const faceTimer = setInterval(() => {
-      rollingTick += 1;
-      setRollingFace(rollingFaces[rollingTick % rollingFaces.length]);
-    }, faceIntervalMs);
+    const animationDuration = onlineMode ? 700 : DICE_ROLL_ANIMATION_MS;
+    const land = DICE_LAND_ROTATION[value] || DICE_LAND_ROTATION[1];
+    const prev = diceRotationRef.current;
+    const spinX = 360 * (4 + Math.floor(Math.random() * 3));
+    const spinY = 360 * (3 + Math.floor(Math.random() * 3));
+    const dirX = Math.random() > 0.5 ? 1 : -1;
+    const dirY = Math.random() > 0.5 ? 1 : -1;
+    const targetX = prev.x + spinX * dirX;
+    const targetY = prev.y + spinY * dirY;
+    const alignX = ((land.x - targetX) % 360 + 360) % 360;
+    const alignY = ((land.y - targetY) % 360 + 360) % 360;
+    const nextRotation = {
+      x: targetX + alignX,
+      y: targetY + alignY,
+      z: 0,
+    };
+    setRollingFace(value);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        diceRotationRef.current = nextRotation;
+        setDiceRotation(nextRotation);
+      });
+    });
 
     setTimeout(() => {
-      clearInterval(faceTimer);
       setRollingFace(value);
 
       // CRITICAL: Track consecutive 6s and limit them
@@ -11045,7 +11071,7 @@ const LudoGame = () => {
         onPlaySound={playSound}
       />
 
-      {isDebug && gameStarted && (
+      {controlMode && gameStarted && (
         <div className="ludo-debug-move">
           <div className="ludo-debug-move__title">
             Localhost move
@@ -11472,7 +11498,6 @@ const LudoGame = () => {
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          filter: "drop-shadow(0 6px 10px rgba(0,0,0,0.4))",
                         }}
                       >
                         {!showDice ? (
@@ -11493,35 +11518,23 @@ const LudoGame = () => {
                             }}
                           />
                         ) : (
-                          <div
-                            style={{
-                              width: diceSize,
-                              height: diceSize,
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              transform: isRollingRef.current
-                                ? "rotate(720deg) scale(1.08)"
-                                : "rotate(0deg) scale(1)",
-                              transition: isRollingRef.current
-                                ? "transform 0.75s cubic-bezier(0.2, 0.8, 0.2, 1)"
-                                : "transform 0.2s ease-out",
-                              willChange: "transform",
-                            }}
-                          >
-                            <DiceSVG
-                              value={
-                                isRollingRef.current
-                                  ? rollingFace
-                                  : effectiveDiceForUi || 0
-                              }
-                              size={diceSize}
-                              strokeColor={
-                                players[effectiveCurrentPlayer]?.color ||
-                                "#2ec4b6"
-                              }
-                            />
-                          </div>
+                          <Dice3D
+                            value={
+                              isRollingRef.current
+                                ? rollingFace
+                                : effectiveDiceForUi || 1
+                            }
+                            size={diceSize}
+                            strokeColor={
+                              players[effectiveCurrentPlayer]?.color ||
+                              "#2ec4b6"
+                            }
+                            rolling={isRollingRef.current}
+                            rotation={diceRotation}
+                            durationMs={
+                              onlineMode ? 700 : DICE_ROLL_ANIMATION_MS
+                            }
+                          />
                         )}
                       </div>
                     </div>
@@ -11559,7 +11572,11 @@ const LudoGame = () => {
                 <button
                   key={`pbtn-${idx}`}
                   type="button"
-                  className={`ludo-player-chip ${idx === effectiveCurrentPlayer ? "ludo-player-chip--active" : ""}`}
+                  className={`ludo-player-chip ${idx === effectiveCurrentPlayer ? "ludo-player-chip--active" : ""} ${
+                    onlineMode && isSpeakingUid(players[idx]?.profileId)
+                      ? "ludo-player-chip--speaking"
+                      : ""
+                  }`}
                   style={{ background: players[idx]?.color }}
                   onClick={() => openPlayerEditor(idx)}
                   title={players[idx]?.name || "Player"}
@@ -11577,6 +11594,40 @@ const LudoGame = () => {
             </div>
 
             <div className="ludo-toolbar">
+              {onlineMode && (
+                <button
+                  type="button"
+                  className={`ludo-tool ${micOn ? "ludo-tool--on" : "ludo-tool--muted"}`}
+                  onClick={() => {
+                    playSound("buttonClick");
+                    toggleMic();
+                  }}
+                  disabled={voiceConnecting}
+                  title={
+                    voiceError
+                      ? String(voiceError)
+                      : voiceConnecting
+                        ? "Connecting voice…"
+                        : micOn
+                          ? "Mute microphone"
+                          : "Unmute microphone"
+                  }
+                  aria-pressed={micOn}
+                  aria-label={micOn ? "Mute microphone" : "Unmute microphone"}
+                >
+                  <span className="ludo-tool__icon" aria-hidden="true">
+                    <LudoIcon name={micOn ? "mic" : "micOff"} />
+                  </span>
+                  <span className="ludo-tool__dot" />
+                  <span className="ludo-tool__label">
+                    {voiceConnecting
+                      ? "Voice…"
+                      : micOn
+                        ? "Mic On"
+                        : "Mic Off"}
+                  </span>
+                </button>
+              )}
               <button
                 type="button"
                 className={`ludo-tool ${soundsEnabled ? "ludo-tool--on" : ""}`}

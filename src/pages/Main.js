@@ -58,6 +58,7 @@ import ProfileImages from "../components/Profile/ProfileImages.js";
 import ProfileVideos from "../components/Profile/ProfileVideos.js";
 import VideoCall from "../components/VideoCall/VideoCall.js";
 import AudioCall from "../components/AudioCall/AudioCall.js";
+import LiveVoice from "../components/LiveVoice/LiveVoice.js";
 import SinglePost from "../components/post/SinglePost.js";
 import NotificationTest from "../components/NotificationTest.js";
 import PostComments from "../components/post/PostComments.js";
@@ -2127,6 +2128,7 @@ const Main = () => {
       <>
         <VideoCall myId={profileId}></VideoCall>
         <AudioCall myId={profileId}></AudioCall>
+        <LiveVoice myId={profileId}></LiveVoice>
       </>
       <StickyChatBoxContainer />
       <AIAgentModal

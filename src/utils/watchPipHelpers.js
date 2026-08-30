@@ -29,6 +29,7 @@ export const buildPipPayloadFromVideo = (videoEl, meta = {}) => {
     thumbnail: meta.thumbnail || "",
     looping: !!meta.looping,
     playlist: Array.isArray(meta.playlist) ? meta.playlist : [],
+    expandPath: meta.expandPath || "",
   };
 };
 
@@ -38,3 +39,47 @@ export const buildLibraryPipPayloadFromVideo = (videoEl, meta = {}) =>
     source: "library",
     libraryVideoId: meta.libraryVideoId || meta.pipId,
   });
+
+export const watchesToPipPlaylist = (watches = []) =>
+  (Array.isArray(watches) ? watches : [])
+    .filter((watch) => watch?._id && watch?.videoUrl)
+    .map((watch) => ({
+      id: String(watch._id),
+      watchId: String(watch._id),
+      url: watch.videoUrl,
+      title:
+        watch.caption ||
+        `${watch.author?.user?.firstName || "Watch"} video`,
+      thumbnail: watch.thumbnail || "",
+      playCount: 1,
+    }));
+
+export const savedVideosToPipPlaylist = (videos = []) =>
+  (Array.isArray(videos) ? videos : [])
+    .filter((video) => video?.id && (video.videoURL || video.url))
+    .map((video) => ({
+      id: `saved-${video.id}`,
+      videoId: `saved-${video.id}`,
+      url: video.videoURL || video.url,
+      title: video.metadata?.caption || video.caption || "Saved video",
+      thumbnail: video.metadata?.thumbnail || video.thumbnail || "",
+      playCount: 1,
+    }));
+
+export const getPipPlaylistIndex = (playlist, pipState) => {
+  if (!Array.isArray(playlist) || !pipState) return -1;
+  const ids = [
+    pipState.libraryVideoId,
+    pipState.watchId,
+    pipState.videoId,
+  ]
+    .filter(Boolean)
+    .map(String);
+
+  return playlist.findIndex((item) => {
+    const itemIds = [item.id, item.watchId, item.videoId]
+      .filter(Boolean)
+      .map(String);
+    return itemIds.some((id) => ids.includes(id));
+  });
+};

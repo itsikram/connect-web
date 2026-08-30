@@ -45,6 +45,9 @@ export const WatchPipProvider = ({ children }) => {
       muted: !!data.muted,
       looping: !!data.looping,
       playlist: Array.isArray(data.playlist) ? data.playlist : [],
+      playPass: Math.max(1, Number(data.playPass) || 1),
+      videoId: data.videoId || libraryVideoId,
+      expandPath: data.expandPath || "",
     });
   }, []);
 

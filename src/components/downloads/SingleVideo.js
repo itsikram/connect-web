@@ -1,13 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { deleteVideoById, loadVideoById } from '../../utils/useSavedVideos';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
+import { deleteVideoById, getAllSavedVideos, loadVideoById } from '../../utils/useSavedVideos';
+import { useWatchPipOptional } from '../../contexts/WatchPipContext';
+import { buildLibraryPipPayloadFromVideo, savedVideosToPipPlaylist, shouldAutoWatchPip } from '../../utils/watchPipHelpers';
 import '../../pages/SavedVideos.css';
 
 const SingleVideo = () => {
     const { videoId } = useParams();
     const [videoData, setVideoData] = useState({});
     const [videoUrl, setVideoUrl] = useState('');
+    const [savedPlaylist, setSavedPlaylist] = useState([]);
     const navigate = useNavigate();
+    const location = useLocation();
+    const videoRef = useRef(null);
+    const skipPipOnUnmount = useRef(false);
+    const watchPip = useWatchPipOptional();
 
     useEffect(() => {
         if (!videoId) return;
@@ -17,6 +24,99 @@ const SingleVideo = () => {
             setVideoUrl(url || '');
         });
     }, [videoId]);
+
+    useEffect(() => {
+        getAllSavedVideos((videos) => {
+            setSavedPlaylist(savedVideosToPipPlaylist(videos));
+        });
+    }, [videoId]);
+
+    useEffect(() => {
+        const resumeAt = location.state?.resumeAt;
+        const shouldAutoplay = location.state?.autoplay === true;
+        const video = videoRef.current;
+        if (!video || !videoUrl) return;
+        if (resumeAt == null && !shouldAutoplay) return;
+
+        const apply = async () => {
+            try {
+                if (typeof resumeAt === 'number') video.currentTime = resumeAt;
+                if (shouldAutoplay) await video.play().catch(() => {});
+            } catch (_) {}
+        };
+
+        if (video.readyState >= 1) apply();
+        else video.addEventListener('loadedmetadata', apply, { once: true });
+        watchPip?.closePip?.();
+    }, [videoUrl, location.state, watchPip]);
+
+    const getPipMeta = useCallback(() => {
+        const currentId = `saved-${videoId}`;
+        const current = videoUrl
+            ? {
+                id: currentId,
+                videoId: currentId,
+                url: videoUrl,
+                title: videoData.caption || 'Saved video',
+                thumbnail: videoData.thumbnail || '',
+                playCount: 1,
+            }
+            : null;
+        const playlist = current
+            ? savedPlaylist.some((item) => item.id === current.id)
+                ? savedPlaylist
+                : [current, ...savedPlaylist.filter((item) => item.id !== current.id)]
+            : savedPlaylist;
+
+        return {
+            libraryVideoId: currentId,
+            videoUrl,
+            title: videoData.caption || 'Saved video',
+            thumbnail: videoData.thumbnail || '',
+            source: 'library',
+            playlist,
+            expandPath: `/downloads/${videoId}`,
+        };
+    }, [videoId, videoUrl, videoData, savedPlaylist]);
+
+    const minimizeToPip = useCallback(() => {
+        if (!watchPip?.startPip || !videoRef.current) return;
+        const payload = buildLibraryPipPayloadFromVideo(videoRef.current, getPipMeta());
+        if (!payload) return;
+        skipPipOnUnmount.current = true;
+        videoRef.current.pause();
+        watchPip.startPip({ ...payload, playing: true });
+    }, [watchPip, getPipMeta]);
+
+    useEffect(() => {
+        const tryAutoPip = () => {
+            if (!shouldAutoWatchPip() || !watchPip?.startPip) return;
+            if (skipPipOnUnmount.current) return;
+            const video = videoRef.current;
+            if (!video || video.paused || video.ended) return;
+            const payload = buildLibraryPipPayloadFromVideo(video, getPipMeta());
+            if (payload) {
+                watchPip.startPip(payload);
+                video.pause();
+            }
+        };
+        const onVisibility = () => {
+            if (document.visibilityState === 'hidden') tryAutoPip();
+        };
+        window.addEventListener('pagehide', tryAutoPip);
+        document.addEventListener('visibilitychange', onVisibility);
+        return () => {
+            window.removeEventListener('pagehide', tryAutoPip);
+            document.removeEventListener('visibilitychange', onVisibility);
+            if (!skipPipOnUnmount.current && shouldAutoWatchPip() && watchPip?.startPip) {
+                const video = videoRef.current;
+                if (video && !video.paused && !video.ended) {
+                    const payload = buildLibraryPipPayloadFromVideo(video, getPipMeta());
+                    if (payload) watchPip.startPip(payload);
+                }
+            }
+        };
+    }, [watchPip, getPipMeta]);
 
     const deleteVideo = () => {
         const title = videoData.caption || 'this video';
@@ -29,6 +129,7 @@ const SingleVideo = () => {
 
     const title = videoData.caption || 'Saved video';
     const authorName = videoData.author?.fullName || videoData.author?.name || '';
+    const isThisPip = watchPip?.pip?.libraryVideoId === `saved-${videoId}`;
 
     return (
         <div className="sv-page sv-single-page">
@@ -42,8 +143,16 @@ const SingleVideo = () => {
 
                 <article className="sv-single-card">
                     <div className="sv-single-player-wrap">
-                        {videoUrl ? (
+                        {isThisPip ? (
+                            <div className="sv-single-loading">
+                                <span>Playing in pop-out mode</span>
+                                <button type="button" className="sv-btn sv-btn--primary" onClick={() => watchPip?.closePip?.()}>
+                                    Return here
+                                </button>
+                            </div>
+                        ) : videoUrl ? (
                             <video
+                                ref={videoRef}
                                 className="sv-single-player"
                                 controls
                                 playsInline
@@ -56,6 +165,16 @@ const SingleVideo = () => {
                                 <span>Loading video…</span>
                             </div>
                         )}
+                        {watchPip && videoUrl && !isThisPip ? (
+                            <button
+                                type="button"
+                                className="sv-btn sv-btn--primary"
+                                onClick={minimizeToPip}
+                                style={{ marginTop: 12 }}
+                            >
+                                Pop out
+                            </button>
+                        ) : null}
                     </div>
 
                     <div className="sv-single-body">

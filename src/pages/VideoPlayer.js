@@ -81,10 +81,12 @@ const VideoPlayer = () => {
   const playlistPipRef = useRef([]);
   const loopingRef = useRef(false);
   const pipReturnRef = useRef(null);
+  const currentPlaybackRef = useRef(null);
   const resumeHandledRef = useRef(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
+  const [mediaReady, setMediaReady] = useState(false);
   const [mediaElement, setMediaElement] = useState(null);
 
   const setVideoElementRef = useCallback((node) => {
@@ -106,23 +108,58 @@ const VideoPlayer = () => {
     return sortPlaylist(list, sortMode, playlistOrder);
   }, [allVideos, filter, searchQuery, sortMode, playlistOrder]);
 
-  const currentVideo =
-    filteredVideos.length > 0 ? filteredVideos[currentVideoIndex] : null;
-  const currentTrackKey = currentVideo
-    ? `${currentVideo.id}:${currentVideo.url}`
+  const usingQueue = playQueue.length > 0;
+  const playbackList = useMemo(() => {
+    if (playQueue.length > 0) return playQueue;
+    return filteredVideos.map((video) => ({
+      queueId: video.id,
+      videoId: video.id,
+      url: video.url,
+      title: video.title,
+      thumbnail: video.thumbnail || "",
+      type: video.type,
+      playCount: MIN_PLAY_COUNT,
+    }));
+  }, [playQueue, filteredVideos]);
+
+  const playbackIndex = usingQueue ? queueIndex : currentVideoIndex;
+  const currentPlayback = playbackList[playbackIndex] || null;
+
+  const currentVideo = useMemo(() => {
+    if (!currentPlayback) return null;
+    const fromLibrary = allVideos.find(
+      (video) => video.id === currentPlayback.videoId,
+    );
+    if (fromLibrary) {
+      return { ...fromLibrary, title: currentPlayback.title };
+    }
+    return {
+      id: currentPlayback.videoId,
+      url: currentPlayback.url,
+      title: currentPlayback.title,
+      thumbnail: currentPlayback.thumbnail,
+      type: currentPlayback.type,
+    };
+  }, [currentPlayback, allVideos]);
+
+  const currentTrackKey = currentPlayback
+    ? `${currentPlayback.queueId}:${currentPlayback.url}`
     : "";
   currentVideoRef.current = currentVideo;
   loopingRef.current = isLooping;
+  currentPlaybackRef.current = currentPlayback;
 
   const libraryPipPlaylist = useMemo(
     () =>
-      filteredVideos.map((video) => ({
-        id: video.id,
-        url: video.url,
-        title: video.title,
-        thumbnail: video.thumbnail || "",
+      playbackList.map((item) => ({
+        id: item.queueId,
+        videoId: item.videoId,
+        url: item.url,
+        title: item.title,
+        thumbnail: item.thumbnail || "",
+        playCount: clampPlayCount(item.playCount),
       })),
-    [filteredVideos],
+    [playbackList],
   );
   playlistPipRef.current = libraryPipPlaylist;
 
@@ -166,6 +203,10 @@ const VideoPlayer = () => {
   }, [customVideos]);
 
   useEffect(() => {
+    savePlayQueue(playQueue);
+  }, [playQueue]);
+
+  useEffect(() => {
     if (currentVideoIndex >= filteredVideos.length) {
       setCurrentVideoIndex(
         filteredVideos.length > 0 ? filteredVideos.length - 1 : 0,
@@ -174,21 +215,35 @@ const VideoPlayer = () => {
   }, [filteredVideos.length, currentVideoIndex]);
 
   useEffect(() => {
+    if (queueIndex >= playQueue.length) {
+      setQueueIndex(playQueue.length > 0 ? playQueue.length - 1 : 0);
+    }
+  }, [playQueue.length, queueIndex]);
+
+  useEffect(() => {
     const video = videoRef.current;
-    if (!video || !currentVideo?.url || isThisPip) return;
+    if (!video || !currentVideo?.url || isThisPip) return undefined;
+    setMediaReady(false);
 
     const onCanPlay = () => {
+      setMediaReady(true);
       video
         .play()
         .then(() => setIsPlaying(true))
         .catch(() => setIsPlaying(false));
     };
 
+    video.addEventListener("canplay", onCanPlay, { once: true });
+
     if (video.getAttribute("src") !== currentVideo.url) {
+      try {
+        video.pause();
+      } catch (_) {}
       video.src = currentVideo.url;
       video.load();
+    } else if (video.readyState >= 3) {
+      onCanPlay();
     }
-    video.addEventListener("canplay", onCanPlay, { once: true });
 
     return () => {
       video.removeEventListener("canplay", onCanPlay);
@@ -197,8 +252,8 @@ const VideoPlayer = () => {
 
   useEffect(() => {
     const video = videoRef.current;
-    if (video) video.loop = isLooping;
-  }, [isLooping]);
+    if (video) video.loop = false;
+  }, [currentTrackKey]);
 
   useEffect(() => {
     const video = mediaElement;
@@ -281,25 +336,47 @@ const VideoPlayer = () => {
 
   useEffect(() => {
     if (!isThisPip || !watchPip?.pip?.libraryVideoId) return;
-    const idx = filteredVideos.findIndex(
-      (video) => video.id === watchPip.pip.libraryVideoId,
-    );
-    if (idx >= 0 && idx !== currentVideoIndex) {
-      setCurrentVideoIndex(idx);
+    if (usingQueue) {
+      const qIdx = playQueue.findIndex(
+        (item) => item.queueId === watchPip.pip.libraryVideoId,
+      );
+      if (qIdx >= 0 && qIdx !== queueIndex) setQueueIndex(qIdx);
+    } else {
+      const idx = filteredVideos.findIndex(
+        (video) =>
+          video.id === watchPip.pip.libraryVideoId ||
+          video.id === watchPip.pip.videoId,
+      );
+      if (idx >= 0 && idx !== currentVideoIndex) {
+        setCurrentVideoIndex(idx);
+      }
+    }
+    if (
+      typeof watchPip.pip.playPass === "number" &&
+      watchPip.pip.playPass !== playPass
+    ) {
+      setPlayPass(clampPlayCount(watchPip.pip.playPass));
     }
   }, [
     isThisPip,
     watchPip?.pip?.libraryVideoId,
+    watchPip?.pip?.videoId,
+    watchPip?.pip?.playPass,
+    usingQueue,
+    playQueue,
+    queueIndex,
     filteredVideos,
     currentVideoIndex,
+    playPass,
   ]);
 
   useEffect(() => {
     if (!isThisPip) return;
     watchPip?.updatePip?.({
       playlist: libraryPipPlaylist,
+      playPass,
     });
-  }, [isThisPip, libraryPipPlaylist, watchPip?.updatePip]);
+  }, [isThisPip, libraryPipPlaylist, playPass, watchPip?.updatePip]);
 
   useEffect(() => {
     if (!isThisPip || typeof watchPip?.pip?.looping !== "boolean") return;
@@ -312,18 +389,29 @@ const VideoPlayer = () => {
     const pipData = watchPip?.pip;
     if (!pipData) return;
 
+    const qIdx = playQueue.findIndex(
+      (item) =>
+        item.queueId === pipData.libraryVideoId ||
+        item.videoId === pipData.videoId,
+    );
+    if (qIdx >= 0) setQueueIndex(qIdx);
+
     const idx = filteredVideos.findIndex(
-      (video) => video.id === pipData.libraryVideoId,
+      (video) =>
+        video.id === pipData.videoId || video.id === pipData.libraryVideoId,
     );
     if (idx >= 0) setCurrentVideoIndex(idx);
     if (typeof pipData.looping === "boolean") setIsLooping(pipData.looping);
+    if (typeof pipData.playPass === "number") {
+      setPlayPass(clampPlayCount(pipData.playPass));
+    }
 
     pipReturnRef.current = {
       resumeAt: Number(pipData.currentTime) || 0,
       autoplay: pipData.playing !== false,
     };
     watchPip.closePip();
-  }, [watchPip, filteredVideos]);
+  }, [watchPip, filteredVideos, playQueue]);
 
   useEffect(() => {
     const resume = pipReturnRef.current;
@@ -349,13 +437,24 @@ const VideoPlayer = () => {
     else video.addEventListener("loadedmetadata", applyResume, { once: true });
   }, [isThisPip, currentTrackKey]);
 
+  const pipExtras = useCallback(
+    () => ({
+      looping: loopingRef.current,
+      playlist: playlistPipRef.current,
+      playPass,
+      videoId: currentPlaybackRef.current?.videoId,
+    }),
+    [playPass],
+  );
+
   const minimizeToPip = useCallback(() => {
     if (!watchPip?.startPip || !currentVideoRef.current) return;
     const video = videoRef.current;
     if (!video) return;
+    const playback = currentPlaybackRef.current;
 
     const payload = buildLibraryPipPayloadFromVideo(video, {
-      libraryVideoId: currentVideoRef.current.id,
+      libraryVideoId: playback?.queueId || currentVideoRef.current.id,
       videoUrl: currentVideoRef.current.url,
       title: currentVideoRef.current.title,
       thumbnail: currentVideoRef.current.thumbnail,
@@ -368,20 +467,20 @@ const VideoPlayer = () => {
     watchPip.startPip({
       ...payload,
       playing: true,
-      looping: loopingRef.current,
-      playlist: playlistPipRef.current,
+      ...pipExtras(),
     });
-  }, [watchPip]);
+  }, [watchPip, pipExtras]);
 
   useEffect(() => {
     return () => {
       if (skipPipOnUnmount.current || !watchPip?.startPip) return;
       const video = videoRef.current;
       const cv = currentVideoRef.current;
+      const playback = currentPlaybackRef.current;
       if (!video || !cv) return;
 
       const payload = buildLibraryPipPayloadFromVideo(video, {
-        libraryVideoId: cv.id,
+        libraryVideoId: playback?.queueId || cv.id,
         videoUrl: cv.url,
         title: cv.title,
         thumbnail: cv.thumbnail,
@@ -391,28 +490,71 @@ const VideoPlayer = () => {
           ...payload,
           looping: loopingRef.current,
           playlist: playlistPipRef.current,
+          playPass: 1,
+          videoId: playback?.videoId,
         });
       }
     };
   }, [watchPip]);
 
+  const setPlaybackIndex = useCallback(
+    (index, resetPass = true) => {
+      if (resetPass) setPlayPass(1);
+      if (playQueue.length > 0) setQueueIndex(index);
+      else setCurrentVideoIndex(index);
+    },
+    [playQueue.length],
+  );
+
+  const replayCurrent = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = 0;
+    video.play().catch(() => {});
+  }, []);
+
   const handleVideoEnd = useCallback(() => {
-    if (isLooping) {
-      const video = videoRef.current;
-      if (video) {
-        video.currentTime = 0;
-        video.play().catch(() => {});
+    const item = currentPlaybackRef.current;
+    const times = clampPlayCount(item?.playCount);
+    if (playPass < times) {
+      setPlayPass((prev) => prev + 1);
+      replayCurrent();
+      return;
+    }
+
+    if (playbackList.length <= 1) {
+      if (isLooping) {
+        setPlayPass(1);
+        replayCurrent();
       }
       return;
     }
-    if (filteredVideos.length <= 1) return;
-    setCurrentVideoIndex((prev) => (prev + 1) % filteredVideos.length);
-  }, [filteredVideos.length, isLooping]);
+
+    const nextIndex = playbackIndex + 1;
+    if (nextIndex >= playbackList.length) {
+      if (isLooping) {
+        setPlayPass(1);
+        setPlaybackIndex(0);
+        return;
+      }
+      setIsPlaying(false);
+      return;
+    }
+
+    setPlaybackIndex(nextIndex);
+  }, [
+    playPass,
+    playbackList.length,
+    playbackIndex,
+    isLooping,
+    replayCurrent,
+    setPlaybackIndex,
+  ]);
 
   const switchLibraryPipByOffset = useCallback(
     (offset) => {
       const list = watchPip?.pip?.playlist;
-      if (!watchPip?.updatePip || !Array.isArray(list) || list.length <= 1) {
+      if (!watchPip?.updatePip || !Array.isArray(list) || list.length === 0) {
         return;
       }
       const currentId = watchPip.pip.libraryVideoId;
@@ -424,36 +566,106 @@ const VideoPlayer = () => {
       if (!next) return;
       watchPip.updatePip({
         libraryVideoId: next.id,
+        videoId: next.videoId,
         videoUrl: next.url,
         title: next.title,
         thumbnail: next.thumbnail || "",
         currentTime: 0,
         playing: true,
+        playPass: 1,
       });
     },
     [watchPip],
   );
 
   const handlePrev = useCallback(() => {
+    if (playbackList.length <= 1) return;
     if (isThisPip) {
       switchLibraryPipByOffset(-1);
       return;
     }
-    if (filteredVideos.length <= 1) return;
-    setCurrentVideoIndex(
-      (prev) => (prev - 1 + filteredVideos.length) % filteredVideos.length,
+    setPlaybackIndex(
+      (playbackIndex - 1 + playbackList.length) % playbackList.length,
     );
-  }, [filteredVideos.length, isThisPip, switchLibraryPipByOffset]);
+  }, [
+    playbackList.length,
+    playbackIndex,
+    isThisPip,
+    switchLibraryPipByOffset,
+    setPlaybackIndex,
+  ]);
 
   const handleNext = useCallback(() => {
+    if (playbackList.length <= 1) return;
     if (isThisPip) {
-      if (isLooping) return;
       switchLibraryPipByOffset(1);
       return;
     }
-    if (filteredVideos.length <= 1 || isLooping) return;
-    setCurrentVideoIndex((prev) => (prev + 1) % filteredVideos.length);
-  }, [filteredVideos.length, isLooping, isThisPip, switchLibraryPipByOffset]);
+    setPlaybackIndex((playbackIndex + 1) % playbackList.length);
+  }, [
+    playbackList.length,
+    playbackIndex,
+    isThisPip,
+    switchLibraryPipByOffset,
+    setPlaybackIndex,
+  ]);
+
+  const addToPlayQueue = useCallback((video, playCount = MIN_PLAY_COUNT) => {
+    const item = videoToQueueItem(video, playCount);
+    if (!item) return;
+    setPlayQueue((prev) => {
+      const wasEmpty = prev.length === 0;
+      if (wasEmpty) {
+        setQueueIndex(0);
+        setPlayPass(1);
+      }
+      return [...prev, item];
+    });
+  }, []);
+
+  const updateQueuePlayCount = useCallback((queueId, nextCount) => {
+    setPlayQueue((prev) =>
+      prev.map((item) =>
+        item.queueId === queueId
+          ? { ...item, playCount: clampPlayCount(nextCount) }
+          : item,
+      ),
+    );
+  }, []);
+
+  const removeFromPlayQueue = useCallback((queueId) => {
+    setPlayQueue((prev) => prev.filter((item) => item.queueId !== queueId));
+  }, []);
+
+  const clearPlayQueue = useCallback(() => {
+    setPlayQueue([]);
+    setQueueIndex(0);
+    setPlayPass(1);
+  }, []);
+
+  const applyQueueReorder = useCallback((fromIndex, toIndex) => {
+    if (fromIndex === toIndex) return;
+    setPlayQueue((prev) => {
+      if (
+        fromIndex < 0 ||
+        toIndex < 0 ||
+        fromIndex >= prev.length ||
+        toIndex >= prev.length
+      ) {
+        return prev;
+      }
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+    setQueueIndex((prev) => {
+      if (prev === fromIndex) return toIndex;
+      if (fromIndex < prev && toIndex >= prev) return prev - 1;
+      if (fromIndex > prev && toIndex <= prev) return prev + 1;
+      return prev;
+    });
+  }, []);
 
   const focusVideoInList = (videoId, nextCustomVideos = customVideos) => {
     const merged = mergePlaylist(watchVideos, savedVideos, nextCustomVideos);
@@ -491,6 +703,7 @@ const VideoPlayer = () => {
       return next;
     });
     focusVideoInList(newVideo.id, nextCustom);
+    addToPlayQueue(newVideo);
     setFilter("all");
     setVideoUrl("");
     setVideoTitle("");
@@ -524,6 +737,7 @@ const VideoPlayer = () => {
       return next;
     });
     focusVideoInList(newVideo.id, nextCustom);
+    addToPlayQueue(newVideo);
     setFilter("all");
     setVideoTitle("");
 
@@ -546,22 +760,49 @@ const VideoPlayer = () => {
       savePlaylistOrder(next);
       return next;
     });
+    setPlayQueue((prev) => prev.filter((item) => item.videoId !== video.id));
     setCurrentVideoIndex((prev) => Math.max(0, prev - 1));
   };
 
   const handlePlayVideo = (index) => {
     const video = filteredVideos[index];
+    if (usingQueue && video) {
+      addToPlayQueue(video);
+      return;
+    }
     if (isThisPip && video && watchPip?.updatePip) {
       watchPip.updatePip({
         libraryVideoId: video.id,
+        videoId: video.id,
         videoUrl: video.url,
         title: video.title,
         thumbnail: video.thumbnail || "",
         currentTime: 0,
         playing: true,
+        playPass: 1,
       });
     }
+    setPlayPass(1);
     setCurrentVideoIndex(index);
+  };
+
+  const handlePlayQueueItem = (index) => {
+    const item = playQueue[index];
+    if (!item) return;
+    setQueueIndex(index);
+    setPlayPass(1);
+    if (isThisPip && watchPip?.updatePip) {
+      watchPip.updatePip({
+        libraryVideoId: item.queueId,
+        videoId: item.videoId,
+        videoUrl: item.url,
+        title: item.title,
+        thumbnail: item.thumbnail || "",
+        currentTime: 0,
+        playing: true,
+        playPass: 1,
+      });
+    }
   };
 
   const playCurrent = useCallback(() => {
@@ -593,6 +834,7 @@ const VideoPlayer = () => {
 
   const useTouchReorder = isMobile || isTouchDevice;
   const canDragReorder = sortMode === "custom" && !useTouchReorder;
+  const canDragQueue = !useTouchReorder && playQueue.length > 1;
 
   const applyPlaylistReorder = useCallback(
     (fromIndex, toIndex) => {
@@ -671,6 +913,34 @@ const VideoPlayer = () => {
     e?.preventDefault?.();
     const targetIndex = direction === "up" ? index - 1 : index + 1;
     applyPlaylistReorder(index, targetIndex);
+  };
+
+  const handleQueueDragStart = (index) => {
+    if (!canDragQueue) return;
+    setQueueDragIndex(index);
+  };
+
+  const handleQueueDragOver = (e, index) => {
+    if (!canDragQueue || queueDragIndex === null || queueDragIndex === index) {
+      return;
+    }
+    e.preventDefault();
+  };
+
+  const handleQueueDrop = (index) => {
+    if (!canDragQueue || queueDragIndex === null || queueDragIndex === index) {
+      setQueueDragIndex(null);
+      return;
+    }
+    applyQueueReorder(queueDragIndex, index);
+    setQueueDragIndex(null);
+  };
+
+  const moveQueueItem = (index, direction, e) => {
+    e?.stopPropagation?.();
+    e?.preventDefault?.();
+    const targetIndex = direction === "up" ? index - 1 : index + 1;
+    applyQueueReorder(index, targetIndex);
   };
 
   const handleSortChange = (e) => {
@@ -839,7 +1109,11 @@ const VideoPlayer = () => {
                   <p className="video-stage-meta">
                     {getSourceLabel(currentVideo)}
                     {" · "}
-                    Video {currentVideoIndex + 1} of {filteredVideos.length}
+                    {usingQueue ? "Playlist" : "Library"} {playbackIndex + 1} of{" "}
+                    {playbackList.length}
+                    {currentPlayback?.playCount > 1
+                      ? ` · Repeat ${playPass}/${clampPlayCount(currentPlayback.playCount)}`
+                      : ""}
                   </p>
                 </div>
                 <span className="video-stage-badge">
@@ -856,18 +1130,28 @@ const VideoPlayer = () => {
                     </button>
                   </div>
                 ) : (
-                  <video
-                    key={currentTrackKey}
-                    ref={setVideoElementRef}
-                    className="main-video"
-                    controls
-                    playsInline
-                    preload="metadata"
-                    poster={currentVideo.thumbnail || undefined}
-                    onEnded={handleVideoEnd}
-                    onPlay={() => setIsPlaying(true)}
-                    onPause={() => setIsPlaying(false)}
-                  />
+                  <>
+                    <video
+                      ref={setVideoElementRef}
+                      className="main-video"
+                      controls={mediaReady}
+                      playsInline
+                      preload="auto"
+                      poster={currentVideo.thumbnail || undefined}
+                      onEnded={handleVideoEnd}
+                      onPlay={() => setIsPlaying(true)}
+                      onPause={() => setIsPlaying(false)}
+                    />
+                    {!mediaReady ? (
+                      <div className="video-media-cover" aria-hidden="true">
+                        {currentVideo.thumbnail ? (
+                          <img src={currentVideo.thumbnail} alt="" />
+                        ) : (
+                          <i className="fas fa-spinner fa-spin" />
+                        )}
+                      </div>
+                    ) : null}
+                  </>
                 )}
               </div>
 
@@ -876,7 +1160,7 @@ const VideoPlayer = () => {
                   type="button"
                   className="video-tool-btn"
                   onClick={handlePrev}
-                  disabled={filteredVideos.length <= 1}
+                  disabled={playbackList.length <= 1}
                   title="Previous"
                 >
                   <i className="fas fa-step-backward" />
@@ -895,7 +1179,7 @@ const VideoPlayer = () => {
                   type="button"
                   className="video-tool-btn"
                   onClick={handleNext}
-                  disabled={filteredVideos.length <= 1 || isLooping}
+                  disabled={playbackList.length <= 1}
                   title="Next"
                 >
                   <i className="fas fa-step-forward" />
@@ -910,7 +1194,11 @@ const VideoPlayer = () => {
                       return next;
                     });
                   }}
-                  title={isLooping ? "Loop on" : "Loop off"}
+                  title={
+                    isLooping
+                      ? "Repeat playlist on"
+                      : "Repeat playlist off"
+                  }
                 >
                   <i className="fas fa-redo" />
                 </button>
@@ -939,12 +1227,180 @@ const VideoPlayer = () => {
         </div>
 
         <div className="video-player-sidebar-column">
+          <div className="video-playlist-sidebar video-play-queue">
+            <div className="playlist-header">
+              <h2>Playlist</h2>
+              <span className="playlist-count">{playQueue.length} videos</span>
+            </div>
+            <p className="video-player-sort-hint">
+              Add clips, then set how many times each one plays before the next
+              video starts.
+            </p>
+            {playQueue.length > 0 ? (
+              <div className="playlist-queue-actions">
+                <button
+                  type="button"
+                  className="btn btn-sm btn-secondary"
+                  onClick={clearPlayQueue}
+                >
+                  Clear playlist
+                </button>
+              </div>
+            ) : null}
+            {playQueue.length > 1 ? (
+              <p className="video-player-sort-hint">
+                {useTouchReorder
+                  ? "Use the arrow buttons to reorder the playlist"
+                  : "Drag items to reorder"}
+              </p>
+            ) : null}
+            {playQueue.length > 0 ? (
+              <div className="playlist-items">
+                {playQueue.map((item, index) => (
+                  <div
+                    key={item.queueId}
+                    className={`playlist-item ${usingQueue && index === queueIndex ? "active" : ""} ${queueDragIndex === index ? "dragging" : ""}`}
+                    draggable={canDragQueue}
+                    onDragStart={() => handleQueueDragStart(index)}
+                    onDragOver={(e) => handleQueueDragOver(e, index)}
+                    onDrop={() => handleQueueDrop(index)}
+                    onDragEnd={() => setQueueDragIndex(null)}
+                    onClick={() => handlePlayQueueItem(index)}
+                  >
+                    {canDragQueue ? (
+                      <span
+                        className="playlist-drag-handle"
+                        title="Drag to reorder"
+                      >
+                        <i className="fas fa-grip-vertical" />
+                      </span>
+                    ) : null}
+                    {useTouchReorder && playQueue.length > 1 ? (
+                      <div className="playlist-reorder-btns">
+                        <button
+                          type="button"
+                          className="playlist-reorder-btn"
+                          disabled={index === 0}
+                          onClick={(e) => moveQueueItem(index, "up", e)}
+                          aria-label="Move playlist item up"
+                        >
+                          <i className="fas fa-chevron-up" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          className="playlist-reorder-btn"
+                          disabled={index === playQueue.length - 1}
+                          onClick={(e) => moveQueueItem(index, "down", e)}
+                          aria-label="Move playlist item down"
+                        >
+                          <i
+                            className="fas fa-chevron-down"
+                            aria-hidden="true"
+                          />
+                        </button>
+                      </div>
+                    ) : null}
+                    <div className="playlist-item-thumbnail">
+                      {item.thumbnail ? (
+                        <img src={item.thumbnail} alt="" />
+                      ) : usingQueue &&
+                        index === queueIndex &&
+                        playerIsPlaying ? (
+                        <div className="playing-indicator">▶</div>
+                      ) : (
+                        <div className="play-number">{index + 1}</div>
+                      )}
+                    </div>
+                    <div className="playlist-item-info">
+                      <div className="playlist-item-title">{item.title}</div>
+                      <div className="playlist-item-type">
+                        {usingQueue && index === queueIndex
+                          ? `Playing ${playPass} of ${clampPlayCount(item.playCount)}`
+                          : `Play ${clampPlayCount(item.playCount)} time${clampPlayCount(item.playCount) === 1 ? "" : "s"}`}
+                      </div>
+                    </div>
+                    <div
+                      className="playlist-repeat-control"
+                      onClick={(e) => e.stopPropagation()}
+                      onPointerDown={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        type="button"
+                        className="playlist-repeat-btn"
+                        disabled={item.playCount <= MIN_PLAY_COUNT}
+                        onClick={() =>
+                          updateQueuePlayCount(item.queueId, item.playCount - 1)
+                        }
+                        aria-label="Play fewer times"
+                      >
+                        −
+                      </button>
+                      <input
+                        type="number"
+                        min={MIN_PLAY_COUNT}
+                        max={MAX_PLAY_COUNT}
+                        className="playlist-repeat-input"
+                        value={item.playCount}
+                        aria-label="Times to play this video"
+                        onChange={(e) =>
+                          updateQueuePlayCount(item.queueId, e.target.value)
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="playlist-repeat-btn"
+                        disabled={item.playCount >= MAX_PLAY_COUNT}
+                        onClick={() =>
+                          updateQueuePlayCount(item.queueId, item.playCount + 1)
+                        }
+                        aria-label="Play more times"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      className="playlist-item-remove"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeFromPlayQueue(item.queueId);
+                      }}
+                      title="Remove from playlist"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="playlist-empty">
+                <p>Playlist is empty</p>
+                <p className="playlist-empty-hint">
+                  Add videos from the library below, or paste a URL
+                </p>
+              </div>
+            )}
+          </div>
+
           <div className="video-playlist-sidebar">
             <div className="playlist-header">
               <h2>Library</h2>
-              <span className="playlist-count">
-                {filteredVideos.length} videos
-              </span>
+              <div className="playlist-header-actions">
+                <span className="playlist-count">
+                  {filteredVideos.length} videos
+                </span>
+                {filteredVideos.length > 0 ? (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-secondary"
+                    onClick={() =>
+                      filteredVideos.forEach((video) => addToPlayQueue(video))
+                    }
+                  >
+                    Add all
+                  </button>
+                ) : null}
+              </div>
             </div>
 
             <div className="video-player-filters">
@@ -967,7 +1423,7 @@ const VideoPlayer = () => {
               <input
                 type="text"
                 className="form-input video-player-search"
-                placeholder="Search playlist…"
+                placeholder="Search library…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -1005,7 +1461,7 @@ const VideoPlayer = () => {
                 {filteredVideos.map((video, index) => (
                   <div
                     key={video.id}
-                    className={`playlist-item ${index === currentVideoIndex ? "active" : ""} ${dragIndex === index ? "dragging" : ""}`}
+                    className={`playlist-item ${(!usingQueue && index === currentVideoIndex) || (usingQueue && currentPlayback?.videoId === video.id) ? "active" : ""} ${dragIndex === index ? "dragging" : ""}`}
                     draggable={canDragReorder}
                     onDragStart={() => handleDragStart(index)}
                     onDragOver={(e) => handleDragOver(e, index)}
@@ -1049,7 +1505,9 @@ const VideoPlayer = () => {
                     <div className="playlist-item-thumbnail">
                       {video.thumbnail ? (
                         <img src={video.thumbnail} alt="" />
-                      ) : index === currentVideoIndex && playerIsPlaying ? (
+                      ) : !usingQueue &&
+                        index === currentVideoIndex &&
+                        playerIsPlaying ? (
                         <div className="playing-indicator">▶</div>
                       ) : (
                         <div className="play-number">{index + 1}</div>
@@ -1061,6 +1519,17 @@ const VideoPlayer = () => {
                         {getSourceLabel(video)}
                       </div>
                     </div>
+                    <button
+                      type="button"
+                      className="playlist-add-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        addToPlayQueue(video);
+                      }}
+                      title="Add to playlist"
+                    >
+                      Add
+                    </button>
                     {(video.type === "url" || video.type === "file") && (
                       <button
                         type="button"

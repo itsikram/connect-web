@@ -29,7 +29,7 @@ const default_pp_src = config?.defaultProfile;
 const APP_PRIMARY_COLOR = "#29B1A9";
 const APP_PRIMARY_TINT = "rgba(41, 177, 169, 0.12)";
 
-const Watch = ({ watch, onDelete = null, onUpdate = null }) => {
+const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) => {
   let myProfile = useSelector((state) => state.profile);
   let myProfileId = myProfile._id;
   let watchAuthorProfileId = watch.author?._id || "";
@@ -404,8 +404,24 @@ const Watch = ({ watch, onDelete = null, onUpdate = null }) => {
       videoUrl: watchUrl || watch.videoUrl,
       title: caption || `${watch?.author?.user?.firstName || "Watch"}`,
       thumbnail: watch.thumbnail || "",
+      playlist: (() => {
+        const current = {
+          id: String(watch._id),
+          watchId: String(watch._id),
+          url: watchUrl || watch.videoUrl,
+          title: caption || `${watch?.author?.user?.firstName || "Watch"}`,
+          thumbnail: watch.thumbnail || "",
+          playCount: 1,
+        };
+        const feed = Array.isArray(pipPlaylist) ? pipPlaylist.filter((item) => item?.url) : [];
+        if (!current.url) return feed;
+        if (feed.some((item) => String(item.id) === current.id || String(item.watchId) === current.id)) {
+          return feed;
+        }
+        return [current, ...feed];
+      })(),
     }),
-    [watch, watchUrl, caption],
+    [watch, watchUrl, caption, pipPlaylist],
   );
 
   const minimizeToPip = useCallback(() => {
