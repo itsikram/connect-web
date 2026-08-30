@@ -8,12 +8,19 @@ import WatchSkeleton from "../skletons/watch/WatchSkeleton";
 import Ls from "../partials/sidebar/Ls";
 import Rs from "../partials/sidebar/Rs";
 import useIsMobile from "../utils/useIsMobile";
+import WatchCacheManager, {
+  WATCH_CACHE_EVENT,
+} from "../utils/watchCacheManager";
 
 const Video = () => {
   let myProfile = useSelector((state) => state.profile);
   let myId = myProfile._id;
   let isMobile = useIsMobile();
-  const [watches, setWatches] = useState([]);
+  const cachedFeed = myId ? WatchCacheManager.getCachedFeed(myId) : null;
+  const [watches, setWatches] = useState(
+    Array.isArray(cachedFeed) ? cachedFeed : [],
+  );
+  const [isLoading, setIsLoading] = useState(!Array.isArray(cachedFeed));
   const [activeView, setActiveView] = useState("feed");
 
   const handleTabKeyDown = useCallback(
@@ -30,25 +37,80 @@ const Video = () => {
     [activeView],
   );
 
-  let loadData = async () => {
-    let response = await api.get("watch/related", {
-      params: { profile_id: myId },
-    });
-    if (response.status === 200) {
-      setWatches(response.data);
-    }
-  };
-  useEffect(() => {
-    loadData();
-  }, []);
+  const commitWatches = useCallback(
+    (updater) => {
+      setWatches((prev) => {
+        const next = typeof updater === "function" ? updater(prev) : updater;
+        const list = Array.isArray(next) ? next : [];
+        if (myId) WatchCacheManager.setCachedFeed(myId, list);
+        return list;
+      });
+    },
+    [myId],
+  );
 
-  const handleWatchUpdate = useCallback((watchId, updates) => {
-    setWatches((prev) =>
-      prev.map((item) =>
-        item._id === watchId ? { ...item, ...updates } : item,
-      ),
-    );
-  }, []);
+  const refreshFeed = useCallback(async () => {
+    if (!myId) return;
+
+    const cached = WatchCacheManager.getCachedFeed(myId);
+    if (Array.isArray(cached)) {
+      setWatches(cached);
+      setIsLoading(false);
+    } else {
+      setIsLoading(true);
+    }
+
+    try {
+      const list = await WatchCacheManager.fetchWithCache({
+        key: `feed:${myId}`,
+        setCached: (items) =>
+          WatchCacheManager.setCachedFeed(
+            myId,
+            Array.isArray(items) ? items : [],
+          ),
+        fetcher: async () => {
+          const response = await api.get("watch/related", {
+            params: { profile_id: myId },
+          });
+          return Array.isArray(response.data) ? response.data : [];
+        },
+      });
+      setWatches(Array.isArray(list) ? list : []);
+    } catch (error) {
+      console.error("Error loading watch feed:", error);
+      if (!Array.isArray(cached)) setWatches([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [myId]);
+
+  useEffect(() => {
+    refreshFeed();
+  }, [refreshFeed]);
+
+  useEffect(() => {
+    const onCacheUpdate = (event) => {
+      if (event.detail?.profileId !== myId || event.detail?.list !== "feed") {
+        return;
+      }
+      setWatches(Array.isArray(event.detail.items) ? event.detail.items : []);
+      setIsLoading(false);
+    };
+
+    window.addEventListener(WATCH_CACHE_EVENT, onCacheUpdate);
+    return () => window.removeEventListener(WATCH_CACHE_EVENT, onCacheUpdate);
+  }, [myId]);
+
+  const handleWatchUpdate = useCallback(
+    (watchId, updates) => {
+      commitWatches((prev) =>
+        prev.map((item) =>
+          item._id === watchId ? { ...item, ...updates } : item,
+        ),
+      );
+    },
+    [commitWatches],
+  );
 
   const styles = `
         /* Shell and tab styles */
@@ -409,7 +471,7 @@ const Video = () => {
                 </button>
               </div>
 
-              <CreateWatch setWatches={setWatches} />
+              <CreateWatch setWatches={commitWatches} />
 
               {activeView === "feed" ? (
                 watches.length > 0 ? (
@@ -431,15 +493,19 @@ const Video = () => {
                           playCount: 1,
                         }))}
                       onDelete={(deletedId) =>
-                        setWatches((prev) =>
+                        commitWatches((prev) =>
                           prev.filter((item) => item._id !== deletedId),
                         )
                       }
                       onUpdate={handleWatchUpdate}
                     />
                   ))
-                ) : (
+                ) : isLoading ? (
                   <WatchSkeleton count={3} />
+                ) : (
+                  <p className="text-center text-muted mt-4 mb-0">
+                    No videos to watch right now
+                  </p>
                 )
               ) : watches.length > 0 ? (
                 <div className="watch-album-grid">
@@ -508,8 +574,12 @@ const Video = () => {
                     );
                   })}
                 </div>
-              ) : (
+              ) : isLoading ? (
                 <WatchSkeleton count={6} variant="album" />
+              ) : (
+                <p className="text-center text-muted mt-4 mb-0">
+                  No videos to watch right now
+                </p>
               )}
             </div>
           </div>

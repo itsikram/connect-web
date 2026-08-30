@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
+import useBackgroundAudioHandoff from '../../hooks/useBackgroundAudioHandoff';
 
 /**
  * Lazy-loads watch video on play, pauses when off-screen, and keeps one feed video playing at a time.
@@ -20,6 +21,10 @@ const WatchVideoPlayer = ({
     const [isAttached, setIsAttached] = useState(eager);
     const [isPlaying, setIsPlaying] = useState(false);
     const [isBuffering, setIsBuffering] = useState(false);
+    useBackgroundAudioHandoff(videoRef, {
+        src: videoUrl,
+        enabled: isAttached && !!videoUrl && !isPipActive,
+    });
 
     useEffect(() => {
         if (eager) setIsAttached(true);
@@ -39,7 +44,12 @@ const WatchVideoPlayer = ({
             ([entry]) => {
                 const video = videoRef.current;
                 if (!video || !isAttached) return;
-                if (!entry.isIntersecting && !video.paused) {
+                if (
+                    !entry.isIntersecting &&
+                    !video.paused &&
+                    typeof document !== "undefined" &&
+                    !document.hidden
+                ) {
                     video.pause();
                 }
             },
@@ -64,7 +74,10 @@ const WatchVideoPlayer = ({
             setIsPlaying(true);
             pauseOthers();
         };
-        const onPause = () => setIsPlaying(false);
+        const onPause = () => {
+            if (typeof document !== 'undefined' && document.hidden) return;
+            setIsPlaying(false);
+        };
         const onWaiting = () => setIsBuffering(true);
         const onPlaying = () => setIsBuffering(false);
         const onCanPlay = () => setIsBuffering(false);

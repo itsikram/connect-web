@@ -19,6 +19,7 @@ let htmlPlayersAttached = false;
 const htmlPlayers = [];
 const wavCache = new Map();
 const HTML_PLAYER_POOL = 6;
+let bumpKnockPlayers = [];
 
 const GESTURE_EVENTS = [
   "touchstart",
@@ -148,6 +149,86 @@ const getHtmlPlayer = () => {
   return player;
 };
 
+const ensureBumpKnockPlayers = () => {
+  if (typeof document === "undefined") return [];
+  if (bumpKnockPlayers.length) {
+    bumpKnockPlayers.forEach(attachMediaElement);
+    return bumpKnockPlayers;
+  }
+  const knocks = [
+    { frequency: 210, duration: 0.11, volume: 0.62 },
+    { frequency: 145, duration: 0.18, volume: 0.72 },
+  ];
+  bumpKnockPlayers = knocks.map((knock) => {
+    const audio = document.createElement("audio");
+    audio.preload = "auto";
+    audio.setAttribute("playsinline", "true");
+    audio.setAttribute("webkit-playsinline", "true");
+    audio.playsInline = true;
+    audio.muted = false;
+    audio.loop = false;
+    audio.volume = 1;
+    audio.src = getBeepWav(
+      knock.frequency,
+      knock.duration,
+      knock.volume,
+      "sine",
+    );
+    attachMediaElement(audio);
+    try {
+      audio.load();
+    } catch (_e) {}
+    return audio;
+  });
+  return bumpKnockPlayers;
+};
+
+const primeBumpKnockPlayers = () => {
+  const players = ensureBumpKnockPlayers();
+  players.forEach((audio) => {
+    const wasMuted = audio.muted;
+    audio.muted = true;
+    const playPromise = audio.play();
+    if (playPromise && typeof playPromise.then === "function") {
+      playPromise
+        .then(() => {
+          try {
+            audio.pause();
+            audio.currentTime = 0;
+          } catch (_e) {}
+          audio.muted = wasMuted;
+        })
+        .catch(() => {
+          audio.muted = wasMuted;
+        });
+    } else {
+      audio.muted = wasMuted;
+    }
+  });
+};
+
+const playPrimedBumpKnocks = async () => {
+  const players = ensureBumpKnockPlayers();
+  const playOne = (audio) => {
+    try {
+      audio.pause();
+    } catch (_e) {}
+    audio.muted = false;
+    audio.volume = 1;
+    try {
+      audio.currentTime = 0;
+    } catch (_e) {}
+    const playPromise = audio.play();
+    if (!playPromise || typeof playPromise.then !== "function") {
+      return Promise.resolve();
+    }
+    return playPromise.catch(() => playHtmlBeep(180, 0.12, 0.6, "sine"));
+  };
+  if (players[0]) await playOne(players[0]);
+  await new Promise((resolve) => setTimeout(resolve, 125));
+  if (players[1]) await playOne(players[1]);
+};
+
 const playHtmlBeep = (frequency, duration, volume, type) => {
   const player = getHtmlPlayer();
   if (!player) return Promise.resolve();
@@ -219,6 +300,7 @@ export const resumeAudioFromGesture = () => {
   if (!htmlPlayersAttached) {
     getHtmlPlayer();
   }
+  ensureBumpKnockPlayers();
   if (!context) return context;
   if (context.state === "suspended" || context.state === "interrupted") {
     context
@@ -264,6 +346,7 @@ export const unlockAudio = () => {
       }
       primeSilentBuffer(ctx);
       await playHtmlUnlock();
+      primeBumpKnockPlayers();
       if (ctx && ctx.state === "running") {
         audioUnlocked = true;
       }
@@ -275,6 +358,47 @@ export const unlockAudio = () => {
   })();
 
   return unlockInFlight;
+};
+
+let lastBumpPlayAt = 0;
+const BUMP_PLAY_DEDUP_MS = 500;
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Distinct double-knock bump. Uses the already-unlocked HTML / Web Audio
+ * players so it can fire from a socket event while the tab is unfocused.
+ */
+export const playBumpSound = async () => {
+  const now = Date.now();
+  if (now - lastBumpPlayAt < BUMP_PLAY_DEDUP_MS) return;
+  lastBumpPlayAt = now;
+
+  try {
+    if (typeof navigator !== "undefined" && navigator.audioSession) {
+      navigator.audioSession.type = "playback";
+    }
+  } catch (_e) {}
+
+  resumeAudioFromGesture();
+  const context = getAudioContext();
+  if (context && (context.state === "suspended" || context.state === "interrupted")) {
+    context.resume().catch(() => {});
+  }
+
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+      navigator.vibrate([70, 40, 130]);
+    }
+  } catch (_e) {}
+
+  try {
+    await playPrimedBumpKnocks();
+  } catch (_e) {
+    playTone({ frequency: 210, duration: 0.11, type: "sine", volume: 0.62 });
+    await delay(125);
+    playTone({ frequency: 145, duration: 0.18, type: "sine", volume: 0.72 });
+  }
 };
 
 export const playTone = ({

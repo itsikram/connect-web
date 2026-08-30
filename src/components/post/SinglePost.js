@@ -17,7 +17,7 @@ import SingleReactor from "./SingleReactor";
 import { confirmAlert } from "react-confirm-alert";
 import "react-confirm-alert/src/react-confirm-alert.css";
 import checkImgLoading from "../../utils/checkImgLoading";
-import { showSuccessToast } from "../../utils/toastUtils";
+import { showSuccessToast, showErrorToast } from "../../utils/toastUtils";
 import Rlike from "../../assets/images/reacts/reactLike.svg";
 import Rlove from "../../assets/images/reacts/reactLove.svg";
 import Rhaha from "../../assets/images/reacts/reactHaha.svg";
@@ -317,6 +317,9 @@ const SinglePost = () => {
   }, []);
 
   let [newCaption, setNewCaption] = useState("");
+  const [isSavingCaption, setIsSavingCaption] = useState(false);
+  const originalCaption = postData?.caption || "";
+  const hasCaptionChanges = newCaption !== originalCaption;
 
   useEffect(() => {
     if (postData && postData.caption !== undefined) {
@@ -328,14 +331,40 @@ const SinglePost = () => {
     setNewCaption(e.target.value);
   }, []);
 
-  const updateCaption = useCallback(async () => {
-    const res = await api.post("/post/update", { postId, caption: newCaption });
+  const cancelEditCaption = useCallback(() => {
+    setNewCaption(originalCaption);
+  }, [originalCaption]);
 
-    if (res.status === 200) {
-      setPostData((prev) => ({ ...prev, caption: newCaption }));
-      showSuccessToast("Caption Updated");
+  const updateCaption = useCallback(async () => {
+    if (!hasCaptionChanges || isSavingCaption) return;
+
+    setIsSavingCaption(true);
+    try {
+      const res = await api.post("/post/update", {
+        postId,
+        caption: newCaption,
+      });
+
+      if (res.status === 200) {
+        setPostData((prev) => ({ ...prev, caption: newCaption }));
+        showSuccessToast("Caption updated");
+      }
+    } catch (error) {
+      showErrorToast("Could not update caption. Please try again.");
+    } finally {
+      setIsSavingCaption(false);
     }
-  }, [postId, newCaption]);
+  }, [postId, newCaption, hasCaptionChanges, isSavingCaption]);
+
+  const handleCaptionKeyDown = useCallback(
+    (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        updateCaption();
+      }
+    },
+    [updateCaption],
+  );
   let PostContent = () => {
     switch (postData.type) {
       case "share":
@@ -776,24 +805,59 @@ const SinglePost = () => {
             </div>
             <div className="body">
               {isAuth && isEditMode ? (
-                <>
-                  <div className="input-group">
-                    <input
-                      onChange={handleEditCaption}
-                      className="caption-editor form-control mb-2"
-                      placeholder="Enter Your Caption"
-                      value={newCaption}
-                    />
-                    <div className="input-group-prepend">
+                <div className="sp-caption-editor">
+                  <div className="sp-caption-editor-head">
+                    <label
+                      className="sp-caption-editor-label"
+                      htmlFor="sp-caption-input"
+                    >
+                      Caption
+                    </label>
+                    <span className="sp-caption-editor-hint">
+                      Ctrl + Enter to save
+                    </span>
+                  </div>
+                  <textarea
+                    id="sp-caption-input"
+                    className="sp-caption-editor-input"
+                    onChange={handleEditCaption}
+                    onKeyDown={handleCaptionKeyDown}
+                    placeholder="Write a caption..."
+                    value={newCaption}
+                    rows={4}
+                    maxLength={500}
+                    disabled={isSavingCaption}
+                  />
+                  <div className="sp-caption-editor-footer">
+                    <span
+                      className={`sp-caption-editor-count${
+                        newCaption.length >= 480
+                          ? " sp-caption-editor-count--warn"
+                          : ""
+                      }`}
+                    >
+                      {newCaption.length}/500
+                    </span>
+                    <div className="sp-caption-editor-actions">
                       <button
-                        onClick={updateCaption}
-                        className="btn btn-primary"
+                        type="button"
+                        className="sp-caption-btn sp-caption-btn--ghost"
+                        onClick={cancelEditCaption}
+                        disabled={isSavingCaption || !hasCaptionChanges}
                       >
-                        Update
+                        Reset
+                      </button>
+                      <button
+                        type="button"
+                        className="sp-caption-btn sp-caption-btn--primary"
+                        onClick={updateCaption}
+                        disabled={isSavingCaption || !hasCaptionChanges}
+                      >
+                        {isSavingCaption ? "Saving..." : "Update"}
                       </button>
                     </div>
                   </div>
-                </>
+                </div>
               ) : (
                 <p className="caption">{postData.caption}</p>
               )}

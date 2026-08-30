@@ -1,34 +1,29 @@
-import React from 'react';
-import ImageSkleton from '../ImageSkleton';
+import React from "react";
 
-const FgiSkleton = ({ count = 1 }) => {
-    return Array(count).fill(0).map((_, index) => (
-        <div className="friend-grid-item" key={index} style={{minHeight: 'unset'}}>
+const NAME_WIDTHS = ["68%", "78%", "58%", "72%"];
 
-            <div className="skeleton-card" style={{marginBottom: '0px'}}>
-                {/* Header */}
-                {/* <div className="skeleton-header">
-            <div className="skeleton-avatar" />
-            <div className="skeleton-lines">
-              <div className="skeleton-line short" />
-              <div className="skeleton-line medium" />
-            </div>
-          </div> */}
-
-                {/* Main Content */}
-                <div className="skeleton-main" style={{marginBottom: '0', height: '200px'}}>
-                    {/* <ImageSkleton /> */}
-                </div>
-
-                {/* Footer */}
-                <div className="skeleton-footer" style={{flexDirection: 'column', marginTop: '10px'}} >
-                    <div style={{display: 'block'}} className="skeleton-line small w-100 py-2 d-block button mb-1" />
-                    <br/>
-                    <div className="skeleton-line small w-100 py-2 d-block button mb-1" />
+const FgiSkleton = ({ count = 8 }) => {
+    return Array(count)
+        .fill(0)
+        .map((_, index) => (
+            <div
+                className="friend-grid-item fgi-skeleton"
+                key={index}
+                aria-hidden="true"
+            >
+                <div className="profile-picture fgi-skeleton-photo" />
+                <div className="grid-body">
+                    <h5 className="profile-name">
+                        <span
+                            className="fgi-skeleton-line"
+                            style={{ width: NAME_WIDTHS[index % NAME_WIDTHS.length] }}
+                        />
+                    </h5>
+                    <div className="primary-button button fgi-skeleton-btn" />
+                    <div className="button fgi-skeleton-btn" />
                 </div>
             </div>
-        </div>
-    ));
-}
+        ));
+};
 
 export default FgiSkleton;

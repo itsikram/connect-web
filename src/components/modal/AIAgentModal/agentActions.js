@@ -5,6 +5,7 @@
 import api from "../../../api/api";
 import socket from "../../../common/socket";
 import { getFriendDisplayName } from "./agentIntentParser";
+import { sendBumpToFriend } from "../../../utils/sendBump";
 
 /**
  * Execute an agent action.
@@ -201,10 +202,7 @@ export const executeAction = async ({
 
       // ── Bump ───────────────────────────────────────────────────────────────
       case "BUMP": {
-        await api.post("/bump", {
-          friendProfile: friend._id,
-          myProfile: myProfile._id,
-        });
+        await sendBumpToFriend(friend._id, myProfile._id);
         return { success: true, message: `👊 Bump sent to ${friendName}!` };
       }
 

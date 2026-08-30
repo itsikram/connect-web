@@ -1,35 +1,82 @@
-import React, { Fragment, useEffect, useState } from "react";
+import React, { Fragment, useCallback, useEffect, useState } from "react";
 import FGI from "./FGI";
 import { useSelector } from "react-redux";
 import api from "../../api/api";
 import FgiSkleton from "../../skletons/friend/FgiSkleton";
+import FriendCacheManager, {
+    FRIEND_CACHE_EVENT,
+} from "../../utils/friendCacheManager";
 
 
 let FriendsSuggest = () => {
     let myProfile = useSelector(state => state.profile)
+    const myProfileId = myProfile?._id;
 
-    let [friends, setFriends] = useState([])
-    let [isLoading, setIsLoading] = useState(true)
+    const cachedSuggestions = myProfileId
+        ? FriendCacheManager.getCachedSuggestions(myProfileId)
+        : null;
+    const [friends, setFriends] = useState(
+        Array.isArray(cachedSuggestions) ? cachedSuggestions : [],
+    );
+    const [isLoading, setIsLoading] = useState(!Array.isArray(cachedSuggestions));
+
+    const refreshSuggestions = useCallback(
+        async (forceRefresh = false) => {
+            if (!myProfileId) return;
+
+            const cached = FriendCacheManager.getCachedSuggestions(myProfileId);
+            if (Array.isArray(cached)) {
+                setFriends(cached);
+                setIsLoading(false);
+            } else {
+                setIsLoading(true);
+            }
+
+            try {
+                const list = await FriendCacheManager.fetchWithCache({
+                    key: `suggestions:${myProfileId}`,
+                    forceRefresh,
+                    setCached: (items) =>
+                        FriendCacheManager.setCachedSuggestions(myProfileId, items),
+                    fetcher: async () => {
+                        const res = await api.get("/friend/getSuggetions/", {
+                            params: { profile: myProfileId },
+                        });
+                        return Array.isArray(res.data) ? res.data : [];
+                    },
+                });
+                setFriends(list);
+            } catch (e) {
+                console.log(e);
+                if (!Array.isArray(cached)) setFriends([]);
+            } finally {
+                setIsLoading(false);
+            }
+        },
+        [myProfileId],
+    );
 
     useEffect(() => {
-        if (!myProfile?._id) return;
+        refreshSuggestions();
+    }, [refreshSuggestions]);
 
-        setIsLoading(true)
-        api.get('/friend/getSuggetions/', {
-            params: {
-                profile: myProfile._id
+    useEffect(() => {
+        const onCacheUpdate = (event) => {
+            if (
+                event.detail?.profileId !== myProfileId ||
+                event.detail?.list !== "suggestions"
+            ) {
+                return;
             }
-        }).then(res => {
-            if (res.status === 200) {
-                setFriends(Array.isArray(res.data) ? res.data : [])
-            }
-        }).catch(e => {
-            console.log(e)
-            setFriends([])
-        }).finally(() => {
-            setIsLoading(false)
-        })
-    }, [myProfile?._id])
+            setFriends(Array.isArray(event.detail.items) ? event.detail.items : []);
+            setIsLoading(false);
+        };
+
+        window.addEventListener(FRIEND_CACHE_EVENT, onCacheUpdate);
+        return () => window.removeEventListener(FRIEND_CACHE_EVENT, onCacheUpdate);
+    }, [myProfileId]);
+
+    const showSkeleton = isLoading && friends.length === 0;
 
     return (
         <Fragment>
@@ -39,8 +86,8 @@ let FriendsSuggest = () => {
                 </div>
 
                 <div className="friend-grid-container">
-                    {isLoading ? (
-                        <FgiSkleton count={4} />
+                    {showSkeleton ? (
+                        <FgiSkleton count={8} />
                     ) : friends.length > 0 ? (
                         friends.map((friend) => {
                             if (!friend.user) return null;

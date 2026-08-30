@@ -25,6 +25,7 @@ import {
 import ModalContainer from "../modal/ModalContainer";
 import useIsMobile from "../../utils/useIsMobile";
 import WatchVideoPlayer from "./WatchVideoPlayer";
+import WatchCacheManager from "../../utils/watchCacheManager";
 const default_pp_src = config?.defaultProfile;
 const APP_PRIMARY_COLOR = "#29B1A9";
 const APP_PRIMARY_TINT = "rgba(41, 177, 169, 0.12)";
@@ -132,6 +133,9 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
         if (typeof onUpdate === "function") {
           onUpdate(watch._id, { caption: captionDraft });
         }
+        WatchCacheManager.updateWatch(myProfileId, watch._id, {
+          caption: captionDraft,
+        });
       } else {
         alert("Failed to update caption");
       }
@@ -141,7 +145,7 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
     } finally {
       setIsSavingCaption(false);
     }
-  }, [watch._id, captionDraft, onUpdate]);
+  }, [watch._id, captionDraft, onUpdate, myProfileId]);
 
   let editAudienceClick = useCallback(() => {
     setSelectedAudience(watch.audience || 1);
@@ -166,6 +170,9 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
         if (typeof onUpdate === "function") {
           onUpdate(watch._id, { audience: selectedAudience });
         }
+        WatchCacheManager.updateWatch(myProfileId, watch._id, {
+          audience: selectedAudience,
+        });
       } else {
         alert("Failed to update audience");
       }
@@ -175,7 +182,7 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
     } finally {
       setIsUpdatingAudience(false);
     }
-  }, [watch._id, selectedAudience, onUpdate]);
+  }, [watch._id, selectedAudience, onUpdate, myProfileId]);
 
   useEffect(() => {
     let storedReacts = [];
@@ -242,6 +249,7 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
                   authorId,
                 });
                 if (deleteRes.status === 200) {
+                  WatchCacheManager.removeWatch(myProfileId, watch._id);
                   if (typeof onDelete === "function") {
                     onDelete(watch._id);
                   } else if (target) {
@@ -436,31 +444,9 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
     watchPip.startPip({ ...payload, playing: true });
   }, [watchPip, getPipMeta]);
 
-  // Auto PiP when leaving the page / backgrounding the installed app
+  // Auto PiP only on route unmount. Lock / Home Screen uses background audio.
   useEffect(() => {
-    const tryAutoPip = () => {
-      if (!shouldAutoWatchPip() || !watchPip?.startPip) return;
-      if (skipPipOnUnmount.current) return;
-      const video = displayedWatch.current;
-      if (!video || video.paused || video.ended) return;
-      const payload = buildPipPayloadFromVideo(video, getPipMeta());
-      if (payload) {
-        watchPip.startPip(payload);
-        video.pause();
-      }
-    };
-
-    const onVisibility = () => {
-      if (document.visibilityState === "hidden") tryAutoPip();
-    };
-
-    window.addEventListener("pagehide", tryAutoPip);
-    document.addEventListener("visibilitychange", onVisibility);
-
     return () => {
-      window.removeEventListener("pagehide", tryAutoPip);
-      document.removeEventListener("visibilitychange", onVisibility);
-      // Route change unmount — keep playing in floating player
       if (
         !skipPipOnUnmount.current &&
         shouldAutoWatchPip() &&

@@ -30,6 +30,48 @@ const WatchSkeleton = ({ count = 1, variant = 'feed' }) => {
     );
   }
 
+  if (variant === 'single') {
+    return Array(count).fill(0).map((_, index) => (
+      <div key={index} className="nf-post watch-single-skeleton" aria-hidden="true">
+        <div className="header">
+          <div className="author-info">
+            <div className="left">
+              <div className="author-pp">
+                <div className="watch-single-skeleton-avatar" />
+              </div>
+              <div className="post-nd-container">
+                <div className="watch-single-skeleton-line name" />
+                <div className="watch-single-skeleton-line time" />
+              </div>
+            </div>
+            <div className="right">
+              <div className="watch-single-skeleton-dot" />
+              <div className="watch-single-skeleton-dot" />
+            </div>
+          </div>
+        </div>
+
+        <div className="body">
+          <div className="watch-single-skeleton-line caption" />
+          <div className="watch-single-skeleton-line caption short" />
+          <div className="watch-single-skeleton-media" />
+        </div>
+
+        <div className="footer">
+          <div className="watch-single-skeleton-meta">
+            <span className="watch-single-skeleton-pill" />
+            <span className="watch-single-skeleton-pill" />
+          </div>
+          <div className="watch-single-skeleton-actions">
+            <span className="watch-single-skeleton-btn" />
+            <span className="watch-single-skeleton-btn" />
+            <span className="watch-single-skeleton-btn" />
+          </div>
+        </div>
+      </div>
+    ));
+  }
+
   return Array(count).fill(0).map((_, index) => (
     <div key={index} className="nf-watch watch watch-feed-skeleton" aria-hidden="true">
       <div className="header">

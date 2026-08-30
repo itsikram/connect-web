@@ -1343,7 +1343,7 @@ const Post = React.memo(
                     margin: "8px 0",
                     border:
                       selectedAudience === 1
-                        ? "2px solid #007bff"
+                        ? "2px solid var(--post-accent)"
                         : "1px solid #ddd",
                     borderRadius: "8px",
                     cursor: "pointer",
@@ -1359,7 +1359,10 @@ const Post = React.memo(
                   >
                     <i
                       className="far fa-globe"
-                      style={{ fontSize: "20px", color: "#007bff" }}
+                      style={{
+                        fontSize: "20px",
+                        color: "var(--post-accent)",
+                      }}
                     ></i>
                     <div>
                       <strong>Public</strong>
@@ -1375,7 +1378,7 @@ const Post = React.memo(
                         className="far fa-check-circle"
                         style={{
                           marginLeft: "auto",
-                          color: "#007bff",
+                          color: "var(--post-accent)",
                           fontSize: "20px",
                         }}
                       ></i>
@@ -1390,7 +1393,7 @@ const Post = React.memo(
                     margin: "8px 0",
                     border:
                       selectedAudience === 2
-                        ? "2px solid #007bff"
+                        ? "2px solid var(--post-accent)"
                         : "1px solid #ddd",
                     borderRadius: "8px",
                     cursor: "pointer",
@@ -1406,7 +1409,10 @@ const Post = React.memo(
                   >
                     <i
                       className="far fa-user-friends"
-                      style={{ fontSize: "20px", color: "#007bff" }}
+                      style={{
+                        fontSize: "20px",
+                        color: "var(--post-accent)",
+                      }}
                     ></i>
                     <div>
                       <strong>Friends</strong>
@@ -1422,7 +1428,7 @@ const Post = React.memo(
                         className="far fa-check-circle"
                         style={{
                           marginLeft: "auto",
-                          color: "#007bff",
+                          color: "var(--post-accent)",
                           fontSize: "20px",
                         }}
                       ></i>
@@ -1437,7 +1443,7 @@ const Post = React.memo(
                     margin: "8px 0",
                     border:
                       selectedAudience === 3
-                        ? "2px solid #007bff"
+                        ? "2px solid var(--post-accent)"
                         : "1px solid #ddd",
                     borderRadius: "8px",
                     cursor: "pointer",
@@ -1453,7 +1459,10 @@ const Post = React.memo(
                   >
                     <i
                       className="far fa-lock"
-                      style={{ fontSize: "20px", color: "#007bff" }}
+                      style={{
+                        fontSize: "20px",
+                        color: "var(--post-accent)",
+                      }}
                     ></i>
                     <div>
                       <strong>Only Me</strong>
@@ -1469,7 +1478,7 @@ const Post = React.memo(
                         className="far fa-check-circle"
                         style={{
                           marginLeft: "auto",
-                          color: "#007bff",
+                          color: "var(--post-accent)",
                           fontSize: "20px",
                         }}
                       ></i>

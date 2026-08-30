@@ -4,8 +4,8 @@ import api from '../../api/api';
 import $ from 'jquery'
 import { useSelector } from 'react-redux';
 import checkImgLoading from '../../utils/checkImgLoading';
-import ImageSkleton from '../../skletons/friend/ImageSkleton';
-
+import FriendCacheManager from '../../utils/friendCacheManager';
+import config from "../../config/config.json";
 
 let FGI = (props) => {
 
@@ -45,6 +45,8 @@ let FGI = (props) => {
             if (res.status === 200) {
                 $(e.target).text('Request Accepted')
                 $(e.target).parents('.friend-grid-item').hide()
+                FriendCacheManager.removeProfile(myProfile._id, 'requests', profile)
+                FriendCacheManager.removeProfile(myProfile._id, 'suggestions', profile)
             }
         } catch (error) {
             console.log(error)
@@ -60,6 +62,7 @@ let FGI = (props) => {
             let res = await api.post('/friend/reqDelete', { profile })
 
             $(target).parents('.friend-grid-item ').hide()
+            FriendCacheManager.removeProfile(myProfile._id, 'requests', profile)
 
         } catch (error) {
             console.log(error)
@@ -78,6 +81,7 @@ let FGI = (props) => {
             let res = await api.post('/friend/sendRequest', { profile })
             $(target).text('Request Sent')
             $(target).parents('.friend-grid-item').fadeOut()
+            FriendCacheManager.removeProfile(myProfile._id, 'suggestions', profile)
 
         } catch (error) {
             console.log(error)
@@ -95,6 +99,7 @@ let FGI = (props) => {
 
             $(target).siblings('.add-friend').text('Add Friend')
             !isReq && $(target).parents('.friend-grid-item').fadeOut()
+            FriendCacheManager.removeProfile(myProfile._id, 'suggestions', profile)
 
         } catch (error) {
             console.log(error)
@@ -143,7 +148,7 @@ let FGI = (props) => {
                     ) : (<>
                         <div className="friend-grid-item request">
                             <Link to={`/${profile}/`}>
-                                <ImageSkleton />
+                                <div className="profile-picture fgi-skeleton-photo" aria-hidden="true"></div>
                             </Link>
 
                             <div className="grid-body">
@@ -218,8 +223,7 @@ let FGI = (props) => {
                         <>
                             <div className="friend-grid-item suggest">
                                 <Link to={`/${profile}/`}>
-                                    <ImageSkleton />
-
+                                    <div className="profile-picture fgi-skeleton-photo" aria-hidden="true"></div>
                                 </Link>
 
                                 <div className="grid-body">

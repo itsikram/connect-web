@@ -8,6 +8,7 @@ import React, {
 import { useNavigate } from "react-router-dom";
 import { useWatchPip } from "../../contexts/WatchPipContext";
 import useMediaSession from "../../hooks/useMediaSession";
+import useBackgroundAudioHandoff from "../../hooks/useBackgroundAudioHandoff";
 import { clampPlayCount } from "../../utils/videoPlayerLibrary";
 import { getPipPlaylistIndex } from "../../utils/watchPipHelpers";
 import "./WatchPipPlayer.css";
@@ -81,6 +82,10 @@ const WatchPipPlayer = () => {
   const playlist = Array.isArray(pip?.playlist) ? pip.playlist : [];
   const isLibrary = pip?.source === "library";
   const looping = !!pip?.looping;
+  const backgroundAudio = useBackgroundAudioHandoff(videoRef, {
+    src: pip?.videoUrl,
+    enabled: !!pip,
+  });
 
   if (pip && initialPlaybackRef.current?.trackKey !== pipTrackKey) {
     initialPlaybackRef.current = {
@@ -111,7 +116,13 @@ const WatchPipPlayer = () => {
         }
         video.muted = !!initialPlayback?.muted;
         if (initialPlayback?.playing !== false) {
-          video.play().catch(() => setPaused(true));
+          video.play().catch(() => {
+            if (document.hidden) {
+              backgroundAudio.playBackgroundAudio();
+              return;
+            }
+            setPaused(true);
+          });
         } else {
           setPaused(true);
         }
@@ -146,11 +157,20 @@ const WatchPipPlayer = () => {
     if (!video || pip?.playing === undefined) return;
 
     if (pip.playing && video.paused && video.readyState >= 2) {
-      video.play().catch(() => setPaused(true));
-    } else if (!pip.playing && !video.paused) {
+      if (document.hidden) {
+        backgroundAudio.playBackgroundAudio();
+      } else {
+        video.play().catch(() => setPaused(true));
+      }
+    } else if (
+      !pip.playing &&
+      !video.paused &&
+      !backgroundAudio.handingOffRef.current
+    ) {
       video.pause();
+      backgroundAudio.pauseBackgroundAudio();
     }
-  }, [pip?.playing, pipTrackKey, mediaReady]);
+  }, [pip?.playing, pipTrackKey, mediaReady, backgroundAudio]);
 
   useEffect(() => {
     if (!pipTrackKey) return undefined;
@@ -170,10 +190,14 @@ const WatchPipPlayer = () => {
     };
 
     const persistProgress = () => {
+      const audio = backgroundAudio.audioRef.current;
+      const usingAudio =
+        document.hidden && !!(audio && !audio.paused);
+      const el = usingAudio ? audio : video;
       updatePip({
-        currentTime: video.currentTime,
-        playing: !video.paused,
-        muted: video.muted,
+        currentTime: el.currentTime,
+        playing: usingAudio || !video.paused,
+        muted: usingAudio ? false : video.muted,
       });
     };
 
@@ -184,6 +208,8 @@ const WatchPipPlayer = () => {
     };
 
     const onPause = () => {
+      if (backgroundAudio.handingOffRef.current) return;
+      if (document.hidden && backgroundAudio.wantPlayingRef.current) return;
       setPaused(true);
       sync();
       persistProgress();
@@ -209,59 +235,80 @@ const WatchPipPlayer = () => {
       video.removeEventListener("pause", onPause);
       window.clearInterval(progressTimer);
     };
-  }, [pipTrackKey, updatePip]);
+  }, [pipTrackKey, updatePip, backgroundAudio]);
 
   const playCurrent = useCallback(() => {
+    backgroundAudio.wantPlayingRef.current = true;
+    if (document.hidden) {
+      return backgroundAudio
+        .playBackgroundAudio()
+        .then(() => setPaused(false));
+    }
     const video = videoRef.current;
     if (!video) return Promise.resolve();
     return video.play().then(() => setPaused(false));
-  }, []);
+  }, [backgroundAudio]);
 
   const pauseCurrent = useCallback(() => {
+    backgroundAudio.wantPlayingRef.current = false;
+    backgroundAudio.pauseBackgroundAudio();
     const video = videoRef.current;
-    if (!video) return;
-    video.pause();
+    if (video) video.pause();
     setPaused(true);
-  }, []);
+  }, [backgroundAudio]);
 
   const seekBy = useCallback((delta) => {
     const video = videoRef.current;
-    if (!video) return;
+    const audio = backgroundAudio.audioRef.current;
+    const el = audio && !audio.paused ? audio : video;
+    if (!el) return;
 
-    const base = Number(video.currentTime);
-    const maxDuration = Number(video.duration);
+    const base = Number(el.currentTime);
+    const maxDuration = Number(el.duration);
     if (!Number.isFinite(base)) return;
 
     const next = base + delta;
-    if (Number.isFinite(maxDuration) && maxDuration > 0) {
-      video.currentTime = Math.min(maxDuration, Math.max(0, next));
-      return;
+    const clamped =
+      Number.isFinite(maxDuration) && maxDuration > 0
+        ? Math.min(maxDuration, Math.max(0, next))
+        : Math.max(0, next);
+    el.currentTime = clamped;
+    if (video && video !== el) {
+      try {
+        video.currentTime = clamped;
+      } catch (_) {}
     }
-    video.currentTime = Math.max(0, next);
-  }, []);
+  }, [backgroundAudio]);
 
   const seekTo = useCallback((details) => {
     const video = videoRef.current;
-    if (!video) return;
+    const audio = backgroundAudio.audioRef.current;
+    const el = document.hidden && audio ? audio : video;
+    if (!el) return;
 
     const requested = Number(details?.seekTime);
     if (!Number.isFinite(requested) || requested < 0) return;
 
-    const maxDuration = Number(video.duration);
+    const maxDuration = Number(el.duration);
     const target =
       Number.isFinite(maxDuration) && maxDuration > 0
         ? Math.min(maxDuration, requested)
         : requested;
 
-    if (details?.fastSeek && typeof video.fastSeek === "function") {
+    if (details?.fastSeek && typeof el.fastSeek === "function") {
       try {
-        video.fastSeek(target);
+        el.fastSeek(target);
         return;
       } catch (_) {}
     }
 
-    video.currentTime = target;
-  }, []);
+    el.currentTime = target;
+    if (video && video !== el) {
+      try {
+        video.currentTime = target;
+      } catch (_) {}
+    }
+  }, [backgroundAudio]);
 
   const switchPlaylistByOffset = useCallback(
     (offset) => {
@@ -542,7 +589,16 @@ const WatchPipPlayer = () => {
     setDock(nextDock);
     setMinimized(true);
     if (rect) {
-      setPos(snapToDock(nextDock, 220, 56, rect.top, rect.left));
+      const vertical = nextDock === "left" || nextDock === "right";
+      setPos(
+        snapToDock(
+          nextDock,
+          vertical ? 64 : 220,
+          vertical ? 220 : 56,
+          rect.top,
+          rect.left,
+        ),
+      );
     }
   };
 

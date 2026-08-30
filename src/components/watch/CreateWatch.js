@@ -6,6 +6,7 @@ import $ from 'jquery'
 import api from "../../api/api";
 import { fetchProfileHasStoryCached } from "../../utils/requestCache";
 import { showSuccessToast } from "../../utils/toastUtils";
+import WatchCacheManager from "../../utils/watchCacheManager";
 
 const CreateWatch = ({ setWatches = null }) => {
     const profileData = useSelector(state => state.profile)
@@ -229,7 +230,12 @@ const CreateWatch = ({ setWatches = null }) => {
             if (res.status === 200 || res.status === 201) {
                 const created = res.data?.data
                 if (typeof setWatches === 'function' && created) {
-                    setWatches(prev => [created, ...(Array.isArray(prev) ? prev : [])])
+                    setWatches((prev) => {
+                        const list = Array.isArray(prev) ? prev : [];
+                        return [created, ...list.filter((item) => item?._id !== created._id)];
+                    });
+                } else if (created) {
+                    WatchCacheManager.prependWatch(profileId, created);
                 }
                 showSuccessToast('Your Watch was posted successfully')
                 setWatchModal(false)

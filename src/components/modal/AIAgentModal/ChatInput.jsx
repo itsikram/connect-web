@@ -41,8 +41,94 @@ const SUGGESTIONS = [
   "What can you help with?",
 ];
 
-const AUDIO_TIMESLICE_MS = 400;
+const AUDIO_TIMESLICE_MS = 80;
 const AUTO_SEND_DELAY_MS = 3000;
+const TARGET_SAMPLE_RATE = 16000;
+const PCM_PROCESSOR_BUFFER_SIZE = 2048;
+const BANGLA_RECOGNITION_LANGS = ["bn-BD", "bn-IN", "bn"];
+
+const countBanglaChars = (text = "") =>
+  (String(text).match(/[\u0980-\u09FF]/g) || []).length;
+
+const scoreBanglaTranscript = (text = "", confidence = 0.5) => {
+  const normalized = String(text || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return -1;
+
+  const compact = normalized.replace(/\s+/g, "");
+  const bangla = countBanglaChars(normalized);
+  const ratio = bangla / Math.max(1, compact.length);
+  const conf = Number(confidence) || 0;
+
+  if (bangla === 0 && compact.length >= 6) return conf * 0.12;
+
+  return (
+    bangla * 4 +
+    ratio * 16 +
+    conf * 8 +
+    Math.min(compact.length, 48) * 0.08
+  );
+};
+
+const pickBestSpeechAlternative = (result, preferBangla = false) => {
+  if (!result || !result.length) {
+    return { transcript: "", confidence: 0 };
+  }
+
+  let best = result[0]?.transcript || "";
+  let bestConfidence = Number(result[0]?.confidence || 0);
+  if (!preferBangla) {
+    return { transcript: best, confidence: bestConfidence };
+  }
+
+  let bestScore = scoreBanglaTranscript(best, bestConfidence);
+  for (let i = 1; i < result.length; i += 1) {
+    const transcript = result[i]?.transcript || "";
+    const confidence = Number(result[i]?.confidence || 0);
+    const score = scoreBanglaTranscript(transcript, confidence);
+    if (score > bestScore) {
+      best = transcript;
+      bestConfidence = confidence;
+      bestScore = score;
+    }
+  }
+
+  return { transcript: best, confidence: bestConfidence };
+};
+
+const downsampleTo16k = (float32, inputSampleRate) => {
+  if (!float32?.length) return float32;
+  if (Math.abs(Number(inputSampleRate) - TARGET_SAMPLE_RATE) < 1) {
+    return float32;
+  }
+
+  const ratio = Number(inputSampleRate) / TARGET_SAMPLE_RATE;
+  if (!Number.isFinite(ratio) || ratio <= 0) return float32;
+
+  const newLength = Math.max(1, Math.floor(float32.length / ratio));
+  const result = new Float32Array(newLength);
+  for (let i = 0; i < newLength; i += 1) {
+    const start = Math.floor(i * ratio);
+    const end = Math.min(float32.length, Math.floor((i + 1) * ratio));
+    let sum = 0;
+    const count = Math.max(1, end - start);
+    for (let j = start; j < end; j += 1) {
+      sum += float32[j];
+    }
+    result[i] = sum / count;
+  }
+  return result;
+};
+
+const floatTo16BitPcm = (float32) => {
+  const pcm = new Int16Array(float32.length);
+  for (let i = 0; i < float32.length; i += 1) {
+    const sample = Math.max(-1, Math.min(1, float32[i] || 0));
+    pcm[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+  }
+  return pcm.buffer;
+};
 
 const appendTranscript = (baseText, transcript) => {
   const nextTranscript = transcript.trim();
@@ -206,6 +292,20 @@ const ChatInput = ({
   const autoRunActionsRef = useRef(autoRunActions);
   const modalInteractionVersionRef = useRef(modalInteractionVersion);
   const maybeScheduleAutoSendRef = useRef(() => {});
+  const hybridBanglaRef = useRef(false);
+  const googleFinalRef = useRef("");
+  const googlePartialRef = useRef("");
+  const googleConfidenceRef = useRef(0);
+  const deepgramTextRef = useRef("");
+  const deepgramConfidenceRef = useRef(0);
+  const isFinalizingRef = useRef(false);
+  const audioContextRef = useRef(null);
+  const audioProcessorRef = useRef(null);
+  const audioSourceRef = useRef(null);
+  const audioGainRef = useRef(null);
+  const publishHybridTranscriptRef = useRef(() => "");
+  const banglaRecognitionLangIndexRef = useRef(0);
+  const deepgramSessionRef = useRef(false);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -291,8 +391,10 @@ const ChatInput = ({
     const supported =
       typeof window !== "undefined" &&
       !!window.WebSocket &&
-      !!window.MediaRecorder &&
-      !!navigator?.mediaDevices?.getUserMedia;
+      !!navigator?.mediaDevices?.getUserMedia &&
+      (!!window.AudioContext ||
+        !!window.webkitAudioContext ||
+        !!window.MediaRecorder);
 
     setIsBanglaSupported(supported);
   }, []);
@@ -314,22 +416,52 @@ const ChatInput = ({
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
+    recognition.maxAlternatives = 5;
     recognition.lang = "en-US";
 
     recognition.onresult = (event) => {
       let interimTranscript = "";
+      const preferBangla = String(recognition.lang || "")
+        .toLowerCase()
+        .startsWith("bn");
+      let latestConfidence = 0;
 
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        const transcript = event.results[i][0]?.transcript || "";
+        const picked = pickBestSpeechAlternative(
+          event.results[i],
+          preferBangla,
+        );
+        const transcript = picked.transcript;
+        latestConfidence = Math.max(latestConfidence, picked.confidence || 0);
 
         if (event.results[i].isFinal) {
-          finalTranscriptRef.current = appendTranscript(
-            finalTranscriptRef.current,
-            transcript,
-          );
+          if (hybridBanglaRef.current) {
+            googleFinalRef.current = appendTranscript(
+              googleFinalRef.current,
+              transcript,
+            );
+            googlePartialRef.current = "";
+            googleConfidenceRef.current = picked.confidence || latestConfidence;
+          } else {
+            finalTranscriptRef.current = appendTranscript(
+              finalTranscriptRef.current,
+              transcript,
+            );
+          }
+        } else if (hybridBanglaRef.current) {
+          interimTranscript += transcript;
         } else {
           interimTranscript += transcript;
         }
+      }
+
+      if (hybridBanglaRef.current) {
+        googlePartialRef.current = interimTranscript.trim();
+        if (latestConfidence) {
+          googleConfidenceRef.current = latestConfidence;
+        }
+        publishHybridTranscriptRef.current();
+        return;
       }
 
       const withFinal = appendTranscript(
@@ -345,19 +477,63 @@ const ChatInput = ({
 
       speechLog("Browser SpeechRecognition detected end of speech");
       try {
-        recognition.stop();
+        if (hybridBanglaRef.current) {
+          activeStopRef.current();
+        } else {
+          recognition.stop();
+        }
       } catch (err) {
         speechLog("Failed to stop recognition after speech ended", err);
       }
     };
 
     recognition.onerror = (err) => {
-      speechLog("Browser SpeechRecognition error", err?.error || err);
+      const errorCode = String(err?.error || err || "");
+      speechLog("Browser SpeechRecognition error", errorCode);
+
+      if (hybridBanglaRef.current) {
+        const canRetryLang =
+          errorCode === "language-not-supported" &&
+          banglaRecognitionLangIndexRef.current <
+            BANGLA_RECOGNITION_LANGS.length - 1;
+
+        if (canRetryLang) {
+          banglaRecognitionLangIndexRef.current += 1;
+          recognition.lang =
+            BANGLA_RECOGNITION_LANGS[banglaRecognitionLangIndexRef.current];
+          speechLog("Retrying Bangla SpeechRecognition with", recognition.lang);
+          return;
+        }
+
+        speechLog(
+          "Browser Bangla STT unavailable; continuing with Deepgram PCM",
+        );
+        hybridBanglaRef.current = false;
+        return;
+      }
+
       setIsListening(false);
     };
 
     recognition.onend = () => {
       speechLog("Browser SpeechRecognition ended");
+
+      if (
+        hybridBanglaRef.current &&
+        isListeningRef.current &&
+        !isFinalizingRef.current
+      ) {
+        try {
+          recognition.start();
+          speechLog("Restarted Bangla SpeechRecognition for continuous listen");
+        } catch (err) {
+          speechLog("Could not restart Bangla SpeechRecognition", err);
+        }
+        return;
+      }
+
+      if (hybridBanglaRef.current || deepgramSessionRef.current) return;
+
       const withFinal = appendTranscript(
         listeningBaseTextRef.current,
         finalTranscriptRef.current,
@@ -428,11 +604,83 @@ const ChatInput = ({
     mediaStreamRef.current = null;
   };
 
+  const stopPcmCapture = () => {
+    try {
+      audioProcessorRef.current?.disconnect();
+    } catch {
+      // noop
+    }
+    try {
+      audioSourceRef.current?.disconnect();
+    } catch {
+      // noop
+    }
+    try {
+      audioGainRef.current?.disconnect();
+    } catch {
+      // noop
+    }
+
+    audioProcessorRef.current = null;
+    audioSourceRef.current = null;
+    audioGainRef.current = null;
+
+    const audioContext = audioContextRef.current;
+    audioContextRef.current = null;
+    if (audioContext && audioContext.state !== "closed") {
+      audioContext.close().catch(() => {});
+    }
+  };
+
+  const stopBrowserRecognition = () => {
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      // noop
+    }
+  };
+
   const stopListeningLocal = () => {
+    stopPcmCapture();
     stopMediaRecorder();
     stopMediaStream();
+    if (hybridBanglaRef.current) {
+      stopBrowserRecognition();
+    }
+    hybridBanglaRef.current = false;
+    deepgramSessionRef.current = false;
     setIsListening(false);
   };
+
+  const publishHybridTranscript = () => {
+    const googleText = appendTranscript(
+      googleFinalRef.current,
+      googlePartialRef.current,
+    );
+    const deepgramText = deepgramTextRef.current || "";
+    const googleScore =
+      scoreBanglaTranscript(googleText, googleConfidenceRef.current) +
+      (countBanglaChars(googleText) >= 2 ? 6 : 0);
+    const deepgramScore = scoreBanglaTranscript(
+      deepgramText,
+      deepgramConfidenceRef.current,
+    );
+
+    const bestText =
+      googleScore >= deepgramScore
+        ? googleText || deepgramText
+        : deepgramText || googleText;
+
+    finalTranscriptRef.current = bestText;
+    const withFinal = appendTranscript(
+      listeningBaseTextRef.current,
+      bestText,
+    );
+    onChangeRef.current(withFinal);
+    return withFinal;
+  };
+
+  publishHybridTranscriptRef.current = publishHybridTranscript;
 
   const finalizeWithText = (text = "") => {
     const withFinal = appendTranscript(listeningBaseTextRef.current, text);
@@ -479,6 +727,14 @@ const ChatInput = ({
     if (payload.type === "partial") {
       const partial = (payload.text || "").trim();
       speechLog("Partial transcript:", partial);
+      deepgramTextRef.current = partial;
+      deepgramConfidenceRef.current = Number(payload.confidence || 0.55);
+
+      if (hybridBanglaRef.current) {
+        publishHybridTranscript();
+        return;
+      }
+
       const withPartial = appendTranscript(
         listeningBaseTextRef.current,
         partial,
@@ -498,12 +754,28 @@ const ChatInput = ({
     if (payload.type === "final") {
       const finalText = (payload.text || "").trim();
       speechLog("Final transcript:", finalText);
-      finalTranscriptRef.current = finalText;
-      const withFinal = finalizeWithText(finalText);
+      deepgramTextRef.current = finalText || deepgramTextRef.current;
+      if (payload.confidence) {
+        deepgramConfidenceRef.current = Number(payload.confidence);
+      }
+
+      const withFinal = hybridBanglaRef.current
+        ? publishHybridTranscript()
+        : finalizeWithText(finalText);
+
+      if (!hybridBanglaRef.current) {
+        finalTranscriptRef.current = finalText;
+      }
+
       clearStopTimeout();
+      stopPcmCapture();
       stopMediaRecorder();
       stopMediaStream();
+      stopBrowserRecognition();
       closeWebSocket();
+      hybridBanglaRef.current = false;
+      deepgramSessionRef.current = false;
+      isFinalizingRef.current = false;
       setIsListening(false);
       setIsFinalizing(false);
       setVoiceStatusMessage("");
@@ -551,6 +823,14 @@ const ChatInput = ({
     clearAutoSendTimeout();
     listeningBaseTextRef.current = value;
     finalTranscriptRef.current = "";
+    googleFinalRef.current = "";
+    googlePartialRef.current = "";
+    googleConfidenceRef.current = 0;
+    deepgramTextRef.current = "";
+    deepgramConfidenceRef.current = 0;
+    hybridBanglaRef.current = false;
+    isFinalizingRef.current = false;
+    banglaRecognitionLangIndexRef.current = 0;
     modelLoadingRef.current = false;
     setVoiceStatusMessage("");
     setIsFinalizing(false);
@@ -558,36 +838,60 @@ const ChatInput = ({
 
     try {
       speechLog("Requesting microphone permission...");
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-      mediaStreamRef.current = stream;
-      speechLog("Microphone permission granted");
-
       const socketUrls = getSpeechWebSocketUrls();
-      let ws = null;
-      let connectionError = null;
+      const [stream, ws] = await Promise.all([
+        (async () => {
+          try {
+            return await navigator.mediaDevices.getUserMedia({
+              audio: {
+                channelCount: 1,
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+              },
+            });
+          } catch (error) {
+            speechLog(
+              "Constrained mic request failed, retrying with defaults",
+              error,
+            );
+            return navigator.mediaDevices.getUserMedia({ audio: true });
+          }
+        })(),
+        (async () => {
+          let connected = null;
+          let connectionError = null;
 
-      for (let index = 0; index < socketUrls.length; index += 1) {
-        const socketUrl = socketUrls[index];
-        speechLog(
-          "Connecting to speech WebSocket:",
-          socketUrl.replace(/\?.*$/, ""),
-        );
-        try {
-          ws = await openSpeechWebSocket(socketUrl, handleSocketMessage);
-          break;
-        } catch (error) {
-          connectionError = error;
-          speechLog("WebSocket connection attempt failed", error);
-        }
-      }
+          for (let index = 0; index < socketUrls.length; index += 1) {
+            const socketUrl = socketUrls[index];
+            speechLog(
+              "Connecting to speech WebSocket:",
+              socketUrl.replace(/\?.*$/, ""),
+            );
+            try {
+              connected = await openSpeechWebSocket(
+                socketUrl,
+                handleSocketMessage,
+              );
+              break;
+            } catch (error) {
+              connectionError = error;
+              speechLog("WebSocket connection attempt failed", error);
+            }
+          }
 
-      if (!ws) {
-        throw (
-          connectionError || new Error("Unable to connect to speech server")
-        );
-      }
+          if (!connected) {
+            throw (
+              connectionError || new Error("Unable to connect to speech server")
+            );
+          }
+
+          return connected;
+        })(),
+      ]);
+      mediaStreamRef.current = stream;
+      mediaRecorderRef.current = null;
+      speechLog("Microphone permission granted");
 
       wsRef.current = ws;
       speechLog("WebSocket connected");
@@ -605,69 +909,133 @@ const ChatInput = ({
         }
       };
 
-      const mimeType = pickSupportedMimeType();
-      speechLog(
-        "Using MediaRecorder mimeType:",
-        mimeType || "(browser default)",
-      );
-      const recorder = mimeType
-        ? new MediaRecorder(stream, { mimeType })
-        : new MediaRecorder(stream);
+      const startPcmStreaming = async () => {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return false;
 
-      let chunkIndex = 0;
-
-      recorder.addEventListener("dataavailable", async (ev) => {
-        if (!ev.data || ev.data.size === 0 || !wsRef.current) {
-          speechLog("dataavailable skipped", {
-            size: ev.data?.size,
-            hasSocket: !!wsRef.current,
-          });
-          return;
-        }
-
-        chunkIndex += 1;
-
+        let audioContext;
         try {
-          const audioBuffer = await ev.data.arrayBuffer();
-          if (wsRef.current.readyState === WebSocket.OPEN) {
-            wsRef.current.send(audioBuffer);
-            speechLog(
-              `Sent audio chunk #${chunkIndex} bytes=${audioBuffer.byteLength}`,
-            );
-          } else {
-            speechLog(
-              `Skipped sending chunk #${chunkIndex}, socket not open (state=${wsRef.current.readyState})`,
-            );
-          }
+          audioContext = new AudioCtx({ sampleRate: TARGET_SAMPLE_RATE });
         } catch (err) {
-          speechLog("Failed to send audio chunk", err);
+          speechLog("16kHz AudioContext failed, using default rate", err);
+          audioContext = new AudioCtx();
         }
-      });
+        if (audioContext.state === "suspended") {
+          await audioContext.resume();
+        }
 
-      recorder.addEventListener("error", (err) => {
-        speechLog("MediaRecorder error", err);
-        stopListeningLocal();
-        closeWebSocket();
-      });
+        const source = audioContext.createMediaStreamSource(stream);
+        const processor = audioContext.createScriptProcessor(
+          PCM_PROCESSOR_BUFFER_SIZE,
+          1,
+          1,
+        );
+        const silence = audioContext.createGain();
+        silence.gain.value = 0;
 
-      mediaRecorderRef.current = recorder;
+        processor.onaudioprocess = (event) => {
+          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+            return;
+          }
+
+          const input = event.inputBuffer.getChannelData(0);
+          const downsampled = downsampleTo16k(input, audioContext.sampleRate);
+          wsRef.current.send(floatTo16BitPcm(downsampled));
+        };
+
+        source.connect(processor);
+        processor.connect(silence);
+        silence.connect(audioContext.destination);
+
+        audioContextRef.current = audioContext;
+        audioSourceRef.current = source;
+        audioProcessorRef.current = processor;
+        audioGainRef.current = silence;
+        speechLog(
+          "PCM capture started sampleRate=",
+          audioContext.sampleRate,
+          "buffer=",
+          PCM_PROCESSOR_BUFFER_SIZE,
+        );
+        return true;
+      };
+
+      let pcmReady = false;
+      try {
+        pcmReady = await startPcmStreaming();
+      } catch (err) {
+        speechLog("PCM capture failed", err);
+        pcmReady = false;
+      }
+      let mimeType = "audio/l16";
+      let encoding = "linear16";
+
+      if (!pcmReady) {
+        mimeType = pickSupportedMimeType() || "audio/webm";
+        encoding = "";
+        speechLog(
+          "PCM capture unavailable, falling back to MediaRecorder mimeType:",
+          mimeType,
+        );
+        const recorder = new MediaRecorder(
+          stream,
+          mimeType ? { mimeType } : undefined,
+        );
+
+        recorder.addEventListener("dataavailable", async (ev) => {
+          if (!ev.data || ev.data.size === 0 || !wsRef.current) return;
+          try {
+            const audioBuffer = await ev.data.arrayBuffer();
+            if (wsRef.current.readyState === WebSocket.OPEN) {
+              wsRef.current.send(audioBuffer);
+            }
+          } catch (err) {
+            speechLog("Failed to send audio chunk", err);
+          }
+        });
+
+        recorder.addEventListener("error", (err) => {
+          speechLog("MediaRecorder error", err);
+          stopListeningLocal();
+          closeWebSocket();
+        });
+
+        mediaRecorderRef.current = recorder;
+      }
 
       const startPayload = {
         type: "start",
         language,
-        mimeType: mimeType || "audio/webm",
+        mimeType,
+        encoding,
+        sampleRate: TARGET_SAMPLE_RATE,
         chunkDurationMs: AUDIO_TIMESLICE_MS,
       };
       speechLog("Sending start payload", startPayload);
       ws.send(JSON.stringify(startPayload));
 
-      recorder.start(AUDIO_TIMESLICE_MS);
-      speechLog(
-        "MediaRecorder started with timeslice(ms)=",
-        AUDIO_TIMESLICE_MS,
-        "language=",
-        language,
-      );
+      if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.start(AUDIO_TIMESLICE_MS);
+      }
+
+      if (language === "bn" && recognitionRef.current) {
+        hybridBanglaRef.current = true;
+        recognitionRef.current.lang = BANGLA_RECOGNITION_LANGS[0];
+        recognitionRef.current.maxAlternatives = 5;
+        try {
+          recognitionRef.current.start();
+          speechLog(
+            "Browser Bangla SpeechRecognition started",
+            recognitionRef.current.lang,
+          );
+        } catch (err) {
+          speechLog("Browser Bangla STT failed; Deepgram PCM only", err);
+          hybridBanglaRef.current = false;
+        }
+      }
+
+      speechLog("Voice input started language=", language, "pcm=", pcmReady);
+      deepgramSessionRef.current = true;
       setIsListening(true);
       inputRef.current?.focus();
     } catch (err) {
@@ -681,19 +1049,26 @@ const ChatInput = ({
   // using whatever text we have locally. The Bangla path now uses a live
   // Deepgram stream, so finalization should normally be much faster than the
   // older batch/Whisper pipeline.
-  const STOP_TIMEOUT_NORMAL_MS = 5000;
-  const STOP_TIMEOUT_MODEL_LOADING_MS = 12000;
+  const STOP_TIMEOUT_NORMAL_MS = 1600;
+  const STOP_TIMEOUT_MODEL_LOADING_MS = 6000;
 
   const stopDeepgramVoiceInput = async () => {
     if (!isListeningRef.current) return;
 
-    if (isFinalizing) {
-      // Second click while we're already waiting for the server: force an
-      // immediate local finalize instead of waiting out the full timeout.
-      speechLog("Force-finalizing Deepgram session (user requested early stop)");
+    if (isFinalizingRef.current) {
+      speechLog("Force-finalizing voice session (user requested early stop)");
       clearStopTimeout();
-      const withFinal = finalizeWithText(finalTranscriptRef.current || value);
+      isFinalizingRef.current = false;
+      const withFinal = hybridBanglaRef.current
+        ? publishHybridTranscript()
+        : finalizeWithText(finalTranscriptRef.current || value);
+      stopPcmCapture();
+      stopMediaRecorder();
+      stopMediaStream();
+      stopBrowserRecognition();
       closeWebSocket();
+      hybridBanglaRef.current = false;
+      deepgramSessionRef.current = false;
       setIsListening(false);
       setIsFinalizing(false);
       setVoiceStatusMessage("");
@@ -702,9 +1077,11 @@ const ChatInput = ({
     }
 
     speechLog("stopDeepgramVoiceInput called");
-
+    isFinalizingRef.current = true;
+    stopPcmCapture();
     stopMediaRecorder();
     stopMediaStream();
+    stopBrowserRecognition();
 
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       try {
@@ -725,8 +1102,13 @@ const ChatInput = ({
       clearStopTimeout();
       stopTimeoutRef.current = setTimeout(() => {
         speechLog("Stop timeout reached, finalizing locally");
-        const withFinal = finalizeWithText(finalTranscriptRef.current || value);
+        const withFinal = hybridBanglaRef.current
+          ? publishHybridTranscript()
+          : finalizeWithText(finalTranscriptRef.current || value);
         closeWebSocket();
+        hybridBanglaRef.current = false;
+        deepgramSessionRef.current = false;
+        isFinalizingRef.current = false;
         setIsListening(false);
         setIsFinalizing(false);
         setVoiceStatusMessage("");
@@ -734,8 +1116,15 @@ const ChatInput = ({
       }, timeoutMs);
     } else {
       speechLog("No open socket on stop; finalizing immediately");
+      const withFinal = hybridBanglaRef.current
+        ? publishHybridTranscript()
+        : finalizeWithText(finalTranscriptRef.current || value);
+      hybridBanglaRef.current = false;
+      deepgramSessionRef.current = false;
+      isFinalizingRef.current = false;
       setIsListening(false);
       setIsFinalizing(false);
+      maybeScheduleAutoSend(withFinal);
     }
   };
 
@@ -761,6 +1150,7 @@ const ChatInput = ({
     setShowSuggestions(false);
 
     try {
+      recognitionRef.current.lang = "en-US";
       recognitionRef.current.start();
       speechLog("Browser SpeechRecognition started (en-US)");
       setIsListening(true);
@@ -801,6 +1191,7 @@ const ChatInput = ({
   useEffect(() => {
     return () => {
       clearStopTimeout();
+      stopPcmCapture();
       stopMediaRecorder();
       stopMediaStream();
       closeWebSocket();

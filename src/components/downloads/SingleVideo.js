@@ -89,25 +89,7 @@ const SingleVideo = () => {
     }, [watchPip, getPipMeta]);
 
     useEffect(() => {
-        const tryAutoPip = () => {
-            if (!shouldAutoWatchPip() || !watchPip?.startPip) return;
-            if (skipPipOnUnmount.current) return;
-            const video = videoRef.current;
-            if (!video || video.paused || video.ended) return;
-            const payload = buildLibraryPipPayloadFromVideo(video, getPipMeta());
-            if (payload) {
-                watchPip.startPip(payload);
-                video.pause();
-            }
-        };
-        const onVisibility = () => {
-            if (document.visibilityState === 'hidden') tryAutoPip();
-        };
-        window.addEventListener('pagehide', tryAutoPip);
-        document.addEventListener('visibilitychange', onVisibility);
         return () => {
-            window.removeEventListener('pagehide', tryAutoPip);
-            document.removeEventListener('visibilitychange', onVisibility);
             if (!skipPipOnUnmount.current && shouldAutoWatchPip() && watchPip?.startPip) {
                 const video = videoRef.current;
                 if (video && !video.paused && !video.ended) {

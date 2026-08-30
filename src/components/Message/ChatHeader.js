@@ -27,6 +27,7 @@ import {
   playAudioWithWebAudio,
   initializeAudioUnlock,
 } from "../../utils/audioUnlock";
+import { sendBumpToFriend } from "../../utils/sendBump";
 import {
   showCallNotification,
   closeCallNotification,
@@ -1714,17 +1715,16 @@ const ChatHeader = ({
   ]);
 
   const handleBumpBtnClick = useCallback(async () => {
+    const targetFriendId = friendProfile?._id || friendId;
+    const myId = profile?._id;
+    if (!targetFriendId || !myId) return;
     try {
-      // Send bump via HTTP
-      await api.post("/bump", {
-        friendProfile: friendProfile._id,
-        myProfile: profile._id,
-      });
-      console.log("Bump sent to:", friendProfile._id);
+      await sendBumpToFriend(targetFriendId, myId);
+      setIsChatOptionMenu(false);
     } catch (error) {
       console.error("Error sending bump:", error);
     }
-  }, [friendProfile, profile]);
+  }, [friendProfile, friendId, profile]);
 
   useEffect(() => {
     // Use friendProfile._id directly if friendId state is not yet set
@@ -2390,13 +2390,14 @@ const ChatHeader = ({
                     position: "absolute",
                     top: "100%",
                     right: 0,
-                    backgroundColor: "white",
-                    border: "1px solid #ddd",
+                    backgroundColor: "#202122",
+                    border: "1px solid rgba(255, 255, 255, 0.12)",
                     borderRadius: "8px",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                    boxShadow: "0 8px 24px rgba(0, 0, 0, 0.45)",
                     zIndex: 1000,
                     minWidth: "150px",
                     marginTop: "4px",
+                    color: "#ffffff",
                   }}
                 >
                   <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
@@ -2419,19 +2420,14 @@ const ChatHeader = ({
                         display: "flex",
                         alignItems: "center",
                         gap: "8px",
-                        borderBottom: "1px solid #eee",
+                        borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
                         transition: "background-color 0.2s",
+                        color: "#ffffff",
                       }}
-                      onMouseEnter={(e) =>
-                        (e.target.style.backgroundColor = "#f5f5f5")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.target.style.backgroundColor = "white")
-                      }
                     >
                       <i
                         className="fas fa-phone-alt"
-                        style={{ width: "16px" }}
+                        style={{ width: "16px", color: "#ffffff" }}
                       ></i>
                       <span>Audio Call</span>
                     </li>
@@ -2455,15 +2451,13 @@ const ChatHeader = ({
                         alignItems: "center",
                         gap: "8px",
                         transition: "background-color 0.2s",
+                        color: "#ffffff",
                       }}
-                      onMouseEnter={(e) =>
-                        (e.target.style.backgroundColor = "#f5f5f5")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.target.style.backgroundColor = "white")
-                      }
                     >
-                      <i className="fas fa-video" style={{ width: "16px" }}></i>
+                      <i
+                        className="fas fa-video"
+                        style={{ width: "16px", color: "#ffffff" }}
+                      ></i>
                       <span>Video Call</span>
                     </li>
                   </ul>

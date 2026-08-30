@@ -41,7 +41,7 @@ const SingleReactor = ({ reactor }) => {
 
     useEffect(() => {
         loadProfileData()
-    }, [])
+    }, [reactor.profile, reactor.type])
     return (
         <div>
             {profileData && (

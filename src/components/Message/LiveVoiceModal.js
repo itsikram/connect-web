@@ -296,7 +296,7 @@ const LiveVoiceModal = ({
             )}
           </div>
 
-          {isActive && typeof onStop === "function" && (
+          {(isActive || isConnecting) && typeof onStop === "function" && (
             <div className="live-voice-actions">
               <button className="live-voice-stop-btn" onClick={onStop}>
                 <i className="fas fa-stop"></i>

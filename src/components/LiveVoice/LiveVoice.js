@@ -42,6 +42,7 @@ const LiveVoice = ({ myId }) => {
   const durationTimerRef = useRef(null);
   const roleRef = useRef("sender");
   const stopSessionRef = useRef(async () => {});
+  const recentlyStoppedRef = useRef(new Map());
 
   const numericUid = useMemo(() => hashUid(myId), [myId]);
 
@@ -68,6 +69,13 @@ const LiveVoice = ({ myId }) => {
     );
   }, []);
 
+  const peerFromChannel = useCallback((channelName) => {
+    if (!channelName || !myId) return null;
+    const parts = String(channelName).split("_");
+    if (parts.length < 2) return null;
+    return parts.find((id) => String(id) !== String(myId)) || null;
+  }, [myId]);
+
   const ensureLeave = useCallback(async () => {
     try {
       if (clientRef.current && localTrackRef.current) {
@@ -89,13 +97,20 @@ const LiveVoice = ({ myId }) => {
 
   const stopSession = useCallback(
     async (notifyPeer = true) => {
-      sessionIdRef.current += 1;
       const channelName = channelRef.current;
-      const peerId = peerIdRef.current;
+      const peerId = peerIdRef.current || peerFromChannel(channelName);
+      const hadSession =
+        isActiveRef.current || isJoiningRef.current || !!channelName;
 
-      if (notifyPeer && peerId && channelName) {
+      if (channelName) {
+        recentlyStoppedRef.current.set(String(channelName), Date.now());
+      }
+
+      sessionIdRef.current += 1;
+
+      if (notifyPeer && hadSession && (peerId || channelName)) {
         socket.emit("live-voice-stop", {
-          to: String(peerId),
+          to: peerId ? String(peerId) : undefined,
           channelName,
         });
       }
@@ -122,7 +137,7 @@ const LiveVoice = ({ myId }) => {
         channelName: null,
       });
     },
-    [broadcastStatus, clearDurationTimer, ensureLeave],
+    [broadcastStatus, clearDurationTimer, ensureLeave, peerFromChannel],
   );
 
   const subscribeRemoteAudio = useCallback(async (client) => {
@@ -142,6 +157,11 @@ const LiveVoice = ({ myId }) => {
       setConnectionQuality(
         mapAgoraQuality(stats?.uplinkNetworkQuality, stats?.downlinkNetworkQuality),
       );
+    });
+
+    client.on("user-left", () => {
+      if (!isActiveRef.current && !isJoiningRef.current) return;
+      stopSessionRef.current(false);
     });
 
     for (const user of client.remoteUsers || []) {
@@ -291,6 +311,8 @@ const LiveVoice = ({ myId }) => {
     const onIncoming = ({ from, channelName, callerName }) => {
       if (!from || !channelName) return;
       if (String(from) === String(myId)) return;
+      const stoppedAt = recentlyStoppedRef.current.get(String(channelName));
+      if (stoppedAt && Date.now() - stoppedAt < 8000) return;
       startSession({
         to: from,
         channelName,
@@ -301,8 +323,9 @@ const LiveVoice = ({ myId }) => {
     };
 
     const onPeerStop = ({ from, channelName }) => {
-      if (from && peerIdRef.current && String(from) !== String(peerIdRef.current)) {
-        return;
+      if (from && String(from) === String(myId)) return;
+      if (channelName) {
+        recentlyStoppedRef.current.set(String(channelName), Date.now());
       }
       if (
         channelName &&
@@ -311,7 +334,17 @@ const LiveVoice = ({ myId }) => {
       ) {
         return;
       }
-      if (!isActiveRef.current && !isJoiningRef.current) return;
+      if (
+        from &&
+        peerIdRef.current &&
+        String(from) !== String(peerIdRef.current) &&
+        !channelName
+      ) {
+        return;
+      }
+      if (!isActiveRef.current && !isJoiningRef.current && !channelRef.current) {
+        return;
+      }
       stopSession(false);
     };
 
@@ -356,13 +389,7 @@ const LiveVoice = ({ myId }) => {
   return (
     <LiveVoiceModal
       isOpen={isOpen}
-      onClose={() => {
-        if (isActiveRef.current || isJoiningRef.current) {
-          stopSession(true);
-        } else {
-          setIsOpen(false);
-        }
-      }}
+      onClose={() => stopSession(true)}
       isActive={isActive}
       duration={duration}
       isConnecting={isConnecting}

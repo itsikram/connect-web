@@ -4363,4 +4363,32 @@
 
 .call-dropdown-menu {
     background-color: #202122 !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important;
+    color: #ffffff !important;
+}
+
+.call-dropdown-menu ul {
+    background: transparent;
+}
+
+.call-dropdown-menu li {
+    color: #ffffff !important;
+    background-color: transparent !important;
+}
+
+.call-dropdown-menu li:hover,
+.call-dropdown-menu li:focus-visible {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    color: #ffffff !important;
+    outline: none;
+}
+
+.call-dropdown-menu li + li {
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.call-dropdown-menu li i,
+.call-dropdown-menu li span {
+    color: #ffffff !important;
 }

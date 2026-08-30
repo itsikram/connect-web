@@ -19,32 +19,68 @@ import config from "../../config/config.json";
 import { useWatchPipOptional } from "../../contexts/WatchPipContext";
 import { buildPipPayloadFromVideo, shouldAutoWatchPip, watchesToPipPlaylist } from "../../utils/watchPipHelpers";
 import WatchVideoPlayer from "./WatchVideoPlayer";
+import WatchSkeleton from "../../skletons/watch/WatchSkeleton";
+import WatchCacheManager, {
+    WATCH_CACHE_EVENT,
+} from "../../utils/watchCacheManager";
 const default_pp_src = config?.defaultProfile;
 
 
 const SinglePost = (watch) => {
     let { postId } = useParams()
     let location = useLocation()
-    let [watchData, setWatchData] = useState(false)
-    const [watchUrl, setWatchUrl] = useState(watch.videoUrl)
+    const { watchId } = useParams()
+    let myProfile = useSelector(state => state.profile)
+    let myProfileId = myProfile._id;
+    const cachedWatch = WatchCacheManager.findWatch(myProfileId, watchId)
+    const cachedFeed = myProfileId ? WatchCacheManager.getCachedFeed(myProfileId) : null
+    let [watchData, setWatchData] = useState(cachedWatch || false)
+    const [watchUrl, setWatchUrl] = useState(cachedWatch?.videoUrl || watch.videoUrl)
     let displayedWatch = useRef(null)
     let captionTextarea = useRef(null)
     const skipPipOnUnmount = useRef(false)
     const watchPip = useWatchPipOptional()
-    const { watchId } = useParams()
-    const [relatedWatches, setRelatedWatches] = useState([])
-    let loadData = async () => {
-
-        let res = await api.get('watch/single', { params: { watchId } })
-        if (res.status == 200) {
-            setWatchData(res.data)
-            setWatchUrl(res.data.videoUrl)
-        }
-    }
+    const [relatedWatches, setRelatedWatches] = useState(
+        Array.isArray(cachedFeed) ? cachedFeed : []
+    )
 
     useEffect(() => {
-        loadData()
-    }, [postId, watchId])
+        if (!watchId) return undefined;
+
+        const cached = WatchCacheManager.findWatch(myProfileId, watchId);
+        if (cached) {
+            setWatchData(cached);
+            setWatchUrl(cached.videoUrl);
+        } else {
+            setWatchData(false);
+            setWatchUrl(watch.videoUrl);
+        }
+
+        let cancelled = false;
+        WatchCacheManager.fetchWithCache({
+            key: `item:${watchId}`,
+            setCached: (item) => {
+                if (item && typeof item === "object") {
+                    WatchCacheManager.setCachedWatch(item);
+                }
+            },
+            fetcher: async () => {
+                const res = await api.get("watch/single", { params: { watchId } });
+                return res.status === 200 ? res.data : null;
+            },
+        })
+            .then((item) => {
+                if (!cancelled && item) {
+                    setWatchData(item);
+                    setWatchUrl(item.videoUrl);
+                }
+            })
+            .catch(() => {});
+
+        return () => {
+            cancelled = true;
+        };
+    }, [postId, watchId, myProfileId, watch.videoUrl])
 
     // Resume picture-in-picture playback or autoplay AI-selected videos.
     useEffect(() => {
@@ -115,25 +151,7 @@ const SinglePost = (watch) => {
     }, [watchPip, getPipMeta]);
 
     useEffect(() => {
-        const tryAutoPip = () => {
-            if (!shouldAutoWatchPip() || !watchPip?.startPip) return;
-            if (skipPipOnUnmount.current) return;
-            const video = displayedWatch.current;
-            if (!video || video.paused || video.ended) return;
-            const payload = buildPipPayloadFromVideo(video, getPipMeta());
-            if (payload) {
-                watchPip.startPip(payload);
-                video.pause();
-            }
-        };
-        const onVisibility = () => {
-            if (document.visibilityState === "hidden") tryAutoPip();
-        };
-        window.addEventListener("pagehide", tryAutoPip);
-        document.addEventListener("visibilitychange", onVisibility);
         return () => {
-            window.removeEventListener("pagehide", tryAutoPip);
-            document.removeEventListener("visibilitychange", onVisibility);
             if (!skipPipOnUnmount.current && shouldAutoWatchPip() && watchPip?.startPip) {
                 const video = displayedWatch.current;
                 if (video && !video.paused && !video.ended) {
@@ -144,25 +162,57 @@ const SinglePost = (watch) => {
         };
     }, [watchPip, getPipMeta]);
 
-
-
-    let myProfile = useSelector(state => state.profile)
-    let myProfileId = myProfile._id;
-
     useEffect(() => {
         if (!myProfileId) return undefined;
+
+        const cached = WatchCacheManager.getCachedFeed(myProfileId);
+        if (Array.isArray(cached)) {
+            setRelatedWatches(cached);
+        }
+
         let cancelled = false;
-        api.get("watch/related", { params: { profile_id: myProfileId } })
-            .then((res) => {
-                if (!cancelled && res.status === 200 && Array.isArray(res.data)) {
-                    setRelatedWatches(res.data);
+        WatchCacheManager.fetchWithCache({
+            key: `feed:${myProfileId}`,
+            setCached: (items) =>
+                WatchCacheManager.setCachedFeed(
+                    myProfileId,
+                    Array.isArray(items) ? items : [],
+                ),
+            fetcher: async () => {
+                const res = await api.get("watch/related", {
+                    params: { profile_id: myProfileId },
+                });
+                return Array.isArray(res.data) ? res.data : [];
+            },
+        })
+            .then((list) => {
+                if (!cancelled && Array.isArray(list)) {
+                    setRelatedWatches(list);
                 }
             })
             .catch(() => {});
+
         return () => {
             cancelled = true;
         };
     }, [myProfileId]);
+
+    useEffect(() => {
+        const onCacheUpdate = (event) => {
+            if (event.detail?.list === "feed" && event.detail?.profileId === myProfileId) {
+                setRelatedWatches(
+                    Array.isArray(event.detail.items) ? event.detail.items : [],
+                );
+            }
+            if (event.detail?.list === "item" && event.detail?.watchId === watchId && event.detail?.item) {
+                setWatchData(event.detail.item);
+                if (event.detail.item.videoUrl) setWatchUrl(event.detail.item.videoUrl);
+            }
+        };
+
+        window.addEventListener(WATCH_CACHE_EVENT, onCacheUpdate);
+        return () => window.removeEventListener(WATCH_CACHE_EVENT, onCacheUpdate);
+    }, [myProfileId, watchId]);
     let postAuthorProfileId = watchData && watchData?.author._id
     let [totalReacts, setTotalReacts] = useState(watchData && watchData.reacts.length)
     let [totalShares, setTotalShares] = useState(watchData && watchData.shares.length)
@@ -419,11 +469,13 @@ const SinglePost = (watch) => {
             let response = await api.post('/watch/update', { caption: newCaption, watchId: watchData._id })
             if (response.status === 200) {
                 setWatchData({ ...watchData, caption: newCaption })
-                // window.location.reload();
+                WatchCacheManager.updateWatch(myProfileId, watchData._id, {
+                    caption: newCaption,
+                })
             }
 
         }
-    }, [captionTextarea, watchData])
+    }, [captionTextarea, watchData, myProfileId])
 
     let handleCaptionEditBtnClick = () => {
 
@@ -448,6 +500,7 @@ const SinglePost = (watch) => {
                     <Col md="6" className='offset-md-3'>
                         <div id="post-container">
                             <div>
+                                {!watchData && <WatchSkeleton count={1} variant="single" />}
                                 {watchData && (
                                     <div className={`nf-post ${type}`}>
                                         <div className="header">

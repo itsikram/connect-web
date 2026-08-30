@@ -71,6 +71,7 @@ import MinimizedCallBar from "../components/MinimizedCallBar/MinimizedCallBar.js
 import StickyChatBoxContainer from "../components/Message/StickyChatBoxContainer.js";
 import config from "../config/config.json";
 import audioPreloader from "../utils/audioPreloader";
+import { playBumpSound, resumeAudioFromGesture } from "../utils/audioUnlock";
 import IosAddToHomeScreen from "../components/IosAddToHomeScreen";
 import WatchPipPlayer from "../components/watch/WatchPipPlayer";
 
@@ -315,6 +316,9 @@ const Main = () => {
   const audioElement = useRef(null);
   const speakAudioElement = useRef(null);
   const pendingSpeakPayloadRef = useRef(null);
+  const speakPlayPromiseRef = useRef(null);
+  const speakPlayGenerationRef = useRef(0);
+  const lastSpeakKeyRef = useRef({ key: "", at: 0 });
   const [audioReady, setAudioReady] = useState(false);
 
   const seoPages = [
@@ -406,32 +410,90 @@ const Main = () => {
     return speakAudioElement.current;
   };
 
+  const resolveSpeakSrc = (audioUrl) => {
+    try {
+      return new URL(audioUrl, window.location.href).href;
+    } catch (_e) {
+      return audioUrl;
+    }
+  };
+
   const playSpokenVoiceMessage = useCallback(async (payload = {}) => {
     const audioUrl = payload?.attachment;
     if (!audioUrl || !isAudioAttachmentUrl(audioUrl)) return false;
 
+    const resolvedSrc = resolveSpeakSrc(audioUrl);
+    const now = Date.now();
+    const currentEl = speakAudioElement.current;
+    if (
+      lastSpeakKeyRef.current.key === resolvedSrc &&
+      now - lastSpeakKeyRef.current.at < 400 &&
+      currentEl &&
+      !currentEl.paused
+    ) {
+      return true;
+    }
+    lastSpeakKeyRef.current = { key: resolvedSrc, at: now };
+
+    const el = getOrCreateSpeakAudioElement();
+    if (!el) return false;
+
+    const generation = ++speakPlayGenerationRef.current;
+
     try {
-      const el = getOrCreateSpeakAudioElement();
-      if (!el) return false;
+      resumeAudioFromGesture();
+    } catch (_e) {}
 
-      // Restart with latest requested voice message.
+    // Wait for any in-flight play() to settle before pausing. Calling pause()
+    // while play() is pending throws AbortError and sounds "blocked".
+    const inFlight = speakPlayPromiseRef.current;
+    speakPlayPromiseRef.current = null;
+    if (inFlight) {
       try {
-        el.pause();
+        await inFlight;
       } catch (_e) {}
+    }
 
-      if (el.src !== audioUrl) {
-        el.src = audioUrl;
-        el.load();
+    if (generation !== speakPlayGenerationRef.current) return true;
+
+    try {
+      if (!el.paused) {
+        el.pause();
       }
+    } catch (_e) {}
 
-      el.currentTime = 0;
-      el.muted = false;
-      el.volume = 1;
+    const currentSrc = el.currentSrc || el.src || "";
+    if (currentSrc !== resolvedSrc) {
+      el.src = audioUrl;
+    } else {
+      try {
+        el.currentTime = 0;
+      } catch (_e) {}
+    }
 
-      await el.play();
+    el.muted = false;
+    el.volume = 1;
+
+    try {
+      const playPromise = el.play();
+      speakPlayPromiseRef.current = playPromise;
+      if (playPromise) {
+        await playPromise;
+      }
+      if (speakPlayPromiseRef.current === playPromise) {
+        speakPlayPromiseRef.current = null;
+      }
+      if (generation !== speakPlayGenerationRef.current) return true;
       pendingSpeakPayloadRef.current = null;
       return true;
     } catch (error) {
+      if (speakPlayPromiseRef.current) {
+        speakPlayPromiseRef.current = null;
+      }
+      if (generation !== speakPlayGenerationRef.current) return true;
+      if (error?.name === "AbortError") {
+        return true;
+      }
       pendingSpeakPayloadRef.current = payload;
       console.warn(
         "Background voice playback blocked by browser policy:",
@@ -723,6 +785,10 @@ const Main = () => {
   // when the app regains foreground.
   useEffect(() => {
     const retryPendingSpeak = () => {
+      if (document.hidden) return;
+      if (speakPlayPromiseRef.current) return;
+      const el = speakAudioElement.current;
+      if (el && !el.paused) return;
       const payload = pendingSpeakPayloadRef.current;
       if (!payload) return;
       playSpokenVoiceMessage(payload);
@@ -1120,11 +1186,10 @@ const Main = () => {
         isAudioAttachmentUrl(payload?.attachment);
 
       if (isAudioSpeakRequest) {
-        const played = await playSpokenVoiceMessage(payload);
-        if (played) return;
+        await playSpokenVoiceMessage(payload);
+        return;
       }
 
-      // Fallback to TTS for text, or if audio playback is blocked by policy.
       speakText(payload);
     };
 
@@ -1136,6 +1201,68 @@ const Main = () => {
       socket.off("speak_message", handleSpeakMessage);
     };
   }, [socket, isTabActive, dispatch, playSpokenVoiceMessage]);
+
+  // Incoming bump: play sound even when this tab is unfocused
+  useEffect(() => {
+    if (!profileId || !isAuthenticated) return;
+
+    const playIncomingBump = async (payload = {}) => {
+      const sender = payload.myProfileData || {};
+      const senderId = String(
+        payload.senderId || sender._id || payload.from || "",
+      );
+      if (senderId && senderId === String(profileId)) return;
+
+      playBumpSound();
+
+      const senderName = sender.fullName || payload.senderName || "Someone";
+      const senderPic = sender.profilePic || payload.senderPic || false;
+      const chatLink = senderId ? `/message/${senderId}` : "/message";
+
+      if (!document.hidden) {
+        showMessageToast("bumped you", senderName, senderPic, chatLink);
+      } else if (
+        Notification.permission === "granted" &&
+        !webNotificationService.hasActivePushSubscription?.()
+      ) {
+        try {
+          const notification = new Notification("You were bumped!", {
+            body: `${senderName} bumped you`,
+            icon: senderPic || config?.logo || "/logo192.png",
+            tag: `bump-${senderId || Date.now()}`,
+            silent: true,
+          });
+          notification.onclick = () => {
+            window.focus();
+            if (senderId) window.location.href = chatLink;
+            notification.close();
+          };
+        } catch (_e) {}
+      }
+    };
+
+    const handleBumpUser = (payload) => {
+      playIncomingBump(payload);
+    };
+
+    const handleSwMessage = (event) => {
+      const msg = event.data || {};
+      if (msg.type === "PLAY_BUMP" || msg.data?.type === "bump") {
+        playIncomingBump(msg.data || msg);
+      }
+    };
+
+    socket.on("bumpUser", handleBumpUser);
+    navigator.serviceWorker?.addEventListener?.("message", handleSwMessage);
+
+    return () => {
+      socket.off("bumpUser", handleBumpUser);
+      navigator.serviceWorker?.removeEventListener?.(
+        "message",
+        handleSwMessage,
+      );
+    };
+  }, [profileId, isAuthenticated]);
 
   // Realtime in-app notification feed (bell menu)
   useEffect(() => {
@@ -1810,6 +1937,8 @@ const Main = () => {
         speakAudioElement.current = null;
       }
       pendingSpeakPayloadRef.current = null;
+      speakPlayPromiseRef.current = null;
+      speakPlayGenerationRef.current += 1;
     };
   }, []);
 

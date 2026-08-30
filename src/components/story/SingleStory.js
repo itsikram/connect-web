@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import UserPP from '../UserPP';
 import api from '../../api/api';
 import { useSelector } from 'react-redux';
 import StoryContainer from './StoryContainer';
-import StoryComment from './StoryComment';
+import StoryEngagementPanel, { StoryEngagementSkeleton } from './StoryEngagementPanel';
+import SingleStorySkeleton from '../../skletons/story/SingleStorySkeleton';
 import { confirmAlert } from 'react-confirm-alert';
 import $ from 'jquery';
 import Rlike from "../../assets/images/reacts/reactLike.svg";
@@ -13,20 +14,40 @@ import Rhaha from "../../assets/images/reacts/reactHaha.svg";
 import '../post/CommentStyles.css';
 import './StoryComments.css';
 
+const isSameProfile = (value, myId) => {
+    if (!myId) return false;
+    const id = value && typeof value === 'object' ? value._id : value;
+    return String(id) === String(myId);
+};
+
+const panelFromHash = (hash) => {
+    if (!hash) return 'comments';
+    if (hash.includes('react')) return 'reacts';
+    return 'comments';
+};
+
 const SingleStory = () => {
     const { storyId } = useParams();
+    const location = useLocation();
     const [story, setStory] = useState(false);
     const [storyBg, setStoryBg] = useState('');
     const [reactType, setReactType] = useState(false);
     const [allComments, setAllComments] = useState([]);
     const [totalComments, setTotalComments] = useState(0);
+    const [activePanel, setActivePanel] = useState(() => panelFromHash(window.location.hash));
     const myProfile = useSelector((state) => state.profile);
     const myId = myProfile?._id;
     const [isAuth, setIsAuth] = useState(false);
     const navigate = useNavigate();
+    const panelRef = useRef(null);
 
     useEffect(() => {
+        setStory(false);
+        setStoryBg('');
         setReactType('');
+        setAllComments([]);
+        setTotalComments(0);
+
         api.get('/story/single', { params: { storyId } }).then((res) => {
             if (res.status === 200) {
                 const comments = Array.isArray(res.data?.comments) ? res.data.comments : [];
@@ -42,9 +63,13 @@ const SingleStory = () => {
     }, [storyId, myId]);
 
     useEffect(() => {
+        setActivePanel(panelFromHash(location.hash));
+    }, [location.hash, storyId]);
+
+    useEffect(() => {
         if (story) {
             story.reacts?.forEach((react) => {
-                if (react.profile === myId) {
+                if (isSameProfile(react.profile, myId)) {
                     setReactType((react.type).toLowerCase());
                 }
             });
@@ -53,10 +78,24 @@ const SingleStory = () => {
         setIsAuth(story?.author && story.author._id === myId);
     }, [story, myId]);
 
+    const openPanel = useCallback((panel) => {
+        setActivePanel(panel);
+        if (window.matchMedia('(max-width: 991px)').matches) {
+            panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }, []);
+
     const removeReact = async (id, postType = 'story') => {
         const placeRes = await api.post('/react/removeReact', { id, postType });
         if (placeRes.status === 200) {
             setReactType(false);
+            setStory((prev) => {
+                if (!prev) return prev;
+                const reacts = Array.isArray(prev.reacts)
+                    ? prev.reacts.filter((react) => !isSameProfile(react.profile, myId))
+                    : [];
+                return { ...prev, reacts };
+            });
             return true;
         }
         return false;
@@ -66,6 +105,17 @@ const SingleStory = () => {
         const placeRes = await api.post('/react/addReact', { id, reactType: type, postType });
         if (placeRes.status === 200) {
             setReactType(type);
+            setStory((prev) => {
+                if (!prev) return prev;
+                const reacts = Array.isArray(prev.reacts) ? [...prev.reacts] : [];
+                const idx = reacts.findIndex((react) => isSameProfile(react.profile, myId));
+                if (idx >= 0) {
+                    reacts[idx] = { ...reacts[idx], type };
+                } else {
+                    reacts.push({ profile: myId, type });
+                }
+                return { ...prev, reacts };
+            });
             return true;
         }
         return false;
@@ -131,9 +181,26 @@ const SingleStory = () => {
         ? totalComments
         : (story?.comments?.length || 0);
 
+    const sidebar = !story ? (
+        <StoryEngagementSkeleton />
+    ) : (
+        <StoryEngagementPanel
+            story={story}
+            activePanel={activePanel}
+            onPanelChange={openPanel}
+            commentCount={commentCount}
+            allComments={allComments}
+            setAllComments={setAllComments}
+            setTotalComments={setTotalComments}
+            myProfile={myProfile}
+            myId={myId}
+            panelRef={panelRef}
+        />
+    );
+
     return (
-        <StoryContainer>
-            {story == null ? (<p />) : (
+        <StoryContainer sidebar={sidebar}>
+            {!story ? (<SingleStorySkeleton />) : (
                 <div className="single-story-container">
                     <div className="single-story" style={{ background: storyBg }}>
                         <div className="story-top">
@@ -152,15 +219,25 @@ const SingleStory = () => {
                                 </div>
                             </div>
                             <div className="story-options">
-                                <span className="option-button reacts">
-                                    <Link to="reacts">
-                                        <i className="fa fa-heart" />
-                                    </Link>
+                                <span
+                                    className={`option-button reacts ${activePanel === 'reacts' ? 'is-active' : ''}`}
+                                    onClick={() => openPanel('reacts')}
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openPanel('reacts'); }}
+                                    title="View reacts"
+                                >
+                                    <i className="fa fa-heart" />
                                 </span>
-                                <span className="option-button comments">
-                                    <a href="#story-comments">
-                                        <i className="fa fa-comments" />
-                                    </a>
+                                <span
+                                    className={`option-button comments ${activePanel === 'comments' ? 'is-active' : ''}`}
+                                    onClick={() => openPanel('comments')}
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openPanel('comments'); }}
+                                    title="View comments"
+                                >
+                                    <i className="fa fa-comments" />
                                 </span>
                                 {isAuth && (
                                     <span className="option-button delete text-danger" onClick={handleDeletePost}>
@@ -197,28 +274,6 @@ const SingleStory = () => {
                             </div>
                         </div>
                     </div>
-
-                    <section
-                        id="story-comments"
-                        className="single-story-comments-section"
-                        aria-label="Story comments"
-                    >
-                        <div className="single-story-comments-head">
-                            <h3>Comments</h3>
-                            <span className="single-story-comments-count">{commentCount}</span>
-                        </div>
-                        <div className="single-story-comments-body">
-                            <StoryComment
-                                story={story}
-                                commentState={setTotalComments}
-                                allComments={allComments}
-                                setAllComments={setAllComments}
-                                myProfile={myProfile}
-                                authProfile={myId}
-                                authProfilePicture={myProfile?.profilePic}
-                            />
-                        </div>
-                    </section>
                 </div>
             )}
         </StoryContainer>

@@ -145,27 +145,24 @@ const SingleReply = ({ item, myProfile, setReplies, comment, isEditMode }) => {
                     </div>
 
                     {(String(item.author._id) === String(myId) || isEditMode) && (
-                        <div
-                            className="options-icon"
-                            onClick={(e) => { e.stopPropagation(); setIsReplyOption((v) => !v); }}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                    e.preventDefault();
-                                    setIsReplyOption((v) => !v);
-                                }
-                            }}
-                            role="button"
-                            tabIndex={0}
-                            aria-label="Reply options"
-                        >
-                            <i className="far fa-ellipsis-h"></i>
-                            <div className={`options-container ${isReplyOption ? 'open' : ''}`}>
+                        <div className={`options-icon comment-options ${isReplyOption ? 'is-open' : ''}`}>
+                            <button
+                                type="button"
+                                className="comment-options-btn"
+                                onClick={(e) => { e.stopPropagation(); setIsReplyOption((v) => !v); }}
+                                aria-label="Reply options"
+                                aria-expanded={isReplyOption}
+                            >
+                                <i className="fas fa-ellipsis-h"></i>
+                            </button>
+                            <div className={`options-container ${isReplyOption ? 'open' : ''}`} role="menu">
                                 <button
                                     type="button"
                                     data-id={item._id}
                                     onClick={handleDeleteReplyBtn}
                                     className={`comment-option text-danger ${isDeleting ? 'loading-button' : ''}`}
                                     disabled={isDeleting}
+                                    role="menuitem"
                                 >
                                     {isDeleting ? (
                                         <>

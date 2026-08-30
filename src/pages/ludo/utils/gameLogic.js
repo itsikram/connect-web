@@ -1,4 +1,4 @@
-import { PATHS, SAFE_CELLS, DEFAULT_MAX_STEPS } from '../constants/gameConstants';
+import { PATHS, SAFE_CELLS, DEFAULT_MAX_STEPS, HOME_COLUMN_LENGTH } from '../constants/gameConstants';
 
 // Get position on path for a given player and steps
 export const getPositionOnPath = (playerIndex, steps) => {
@@ -247,3 +247,208 @@ export const getNextActivePlayer = (fromIndex, selectedPlayerCount, players, win
     }
     return fromIndex;
 };
+
+const homeColumnStart = (maxSteps) =>
+    Number(maxSteps) - (HOME_COLUMN_LENGTH - 1);
+
+const sameCell = (a, b) =>
+    Boolean(a && b && a.x === b.x && a.y === b.y);
+
+const isHomeColumnSteps = (steps, maxSteps) => {
+    const value = Number(steps) || 0;
+    return value > 0 && value >= homeColumnStart(maxSteps);
+};
+
+const destinationSteps = (fromSteps, diceVal, maxSteps) => {
+    if (fromSteps <= 0) return diceVal === 6 ? 1 : 0;
+    const next = fromSteps + Number(diceVal || 0);
+    return next <= maxSteps ? next : -1;
+};
+
+const countOwnAtCell = (player, playerIndex, cell, skipPieceIndex, maxSteps) => {
+    if (!player || !Array.isArray(player.pieces) || !cell) return 0;
+    return player.pieces.reduce((count, piece, pieceIndex) => {
+        if (pieceIndex === skipPieceIndex) return count;
+        const steps = getPieceSteps(piece);
+        if (steps <= 0 || steps >= maxSteps) return count;
+        return sameCell(getPositionOnPath(playerIndex, steps), cell)
+            ? count + 1
+            : count;
+    }, 0);
+};
+
+const opponentPiecesAtCell = (players, movingPlayerIndex, cell, maxSteps) => {
+    const hits = [];
+    if (!cell) return hits;
+    (players || []).forEach((player, playerIndex) => {
+        if (playerIndex === movingPlayerIndex || !Array.isArray(player?.pieces)) {
+            return;
+        }
+        player.pieces.forEach((piece, pieceIndex) => {
+            const steps = getPieceSteps(piece);
+            if (steps <= 0 || steps >= maxSteps || isHomeColumnSteps(steps, maxSteps)) {
+                return;
+            }
+            if (sameCell(getPositionOnPath(playerIndex, steps), cell)) {
+                hits.push({ playerIndex, pieceIndex, steps });
+            }
+        });
+    });
+    return hits;
+};
+
+const canCaptureAt = (players, movingPlayerIndex, cell, toSteps, maxSteps) => {
+    if (!cell || toSteps <= 0 || toSteps >= maxSteps || isHomeColumnSteps(toSteps, maxSteps)) {
+        return [];
+    }
+    if (isSafePosition(movingPlayerIndex, cell)) return [];
+
+    const hits = opponentPiecesAtCell(players, movingPlayerIndex, cell, maxSteps);
+    if (hits.length === 0) return [];
+
+    const byPlayer = new Map();
+    hits.forEach((hit) => {
+        const list = byPlayer.get(hit.playerIndex) || [];
+        list.push(hit);
+        byPlayer.set(hit.playerIndex, list);
+    });
+
+    const captured = [];
+    byPlayer.forEach((list) => {
+        const ownLandingStack =
+            1 + countOwnAtCell(players[movingPlayerIndex], movingPlayerIndex, cell, -1, maxSteps);
+        if (list.length >= 2 && ownLandingStack < 2) return;
+        captured.push(...list);
+    });
+    return captured;
+};
+
+const isCellThreatened = (players, ownerIndex, cell, skipOwnerPieceIndex, maxSteps) => {
+    if (!cell || isSafePosition(ownerIndex, cell)) return false;
+    const ownStack = countOwnAtCell(
+        players[ownerIndex],
+        ownerIndex,
+        cell,
+        skipOwnerPieceIndex,
+        maxSteps,
+    );
+    if (ownStack >= 1) return false;
+
+    return (players || []).some((player, playerIndex) => {
+        if (playerIndex === ownerIndex || !Array.isArray(player?.pieces)) return false;
+        return player.pieces.some((piece) => {
+            const from = getPieceSteps(piece);
+            if (from <= 0 || from >= maxSteps || isHomeColumnSteps(from, maxSteps)) {
+                return false;
+            }
+            for (let roll = 1; roll <= 6; roll += 1) {
+                const to = from + roll;
+                if (to > maxSteps || isHomeColumnSteps(to, maxSteps)) continue;
+                if (sameCell(getPositionOnPath(playerIndex, to), cell)) return true;
+            }
+            return false;
+        });
+    });
+};
+
+// Choose a bot move that develops several tokens instead of racing one piece home.
+export const pickSmartBotPiece = (
+    playableIds,
+    playerIndex,
+    players,
+    diceVal,
+    maxSteps,
+) => {
+    const ids = Array.isArray(playableIds) ? playableIds : [];
+    if (ids.length === 0) return 0;
+    if (ids.length === 1) return ids[0];
+
+    const pieces = players?.[playerIndex]?.pieces || [];
+    const max = Number(maxSteps) || getMaxSteps();
+    const roll = Number(diceVal) || 0;
+    const homeStart = homeColumnStart(max);
+
+    const inPlaySteps = pieces
+        .map((piece) => getPieceSteps(piece))
+        .filter((steps) => steps > 0 && steps < max);
+    const inPlayCount = inPlaySteps.length;
+    const yardCount = pieces.filter((piece) => getPieceSteps(piece) <= 0).length;
+    const minInPlay = inPlayCount ? Math.min(...inPlaySteps) : 0;
+    const maxInPlay = inPlayCount ? Math.max(...inPlaySteps) : 0;
+
+    let bestId = ids[0];
+    let bestScore = -Infinity;
+
+    ids.forEach((id) => {
+        const from = getPieceSteps(pieces[id]);
+        const to = destinationSteps(from, roll, max);
+        if (to < 0) return;
+
+        const leavingYard = from <= 0;
+        const dest = to > 0 ? getPositionOnPath(playerIndex, to) : null;
+        const fromCell = from > 0 ? getPositionOnPath(playerIndex, from) : null;
+        let score = 0;
+
+        const captures = leavingYard
+            ? []
+            : canCaptureAt(players, playerIndex, dest, to, max);
+        if (captures.length > 0) {
+            score += 1400 + captures.reduce((sum, hit) => sum + hit.steps * 3, 0);
+        }
+
+        if (to >= max) {
+            score += 1100;
+        } else if (to >= homeStart) {
+            score += 240;
+            if (from < homeStart) score += 180;
+            score += (to - homeStart) * 30;
+        }
+
+        if (leavingYard && roll === 6) {
+            if (inPlayCount === 0) score += 460;
+            else if (inPlayCount === 1) score += 420;
+            else if (inPlayCount === 2) score += 300;
+            else score += 90;
+        }
+
+        if (!leavingYard && to < homeStart) {
+            if (from === minInPlay) score += 160;
+            if (
+                from === maxInPlay &&
+                inPlayCount >= 2 &&
+                maxInPlay - minInPlay > 10
+            ) {
+                score -= 110;
+            }
+            if (from === maxInPlay && inPlayCount === 1 && yardCount > 0 && roll === 6) {
+                score -= 220;
+            }
+            score += Math.min(from, 18);
+        }
+
+        if (!leavingYard && fromCell && isCellThreatened(players, playerIndex, fromCell, id, max)) {
+            score += 240;
+            if (to >= homeStart || (dest && isSafePosition(playerIndex, dest))) {
+                score += 90;
+            }
+        }
+
+        if (dest && to > 0 && to < max) {
+            if (isSafePosition(playerIndex, dest) || to >= homeStart) score += 85;
+            else if (isCellThreatened(players, playerIndex, dest, id, max)) score -= 95;
+            if (countOwnAtCell(players[playerIndex], playerIndex, dest, id, max) >= 1) {
+                score += 55;
+            }
+        }
+
+        score += (Number(id) * 5 + roll) % 9;
+
+        if (score > bestScore) {
+            bestScore = score;
+            bestId = id;
+        }
+    });
+
+    return bestId;
+};
+

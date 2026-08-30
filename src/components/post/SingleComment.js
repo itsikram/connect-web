@@ -220,25 +220,22 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode, parentType = 
                     </div>
 
                     {(String(comment.author._id) === String(myId) || isEditMode) && (
-                        <div
-                            onClick={(e) => { e.stopPropagation(); setOptionsOpen((v) => !v); }}
-                            className="options-icon"
-                            role="button"
-                            tabIndex={0}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                    e.preventDefault();
-                                    setOptionsOpen((v) => !v);
-                                }
-                            }}
-                            aria-label="Comment options"
-                        >
-                            <i className="far fa-ellipsis-h"></i>
-                            <div className={`options-container ${optionsOpen ? 'open' : ''}`}>
+                        <div className={`options-icon comment-options ${optionsOpen ? 'is-open' : ''}`}>
+                            <button
+                                type="button"
+                                className="comment-options-btn"
+                                onClick={(e) => { e.stopPropagation(); setOptionsOpen((v) => !v); }}
+                                aria-label="Comment options"
+                                aria-expanded={optionsOpen}
+                            >
+                                <i className="fas fa-ellipsis-h"></i>
+                            </button>
+                            <div className={`options-container ${optionsOpen ? 'open' : ''}`} role="menu">
                                 <button
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); setIsEdit(true); setOptionsOpen(false); }}
                                     className="comment-option text-primary"
+                                    role="menuitem"
                                 >
                                     Edit Comment
                                 </button>
@@ -247,6 +244,7 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode, parentType = 
                                     onClick={deleteComment}
                                     className={`comment-option text-danger ${isDeleting ? 'loading-button' : ''}`}
                                     disabled={isDeleting}
+                                    role="menuitem"
                                 >
                                     {isDeleting ? (
                                         <>

@@ -73,13 +73,25 @@ const StoryComment = ({
     }, [storyId, resolveIncomingComments, story?.comments?.length]);
 
     useEffect(() => {
-        if ((comments?.length || 0) === 0 && (story?.comments?.length || 0) > 0) {
+        const storyCommentCount = Array.isArray(story?.comments)
+            ? story.comments.filter(Boolean).length
+            : 0;
+        const listCount = Array.isArray(comments) ? comments.filter(Boolean).length : 0;
+
+        if (!storyId || storyCommentCount === 0) {
+            setIsLoadingInitial(false);
+            return undefined;
+        }
+
+        if (listCount === 0) {
             setIsLoadingInitial(true);
             const t = setTimeout(() => setIsLoadingInitial(false), 400);
             return () => clearTimeout(t);
         }
+
+        setIsLoadingInitial(false);
         return undefined;
-    }, [comments?.length, story?.comments?.length]);
+    }, [comments, story?.comments, storyId]);
 
     const submitComment = useCallback(async () => {
         if (isSubmittingComment) return;
@@ -141,7 +153,9 @@ const StoryComment = ({
         }
     }, [commitComments, commentState]);
 
-    const commentsList = Array.isArray(comments) ? comments.filter(Boolean) : [];
+    const commentsList = Array.isArray(comments)
+        ? comments.filter((comment) => comment && (comment._id || comment.body || comment.author))
+        : [];
 
     return (
         <Fragment>
@@ -149,7 +163,7 @@ const StoryComment = ({
                 {isLoadingInitial && <CommentSkeleton count={3} />}
 
                 {!isLoadingInitial && commentsList.length === 0 && (
-                    <div className="story-comments-empty">No comments yet. Be the first to comment.</div>
+                    <div className="story-comments-empty">No comments yet</div>
                 )}
 
                 {!isLoadingInitial && commentsList.map((comment) => (

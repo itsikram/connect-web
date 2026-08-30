@@ -36,6 +36,7 @@ import {
   SORT_OPTIONS,
 } from "../utils/videoPlayerLibrary";
 import useMediaSession from "../hooks/useMediaSession";
+import useBackgroundAudioHandoff from "../hooks/useBackgroundAudioHandoff";
 
 const VideoPlayer = () => {
   const myProfileId = useSelector((state) => state.profile?._id);
@@ -164,6 +165,10 @@ const VideoPlayer = () => {
   playlistPipRef.current = libraryPipPlaylist;
 
   const isThisPip = watchPip?.pip?.source === "library" && !!watchPip.pip.videoUrl;
+  const backgroundAudio = useBackgroundAudioHandoff(videoRef, {
+    src: currentVideo?.url,
+    enabled: !!currentVideo?.url && !isThisPip,
+  });
 
   useEffect(() => {
     setPlaylistOrder((prev) => {
@@ -806,17 +811,24 @@ const VideoPlayer = () => {
   };
 
   const playCurrent = useCallback(() => {
+    backgroundAudio.wantPlayingRef.current = true;
+    if (document.hidden) {
+      return backgroundAudio
+        .playBackgroundAudio({ unmuted: true })
+        .then(() => setIsPlaying(true));
+    }
     const video = videoRef.current;
     if (!video) return Promise.resolve();
     return video.play().then(() => setIsPlaying(true));
-  }, []);
+  }, [backgroundAudio]);
 
   const pauseCurrent = useCallback(() => {
+    backgroundAudio.wantPlayingRef.current = false;
+    backgroundAudio.pauseBackgroundAudio();
     const video = videoRef.current;
-    if (!video) return;
-    video.pause();
+    if (video) video.pause();
     setIsPlaying(false);
-  }, []);
+  }, [backgroundAudio]);
 
   const togglePlayPause = () => {
     if (isThisPip) {
@@ -1001,41 +1013,55 @@ const VideoPlayer = () => {
 
   const seekBy = useCallback((delta) => {
     const video = videoRef.current;
-    if (!video) return;
+    const audio = backgroundAudio.audioRef.current;
+    const el = document.hidden && audio ? audio : video;
+    if (!el) return;
 
-    const maxDuration = Number(video.duration);
-    const base = Number(video.currentTime);
+    const maxDuration = Number(el.duration);
+    const base = Number(el.currentTime);
     if (!Number.isFinite(base)) return;
 
     const next = base + delta;
-    if (Number.isFinite(maxDuration) && maxDuration > 0) {
-      video.currentTime = Math.min(maxDuration, Math.max(0, next));
-      return;
+    const clamped =
+      Number.isFinite(maxDuration) && maxDuration > 0
+        ? Math.min(maxDuration, Math.max(0, next))
+        : Math.max(0, next);
+    el.currentTime = clamped;
+    if (video && video !== el) {
+      try {
+        video.currentTime = clamped;
+      } catch (_) {}
     }
-    video.currentTime = Math.max(0, next);
-  }, []);
+  }, [backgroundAudio]);
 
   const seekTo = useCallback((details) => {
     const video = videoRef.current;
-    if (!video) return;
+    const audio = backgroundAudio.audioRef.current;
+    const el = document.hidden && audio ? audio : video;
+    if (!el) return;
 
     const requested = Number(details?.seekTime);
     if (!Number.isFinite(requested) || requested < 0) return;
 
-    const maxDuration = Number(video.duration);
+    const maxDuration = Number(el.duration);
     const target =
       Number.isFinite(maxDuration) && maxDuration > 0
         ? Math.min(maxDuration, requested)
         : requested;
 
-    if (details?.fastSeek && typeof video.fastSeek === "function") {
+    if (details?.fastSeek && typeof el.fastSeek === "function") {
       try {
-        video.fastSeek(target);
+        el.fastSeek(target);
         return;
       } catch (_) {}
     }
-    video.currentTime = target;
-  }, []);
+    el.currentTime = target;
+    if (video && video !== el) {
+      try {
+        video.currentTime = target;
+      } catch (_) {}
+    }
+  }, [backgroundAudio]);
 
   const playerIsPlaying = isThisPip
     ? watchPip?.pip?.playing !== false
@@ -1136,11 +1162,21 @@ const VideoPlayer = () => {
                       className="main-video"
                       controls={mediaReady}
                       playsInline
+                      webkit-playsinline="true"
                       preload="auto"
                       poster={currentVideo.thumbnail || undefined}
                       onEnded={handleVideoEnd}
                       onPlay={() => setIsPlaying(true)}
-                      onPause={() => setIsPlaying(false)}
+                      onPause={() => {
+                        if (backgroundAudio.handingOffRef.current) return;
+                        if (
+                          document.hidden &&
+                          backgroundAudio.wantPlayingRef.current
+                        ) {
+                          return;
+                        }
+                        setIsPlaying(false);
+                      }}
                     />
                     {!mediaReady ? (
                       <div className="video-media-cover" aria-hidden="true">

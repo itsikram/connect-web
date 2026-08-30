@@ -24,7 +24,8 @@
   width: min(46vw, 240px);
 }
 
-.watch-pip-player.is-minimized {
+.watch-pip-player.is-minimized.dock-top,
+.watch-pip-player.is-minimized.dock-bottom {
   width: auto;
   min-width: 220px;
   max-width: min(96vw, 280px);
@@ -33,19 +34,29 @@
 }
 
 .watch-pip-player.is-minimized.dock-left,
-.watch-pip-player.is-minimized.dock-right,
-.watch-pip-player.is-minimized.dock-top,
-.watch-pip-player.is-minimized.dock-bottom {
-  width: auto;
+.watch-pip-player.is-minimized.dock-right {
+  width: 64px;
+  min-width: 64px;
+  max-width: 72px;
+  flex-direction: column;
+  align-items: center;
 }
 
 .watch-pip-mini {
   display: flex;
+  flex-direction: row;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   padding: 6px 8px;
   width: 100%;
   cursor: grab;
+}
+
+.watch-pip-player.is-minimized.dock-left .watch-pip-mini,
+.watch-pip-player.is-minimized.dock-right .watch-pip-mini {
+  flex-direction: column;
+  padding: 8px 6px;
 }
 
 .watch-pip-mini-thumb {
@@ -125,6 +136,13 @@
 
 .watch-pip-video-wrap.is-loading .watch-pip-video {
   opacity: 0;
+}
+
+.watch-pip-video-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
 }
 
 .watch-pip-player.is-watch .watch-pip-video-wrap {
@@ -226,6 +244,6 @@ html.standalone-pwa .watch-pip-player {
 
   .watch-pip-player.is-minimized.dock-left,
   .watch-pip-player.is-minimized.dock-right {
-    width: auto;
+    width: 64px;
   }
 }

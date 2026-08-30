@@ -316,6 +316,83 @@
     font-weight: 500;
 }
 
+/* Friend grid skeleton — same card geometry as FGI */
+.friends-page #friends-container .friend-grid-item.fgi-skeleton {
+    pointer-events: none;
+    user-select: none;
+}
+
+.friends-page #friends-container .friend-grid-item.fgi-skeleton:hover {
+    transform: none;
+    border-color: var(--fr-border);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.friends-page .fgi-skeleton-photo,
+.friends-page .fgi-skeleton-line,
+.friends-page .fgi-skeleton-btn {
+    background: linear-gradient(
+        100deg,
+        rgba(255, 255, 255, 0.04) 0%,
+        rgba(255, 255, 255, 0.09) 42%,
+        rgba(0, 212, 255, 0.1) 50%,
+        rgba(255, 255, 255, 0.09) 58%,
+        rgba(255, 255, 255, 0.04) 100%
+    );
+    background-size: 220% 100%;
+    animation: fgiSkeletonShine 1.55s ease-in-out infinite;
+}
+
+.friends-page .fgi-skeleton-photo {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    min-height: 0;
+    border-radius: 0;
+}
+
+.friends-page .fgi-skeleton-line {
+    display: block;
+    height: 13px;
+    max-width: 100%;
+    margin: 2px auto 6px;
+    border-radius: 999px;
+}
+
+.friends-page #friends-container .friend-grid-item.fgi-skeleton .grid-body .profile-name {
+    min-height: 2.5em;
+    margin-bottom: 2px;
+}
+
+.friends-page #friends-container .friend-grid-item.fgi-skeleton .grid-body .fgi-skeleton-btn {
+    min-height: 36px;
+    padding: 0;
+    color: transparent;
+    border: 0;
+    cursor: default;
+}
+
+.friends-page #friends-container .friend-grid-item.fgi-skeleton .grid-body .primary-button.fgi-skeleton-btn {
+    background: linear-gradient(
+        100deg,
+        rgba(0, 212, 255, 0.18) 0%,
+        rgba(0, 153, 204, 0.28) 42%,
+        rgba(0, 212, 255, 0.38) 50%,
+        rgba(0, 153, 204, 0.28) 58%,
+        rgba(0, 212, 255, 0.18) 100%
+    ) !important;
+    background-size: 220% 100%;
+    animation: fgiSkeletonShine 1.55s ease-in-out infinite;
+}
+
+@keyframes fgiSkeletonShine {
+    0% {
+        background-position: 100% 0;
+    }
+    100% {
+        background-position: -100% 0;
+    }
+}
+
 /* Places Near You */
 .friends-page .places-near-you {
     display: flex;
