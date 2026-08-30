@@ -204,6 +204,7 @@ const speakText = (textOrMsg) => {
 // Track message notifications to prevent duplicate toasts across page reloads
 // Store message IDs and last notification time for persistence
 const DEDUP_STORAGE_KEY = 'notifiedMessageIds'; // Store set of notified message IDs
+const DEDUP_NOTIFICATIONS_KEY = 'notifiedNotificationIds'; // Store set of notified notification IDs
 const LAST_NOTIFICATION_FETCH_KEY = 'lastNotificationFetchTime'; // Store last fetch timestamp
 const DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000; // Keep notified IDs for 24 hours, then auto-cleanup
 
@@ -251,9 +252,36 @@ const saveLastNotificationFetchTime = (timestamp) => {
   }
 };
 
+const getNotifiedNotifications = () => {
+  try {
+    const stored = localStorage.getItem(DEDUP_NOTIFICATIONS_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // Clean up very old entries (more than 24 hours old)
+      const now = Date.now();
+      const cleaned = Object.fromEntries(
+        Object.entries(parsed).filter(([, timestamp]) => now - timestamp < DEDUP_WINDOW_MS)
+      );
+      return cleaned;
+    }
+  } catch (error) {
+    console.error('Error loading notified notifications:', error);
+  }
+  return {};
+};
+
+const saveNotifiedNotifications = (obj) => {
+  try {
+    localStorage.setItem(DEDUP_NOTIFICATIONS_KEY, JSON.stringify(obj));
+  } catch (error) {
+    console.error('Error saving notified notifications:', error);
+  }
+};
+
 // Store message IDs that have been notified with their timestamps
 // Using object {messageId: timestamp} instead of Set for persistence across reloads
 const notifiedMessageIds = getNotifiedMessages();
+const notifiedNotificationIds = getNotifiedNotifications();
 let lastNotificationFetchTime = getLastNotificationFetchTime(); // Timestamp of last fetch
 
 const Main = () => {
@@ -638,8 +666,21 @@ const Main = () => {
         response.data.notifications.forEach((notification) => {
           dispatch(addNotification(notification));
 
+          const notificationId = notification._id?.toString() || notification._id;
+          
+          // Skip if this notification was already shown before
+          if (notifiedNotificationIds[notificationId]) {
+            console.log('⏭️ Skipping duplicate notification:', notificationId);
+            return;
+          }
+
           // Skip toast and browser notification for message types
           if (notification.type !== "message") {
+            // Mark as notified
+            notifiedNotificationIds[notificationId] = Date.now();
+            saveNotifiedNotifications(notifiedNotificationIds);
+            
+            console.log('📢 Showing notification:', notificationId);
             const notificationLink = getNotificationLink(notification);
             notify(
               notification.text,
@@ -647,6 +688,10 @@ const Main = () => {
               notification.icon,
               notificationLink,
             );
+
+            // Mark notification as seen on backend (prevent re-showing on reload)
+            api.post('/notification/view', { notificationId })
+              .catch(err => console.warn('Failed to mark notification as seen:', err));
 
             // Skip page Notification when Web Push is subscribed (SW already shows it)
             if (
