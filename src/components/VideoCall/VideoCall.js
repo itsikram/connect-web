@@ -83,6 +83,8 @@ const VideoCall = ({ myId }) => {
   const receivingCallRef = useRef(false);
   const callAcceptedRef = useRef(callAccepted);
   const currentChannelRef = useRef(currentChannel);
+  const callerRef = useRef(caller);
+  const callSeenStatusSentRef = useRef(false);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -96,6 +98,10 @@ const VideoCall = ({ myId }) => {
   useEffect(() => {
     currentChannelRef.current = currentChannel;
   }, [currentChannel]);
+
+  useEffect(() => {
+    callerRef.current = caller;
+  }, [caller]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -356,6 +362,25 @@ const VideoCall = ({ myId }) => {
     closeCallNotification();
   };
 
+  const markCallSeenIfNeeded = useCallback(() => {
+    if (
+      callSeenStatusSentRef.current ||
+      !receivingCallRef.current ||
+      callAcceptedRef.current
+    ) {
+      return;
+    }
+
+    const to = callerRef.current;
+    if (!to) return;
+
+    callSeenStatusSentRef.current = true;
+    socket.emit("update-call-status", {
+      to: String(to),
+      status: "Call seen",
+    });
+  }, []);
+
   const startFlashingTitle = useCallback((name = "Someone") => {
     try {
       if (titleFlashIntervalRef.current) return;
@@ -604,6 +629,7 @@ const VideoCall = ({ myId }) => {
     setIsMinimized(false);
     setCallDuration(0);
     setOutgoingCallStatus("");
+    callSeenStatusSentRef.current = false;
     if (minimizedDurationInterval.current) {
       clearInterval(minimizedDurationInterval.current);
       minimizedDurationInterval.current = null;
@@ -1102,6 +1128,7 @@ const VideoCall = ({ myId }) => {
         channelName,
       );
       console.log("VideoCall - Friend info:", { callerName, callerProfilePic });
+      callSeenStatusSentRef.current = false;
       setIsVideoCall(true);
       setReceivingCall(false);
       setCaller(to);
@@ -1190,6 +1217,7 @@ const VideoCall = ({ myId }) => {
       receivingCallRef.current = true;
       callAcceptedRef.current = false;
       currentChannelRef.current = channelName;
+      callSeenStatusSentRef.current = false;
 
       setIsVideoCall(true);
       setReceivingCall(true);
@@ -1358,12 +1386,12 @@ const VideoCall = ({ myId }) => {
 
     // Outgoing call status updates from callee
     const handleUpdatedCallStatus = ({ from, status }) => {
-      // Only update if this status is for the current friend and we're the caller waiting
+      // Only for outgoing (caller) side: receivingCall is false
       if (
-        !callAccepted &&
         !receivingCallRef.current &&
-        caller &&
-        from === caller
+        !callAcceptedRef.current &&
+        callerRef.current &&
+        from === callerRef.current
       ) {
         setOutgoingCallStatus(status || "");
       }
@@ -1470,6 +1498,7 @@ const VideoCall = ({ myId }) => {
         !callAcceptedRef.current &&
         ringtoneAudio?.current
       ) {
+        markCallSeenIfNeeded();
         const audio = ringtoneAudio.current;
         // Resume playback if it was paused due to tab being hidden
         if (audio.paused && audio.src && audio.src !== window.location.href) {
@@ -1498,6 +1527,7 @@ const VideoCall = ({ myId }) => {
         !callAcceptedRef.current &&
         ringtoneAudio?.current
       ) {
+        markCallSeenIfNeeded();
         const audio = ringtoneAudio.current;
         if (audio.paused && audio.src && audio.src !== window.location.href) {
           console.log("VideoCall: Resuming ringtone on window focus");
@@ -1521,7 +1551,7 @@ const VideoCall = ({ myId }) => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleWindowFocus);
     };
-  }, []); // Empty deps - handlers use refs which are always current
+  }, [markCallSeenIfNeeded]); // Handlers use refs; include seen-status callback
 
   // Cleanup on component unmount
   useEffect(() => {

@@ -72,6 +72,7 @@ const AudioCall = ({ myId }) => {
   const callAcceptedRef = useRef(callAccepted);
   const currentChannelRef = useRef(currentChannel);
   const callerRef = useRef(caller);
+  const callSeenStatusSentRef = useRef(false);
   const pendingAutoAcceptRef = useRef(false);
   const answerCallRef = useRef(null);
 
@@ -290,6 +291,25 @@ const AudioCall = ({ myId }) => {
 
     closeCallNotification();
   };
+
+  const markCallSeenIfNeeded = useCallback(() => {
+    if (
+      callSeenStatusSentRef.current ||
+      !receivingCallRef.current ||
+      callAcceptedRef.current
+    ) {
+      return;
+    }
+
+    const to = callerRef.current;
+    if (!to) return;
+
+    callSeenStatusSentRef.current = true;
+    socket.emit("update-call-status", {
+      to: String(to),
+      status: "Call seen",
+    });
+  }, []);
 
   const playRingtone = useCallback(async () => {
     await unlockAudio();
@@ -821,6 +841,7 @@ const AudioCall = ({ myId }) => {
     setCallerProfilePic("");
     setIsMinimized(false);
     setCallDuration(0);
+    callSeenStatusSentRef.current = false;
     isTerminating.current = false;
     console.log("AudioCall: Cleanup - reset state variables");
   }, [currentChannel, endMinimizedCall, isTerminating]);
@@ -896,6 +917,7 @@ const AudioCall = ({ myId }) => {
       receivingCallRef.current = true;
       callAcceptedRef.current = false;
       currentChannelRef.current = channelName;
+      callSeenStatusSentRef.current = false;
 
       setIsAudioCall(true);
       setReceivingCall(true);
@@ -1004,6 +1026,7 @@ const AudioCall = ({ myId }) => {
         console.warn("AudioCall: Cannot start outgoing call - already busy");
         return;
       }
+      callSeenStatusSentRef.current = false;
       setIsAudioCall(true);
       setReceivingCall(false);
       setCaller(to);
@@ -1152,6 +1175,7 @@ const AudioCall = ({ myId }) => {
         !callAcceptedRef.current &&
         ringtoneAudio?.current
       ) {
+        markCallSeenIfNeeded();
         const audio = ringtoneAudio.current;
         // Resume playback if it was paused due to tab being hidden
         if (audio.paused && audio.src && audio.src !== window.location.href) {
@@ -1180,6 +1204,7 @@ const AudioCall = ({ myId }) => {
         !callAcceptedRef.current &&
         ringtoneAudio?.current
       ) {
+        markCallSeenIfNeeded();
         const audio = ringtoneAudio.current;
         if (audio.paused && audio.src && audio.src !== window.location.href) {
           console.log("AudioCall: Resuming ringtone on window focus");
@@ -1203,7 +1228,7 @@ const AudioCall = ({ myId }) => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleWindowFocus);
     };
-  }, []);
+  }, [markCallSeenIfNeeded]);
 
   // Initialize audio unlock on component mount
   useEffect(() => {
