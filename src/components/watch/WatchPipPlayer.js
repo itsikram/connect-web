@@ -89,6 +89,8 @@ const WatchPipPlayer = () => {
     loop: looping && playlist.length <= 1,
     onEndedRef: backgroundEndedRef,
   });
+  const bgApiRef = useRef(backgroundAudio);
+  bgApiRef.current = backgroundAudio;
 
   if (pip && initialPlaybackRef.current?.trackKey !== pipTrackKey) {
     initialPlaybackRef.current = {
@@ -124,9 +126,10 @@ const WatchPipPlayer = () => {
               video.muted = true;
               video.pause();
             } catch (_) {}
-            backgroundAudio.wantPlayingRef.current = true;
-            backgroundAudio.playBackgroundAudio({ fromStart: true });
-            setPaused(false);
+            bgApiRef.current.wantPlayingRef.current = true;
+            bgApiRef.current.playBackgroundAudio().then((ok) => {
+              setPaused(!ok);
+            });
           } else {
             video.play().catch(() => setPaused(true));
           }
@@ -152,7 +155,7 @@ const WatchPipPlayer = () => {
       cancelled = true;
       video.removeEventListener("canplay", playWhenReady);
     };
-  }, [pipTrackKey, pip?.videoUrl, backgroundAudio]);
+  }, [pipTrackKey, pip?.videoUrl]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -165,21 +168,23 @@ const WatchPipPlayer = () => {
 
     if (pip.playing && video.paused && video.readyState >= 2) {
       if (document.hidden) {
-        if (!backgroundAudio.isAudioPlaying()) {
-          backgroundAudio.playBackgroundAudio();
+        const api = bgApiRef.current;
+        if (!api.wantPlayingRef.current) return;
+        if (!api.isAudioPlaying()) {
+          api.playBackgroundAudio();
         }
-      } else if (!backgroundAudio.handingOffRef.current) {
+      } else if (!bgApiRef.current.handingOffRef.current) {
         video.play().catch(() => setPaused(true));
       }
     } else if (
       !pip.playing &&
       !video.paused &&
-      !backgroundAudio.handingOffRef.current
+      !bgApiRef.current.handingOffRef.current
     ) {
       video.pause();
-      backgroundAudio.pauseBackgroundAudio();
+      bgApiRef.current.pauseBackgroundAudio();
     }
-  }, [pip?.playing, pipTrackKey, mediaReady, backgroundAudio]);
+  }, [pip?.playing, pipTrackKey, mediaReady]);
 
   useEffect(() => {
     if (!pipTrackKey) return undefined;
@@ -199,25 +204,17 @@ const WatchPipPlayer = () => {
     };
 
     const persistProgress = () => {
-      const audio = backgroundAudio.audioRef.current;
-      const usingAudio =
-        document.hidden && !!(audio && !audio.paused);
+      const api = bgApiRef.current;
+      const audio = api.audioRef.current;
+      const usingAudio = document.hidden && !!(audio && !audio.paused);
       if (usingAudio) {
-        updatePip({
-          currentTime: audio.currentTime,
-          playing: true,
-          muted: false,
-        });
+        const nextTime = Number(audio.currentTime);
+        if (Number.isFinite(nextTime)) setCurrentTime(Math.max(0, nextTime));
+        const nextDur = Number(audio.duration);
+        if (Number.isFinite(nextDur) && nextDur > 0) setDuration(nextDur);
         return;
       }
-      if (document.hidden && backgroundAudio.wantPlayingRef.current) {
-        return;
-      }
-      updatePip({
-        currentTime: video.currentTime,
-        playing: !video.paused,
-        muted: video.muted,
-      });
+      if (document.hidden && api.wantPlayingRef.current) return;
     };
 
     const onPlay = () => {
@@ -227,8 +224,8 @@ const WatchPipPlayer = () => {
     };
 
     const onPause = () => {
-      if (backgroundAudio.handingOffRef.current) return;
-      if (document.hidden && backgroundAudio.wantPlayingRef.current) return;
+      if (bgApiRef.current.handingOffRef.current) return;
+      if (document.hidden && bgApiRef.current.wantPlayingRef.current) return;
       setPaused(true);
       sync();
       persistProgress();
@@ -254,19 +251,23 @@ const WatchPipPlayer = () => {
       video.removeEventListener("pause", onPause);
       window.clearInterval(progressTimer);
     };
-  }, [pipTrackKey, updatePip, backgroundAudio]);
+  }, [pipTrackKey, updatePip]);
 
   const playCurrent = useCallback(() => {
     backgroundAudio.wantPlayingRef.current = true;
     if (document.hidden) {
-      return backgroundAudio
-        .playBackgroundAudio()
-        .then(() => setPaused(false));
+      return backgroundAudio.playBackgroundAudio().then((ok) => {
+        setPaused(!ok);
+        if (ok) updatePip({ playing: true });
+      });
     }
     const video = videoRef.current;
     if (!video) return Promise.resolve();
-    return video.play().then(() => setPaused(false));
-  }, [backgroundAudio]);
+    return video.play().then(() => {
+      setPaused(false);
+      updatePip({ playing: true });
+    });
+  }, [backgroundAudio, updatePip]);
 
   const pauseCurrent = useCallback(() => {
     backgroundAudio.wantPlayingRef.current = false;
@@ -274,7 +275,8 @@ const WatchPipPlayer = () => {
     const video = videoRef.current;
     if (video) video.pause();
     setPaused(true);
-  }, [backgroundAudio]);
+    updatePip({ playing: false });
+  }, [backgroundAudio, updatePip]);
 
   const seekBy = useCallback((delta) => {
     const video = videoRef.current;
@@ -502,7 +504,7 @@ const WatchPipPlayer = () => {
 
   useMediaSession({
     enabled: !!pip,
-    bindKey: `${pipTrackKey}:${backgroundAudio.sessionBindKey}`,
+    bindKey: pipTrackKey,
     metadata: pip
       ? {
           title: pip.title || "Connect Watch",
@@ -512,8 +514,9 @@ const WatchPipPlayer = () => {
           artwork: mediaArtwork,
         }
       : null,
-    playbackState:
-      paused && !backgroundAudio.mediaPosition.playing ? "paused" : "playing",
+    playbackState: backgroundAudio.mediaPosition.playing || !paused
+      ? "playing"
+      : "paused",
     positionState: {
       duration:
         backgroundAudio.mediaPosition.playing &&

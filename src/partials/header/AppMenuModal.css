@@ -17,13 +17,18 @@
 
 /* React Modal content shell — bounded height so body can scroll */
 #app-menu-modal.ReactModal__Content,
-.ReactModal__Content#app-menu-modal {
+.ReactModal__Content#app-menu-modal,
+.app-modal-content#app-menu-modal {
     display: flex !important;
     flex-direction: column !important;
     overflow: hidden !important;
     max-height: min(85dvh, 85vh) !important;
     padding: 0 !important;
     box-sizing: border-box;
+}
+
+.app-modal-content#app-menu-modal:not(.is-fullscreen) {
+    width: min(520px, calc(100vw - 24px)) !important;
 }
 
 .app-menu-modal-header {
@@ -260,7 +265,8 @@
 /* Fullscreen mobile shell */
 #app-menu-modal.fullscreen-modal,
 .fullscreen-modal#app-menu-modal,
-.ReactModal__Content.fullscreen-modal#app-menu-modal {
+.ReactModal__Content.fullscreen-modal#app-menu-modal,
+.app-modal-content.is-fullscreen#app-menu-modal {
     inset: 0 !important;
     left: 0 !important;
     right: 0 !important;

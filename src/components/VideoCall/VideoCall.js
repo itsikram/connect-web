@@ -1918,9 +1918,8 @@ const VideoCall = ({ myId }) => {
           isFullscreen
             ? {}
             : {
-                width: isMobile ? "95%" : "600px",
-                top: "50%",
                 height: modalHeight,
+                maxHeight: "min(92dvh, 100svh)",
               }
         }
         isOpen={isVideoCall && !isMinimized}

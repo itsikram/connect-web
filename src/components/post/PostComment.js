@@ -464,6 +464,7 @@ const PostComment = ({
       {commentData.attachment && (
         <div className="comment-attachment-preview">
           <img alt="comment attachment" src={commentData.attachment} />
+          <span className="comment-attachment-preview-label">Photo</span>
           <button
             type="button"
             className="remove-attachment-btn"

@@ -2643,8 +2643,6 @@ const ChatHeader = ({
             isFullscreen
               ? {}
               : {
-                  width: isMobile ? "95%" : "600px",
-                  top: "50%",
                   height: "auto",
                 }
           }

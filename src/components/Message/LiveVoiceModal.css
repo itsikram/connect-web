@@ -449,3 +449,31 @@
 .live-voice-stop-btn i {
     font-size: 14px;
 }
+
+@media (max-width: 768px) {
+    .live-voice-modal-header {
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        gap: 8px;
+    }
+
+    .live-voice-modal-header h3 {
+        font-size: 1.05rem;
+    }
+
+    .live-voice-status-container {
+        padding: 20px 14px;
+        gap: 14px;
+    }
+}
+
+@media (max-width: 380px) {
+    .live-voice-header-content {
+        gap: 8px;
+        min-width: 0;
+    }
+
+    .live-voice-modal-header h3 {
+        font-size: 0.95rem;
+    }
+}

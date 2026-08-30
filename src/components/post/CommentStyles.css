@@ -168,24 +168,135 @@
     white-space: pre-wrap;
 }
 
-/* Comment Attachment */
+/* Comment Attachment — sits below the text bubble, not inside it */
+.footer .comments .comment-container .comment-box .comment-attachment-container,
+.nf-post .footer .comments .comment-container .comment-box .comment-attachment-container,
 .comment-container .comment-attachment-container {
-    margin-top: var(--fb-spacing-sm);
-    border-radius: var(--fb-radius-sm);
-    overflow: hidden;
+    display: block !important;
+    position: relative !important;
+    margin: 6px 0 2px !important;
+    padding: 0 !important;
+    border: none !important;
+    border-top: none !important;
+    background: transparent !important;
+    text-align: left !important;
+    max-width: min(240px, 100%) !important;
+    width: auto !important;
+    border-radius: 14px !important;
+    overflow: hidden !important;
+    cursor: zoom-in !important;
+    appearance: none;
+    -webkit-appearance: none;
+    line-height: 0 !important;
+    color: inherit !important;
+    font: inherit !important;
+    box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.08),
+        0 8px 20px rgba(0, 0, 0, 0.28) !important;
+    transition:
+        transform 0.18s ease,
+        box-shadow 0.18s ease !important;
 }
 
+.footer .comments .comment-container .comment-box .comment-attachment-container:hover,
+.nf-post .footer .comments .comment-container .comment-box .comment-attachment-container:hover,
+.comment-container .comment-attachment-container:hover {
+    transform: translateY(-1px);
+    box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.14),
+        0 12px 28px rgba(0, 0, 0, 0.38) !important;
+}
+
+.footer .comments .comment-container .comment-box .comment-attachment-container img,
+.nf-post .footer .comments .comment-container .comment-box .comment-attachment-container img,
 .comment-container .comment-attachment-container img {
-    max-width: 100%;
-    height: auto;
-    display: block;
-    border-radius: var(--fb-radius-sm);
-    cursor: pointer;
-    transition: var(--fb-transition);
+    display: block !important;
+    width: 100% !important;
+    max-width: 240px !important;
+    max-height: 260px !important;
+    height: auto !important;
+    object-fit: cover !important;
+    border-radius: 14px !important;
+    cursor: zoom-in !important;
+    margin: 0 !important;
+    transition: filter 0.18s ease !important;
 }
 
-.comment-container .comment-attachment-container img:hover {
-    opacity: 0.95;
+.comment-container .comment-attachment-container:hover img {
+    filter: brightness(1.04);
+    opacity: 1 !important;
+}
+
+.comment-attachment-expand {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 16, 18, 0.72);
+    color: #fff;
+    font-size: 11px;
+    opacity: 0;
+    pointer-events: none;
+    backdrop-filter: blur(8px);
+    transition: opacity 0.18s ease;
+}
+
+.comment-container .comment-attachment-container:hover .comment-attachment-expand,
+.comment-container .comment-attachment-container:focus-visible .comment-attachment-expand {
+    opacity: 1;
+}
+
+.comment-container .comment-box .name-comment.name-only {
+    padding: 6px 12px !important;
+}
+
+.comment-media-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 12000;
+    background: rgba(8, 9, 11, 0.88);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px 24px;
+    backdrop-filter: blur(10px);
+    animation: fadeInComment 0.18s ease-out;
+}
+
+.comment-media-lightbox img {
+    max-width: min(920px, 100%);
+    max-height: calc(100vh - 72px);
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    border-radius: 12px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+}
+
+.comment-media-lightbox-close {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+}
+
+.comment-media-lightbox-close:hover {
+    background: rgba(255, 255, 255, 0.22);
 }
 
 /* Options Icon (Three Dots) */
@@ -864,17 +975,19 @@
 
 .comment-attachment-preview {
     margin: var(--fb-spacing-sm) 0 var(--fb-spacing-md) 42px;
-    max-width: 200px;
+    max-width: 160px;
     position: relative;
     display: inline-block;
 }
 
 .comment-attachment-preview img {
-    max-width: 100%;
-    height: auto;
-    border-radius: var(--fb-radius-sm);
-    border: 1px solid var(--fb-border);
+    width: 160px;
+    height: 160px;
+    object-fit: cover;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
     display: block;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
 }
 
 .comment-attachment-preview .remove-attachment-btn {
@@ -899,6 +1012,20 @@
     background: #d93025;
 }
 
+.comment-attachment-preview-label {
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(15, 16, 18, 0.72);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    pointer-events: none;
+}
+
 /* ===== RESPONSIVE DESIGN ===== */
 
 @media (max-width: 768px) {
@@ -918,6 +1045,16 @@
 
     .more-comment-button {
         margin-left: 28px;
+    }
+
+    .comment-container .comment-attachment-container,
+    .footer .comments .comment-container .comment-box .comment-attachment-container {
+        max-width: min(200px, 72vw) !important;
+    }
+
+    .comment-container .comment-attachment-container img {
+        max-width: min(200px, 72vw) !important;
+        max-height: 220px !important;
     }
 
     .comment-attachment-preview {

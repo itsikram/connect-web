@@ -49,29 +49,33 @@
    ══════════════════════════════════════════════════ */
 .ai-agent-modal-container {
     position: relative;
-    width: 92vw;
+    width: min(1100px, calc(100vw - 40px));
     max-width: 1100px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     background: var(--ai-bg);
     top: 0;
-
-    /* Centered modal height - use max-height to allow flexing */
-    height: auto;
+    height: min(90dvh, 820px);
     max-height: min(90vh, 90dvh);
     border-radius: 18px;
     box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
-
-    /* Safe area for home indicator (iPhone notch bottom) */
     padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* Mobile adjustments */
 @media (max-width: 768px) {
+    .ai-agent-modal-backdrop {
+        align-items: flex-end;
+        padding: 0;
+    }
+
     .ai-agent-modal-container {
-        width: 95vw;
-        max-height: min(90vh, 90dvh);
+        width: 100%;
+        max-width: 100%;
+        height: min(100dvh, 100svh);
+        max-height: 100dvh;
+        border-radius: 16px 16px 0 0;
+        padding-bottom: env(safe-area-inset-bottom, 0px);
     }
 }
 
@@ -297,9 +301,17 @@
     transform: rotate(90deg);
 }
 
-/* ══════════════════════════════════════════════════
-   4. MODAL BODY (sidebar + chat)
-   ══════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+    .ai-agent-header-row {
+        gap: 8px;
+        padding: 10px 12px;
+        min-height: 52px;
+    }
+
+    .ai-agent-title {
+        font-size: 1rem;
+    }
+}
 .ai-agent-modal-body {
     flex: 1;
     display: flex;

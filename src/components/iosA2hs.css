@@ -95,6 +95,20 @@
   text-align: center;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
   animation: ios-a2hs-sheet 200ms ease;
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .ios-a2hs-modal {
+    align-items: flex-end;
+    padding: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .ios-a2hs-modal-content {
+    width: 100%;
+    border-radius: 18px 18px 0 0;
+  }
 }
 
 @keyframes ios-a2hs-sheet {

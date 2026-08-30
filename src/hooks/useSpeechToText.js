@@ -5,24 +5,38 @@ const SpeechRecognitionCtor = () =>
     ? window.SpeechRecognition || window.webkitSpeechRecognition
     : null;
 
-export default function useSpeechToText({ onFinal, lang } = {}) {
+export default function useSpeechToText({
+  onFinal,
+  onInterim,
+  lang,
+  continuous = false,
+} = {}) {
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState("");
   const [supported, setSupported] = useState(false);
   const recRef = useRef(null);
+  const wantListenRef = useRef(false);
+  const onFinalRef = useRef(onFinal);
+  const onInterimRef = useRef(onInterim);
+
+  onFinalRef.current = onFinal;
+  onInterimRef.current = onInterim;
 
   useEffect(() => {
     setSupported(Boolean(SpeechRecognitionCtor()));
   }, []);
 
   const stop = useCallback(() => {
+    wantListenRef.current = false;
+    const rec = recRef.current;
+    recRef.current = null;
     try {
-      recRef.current?.stop?.();
+      rec?.stop?.();
     } catch (_) {
       /* ignore */
     }
-    recRef.current = null;
     setListening(false);
+    setInterim("");
   }, []);
 
   const start = useCallback(() => {
@@ -30,6 +44,7 @@ export default function useSpeechToText({ onFinal, lang } = {}) {
     if (!Ctor) return false;
 
     stop();
+    wantListenRef.current = true;
     const rec = new Ctor();
     rec.lang =
       lang ||
@@ -37,7 +52,7 @@ export default function useSpeechToText({ onFinal, lang } = {}) {
         ? "bn-BD"
         : "en-US");
     rec.interimResults = true;
-    rec.continuous = false;
+    rec.continuous = Boolean(continuous);
 
     rec.onresult = (event) => {
       let interimText = "";
@@ -47,17 +62,33 @@ export default function useSpeechToText({ onFinal, lang } = {}) {
         if (event.results[i].isFinal) finalText += piece;
         else interimText += piece;
       }
-      if (interimText) setInterim(interimText);
+      if (interimText) {
+        setInterim(interimText);
+        onInterimRef.current?.(interimText);
+      }
       if (finalText) {
         setInterim("");
-        if (typeof onFinal === "function") onFinal(finalText.trim());
+        onInterimRef.current?.("");
+        onFinalRef.current?.(finalText.trim());
       }
     };
 
     rec.onerror = () => {
+      wantListenRef.current = false;
       setListening(false);
     };
     rec.onend = () => {
+      if (recRef.current !== rec) return;
+      if (wantListenRef.current && continuous) {
+        try {
+          rec.start();
+          setListening(true);
+          return;
+        } catch (_) {
+          /* fall through */
+        }
+      }
+      wantListenRef.current = false;
       setListening(false);
       recRef.current = null;
     };
@@ -67,7 +98,7 @@ export default function useSpeechToText({ onFinal, lang } = {}) {
     setListening(true);
     setInterim("");
     return true;
-  }, [lang, onFinal, stop]);
+  }, [lang, continuous, stop]);
 
   const toggle = useCallback(() => {
     if (listening) stop();
@@ -77,4 +108,4 @@ export default function useSpeechToText({ onFinal, lang } = {}) {
   useEffect(() => () => stop(), [stop]);
 
   return { listening, interim, supported, start, stop, toggle };
-}
+};

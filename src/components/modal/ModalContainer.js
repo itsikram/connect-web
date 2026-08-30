@@ -12,6 +12,9 @@ const POSITION_KEYS = new Set([
   "inset",
   "marginRight",
   "transform",
+  "width",
+  "minWidth",
+  "maxWidth",
 ]);
 
 if (typeof document !== "undefined" && document.getElementById("root")) {

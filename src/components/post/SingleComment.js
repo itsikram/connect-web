@@ -28,6 +28,7 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode, parentType = 
     const [isDeleting, setIsDeleting] = useState(false);
     const [isLoadingReplies] = useState(false);
     const [removed, setRemoved] = useState(false);
+    const [lightboxOpen, setLightboxOpen] = useState(false);
 
     const post = postData;
 
@@ -49,6 +50,20 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode, parentType = 
         document.addEventListener('mousedown', close);
         return () => document.removeEventListener('mousedown', close);
     }, [optionsOpen, comment?._id]);
+
+    useEffect(() => {
+        if (!lightboxOpen) return undefined;
+        const onKey = (e) => {
+            if (e.key === 'Escape') setLightboxOpen(false);
+        };
+        document.addEventListener('keydown', onKey);
+        const prevOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => {
+            document.removeEventListener('keydown', onKey);
+            document.body.style.overflow = prevOverflow;
+        };
+    }, [lightboxOpen]);
 
     const deleteComment = async (e) => {
         e?.stopPropagation?.();
@@ -158,18 +173,22 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode, parentType = 
 
     const { mention, rest } = splitMentionBody(updatedComment);
     const visibleReplies = Array.isArray(replies) ? replies.filter(Boolean) : [];
+    const hasBody = Boolean((updatedComment || '').trim());
+    const attachmentUrl = comment.attachment;
 
     return (
-        <div className={`comment-container comment-id-${comment._id}`}>
+        <>
+        <div className={`comment-container comment-id-${comment._id}${attachmentUrl ? ' has-media' : ''}`}>
             <div className="author-pp">
                 <UserPP profilePic={comment.author.profilePic} profile={comment.author._id} />
             </div>
             <div className="comment-info">
                 <div className="comment-box">
-                    <div className="name-comment">
+                    <div className={`name-comment ${!hasBody && attachmentUrl ? 'name-only' : ''}`}>
                         <div className="author-name">
                             <Link to={`/${comment.author._id}`}>{authorName}</Link>
                         </div>
+                        {(hasBody || isEdit) && (
                         <div className="comment-text">
                             {isEdit ? (
                                 <div className="comment-editor">
@@ -212,12 +231,21 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode, parentType = 
                                 </p>
                             )}
                         </div>
-                        {comment.attachment && (
-                            <div className="comment-attachment-container">
-                                <img src={comment.attachment} alt="attachment" />
-                            </div>
                         )}
                     </div>
+                    {attachmentUrl && (
+                        <button
+                            type="button"
+                            className="comment-attachment-container"
+                            onClick={() => setLightboxOpen(true)}
+                            aria-label="View photo"
+                        >
+                            <img src={attachmentUrl} alt="" />
+                            <span className="comment-attachment-expand" aria-hidden="true">
+                                <i className="fas fa-expand"></i>
+                            </span>
+                        </button>
+                    )}
 
                     {(String(comment.author._id) === String(myId) || isEditMode) && (
                         <div className={`options-icon comment-options ${optionsOpen ? 'is-open' : ''}`}>
@@ -365,6 +393,30 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode, parentType = 
                 )}
             </div>
         </div>
+        {lightboxOpen && attachmentUrl && (
+            <div
+                className="comment-media-lightbox"
+                onClick={() => setLightboxOpen(false)}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Photo"
+            >
+                <button
+                    type="button"
+                    className="comment-media-lightbox-close"
+                    onClick={() => setLightboxOpen(false)}
+                    aria-label="Close"
+                >
+                    <i className="fas fa-times"></i>
+                </button>
+                <img
+                    src={attachmentUrl}
+                    alt=""
+                    onClick={(e) => e.stopPropagation()}
+                />
+            </div>
+        )}
+        </>
     );
 };
 

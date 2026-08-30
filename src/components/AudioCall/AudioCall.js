@@ -1460,15 +1460,13 @@ const AudioCall = ({ myId }) => {
       <ModalContainer
         title="Audio Call"
         style={{
-          width: isMobile ? "95%" : "400px",
-          top: "50%",
           height: "auto",
-          borderRadius: "10px",
-          zIndex: "9999", // Ensure it's on top
+          zIndex: "9999",
         }}
         isOpen={isAudioCall && !isMinimized}
         onRequestClose={closeAudioCall}
         id="audioCallModal"
+        size="sm"
       >
         <div
           className={`${callAccepted ? "call-accepted" : ""}`}

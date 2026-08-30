@@ -6,28 +6,131 @@ import api from "../../api/api";
 import $ from "jquery";
 import checkImgLoading from "../../utils/checkImgLoading";
 import isValidUrl from "../../utils/isValiUrl";
-import ImageSkleton from "../../skletons/post/ImageSkleton";
+import ImageSkleton from "../../skletons/message/ImageSkleton";
 import socket from "../../common/socket";
+import {
+  isAudioUrl,
+  isAudioMessage as isAudioMsg,
+  hasImageAttachment,
+  getMessageSnippet,
+  getProfileDisplayName,
+} from "../../utils/messageMedia";
+
 const getMessageTime = (timestamp) => {
   const inputDate = moment(timestamp);
+  return inputDate.format("DD/MM/YY hh:mm A");
+};
 
-  // Format based on condition
-  const formattedTime = inputDate.format("DD/MM/YY hh:mm A");
+const MessageAttachment = ({ src, alt = "Photo" }) => {
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
 
-  return formattedTime;
+  useEffect(() => {
+    setLoaded(false);
+    setFailed(false);
+    if (!isValidUrl(src) || isAudioUrl(src)) return;
+    checkImgLoading(src, (ok) => {
+      setLoaded(!!ok);
+      setFailed(!ok);
+    });
+  }, [src]);
+
+  if (!isValidUrl(src) || isAudioUrl(src)) return null;
+
+  if (failed) {
+    return (
+      <div className="message-attachment-frame is-failed">
+        <i className="fa fa-image" aria-hidden="true"></i>
+        <span>Photo unavailable</span>
+      </div>
+    );
+  }
+
+  return (
+    <a
+      href={src}
+      target="_blank"
+      rel="noreferrer"
+      className={`message-attachment-frame${loaded ? " is-loaded" : ""}`}
+      aria-label="Open photo"
+    >
+      {!loaded && <ImageSkleton />}
+      <img
+        src={src}
+        alt={alt}
+        className="message-attachment"
+        onLoad={() => setLoaded(true)}
+        onError={() => setFailed(true)}
+        style={{ display: loaded ? "block" : "none" }}
+      />
+      {loaded && (
+        <span className="message-attachment-zoom" aria-hidden="true">
+          <i className="fa fa-expand"></i>
+        </span>
+      )}
+    </a>
+  );
+};
+
+const ReplyQuote = ({
+  parent,
+  myId,
+  friendProfile,
+  onActivate,
+}) => {
+  if (!parent?._id) return null;
+
+  const isMine = String(parent.senderId) === String(myId);
+  const name = isMine ? "You" : getProfileDisplayName(friendProfile, "Reply");
+  const snippet = getMessageSnippet(parent);
+  const showPhotoThumb = hasImageAttachment(parent);
+  const showVoice = isAudioMsg(parent);
+  const showCall = parent.messageType === "call";
+
+  return (
+    <button
+      type="button"
+      data-parent={parent._id}
+      className={`msg-reply-quote${showPhotoThumb ? " has-thumb" : ""}`}
+      onClick={onActivate}
+      aria-label={`Jump to ${name}'s message`}
+    >
+      <span className="msg-reply-quote-accent" />
+      <div className="msg-reply-quote-copy">
+        <span className="msg-reply-quote-name">{name}</span>
+        <span className="msg-reply-quote-text">
+          {showVoice && <i className="fa fa-microphone" aria-hidden="true"></i>}
+          {showCall && (
+            <i
+              className={`fa ${parent.callType === "video" ? "fa-video-camera" : "fa-phone"}`}
+              aria-hidden="true"
+            ></i>
+          )}
+          {showPhotoThumb && !parent.message && (
+            <i className="fa fa-image" aria-hidden="true"></i>
+          )}
+          {snippet}
+        </span>
+      </div>
+      {showPhotoThumb && (
+        <span className="msg-reply-quote-thumb">
+          <img src={parent.attachment} alt="" />
+        </span>
+      )}
+    </button>
+  );
 };
 
 const SingleMessage = ({
   index,
   msg,
   friendProfile,
-  messages,
   setMessages,
   setReplyData,
   setIsReplying,
   msgListRef,
-  isPreview,
   setIsPreview,
+  isMsgLoading,
 }) => {
   const myProfile = useSelector((state) => state.profile);
   const myId = myProfile._id;
@@ -35,59 +138,33 @@ const SingleMessage = ({
   const [isReactedByMe, setIsReactedByMe] = useState(
     (msg.reacts || []).includes(myId),
   );
-  const [foundParentMsg, setFoundParentMsg] = useState(false);
   const [isReactedByFriend, setIsReactedByFriend] = useState(
     (msg.reacts || []).includes(friendId),
   );
-  const [imageLoaded, setImageLoaded] = useState(false);
-  const [parentImageLoaded, setParentImageLoaded] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioDuration, setAudioDuration] = useState(0);
   const [audioCurrent, setAudioCurrent] = useState(0);
-  const [hasParentComment, setHasParentComment] = useState(false);
   const [showOptions, setShowOptions] = useState(true);
   const audioRef = useRef(null);
+  const parentPollRef = useRef(null);
 
   useEffect(() => {
-    if (isValidUrl(msg.attachment)) {
-      // Only try to preload image if it's not an audio attachment
-      if (!isAudioMessage()) {
-        checkImgLoading(msg.attachment, setImageLoaded);
-      }
-    }
-    if (isValidUrl(msg?.parent?.attachment)) {
-      checkImgLoading(msg?.parent?.attachment, setParentImageLoaded);
-    }
-  }, [msg]);
-
-  useEffect(() => {
-    if (imageLoaded) {
-    }
-  }, [imageLoaded]);
-
-  // Message reactions are now included with the message data - no separate polling needed
-  useEffect(() => {
-    // Set initial reaction state from message data
     if (msg.reacts && friendId) {
-      const friendReacted = msg.reacts.includes(friendId);
-      setIsReactedByFriend(friendReacted);
+      setIsReactedByFriend(msg.reacts.includes(friendId));
     }
-    // Update my reaction state when message data changes
     if (msg.reacts) {
-      const meReacted = msg.reacts.includes(myId);
-      setIsReactedByMe(meReacted);
+      setIsReactedByMe(msg.reacts.includes(myId));
     }
   }, [msg.reacts, friendId, myId]);
 
   useEffect(() => {
-    if (msg?.parent?._id) {
-      setHasParentComment(true);
-    }
+    return () => {
+      if (parentPollRef.current) clearInterval(parentPollRef.current);
+    };
   }, []);
 
   const hideOptions = () => {
     setShowOptions(false);
-    // Reset after a short delay to allow hover to work again
     setTimeout(() => {
       setShowOptions(true);
     }, 100);
@@ -120,7 +197,6 @@ const SingleMessage = ({
       });
       if (postReactRes.status == 200) {
         setIsReactedByMe(true);
-        // Update parent messages state to reflect new reaction
         if (setMessages) {
           setMessages((prevMessages) =>
             prevMessages.map((m) =>
@@ -138,7 +214,6 @@ const SingleMessage = ({
       });
       if (removeReactRes.status == 200) {
         setIsReactedByMe(false);
-        // Update parent messages state to reflect removed reaction
         if (setMessages) {
           setMessages((prevMessages) =>
             prevMessages.map((m) =>
@@ -160,14 +235,23 @@ const SingleMessage = ({
     setReplyData({
       messageId,
       body: msg.message,
+      attachment: msg.attachment || null,
+      senderId: msg.senderId,
+      messageType: msg.messageType,
+    });
+    requestAnimationFrame(() => {
+      const input =
+        document.getElementById("newMessageInput") ||
+        document.querySelector(".sticky-chat-input");
+      input?.focus?.({ preventScroll: true });
     });
   };
+
   const handleSpeakMessage = async (e) => {
     e?.preventDefault?.();
     e?.stopPropagation?.();
     hideOptions();
 
-    // Speak control is only for my own messages and should play on receiver end.
     if (String(msg?.senderId) !== String(myId)) {
       return;
     }
@@ -199,79 +283,57 @@ const SingleMessage = ({
     }
   };
 
-  const handleParentMsgClick = async (e) => {
+  const flashQuotedMessage = (el) => {
+    if (!el) return;
+    document
+      .querySelectorAll(".chat-message.quoted-flash")
+      .forEach((node) => node.classList.remove("quoted-flash"));
+    el.classList.add("quoted-flash");
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    window.setTimeout(() => el.classList.remove("quoted-flash"), 1800);
+  };
+
+  const handleParentMsgClick = (e) => {
     const parentId = e.currentTarget.dataset.parent;
+    if (!parentId) return;
 
-    const allMessages = document.querySelectorAll(
-      `#chatMessageList .chat-message-container .chat-message`,
-    );
-    allMessages.forEach((element) => {
-      element.style.border = "unset";
-    });
+    const findTarget = () =>
+      document.querySelector(
+        `.chat-message-container.message-id-${parentId} .chat-message`,
+      );
 
-    let selectedMessage = document.querySelector(
-      `#chatMessageList .chat-message-container.message-id-${parentId} .chat-message`,
-    );
-
-    if (selectedMessage !== null) {
-      selectedMessage.scrollIntoView({ behavior: "smooth" });
-      selectedMessage.style.border = "2px solid #29B1A9";
-      setFoundParentMsg(true);
+    const selectedMessage = findTarget();
+    if (selectedMessage) {
+      flashQuotedMessage(selectedMessage);
+      return;
     }
 
-    new CustomEvent("scroll", { bubbles: true, cancelable: true });
-
-    const msgFoundInterval = setInterval(() => {
-      if (foundParentMsg) {
-        selectedMessage = document.querySelector(
-          `#chatMessageList .chat-message-container.message-id-${parentId} .chat-message`,
-        );
-        selectedMessage.scrollIntoView({ behavior: "smooth" });
-        selectedMessage.style.border = "2px solid #29B1A9";
-        clearInterval(msgFoundInterval);
+    if (parentPollRef.current) clearInterval(parentPollRef.current);
+    let attempts = 0;
+    parentPollRef.current = setInterval(() => {
+      attempts += 1;
+      const next = findTarget();
+      if (next) {
+        flashQuotedMessage(next);
+        clearInterval(parentPollRef.current);
+        parentPollRef.current = null;
+        return;
       }
-
-      if (selectedMessage == null) {
-        if (isMsgLoading == false) {
-          msgListRef.current.scrollTop = 10;
-          msgListRef.current.dispatchEvent(scrollEvent);
-          selectedMessage = document.querySelector(
-            `#chatMessageList .chat-message-container.message-id-${parentId} .chat-message`,
-          );
-        }
-      } else {
-        selectedMessage = document.querySelector(
-          `#chatMessageList .chat-message-container.message-id-${parentId} .chat-message`,
-        );
-        if (selectedMessage) {
-          setFoundParentMsg(true);
-          clearInterval(msgFoundInterval);
-          selectedMessage.scrollIntoView({ behavior: "smooth" });
-          selectedMessage.style.border = "2px solid #29B1A9";
-        }
+      if (!isMsgLoading && msgListRef?.current) {
+        msgListRef.current.scrollTop = 10;
       }
-    }, 1500);
+      if (attempts > 8) {
+        clearInterval(parentPollRef.current);
+        parentPollRef.current = null;
+      }
+    }, 1200);
   };
 
   const isCallMessage = msg.messageType === "call";
-  const isAudioUrl = (url) => {
-    if (!url || typeof url !== "string") return false;
-    const lower = url.split("?")[0].toLowerCase();
-    return [
-      ".mp3",
-      ".m4a",
-      ".aac",
-      ".ogg",
-      ".oga",
-      ".opus",
-      ".wav",
-      ".webm",
-    ].some((ext) => lower.endsWith(ext));
-  };
-
-  const isAudioMessage = () => {
-    return msg.messageType === "audio" || isAudioUrl(msg.attachment);
-  };
+  const isAudioMessage = () => isAudioMsg(msg);
+  const hasMedia = hasImageAttachment(msg);
+  const hasCaption = Boolean(String(msg.message || "").trim());
+  const isMediaOnly = hasMedia && !hasCaption && !isCallMessage && !isAudioMessage();
 
   const formatTime = (secs) => {
     if (!isFinite(secs)) return "00:00";
@@ -421,9 +483,119 @@ const SingleMessage = ({
     );
   };
 
+  const renderBubbleBody = (isSent) => (
+    <>
+      {!isCallMessage && (
+        <div
+          className={`chat-message-options ${!showOptions ? "options-hidden" : ""}`}
+        >
+          <button
+            type="button"
+            data-id={msg._id}
+            className={`chat-message-option like ${isReactedByMe == true ? "reacted" : ""}`}
+            onClick={handleLikeMessage.bind(this)}
+          >
+            <i className="fa fa-thumbs-up"></i>
+          </button>
+          <button
+            type="button"
+            data-id={msg._id}
+            className="chat-message-option reply"
+            onClick={handleReplyMessage.bind(this)}
+          >
+            <i className="fa fa-reply"></i>
+          </button>
+          {isSent && (
+            <>
+              <button
+                type="button"
+                data-id={msg._id}
+                className="chat-message-option share speaker"
+                onClick={handleSpeakMessage.bind(this)}
+              >
+                <i className="fa fa-volume-up"></i>
+              </button>
+              <button
+                type="button"
+                data-id={msg._id}
+                className="chat-message-option delete"
+                onClick={handleDeleteMessage.bind(this)}
+              >
+                <i className="fa fa-trash"></i>
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      <ReplyQuote
+        parent={msg.parent}
+        myId={myId}
+        friendProfile={friendProfile}
+        onActivate={handleParentMsgClick}
+      />
+
+      {isCallMessage ? (
+        renderCallContent()
+      ) : isAudioMessage() ? (
+        renderAudioContent()
+      ) : hasCaption ? (
+        <div className="message-container mb-0">
+          <span className="message-text">{msg.message}</span>
+        </div>
+      ) : null}
+
+      {!isCallMessage && !isAudioMessage() && (
+        <MessageAttachment src={msg.attachment} />
+      )}
+
+      <div className="message-meta">
+        <span className="message-time">{getMessageTime(msg.timestamp)}</span>
+        <span className="message-react">
+          <i>👍</i>
+        </span>
+        {isSent &&
+          (msg.sendFailed ? (
+            <span
+              className="message-seen-check failed"
+              title="Failed to send"
+              aria-label="Failed to send"
+            >
+              <i className="fas fa-exclamation-circle"></i>
+            </span>
+          ) : msg.isSeen ? (
+            <span
+              className="message-seen-check seen"
+              title="Seen"
+              aria-label="Seen"
+            >
+              <i className="fas fa-check-double"></i>
+            </span>
+          ) : (
+            <span
+              className="message-seen-check sent"
+              title="Sent"
+              aria-label="Sent"
+            >
+              <i className="fas fa-check"></i>
+            </span>
+          ))}
+      </div>
+    </>
+  );
+
+  const isMine = msg.senderId === myId;
+  const bubbleClass = [
+    "chat-message",
+    hasMedia ? "has-attachment" : "",
+    isMediaOnly ? "media-only" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <>
-      {msg.senderId !== myId ? (
+      {!isMine ? (
         <div
           key={index}
           className={`chat-message-container message-receive message-id-${msg._id} ${isReactedByMe === true || isReactedByFriend == true ? "message-reacted" : ""} ${msg.isOptimistic ? "message-optimistic" : ""}`}
@@ -437,102 +609,7 @@ const SingleMessage = ({
               active={friendProfile.isActive}
             ></UserPP>
           </div>
-          <div
-            className={`chat-message ${isValidUrl(messages.attachment) && "has-attachment"}`}
-          >
-            {!isCallMessage && (
-              <div
-                className={`chat-message-options ${!showOptions ? "options-hidden" : ""}`}
-              >
-                <button
-                  type="button"
-                  data-id={msg._id}
-                  className={`chat-message-option like ${isReactedByMe == true ? "reacted" : ""}`}
-                  onClick={handleLikeMessage.bind(this)}
-                >
-                  <i className="fa fa-thumbs-up"></i>
-                </button>
-                <button
-                  type="button"
-                  data-id={msg._id}
-                  className={`chat-message-option reply`}
-                  onClick={handleReplyMessage.bind(this)}
-                >
-                  <i className="fa fa-reply"></i>
-                </button>
-              </div>
-            )}
-
-            {msg?.parent === undefined ||
-            msg?.parent === null ||
-            !msg?.parent?._id ? (
-              <></>
-            ) : (
-              <div
-                onClick={handleParentMsgClick}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    handleParentMsgClick(e);
-                  }
-                }}
-                role="button"
-                tabIndex={0}
-                data-parent={msg?.parent?._id}
-                className={`parent-message-container ${isValidUrl(msg?.parent?.attachment) && "has-attachment"}`}
-              >
-                <span>{msg?.parent?.message}</span>
-
-                {parentImageLoaded == true ? (
-                  <div className="message-attachment-container">
-                    <img
-                      src={msg?.parent?.attachment}
-                      alt="Message Attchment"
-                      className="message-attachment"
-                    />
-                  </div>
-                ) : (
-                  isValidUrl(msg?.parent?.attachment) && (
-                    <ImageSkleton style={{ minWidth: "300px" }} />
-                  )
-                )}
-              </div>
-            )}
-
-            {isCallMessage ? (
-              renderCallContent()
-            ) : isAudioMessage() ? (
-              renderAudioContent()
-            ) : (
-              <div className="message-container mb-0">
-                <span className="message-text">{msg.message}</span>
-              </div>
-            )}
-
-            {!isCallMessage &&
-              !isAudioMessage() &&
-              (imageLoaded == true ? (
-                <div className="message-attachment-container">
-                  <img
-                    src={msg.attachment}
-                    alt=""
-                    className="message-attachment"
-                  />
-                </div>
-              ) : (
-                isValidUrl(msg.attachment) && (
-                  <ImageSkleton style={{ minWidth: "300px" }} />
-                )
-              ))}
-            <div className="message-meta">
-              <span className="message-time">
-                {getMessageTime(msg.timestamp)}
-              </span>
-              <span className="message-react">
-                <i>👍</i>
-              </span>
-            </div>
-          </div>
+          <div className={bubbleClass}>{renderBubbleBody(false)}</div>
           <div className="chat-message-seen-status d-none">Seen</div>
         </div>
       ) : (
@@ -543,150 +620,7 @@ const SingleMessage = ({
           title={getMessageTime(msg.timestamp)}
           style={{ position: "relative" }}
         >
-          <div
-            className={`chat-message ${isValidUrl(messages.attachment) && "has-attachment"}`}
-          >
-            {!isCallMessage && (
-              <div
-                className={`chat-message-options ${!showOptions ? "options-hidden" : ""}`}
-              >
-                <button
-                  type="button"
-                  data-id={msg._id}
-                  className={`chat-message-option like ${isReactedByMe == true ? "reacted" : ""}`}
-                  onClick={handleLikeMessage.bind(this)}
-                >
-                  <i className="fa fa-thumbs-up"></i>
-                </button>
-                <button
-                  type="button"
-                  data-id={msg._id}
-                  className={`chat-message-option reply`}
-                  onClick={handleReplyMessage.bind(this)}
-                >
-                  <i className="fa fa-reply"></i>
-                </button>
-
-                <button
-                  type="button"
-                  data-id={msg._id}
-                  className="chat-message-option share speaker"
-                  onClick={handleSpeakMessage.bind(this)}
-                >
-                  <i className="fa fa-volume-up"></i>
-                </button>
-
-                <button
-                  type="button"
-                  data-id={msg._id}
-                  className="chat-message-option delete"
-                  onClick={handleDeleteMessage.bind(this)}
-                >
-                  <i className="fa fa-trash"></i>
-                </button>
-              </div>
-            )}
-
-            {msg?.parent === undefined ||
-            msg?.parent === null ||
-            !msg?.parent?._id ? (
-              <></>
-            ) : (
-              <>
-                <div
-                  onClick={handleParentMsgClick}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      handleParentMsgClick(e);
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  data-parent={msg?.parent?._id}
-                  className={`parent-message-container ${isValidUrl(msg?.parent?.attachment) && "has-attachment"}`}
-                >
-                  <span>{msg?.parent?.message}</span>
-
-                  {parentImageLoaded == true ? (
-                    <div className="message-attachment-container">
-                      <img
-                        src={msg?.parent?.attachment}
-                        alt=""
-                        className="message-attachment"
-                      />
-                    </div>
-                  ) : (
-                    isValidUrl(msg?.parent?.attachment) && (
-                      <ImageSkleton
-                        style={{ minWidth: "400px", width: "400px" }}
-                      />
-                    )
-                  )}
-                </div>
-              </>
-            )}
-
-            {isCallMessage ? (
-              renderCallContent()
-            ) : isAudioMessage() ? (
-              renderAudioContent()
-            ) : (
-              <div className="message-container mb-0">
-                <span className="message-text">{msg.message}</span>
-              </div>
-            )}
-
-            {!isCallMessage &&
-              !isAudioMessage() &&
-              (imageLoaded == true ? (
-                <div className="message-attachment-container">
-                  <img
-                    src={msg.attachment}
-                    alt="Message Attchment"
-                    className="message-attachment"
-                  />
-                </div>
-              ) : (
-                isValidUrl(msg.attachment) && (
-                  <ImageSkleton style={{ minWidth: "300px" }} />
-                )
-              ))}
-            <div className="message-meta">
-              <span className="message-time">
-                {getMessageTime(msg.timestamp)}
-              </span>
-              <span className="message-react">
-                <i>👍</i>
-              </span>
-              {msg.sendFailed ? (
-                <span
-                  className="message-seen-check failed"
-                  title="Failed to send"
-                  aria-label="Failed to send"
-                >
-                  <i className="fas fa-exclamation-circle"></i>
-                </span>
-              ) : msg.isSeen ? (
-                <span
-                  className="message-seen-check seen"
-                  title="Seen"
-                  aria-label="Seen"
-                >
-                  <i className="fas fa-check-double"></i>
-                </span>
-              ) : (
-                <span
-                  className="message-seen-check sent"
-                  title="Sent"
-                  aria-label="Sent"
-                >
-                  <i className="fas fa-check"></i>
-                </span>
-              )}
-            </div>
-          </div>
-
+          <div className={bubbleClass}>{renderBubbleBody(true)}</div>
           <div className="chat-message-profilePic">
             <UserPP
               profilePic={`${myProfile.profilePic || ""}`}

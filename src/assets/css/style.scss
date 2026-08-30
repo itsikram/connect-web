@@ -7898,6 +7898,57 @@ select {
 
 }
 
+@media (max-width: 768px) {
+    #create-post-modal,
+    #create-watch-modal,
+    #create-story-modal {
+        .modal-body .cp-modal-container {
+            .cpm-header {
+                flex-wrap: wrap;
+                gap: 8px;
+                align-items: center;
+
+                .cpm-audience-selector-wrapper {
+                    margin-left: 0;
+                    width: 100%;
+
+                    .cpm-audience-button {
+                        width: 100%;
+                        justify-content: space-between;
+                    }
+
+                    .cpm-audience-menu {
+                        right: 0;
+                        left: 0;
+                        min-width: 0;
+                        width: 100%;
+                    }
+                }
+            }
+
+            .cpm-meta-options {
+                flex-direction: column;
+            }
+
+            .cpm-form .cpm-form-text .cpm-form-text-input {
+                font-size: 16px;
+                min-height: 96px;
+            }
+        }
+    }
+
+    #cp-upload-modal .modal-upload-preview .reactEasyCrop_Container {
+        min-height: min(280px, 42vh) !important;
+    }
+
+    #pp-upload-modal .modal-body form .pp-upload-button,
+    #cp-upload-modal .modal-body form .cp-upload-button {
+        width: 100%;
+        min-height: 44px;
+        font-size: 16px;
+    }
+}
+
 #create-watch-modal {
     .modal-body {
         .cp-modal-container {

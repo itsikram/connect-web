@@ -63,9 +63,7 @@ const AppMenuModal = ({ isOpen, onRequestClose, onAIAgentOpen }) => {
           : {
               display: "flex",
               flexDirection: "column",
-              width: "min(92vw, 520px)",
               maxHeight: "min(85dvh, 85vh)",
-              borderRadius: "16px",
               overflow: "hidden",
             }
       }

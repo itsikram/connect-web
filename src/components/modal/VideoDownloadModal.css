@@ -185,3 +185,19 @@
 .video-download-close-btn:hover {
     color: #e8eaed;
 }
+
+@media (max-width: 768px) {
+    .video-download-modal-title {
+        font-size: 1.2rem;
+    }
+
+    .video-download-btn-primary,
+    .video-download-btn-secondary,
+    .video-download-close-btn {
+        min-height: 44px;
+    }
+
+    .video-download-link-input {
+        font-size: 16px;
+    }
+}

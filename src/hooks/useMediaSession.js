@@ -136,7 +136,7 @@ const useMediaSession = ({
         setActionHandlerSafely(mediaSession, action, null);
       });
     };
-  }, [supported, bindKey, metadataTitle, metadataArtist, playbackState]);
+  }, [supported, bindKey, metadataTitle, metadataArtist]);
 
   useEffect(() => {
     if (!mediaSessionAvailable || !enabled) return;

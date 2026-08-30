@@ -27,7 +27,7 @@ const WatchVideoPlayer = ({
     const [isBuffering, setIsBuffering] = useState(false);
     useBackgroundAudioHandoff(videoRef, {
         src: videoUrl,
-        enabled: isAttached && !!videoUrl && !isPipActive,
+        enabled: isPlaying && !!videoUrl && !isPipActive,
     });
 
     useEffect(() => {

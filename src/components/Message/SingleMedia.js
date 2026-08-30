@@ -18,7 +18,7 @@ const SingleMedia = (props) => {
 
     return (
         <>
-            {!isLoaded && <ImageSkleton count={1} />}
+            {!isLoaded && <ImageSkleton count={1} className="is-grid" />}
             {isLoaded && <div 
                 onClick={handleMediaClick} 
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleMediaClick(); } }}

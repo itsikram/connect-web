@@ -22,6 +22,7 @@ import SingleMsgSkleton from "../../skletons/message/SingleMsgSkleton";
 import ModalContainer from "../modal/ModalContainer";
 import useIsMobile from "../../utils/useIsMobile";
 import "./StickyChatBox.css";
+import "../../pages/Message.css";
 import "./UserInfoModal.css";
 import {
   emitChatMessage,
@@ -1150,6 +1151,7 @@ const StickyChatBox = ({
     userId,
     replyData,
     setReplyData,
+    setIsReplying,
     messages,
     friendProfile,
     msgListRef,

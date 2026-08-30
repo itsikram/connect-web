@@ -6,6 +6,11 @@ import { loadSettings } from "../../services/actions/settingsActions";
 import EmojiPicker from "emoji-picker-react";
 import { useParams } from "react-router-dom";
 import socket from "../../common/socket";
+import ComposerContextPreview from "./ComposerContextPreview";
+import useSpeechToText from "../../hooks/useSpeechToText";
+
+const UPLOAD_PLACEHOLDER =
+  "https://res.cloudinary.com/dz88yjerw/image/upload/v1743092084/i5lcu63atrbkpcy6oqam.gif";
 
 const ChatFooter = ({
   chatFooter,
@@ -41,6 +46,7 @@ const ChatFooter = ({
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [showAttachTray, setShowAttachTray] = useState(false);
+  const [showMicMenu, setShowMicMenu] = useState(false);
   const [isLiveVoiceConnecting, setIsLiveVoiceConnecting] = useState(false);
   const [isLiveVoiceActive, setIsLiveVoiceActive] = useState(false);
   // Voice message recording
@@ -60,6 +66,7 @@ const ChatFooter = ({
   const audioSourceRef = useRef(null);
   const imageInput = useRef(null);
   const uploadFileInput = useRef(null);
+  const micMenuRef = useRef(null);
   const settings = useSelector((state) => state.setting);
   const { profile } = useParams();
 
@@ -139,6 +146,42 @@ const ChatFooter = ({
     }
   }, [settings?.showIsTyping, removeTyping]);
 
+  const handleTranscriptFinal = useCallback(
+    (text) => {
+      if (!text) return;
+      setInputValue((prev) => {
+        const next = prev.trim() ? `${prev.trimEnd()} ${text}` : text;
+        addTyping(next);
+        return next;
+      });
+    },
+    [addTyping],
+  );
+
+  const {
+    listening: isTranscribing,
+    interim: transcribeInterim,
+    supported: isSpeechSupported,
+    start: startTranscription,
+    stop: stopTranscription,
+  } = useSpeechToText({
+    onFinal: handleTranscriptFinal,
+    continuous: true,
+  });
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        micMenuRef.current &&
+        !micMenuRef.current.contains(event.target)
+      ) {
+        setShowMicMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const handleSendMessage = useCallback(
     (e) => {
       e.preventDefault();
@@ -163,6 +206,7 @@ const ChatFooter = ({
       // Set both state and ref immediately
       isSendingRef.current = true;
       setIsSendingMessage(true);
+      stopTranscription();
 
       const roomId = room || [userId, friendId].sort().join("_");
 
@@ -203,7 +247,13 @@ const ChatFooter = ({
       setIsReplying(false);
       setIsPreview(false);
       setAttachmentUrl("");
-      setReplyData({ messageId: null, body: null });
+      setReplyData({
+        messageId: null,
+        body: null,
+        attachment: null,
+        senderId: null,
+        messageType: null,
+      });
     },
     [
       messages,
@@ -263,9 +313,21 @@ const ChatFooter = ({
     }
   };
 
-  const handlePreviewCloseBtn = () => {
-    setIsPreview(false);
+  const handleReplyPreviewClose = () => {
     setIsReplying(false);
+    setReplyData({
+      messageId: null,
+      body: null,
+      attachment: null,
+      senderId: null,
+      messageType: null,
+    });
+    if (!attachmentUrl) setIsPreview(false);
+  };
+
+  const handleAttachmentPreviewClose = () => {
+    setAttachmentUrl("");
+    if (!(isReplying && replyData.messageId)) setIsPreview(false);
   };
 
   const handleMessageImageButtonClick = useCallback(async () => {
@@ -452,6 +514,7 @@ const ChatFooter = ({
 
   const startRecording = useCallback(async () => {
     if (isRecording || isUploadingAudio) return;
+    stopTranscription();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
@@ -500,7 +563,30 @@ const ChatFooter = ({
       console.error("Microphone permission or recording error:", err);
       setIsRecording(false);
     }
-  }, [isRecording, isUploadingAudio]);
+  }, [isRecording, isUploadingAudio, stopTranscription]);
+
+  const startLiveTranscribe = useCallback(() => {
+    setShowMicMenu(false);
+    setShowAttachTray(false);
+    if (!isSpeechSupported) {
+      window.alert(
+        "Live transcription is not supported in this browser. Try Chrome or Edge.",
+      );
+      return;
+    }
+    const started = startTranscription();
+    if (started) {
+      requestAnimationFrame(() => {
+        messageInput?.current?.focus?.({ preventScroll: true });
+      });
+    }
+  }, [isSpeechSupported, startTranscription, messageInput]);
+
+  const startVoiceMessage = useCallback(() => {
+    setShowMicMenu(false);
+    setShowAttachTray(false);
+    startRecording();
+  }, [startRecording]);
 
   const cleanupStream = () => {
     try {
@@ -533,6 +619,22 @@ const ChatFooter = ({
   const cancelRecording = useCallback(async () => {
     await stopRecording(false);
   }, [stopRecording]);
+
+  const handleMicButtonClick = (e) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    if (isUploadingAudio) return;
+    if (isRecording) {
+      stopRecording(true);
+      return;
+    }
+    if (isTranscribing) {
+      stopTranscription();
+      return;
+    }
+    setShowAttachTray(false);
+    setShowMicMenu((prev) => !prev);
+  };
 
   const msToClock = (ms) => {
     const totalSeconds = Math.floor(ms / 1000);
@@ -715,6 +817,7 @@ const ChatFooter = ({
   const hasComposableContent = Boolean(inputValue.trim() || attachmentUrl);
   const toggleAttachTray = () => {
     setShowAttachTray((prev) => !prev);
+    setShowMicMenu(false);
     setIsEmojiContainer(false);
     setIsEmojiChangeContainer(false);
   };
@@ -726,41 +829,38 @@ const ChatFooter = ({
         className={`chat-footer modern-composer ${showAttachTray ? "tray-open" : ""}`}
         data-chat-footer="true"
       >
-        {isPreview && (
-          <div className="new-message-preview-container">
-            {isReplying && replyData.messageId && (
-              <div className="reply-message-preview-form">
-                <p className="text-small">{replyData.body}</p>
-              </div>
-            )}
-            {attachmentUrl && (
-              <div className="attachment-preview-container">
-                <img
-                  className="attachment-preview"
-                  src={attachmentUrl}
-                  alt="Message Attachment"
-                />
-              </div>
-            )}
+        <ComposerContextPreview
+          replyData={isReplying ? replyData : null}
+          userId={userId}
+          friendProfile={friendProfile}
+          attachmentUrl={attachmentUrl}
+          uploadPlaceholder={UPLOAD_PLACEHOLDER}
+          onCancelReply={handleReplyPreviewClose}
+          onRemoveAttachment={handleAttachmentPreviewClose}
+        />
 
-            <span
-              onClick={handlePreviewCloseBtn}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  handlePreviewCloseBtn();
-                }
-              }}
-              role="button"
-              tabIndex={0}
-              className="preview-close-button bg-danger"
+        {isTranscribing ? (
+          <div className="composer-transcribe-bar" aria-live="polite">
+            <span className="composer-transcribe-dot" aria-hidden="true" />
+            <div className="composer-transcribe-copy">
+              <span className="composer-transcribe-label">Listening</span>
+              <span className="composer-transcribe-interim">
+                {transcribeInterim ||
+                  "Speak now — words appear in the message box"}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="composer-transcribe-stop"
+              onClick={stopTranscription}
+              aria-label="Stop live transcription"
             >
-              <i className="fa fa-times"></i>
-            </span>
+              Done
+            </button>
           </div>
-        )}
+        ) : null}
 
-        {isRecording && (
+        {isRecording ? (
           <div className="composer-recording-bar" aria-live="polite">
             <span className="composer-recording-dot">
               <i className="fas fa-circle"></i>
@@ -807,7 +907,7 @@ const ChatFooter = ({
               </div>
             </div>
           </div>
-        )}
+        ) : null}
 
         <div className="new-message-container composer-main">
           <div
@@ -842,7 +942,7 @@ const ChatFooter = ({
                 onChange={handleInputChange}
                 value={inputValue}
                 onKeyDown={handleKeyPress}
-                placeholder="Message"
+                placeholder={isTranscribing ? "Listening…" : "Message"}
                 id="newMessageInput"
                 className="new-message-input"
                 onTouchStart={(e) => {
@@ -944,47 +1044,94 @@ const ChatFooter = ({
               </div>
             ) : (
               <>
-                <div
-                  className={`composer-icon-btn mic ${isUploadingAudio || isRecording ? "disabled" : ""}`}
-                  onClick={
-                    isUploadingAudio
-                      ? null
-                      : isRecording
-                        ? () => stopRecording(true)
-                        : () => {
-                            setShowAttachTray(false);
-                            startRecording();
-                          }
-                  }
-                  onKeyDown={
-                    isUploadingAudio
-                      ? null
-                      : (e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            isRecording
-                              ? stopRecording(true)
-                              : startRecording();
-                          }
-                        }
-                  }
-                  role="button"
-                  tabIndex={isUploadingAudio ? -1 : 0}
-                  aria-label={
-                    isUploadingAudio
-                      ? "Uploading voice message"
-                      : "Record voice message"
-                  }
-                >
-                  <i
-                    className={
+                <div className="composer-mic-wrap" ref={micMenuRef}>
+                  <div
+                    className={`composer-icon-btn mic ${isUploadingAudio ? "disabled" : ""} ${isTranscribing || isRecording || showMicMenu ? "active" : ""}`}
+                    onClick={isUploadingAudio ? null : handleMicButtonClick}
+                    onKeyDown={
                       isUploadingAudio
-                        ? "fas fa-spinner fa-spin"
-                        : isRecording
-                          ? "fas fa-stop-circle"
-                          : "fas fa-microphone"
+                        ? null
+                        : (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              handleMicButtonClick();
+                            }
+                          }
                     }
-                  ></i>
+                    role="button"
+                    tabIndex={isUploadingAudio ? -1 : 0}
+                    aria-haspopup="menu"
+                    aria-expanded={showMicMenu}
+                    aria-label={
+                      isUploadingAudio
+                        ? "Uploading voice message"
+                        : isTranscribing
+                          ? "Stop live transcription"
+                          : isRecording
+                            ? "Stop voice message"
+                            : "Voice options"
+                    }
+                  >
+                    <i
+                      className={
+                        isUploadingAudio
+                          ? "fas fa-spinner fa-spin"
+                          : isRecording
+                            ? "fas fa-stop-circle"
+                            : isTranscribing
+                              ? "fas fa-stop"
+                              : "fas fa-microphone"
+                      }
+                    ></i>
+                  </div>
+                  {showMicMenu ? (
+                    <div className="composer-mic-menu" role="menu">
+                      <button
+                        type="button"
+                        className="composer-mic-menu-item"
+                        role="menuitem"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          startLiveTranscribe();
+                        }}
+                      >
+                        <span className="composer-mic-menu-icon transcribe">
+                          <i className="fas fa-closed-captioning"></i>
+                        </span>
+                        <span className="composer-mic-menu-copy">
+                          <span className="composer-mic-menu-title">
+                            Live transcribe
+                          </span>
+                          <span className="composer-mic-menu-desc">
+                            Speech to text in the message box
+                          </span>
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className="composer-mic-menu-item"
+                        role="menuitem"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          startVoiceMessage();
+                        }}
+                      >
+                        <span className="composer-mic-menu-icon voice">
+                          <i className="fas fa-microphone"></i>
+                        </span>
+                        <span className="composer-mic-menu-copy">
+                          <span className="composer-mic-menu-title">
+                            Voice message
+                          </span>
+                          <span className="composer-mic-menu-desc">
+                            Record audio and send it
+                          </span>
+                        </span>
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
                 <div
                   onClick={likeButtonClick}

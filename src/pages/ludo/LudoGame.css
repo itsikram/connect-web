@@ -1692,6 +1692,31 @@
     font-size: 0.95rem;
 }
 
+@media (max-width: 768px) {
+    .ludo-modal-backdrop {
+        align-items: flex-end;
+        padding: 0;
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    .ludo-modal,
+    .ludo-winner-modal {
+        width: 100% !important;
+        max-width: 100% !important;
+        max-height: min(92dvh, 100svh);
+        border-radius: 16px 16px 0 0;
+    }
+
+    .ludo-modal-actions {
+        flex-wrap: wrap;
+    }
+
+    .ludo-modal-actions .ludo-btn {
+        flex: 1 1 140px;
+        min-height: 44px;
+    }
+}
+
 @media (max-width: 380px) {
     .ludo-choice-grid {
         gap: 8px;

@@ -187,6 +187,8 @@ const VideoPlayer = () => {
     loop: isLooping && playbackList.length <= 1,
     onEndedRef: backgroundEndedRef,
   });
+  const bgApiRef = useRef(backgroundAudio);
+  bgApiRef.current = backgroundAudio;
 
   useEffect(() => {
     setPlaylistOrder((prev) => {
@@ -274,9 +276,10 @@ const VideoPlayer = () => {
           video.muted = true;
           video.pause();
         } catch (_) {}
-        backgroundAudio.wantPlayingRef.current = true;
-        backgroundAudio.playBackgroundAudio({ fromStart: true });
-        setIsPlaying(true);
+        bgApiRef.current.wantPlayingRef.current = true;
+        bgApiRef.current.playBackgroundAudio().then((ok) => {
+          setIsPlaying(!!ok);
+        });
         return;
       }
       video
@@ -300,7 +303,7 @@ const VideoPlayer = () => {
     return () => {
       video.removeEventListener("canplay", onCanPlay);
     };
-  }, [currentTrackKey, currentVideo?.url, isThisPip, backgroundAudio]);
+  }, [currentTrackKey, currentVideo?.url, isThisPip]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -1182,7 +1185,7 @@ const VideoPlayer = () => {
 
   useMediaSession({
     enabled: !!currentVideo && !isThisPip,
-    bindKey: `${currentTrackKey}:${backgroundAudio.sessionBindKey}`,
+    bindKey: currentTrackKey,
     metadata: currentVideo
       ? {
           title: currentVideo.title,
@@ -1269,13 +1272,7 @@ const VideoPlayer = () => {
                       onEnded={handleVideoEnd}
                       onPlay={() => setIsPlaying(true)}
                       onPause={() => {
-                        if (backgroundAudio.handingOffRef.current) return;
-                        if (
-                          document.hidden &&
-                          backgroundAudio.wantPlayingRef.current
-                        ) {
-                          return;
-                        }
+                        if (bgApiRef.current.handingOffRef.current) return;
                         setIsPlaying(false);
                       }}
                     />

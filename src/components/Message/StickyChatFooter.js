@@ -6,6 +6,8 @@ import { loadSettings } from "../../services/actions/settingsActions";
 import EmojiPicker from "emoji-picker-react";
 import socket from "../../common/socket";
 import "./StickyChatFooter.css";
+import ComposerContextPreview from "./ComposerContextPreview";
+import useSpeechToText from "../../hooks/useSpeechToText";
 
 const StickyChatFooter = ({
   room,
@@ -14,6 +16,7 @@ const StickyChatFooter = ({
   userId,
   replyData,
   setReplyData,
+  setIsReplying,
   messages,
   friendProfile,
   msgListRef,
@@ -33,6 +36,7 @@ const StickyChatFooter = ({
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [showMicMenu, setShowMicMenu] = useState(false);
   const [recordingMs, setRecordingMs] = useState(0);
   const [actionEmoji, setActionEmoji] = useState("👍");
 
@@ -46,6 +50,7 @@ const StickyChatFooter = ({
   const uploadFileInput = useRef(null);
   const emojiContainerRef = useRef(null);
   const emojiButtonRef = useRef(null);
+  const micMenuRef = useRef(null);
   const messageInput = useRef(null);
   const [emojiPosition, setEmojiPosition] = useState({ top: 0, right: 0 });
 
@@ -123,6 +128,39 @@ const StickyChatFooter = ({
     }
   }, [settings?.showIsTyping, removeTyping]);
 
+  const handleTranscriptFinal = useCallback(
+    (text) => {
+      if (!text) return;
+      setInputValue((prev) => {
+        const next = prev.trim() ? `${prev.trimEnd()} ${text}` : text;
+        addTyping(next);
+        return next;
+      });
+    },
+    [addTyping],
+  );
+
+  const {
+    listening: isTranscribing,
+    interim: transcribeInterim,
+    supported: isSpeechSupported,
+    start: startTranscription,
+    stop: stopTranscription,
+  } = useSpeechToText({
+    onFinal: handleTranscriptFinal,
+    continuous: true,
+  });
+
+  useEffect(() => {
+    const onDown = (event) => {
+      if (micMenuRef.current && !micMenuRef.current.contains(event.target)) {
+        setShowMicMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, []);
+
   const handleSendMessage = useCallback(
     (e) => {
       e.preventDefault();
@@ -134,6 +172,7 @@ const StickyChatFooter = ({
 
       isSendingRef.current = true;
       setIsSendingMessage(true);
+      stopTranscription();
 
       const roomId = room || [userId, friendId].sort().join("_");
       const messageContent = inputValue.trim();
@@ -165,7 +204,14 @@ const StickyChatFooter = ({
         });
       setInputValue("");
       setAttachmentUrl("");
-      setReplyData({ messageId: null, body: null });
+      setIsReplying?.(false);
+      setReplyData({
+        messageId: null,
+        body: null,
+        attachment: null,
+        senderId: null,
+        messageType: null,
+      });
     },
     [
       inputValue,
@@ -177,6 +223,7 @@ const StickyChatFooter = ({
       isAi,
       setIsTyping,
       setReplyData,
+      setIsReplying,
       msgListRef,
       sendMessage,
       removeTyping,
@@ -297,6 +344,7 @@ const StickyChatFooter = ({
 
   const startRecording = useCallback(async () => {
     if (isRecording || isUploadingAudio) return;
+    stopTranscription();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
@@ -326,7 +374,23 @@ const StickyChatFooter = ({
       console.error("Recording error:", err);
       setIsRecording(false);
     }
-  }, [isRecording, isUploadingAudio]);
+  }, [isRecording, isUploadingAudio, stopTranscription]);
+
+  const startLiveTranscribe = useCallback(() => {
+    setShowMicMenu(false);
+    if (!isSpeechSupported) {
+      window.alert(
+        "Live transcription is not supported in this browser. Try Chrome or Edge.",
+      );
+      return;
+    }
+    startTranscription();
+  }, [isSpeechSupported, startTranscription]);
+
+  const startVoiceMessage = useCallback(() => {
+    setShowMicMenu(false);
+    startRecording();
+  }, [startRecording]);
 
   const stopRecording = useCallback(async (shouldSend) => {
     if (!recorderRef.current) return;
@@ -355,6 +419,19 @@ const StickyChatFooter = ({
 
     recorderRef.current = null;
   }, []);
+
+  const handleMicButtonClick = () => {
+    if (isUploadingAudio) return;
+    if (isRecording) {
+      stopRecording(true);
+      return;
+    }
+    if (isTranscribing) {
+      stopTranscription();
+      return;
+    }
+    setShowMicMenu((prev) => !prev);
+  };
 
   const uploadAndSendAudio = useCallback(
     async (blob, mimeType) => {
@@ -461,24 +538,45 @@ const StickyChatFooter = ({
 
   return (
     <div className="sticky-chat-footer-container">
-      {attachmentUrl && (
-        <div className="sticky-chat-preview">
-          <img
-            src={attachmentUrl}
-            alt="Preview"
-            className="sticky-chat-preview-img"
-          />
+      <ComposerContextPreview
+        replyData={replyData}
+        userId={userId}
+        friendProfile={friendProfile}
+        attachmentUrl={attachmentUrl}
+        onCancelReply={() => {
+          setIsReplying?.(false);
+          setReplyData({
+            messageId: null,
+            body: null,
+            attachment: null,
+            senderId: null,
+            messageType: null,
+          });
+        }}
+        onRemoveAttachment={() => setAttachmentUrl("")}
+      />
+
+      {isTranscribing ? (
+        <div className="composer-transcribe-bar" aria-live="polite">
+          <span className="composer-transcribe-dot" aria-hidden="true" />
+          <div className="composer-transcribe-copy">
+            <span className="composer-transcribe-label">Listening</span>
+            <span className="composer-transcribe-interim">
+              {transcribeInterim || "Speak now — words appear in the message box"}
+            </span>
+          </div>
           <button
-            className="sticky-chat-preview-close"
-            onClick={() => setAttachmentUrl("")}
-            aria-label="Remove attachment"
+            type="button"
+            className="composer-transcribe-stop"
+            onClick={stopTranscription}
+            aria-label="Stop live transcription"
           >
-            <i className="fas fa-times"></i>
+            Done
           </button>
         </div>
-      )}
+      ) : null}
 
-      {isRecording && (
+      {isRecording ? (
         <div className="sticky-chat-recording-bar">
           <span className="sticky-chat-recording-dot"></span>
           <span className="sticky-chat-recording-time">
@@ -501,10 +599,12 @@ const StickyChatFooter = ({
             </button>
           </div>
         </div>
-      )}
+      ) : null}
 
-      <div className="sticky-chat-input-wrapper">
-        {!isInputFocused && (
+      <div
+        className={`sticky-chat-input-wrapper${showMicMenu ? " mic-menu-open" : ""}`}
+      >
+        {(!isInputFocused || showMicMenu || isTranscribing) && (
           <div className="sticky-chat-attachment-buttons">
             <button
               className={`sticky-chat-attachment-btn ${isUploadingFile ? "loading" : ""}`}
@@ -547,22 +647,72 @@ const StickyChatFooter = ({
               disabled={isUploadingImage}
             />
 
-            <button
-              className={`sticky-chat-attachment-btn ${isRecording ? "recording" : ""} ${isUploadingAudio ? "loading" : ""}`}
-              onClick={isRecording ? () => stopRecording(true) : startRecording}
-              disabled={isUploadingAudio}
-              aria-label={isRecording ? "Stop recording" : "Record voice"}
-            >
-              <i
-                className={
-                  isUploadingAudio
-                    ? "fas fa-spinner fa-spin"
-                    : isRecording
-                      ? "fas fa-stop"
-                      : "fas fa-microphone"
+            <div className="composer-mic-wrap" ref={micMenuRef}>
+              <button
+                className={`sticky-chat-attachment-btn ${isRecording ? "recording" : ""} ${isUploadingAudio ? "loading" : ""} ${isTranscribing || showMicMenu ? "recording" : ""}`}
+                onClick={handleMicButtonClick}
+                disabled={isUploadingAudio}
+                aria-haspopup="menu"
+                aria-expanded={showMicMenu}
+                aria-label={
+                  isRecording
+                    ? "Stop recording"
+                    : isTranscribing
+                      ? "Stop live transcription"
+                      : "Voice options"
                 }
-              ></i>
-            </button>
+              >
+                <i
+                  className={
+                    isUploadingAudio
+                      ? "fas fa-spinner fa-spin"
+                      : isRecording || isTranscribing
+                        ? "fas fa-stop"
+                        : "fas fa-microphone"
+                  }
+                ></i>
+              </button>
+              {showMicMenu && (
+                <div className="composer-mic-menu" role="menu">
+                  <button
+                    type="button"
+                    className="composer-mic-menu-item"
+                    role="menuitem"
+                    onClick={startLiveTranscribe}
+                  >
+                    <span className="composer-mic-menu-icon transcribe">
+                      <i className="fas fa-closed-captioning"></i>
+                    </span>
+                    <span className="composer-mic-menu-copy">
+                      <span className="composer-mic-menu-title">
+                        Live transcribe
+                      </span>
+                      <span className="composer-mic-menu-desc">
+                        Speech to text in the message box
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="composer-mic-menu-item"
+                    role="menuitem"
+                    onClick={startVoiceMessage}
+                  >
+                    <span className="composer-mic-menu-icon voice">
+                      <i className="fas fa-microphone"></i>
+                    </span>
+                    <span className="composer-mic-menu-copy">
+                      <span className="composer-mic-menu-title">
+                        Voice message
+                      </span>
+                      <span className="composer-mic-menu-desc">
+                        Record audio and send it
+                      </span>
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

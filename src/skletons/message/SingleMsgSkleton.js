@@ -8,11 +8,15 @@ const BUBBLE_WIDTHS = [170, 110, 150, 90, 130, 160, 100, 140];
 // A natural-ish alternation of received/sent bubbles instead of a strict
 // 1:1 receive/sent repeat, so it reads more like a real conversation.
 const SENT_PATTERN = [false, false, true, false, true, true, false, true];
+const ATTACH_PATTERN = [false, true, false, false, true, false, false, true];
+const REPLY_PATTERN = [false, false, true, false, false, false, true, false];
 
 const SkeletonRow = ({ index }) => {
   const isSent = SENT_PATTERN[index % SENT_PATTERN.length];
   const primaryWidth = BUBBLE_WIDTHS[index % BUBBLE_WIDTHS.length];
   const hasSecondLine = index % 3 === 1;
+  const hasAttachment = ATTACH_PATTERN[index % ATTACH_PATTERN.length];
+  const hasReply = REPLY_PATTERN[index % REPLY_PATTERN.length];
 
   const avatar = (
     <div className="chat-message-profilePic">
@@ -21,7 +25,26 @@ const SkeletonRow = ({ index }) => {
   );
 
   const bubble = (
-    <div className="chat-message msg-skeleton-bubble">
+    <div
+      className={`chat-message msg-skeleton-bubble${hasAttachment ? " has-attachment" : ""}`}
+    >
+      {hasReply && (
+        <div className="msg-reply-quote is-skeleton" aria-hidden="true">
+          <span className="msg-reply-quote-accent" />
+          <div className="msg-reply-quote-copy">
+            <span className="msg-skeleton-line" style={{ width: 72 }} />
+            <span
+              className="msg-skeleton-line"
+              style={{ width: Math.max(88, Math.round(primaryWidth * 0.7)) }}
+            />
+          </div>
+        </div>
+      )}
+      {hasAttachment && (
+        <div className="msg-media-skeleton" aria-hidden="true">
+          <span className="msg-media-skeleton-shimmer" />
+        </div>
+      )}
       <div className="message-container mb-0">
         <span
           className="msg-skeleton-line"

@@ -263,7 +263,22 @@
   }
 }
 
-/* Subtle gradient ring for the local preview */
+@media (max-width: 768px) {
+  .vc-modal-heading {
+    font-size: 16px;
+    padding: 0 8px;
+  }
+
+  .video-call-container {
+    max-height: min(52dvh, 420px);
+    border-radius: 10px;
+  }
+
+  #videoCallModal video,
+  #audioCallModal video {
+    max-width: 100%;
+  }
+}
 .my-video::after,
 .receive-my-video::after {
   content: "";

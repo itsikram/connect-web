@@ -239,10 +239,13 @@
     .user-info-cards {
         padding: 15px;
         gap: 12px;
+        grid-template-columns: 1fr;
     }
 
     .user-info-card {
         padding: 15px;
+        width: 100%;
+        box-sizing: border-box;
     }
 
     .user-info-footer {
@@ -252,5 +255,17 @@
 
     .user-info-action-btn {
         width: 100%;
+        min-height: 44px;
+    }
+}
+
+@media (max-width: 380px) {
+    .user-info-name {
+        font-size: 18px;
+    }
+
+    .user-info-card-icon {
+        width: 40px;
+        height: 40px;
     }
 }

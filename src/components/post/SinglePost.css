@@ -343,6 +343,11 @@
     bottom: 0;
 }
 
+.sp-comments-panel .comment-container .comment-attachment-container,
+.sp-comments-panel .comment-container .comment-box .comment-attachment-container {
+    max-width: min(280px, 100%) !important;
+}
+
 .sp-comments-panel .comment-attachment-preview {
     margin: 0 12px 10px 52px;
 }

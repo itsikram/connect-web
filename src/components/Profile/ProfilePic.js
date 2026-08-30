@@ -192,6 +192,10 @@ setUploadProgress(0)
     };
 
     const isMobile = useMediaQuery("(max-width: 768px)");
+    const editorSize = isMobile
+        ? Math.min(280, Math.max(180, window.innerWidth - 56))
+        : 360;
+    const editorBorder = isMobile ? 16 : 40;
 
     const PPViewModalTitleStyles = {
         fontSize: isMobile ? '18px' : '30px',
@@ -263,17 +267,17 @@ setUploadProgress(0)
                             <textarea onChange={handleppTextareChange.bind(this)} placeholder="What's in your Mind?" name='caption' className="post-caption" value={ppCaption}></textarea>
 
                             {
-                                profileImage && <AvatarEditor
+                                profileImage &&                                 <AvatarEditor
                                     ref={setEditorRef}
                                     image={URL.createObjectURL(profileImage)}
-                                    width={450}
-                                    height={450}
-                                    border={50}
+                                    width={editorSize}
+                                    height={editorSize}
+                                    border={editorBorder}
                                     borderRadius={300}
-                                    color={[0, 0, 0, 0.5]} // RGBA
+                                    color={[0, 0, 0, 0.5]}
                                     scale={1.1}
                                     rotate={0}
-                                    style={{ margin: 'auto', marginBottom: '20px', maxWidth: '100%', height: '100%', width: '100%' }}
+                                    style={{ margin: 'auto', marginBottom: '20px', maxWidth: '100%' }}
                                 />
                             }
                             <input onChange={ppInputChange} name="profilePic" className="pp-upload-input" type='file'></input>

@@ -1,9 +1,13 @@
 /* Sticky Chat Footer Styles */
 .sticky-chat-footer-container {
-    background: rgba(36, 37, 38, 0.95);
-    backdrop-filter: blur(20px);
-    border-top: 1px solid rgba(47, 48, 49, 0.8);
-    padding: 10px 12px;
+    background: linear-gradient(
+        0deg,
+        rgba(10, 14, 24, 0.96) 0%,
+        rgba(8, 11, 20, 0.93) 100%
+    );
+    backdrop-filter: blur(16px);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 10px 12px 12px;
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -49,6 +53,15 @@
 .sticky-chat-preview-close:hover {
     background: rgba(255, 68, 68, 1);
     transform: scale(1.1);
+}
+
+.sticky-composer-reply,
+.sticky-composer-attach {
+    width: 100%;
+}
+
+.sticky-chat-footer-container .composer-context {
+    margin-bottom: 2px;
 }
 
 /* Recording Bar */
@@ -147,6 +160,14 @@
 
 .sticky-chat-input-wrapper:has(.sticky-chat-input.focused) .sticky-chat-attachment-buttons {
     display: none;
+}
+
+.sticky-chat-input-wrapper.mic-menu-open .sticky-chat-attachment-buttons {
+    display: flex;
+}
+
+.sticky-chat-footer-container .composer-mic-wrap {
+    position: relative;
 }
 
 .sticky-chat-attachment-btn {

@@ -109,22 +109,29 @@
   padding: 10px 18px;
 }
 
-/* Modal chrome on small screens */
 .ReactModal__Content #cp-view-modal,
-.ReactModal__Content:has(.share-post-container) {
+.ReactModal__Content:has(.share-post-container),
+.app-modal-content:has(.share-post-container) {
   max-width: min(95vw, 560px);
 }
 
+.app-modal-content:has(.share-post-container) .modal-header,
 .ReactModal__Content:has(.share-post-container) .modal-header {
   padding: 4px 0 10px !important;
   margin-bottom: 4px;
 }
 
+.app-modal-content:has(.share-post-container) .modal-body,
 .ReactModal__Content:has(.share-post-container) .modal-body {
   padding: 8px 0 4px !important;
 }
 
 @media (max-width: 768px) {
+  .app-modal-content:has(.share-post-container),
+  .ReactModal__Content:has(.share-post-container) {
+    max-width: 100% !important;
+  }
+
   .share-post-container {
     padding: 2px 0 4px;
   }
