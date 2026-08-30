@@ -13,6 +13,7 @@ import api from "../../api/api";
 import moment from "moment";
 import { fetchProfileCached } from "../../utils/requestCache";
 import MsgListSkleton from "../../skletons/message/MsgListSkleton";
+import ContactCacheManager from "../../utils/contactCacheManager";
 // const isProfileActive = (id) => {
 //     return true
 //     socket.emit('is_active', { profileId: id, myId: profileId })
@@ -168,6 +169,11 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
           .map((contact) => contact.person._id);
         setActiveFriends(onlineFriends);
 
+        // Cache contacts using ContactCacheManager
+        ContactCacheManager.setCachedContacts(contactsData);
+        ContactCacheManager.setCachedActiveFriends(onlineFriends);
+        console.log('📦 Updated contact cache with fresh data');
+
         // Store contacts data in localStorage for Chat.js and cache (skeleton only on first load)
         const cacheKey = `contactsData_${effectiveProfileId}`;
         localStorage.setItem("contactsData", JSON.stringify(contactsData));
@@ -182,6 +188,22 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
     },
     [effectiveProfileId],
   );
+
+  // Load cached contacts on mount if available
+  useEffect(() => {
+    const cachedContacts = ContactCacheManager.getCachedContacts();
+    if (cachedContacts && cachedContacts.length > 0) {
+      setContacts(cachedContacts);
+      setLoading(false);
+      console.log('📦 Loaded contacts from cache:', cachedContacts.length);
+      
+      // Also restore active friends from cache
+      const cachedActiveFriends = ContactCacheManager.getCachedActiveFriends();
+      if (cachedActiveFriends && cachedActiveFriends.length > 0) {
+        setActiveFriends(cachedActiveFriends);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (!effectiveProfileId) return;

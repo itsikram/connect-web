@@ -48,12 +48,18 @@ const messageReducer = (state = initialState, action) => {
             }
 
             // Determine contact ID: if I'm the sender, use receiverId; if I'm the receiver, use senderId
-            const contactId = (myProfileId && newMsg.senderId === myProfileId) 
-                ? newMsg.receiverId 
-                : newMsg.senderId;
-            
-            if (!contactId) {
-                console.warn('NEW_MESSAGE: Could not determine contactId', newMsg);
+            let contactId;
+            if (myProfileId && newMsg.senderId === myProfileId) {
+                contactId = newMsg.receiverId;
+            } else if (newMsg.senderId) {
+                contactId = newMsg.senderId;
+            } else if (newMsg.receiverId && newMsg.receiverId !== myProfileId) {
+                // Fallback: if we're receiving and senderId is missing, but receiverId is not us
+                // This can happen in edge cases where senderId is not populated
+                contactId = newMsg.receiverId;
+            } else {
+                // Last resort: if both senderId is missing and we can't determine from receiverId
+                console.warn('NEW_MESSAGE: Could not determine contactId, message', newMsg);
                 return state;
             }
 

@@ -145,6 +145,16 @@ import Rehab from "./Rehab.js";
 //   reader.readAsDataURL(file);
 // });
 
+// Helper function to truncate text to maximum 10 words
+const truncateToTenWords = (text) => {
+  if (!text) return "";
+  const words = String(text).trim().split(/\s+/);
+  if (words.length > 10) {
+    return words.slice(0, 10).join(" ") + "...";
+  }
+  return words.join(" ");
+};
+
 function showNotification(msg, receiverId) {
   // If Web Push is active, the service worker already shows the system notification.
   // Showing another page Notification causes duplicates on iOS installed web apps.
@@ -156,10 +166,11 @@ function showNotification(msg, receiverId) {
     (msg?.title && String(msg.title).trim()) ||
     (msg?.senderName && String(msg.senderName).trim()) ||
     "New Message";
-  const bodyText =
+  const rawBodyText =
     (msg?.message && String(msg.message).trim()) ||
     (msg?.text && String(msg.text).trim()) ||
     "You have a new message";
+  const bodyText = truncateToTenWords(rawBodyText);
 
   const notification = new Notification(titleText, {
     body: bodyText,
@@ -190,9 +201,60 @@ const speakText = (textOrMsg) => {
   window.speechSynthesis.speak(speech);
 };
 
-// Track recently processed messages to prevent duplicate toasts (shared across component instances)
-const recentMessageToasts = new Map(); // messageId -> timestamp
-const TOAST_DEDUP_WINDOW = 3000; // 3 seconds
+// Track message notifications to prevent duplicate toasts across page reloads
+// Store message IDs and last notification time for persistence
+const DEDUP_STORAGE_KEY = 'notifiedMessageIds'; // Store set of notified message IDs
+const LAST_NOTIFICATION_FETCH_KEY = 'lastNotificationFetchTime'; // Store last fetch timestamp
+const DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000; // Keep notified IDs for 24 hours, then auto-cleanup
+
+const getNotifiedMessages = () => {
+  try {
+    const stored = localStorage.getItem(DEDUP_STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // Clean up very old entries (more than 24 hours old)
+      const now = Date.now();
+      const cleaned = Object.fromEntries(
+        Object.entries(parsed).filter(([, timestamp]) => now - timestamp < DEDUP_WINDOW_MS)
+      );
+      return cleaned;
+    }
+  } catch (error) {
+    console.error('Error loading notified messages:', error);
+  }
+  return {};
+};
+
+const saveNotifiedMessages = (obj) => {
+  try {
+    localStorage.setItem(DEDUP_STORAGE_KEY, JSON.stringify(obj));
+  } catch (error) {
+    console.error('Error saving notified messages:', error);
+  }
+};
+
+const getLastNotificationFetchTime = () => {
+  try {
+    const stored = localStorage.getItem(LAST_NOTIFICATION_FETCH_KEY);
+    return stored ? parseInt(stored, 10) : 0;
+  } catch (error) {
+    console.error('Error loading last notification fetch time:', error);
+    return 0;
+  }
+};
+
+const saveLastNotificationFetchTime = (timestamp) => {
+  try {
+    localStorage.setItem(LAST_NOTIFICATION_FETCH_KEY, String(timestamp));
+  } catch (error) {
+    console.error('Error saving last notification fetch time:', error);
+  }
+};
+
+// Store message IDs that have been notified with their timestamps
+// Using object {messageId: timestamp} instead of Set for persistence across reloads
+const notifiedMessageIds = getNotifiedMessages();
+let lastNotificationFetchTime = getLastNotificationFetchTime(); // Timestamp of last fetch
 
 const Main = () => {
   const dispatch = useDispatch();
@@ -594,7 +656,7 @@ const Main = () => {
               const browserNotification = new Notification(
                 notification.title || "Connect",
                 {
-                  body: notification.text,
+                  body: truncateToTenWords(notification.text),
                   icon: notification.icon || "/apple-touch-icon.png",
                   tag: `notification_${notification._id || Date.now()}`,
                   data: {
@@ -631,8 +693,32 @@ const Main = () => {
       });
 
       if (response.data.messages && response.data.messages.length > 0) {
+        const fetchTime = Date.now();
+        
         response.data.messages.forEach((updatedMessage) => {
+          // Validate message has required fields (senderId or receiverId)
+          if (!updatedMessage.senderId && !updatedMessage.receiverId) {
+            console.warn('Skipping invalid message - missing senderId and receiverId:', updatedMessage._id);
+            return;
+          }
+          
+          // Always dispatch to update state (for message history/storage)
           dispatch(newMessage(updatedMessage, profileId));
+          
+          const messageId = updatedMessage._id?.toString() || updatedMessage._id;
+          
+          // Only show notification if message has NOT been notified before
+          if (notifiedMessageIds[messageId]) {
+            // Message was already notified, skip
+            console.log('⏭️ Skipping duplicate notification for message:', messageId);
+            return;
+          }
+          
+          // Mark this message as notified with timestamp
+          notifiedMessageIds[messageId] = Date.now();
+          saveNotifiedMessages(notifiedMessageIds);
+          
+          console.log('📬 API: Showing notification for message:', messageId, 'from:', updatedMessage.senderId);
 
           // Update sender's online status
           if (updatedMessage.senderId) {
@@ -642,52 +728,26 @@ const Main = () => {
             window.dispatchEvent(friendOnlineEvent);
           }
 
-          // Client-side deduplication
-          const messageId =
-            updatedMessage._id?.toString() || updatedMessage._id;
-          const now = Date.now();
-          const lastToastTime = recentMessageToasts.get(messageId);
-
-          if (lastToastTime && now - lastToastTime < TOAST_DEDUP_WINDOW) {
-            return;
+          // Show notification only if message is not empty
+          const messageText = String(updatedMessage.message || '').trim();
+          if (messageText) {
+            const senderName = updatedMessage.senderName || "Friend";
+            const senderPP = updatedMessage.senderPP || "/default-avatar.png";
+            notify(
+              truncateToTenWords(messageText),
+              senderName,
+              senderPP,
+              "/message/" + updatedMessage.senderId,
+            );
           }
-
-          recentMessageToasts.set(messageId, now);
-
-          // Clean up old entries
-          for (const [msgId, timestamp] of recentMessageToasts.entries()) {
-            if (now - timestamp > TOAST_DEDUP_WINDOW) {
-              recentMessageToasts.delete(msgId);
-            }
-          }
-
-          // Show notification
-          const senderName = updatedMessage.senderName || "Friend";
-          const senderPP = updatedMessage.senderPP || "/default-avatar.png";
-          notify(
-            updatedMessage.message,
-            senderName,
-            senderPP,
-            "/message/" + updatedMessage.senderId,
-          );
-
-          // Handle sticky chat opening
-          const isOnMessagePage =
-            window.location.pathname.startsWith("/message");
-          if (!isOnMessagePage && updatedMessage.senderId) {
-            const isChatOpen =
-              typeof window.isStickyChatOpen === "function"
-                ? window.isStickyChatOpen(updatedMessage.senderId)
-                : false;
-
-            if (!isChatOpen) {
-              const openChatEvent = new CustomEvent("openStickyChat", {
-                detail: { profileId: updatedMessage.senderId },
-              });
-              window.dispatchEvent(openChatEvent);
-            }
-          }
+          
+          // Note: Do NOT open sticky chat here - socket handler will handle it
+          // This prevents duplicate sticky chat boxes from API polling
         });
+        
+        // Update the last fetch time
+        lastNotificationFetchTime = fetchTime;
+        saveLastNotificationFetchTime(fetchTime);
       }
     } catch (error) {
       console.error("Error fetching new messages:", error);
@@ -728,6 +788,12 @@ const Main = () => {
         // Process the message for notifications and UI updates
         const updatedMessage = data.updatedMessage;
 
+        // Validate message has required fields
+        if (!updatedMessage.senderId) {
+          console.warn('Skipping socket message - missing senderId:', updatedMessage._id);
+          return;
+        }
+        
         // Update sender's online status
         if (updatedMessage.senderId) {
           const friendOnlineEvent = new CustomEvent("friend_online_client", {
@@ -736,49 +802,64 @@ const Main = () => {
           window.dispatchEvent(friendOnlineEvent);
         }
 
-        // Client-side deduplication
+        // Client-side deduplication: skip if already notified
         const messageId = updatedMessage._id?.toString() || updatedMessage._id;
-        const now = Date.now();
-        const lastToastTime = recentMessageToasts.get(messageId);
 
-        if (lastToastTime && now - lastToastTime < TOAST_DEDUP_WINDOW) {
+        if (notifiedMessageIds[messageId]) {
+          // Message was already notified before
+          console.log('⏭️ Skipping duplicate socket notification for message:', messageId);
           return;
         }
 
-        recentMessageToasts.set(messageId, now);
+        // Mark this message as notified with timestamp
+        notifiedMessageIds[messageId] = Date.now();
+        saveNotifiedMessages(notifiedMessageIds);
+        
+        console.log('📬 Socket: Showing notification for message:', messageId, 'from:', updatedMessage.senderId);
 
-        // Clean up old entries
-        for (const [msgId, timestamp] of recentMessageToasts.entries()) {
-          if (now - timestamp > TOAST_DEDUP_WINDOW) {
-            recentMessageToasts.delete(msgId);
-          }
+        // Show notification only if message is not empty
+        const messageText = String(updatedMessage.message || '').trim();
+        if (messageText) {
+          const senderName = data.senderName || "Friend";
+          const senderPP = data.senderPP || "/default-avatar.png";
+          notify(
+            truncateToTenWords(messageText),
+            senderName,
+            senderPP,
+            "/message/" + updatedMessage.senderId,
+          );
         }
-
-        // Show notification
-        const senderName = data.senderName || "Friend";
-        const senderPP = data.senderPP || "/default-avatar.png";
-        notify(
-          updatedMessage.message,
-          senderName,
-          senderPP,
-          "/message/" + updatedMessage.senderId,
-        );
 
         // Handle sticky chat opening
         const isOnMessagePage = window.location.pathname.startsWith("/message");
         if (!isOnMessagePage && updatedMessage.senderId) {
-          const isChatOpen =
-            typeof window.isStickyChatOpen === "function"
-              ? window.isStickyChatOpen(updatedMessage.senderId)
-              : false;
+          let isChatOpen = false;
+          try {
+            isChatOpen =
+              typeof window.isStickyChatOpen === "function"
+                ? window.isStickyChatOpen(updatedMessage.senderId)
+                : false;
+          } catch (error) {
+            console.warn('Error checking if chat is open:', error);
+            isChatOpen = false;
+          }
 
           if (!isChatOpen) {
+            console.log('💬 Dispatching openStickyChat for:', updatedMessage.senderId);
             const openChatEvent = new CustomEvent("openStickyChat", {
               detail: { profileId: updatedMessage.senderId },
             });
             window.dispatchEvent(openChatEvent);
+          } else {
+            console.log('✅ Chat already open for:', updatedMessage.senderId);
           }
+        } else {
+          console.log('📄 On message page or no senderId, skipping sticky chat');
         }
+
+        // Update last notification fetch time for persistence
+        lastNotificationFetchTime = Date.now();
+        saveLastNotificationFetchTime(lastNotificationFetchTime);
 
         // Dispatch message for Redux state
         dispatch(newMessage(updatedMessage, profileId));
@@ -838,7 +919,7 @@ const Main = () => {
         }
 
         playSound();
-        notify(msg.message, senderName, senderPP, "/message/" + msg.senderId);
+        notify(truncateToTenWords(msg.message), senderName, senderPP, "/message/" + msg.senderId);
         dispatch(newMessage(msg));
       } else {
         if (Notification && Notification.permission === "granted") {
@@ -879,7 +960,7 @@ const Main = () => {
 
       if (document.visibilityState === "visible") {
         const notificationLink = getNotificationLink(notification);
-        notify(notification.text, false, notification.icon, notificationLink);
+        notify(truncateToTenWords(notification.text), false, notification.icon, notificationLink);
       }
     };
 

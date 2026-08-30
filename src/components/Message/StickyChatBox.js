@@ -228,9 +228,16 @@ const StickyChatBox = ({
   // Mark only the last message as seen
   const markMessageAsSeen = async (message) => {
     try {
-      await api.post("/message/seen", { messageId: message._id });
+      if (!message || !message._id) {
+        console.warn('Cannot mark message as seen - message or _id is missing:', message);
+        return;
+      }
+      
+      console.log('📤 Marking message as seen:', { messageId: message._id });
+      const response = await api.post("/message/seen", { messageId: message._id });
+      console.log('✅ Message marked as seen:', response.data);
     } catch (error) {
-      console.error("Error marking message as seen:", error);
+      console.error("Error marking message as seen:", error?.response?.data || error?.message || error);
     }
   };
 
@@ -911,8 +918,15 @@ const StickyChatBox = ({
           lastMessage.senderId === friendId &&
           !lastMessage.isSeen
         ) {
+          console.log('⏱️ Auto-marking last message as seen:', { lastMessage: lastMessage._id, sender: lastMessage.senderId });
           markMessageAsSeen(lastMessage);
           dispatch(seenMessage(friendId));
+        } else if (lastMessage) {
+          console.log('⏭️ Skipping mark as seen:', {
+            hasSender: !!lastMessage.senderId,
+            senderIsUser: lastMessage.senderId === userId,
+            isSeen: lastMessage.isSeen
+          });
         }
       }, 2000);
       return () => clearTimeout(timeoutId);

@@ -91,7 +91,9 @@ const SingleMessage = ({ index, msg, friendProfile, messages, setMessages, setRe
         
         try {
             await api.post('/message/delete', { messageId });
-            // Message will be removed through HTTP polling in parent components
+            if (setMessages) {
+                setMessages(prevMessages => prevMessages.filter(message => message._id !== messageId));
+            }
         } catch (error) {
             console.error('Error deleting message:', error);
         }
@@ -345,7 +347,6 @@ const SingleMessage = ({ index, msg, friendProfile, messages, setMessages, setRe
                             <button type='button' data-id={msg._id} className={`chat-message-option like ${isReactedByMe == true ? 'reacted' : ''}`} onClick={handleLikeMessage.bind(this)}><i className="fa fa-thumbs-up"></i></button>
                             <button type='button' data-id={msg._id} className={`chat-message-option reply`} onClick={handleReplyMessage.bind(this)}><i className="fa fa-reply"></i></button>
                             <button type='button' data-id={msg._id} className='chat-message-option share' onClick={handleSpeakMessage.bind(this)}><i className="fa fa-volume-up"></i></button>
-                            <button type='button' data-id={msg._id} className='chat-message-option delete' onClick={handleDeleteMessage.bind(msg)}><i className="fa fa-trash"></i></button>
                         </div>}
 
                         {msg?.parent === undefined || msg?.parent === null || !msg?.parent?._id ? (<></>) : (<div 

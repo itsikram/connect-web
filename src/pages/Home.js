@@ -12,6 +12,7 @@ import PostSkeleton from "../skletons/post/PostSkeleton";
 import StoryListSkleton from "../skletons/story/StoryListSkleton";
 import { loadPosts } from "../services/actions/postActions"
 import { getCachedProfile, getProfileSuccess } from "../services/actions/profileActions"
+import CacheManager from "../utils/cacheManager"
 
 const Home = () => {
 
@@ -33,6 +34,9 @@ const Home = () => {
     const [match, setMatch] = useState(window.matchMedia('(max-width: 768px)').matches)
     const [loadNewPosts, setLoadNewPosts] = useState(false);
     const [hasNewPosts, setHasNewPosts] = useState(true);
+    const [showNewPostsNotification, setShowNewPostsNotification] = useState(false);
+    const [newPostsCount, setNewPostsCount] = useState(0);
+    const [isFirstLoad, setIsFirstLoad] = useState(true);
 
     // setting state to store posts data
 
@@ -96,7 +100,15 @@ const Home = () => {
                 }
             })
             if (nfRes.status === 200) {
-                dispatch(loadPosts([...nfRes.data.posts] || []))
+                const newPosts = [...nfRes.data.posts] || [];
+                
+                // Only cache page 1 data
+                if (nextPage === 1) {
+                    CacheManager.setCachedPosts(newPosts);
+                    console.log('📦 Updated cache with fresh posts');
+                }
+                
+                dispatch(loadPosts(newPosts))
                 setPageNumber(nextPage)
                 setHasNewPosts(nfRes.data.hasNewPost ?? false)
             }
@@ -106,6 +118,7 @@ const Home = () => {
             setLoadNewPosts(false)
             setFeedLoaded(true)
             dispatch(setLoading(false))
+            setIsFirstLoad(false);
         }
     }, [dispatch, hasNewPosts, pageNumber])
 
@@ -170,6 +183,14 @@ const Home = () => {
         }
 
         mediaQuery.addEventListener('change', handleMediaChange)
+        
+        // Load cached posts if available
+        const cachedPosts = CacheManager.getCachedPosts();
+        if (cachedPosts && cachedPosts.length > 0) {
+            dispatch(loadPosts(cachedPosts));
+            console.log('📦 Loaded posts from cache:', cachedPosts.length);
+        }
+        
         setHasNewPosts(true)
         setLoadNewPosts(true)
         fetchStories()
@@ -196,6 +217,31 @@ const Home = () => {
         }
     }, [newsFeedPosts])
 
+    // Detect new posts from fresh API fetch and show notification
+    useEffect(() => {
+        if (!isFirstLoad && feedLoaded && pageNumber === 1 && newsFeedPosts.length > 0) {
+            // Get cached posts to compare
+            const cachedPosts = CacheManager.getCachedPosts();
+            if (cachedPosts && cachedPosts.length > 0) {
+                const cachedPostIds = new Set(cachedPosts.map(p => p._id));
+                const newPostsInFetch = newsFeedPosts.filter(p => !cachedPostIds.has(p._id));
+                
+                if (newPostsInFetch.length > 0) {
+                    setNewPostsCount(newPostsInFetch.length);
+                    setShowNewPostsNotification(true);
+                    console.log('🆕 New posts detected:', newPostsInFetch.length);
+                    
+                    // Auto-hide notification after 5 seconds
+                    const timeout = setTimeout(() => {
+                        setShowNewPostsNotification(false);
+                    }, 5000);
+                    
+                    return () => clearTimeout(timeout);
+                }
+            }
+        }
+    }, [feedLoaded, newsFeedPosts, isFirstLoad, pageNumber])
+
     return (
         <Fragment>
             <div id="home" className="home-page">
@@ -210,6 +256,12 @@ const Home = () => {
                             <CreatePost setNewsFeed={setNewsFeed}></CreatePost>
 
                             <div id="newsfeed-container" className="newsfeed-container">
+                                {showNewPostsNotification && (
+                                    <div className="alert alert-info alert-dismissible fade show" role="alert">
+                                        <strong>🆕 New Posts!</strong> {newPostsCount} new {newPostsCount === 1 ? 'post' : 'posts'} available
+                                        <button type="button" className="btn-close" onClick={() => setShowNewPostsNotification(false)}></button>
+                                    </div>
+                                )}
 
                                 {
                                     stories.length > 0 ? (

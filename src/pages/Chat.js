@@ -20,6 +20,7 @@ import ChatHeader from "../components/Message/ChatHeader";
 import ChatFooter from "../components/Message/ChatFooter";
 import SingleMsgSkleton from "../skletons/message/SingleMsgSkleton";
 import defaultChatBackground from "../assets/images/default-chat-bg.svg";
+import MessageCacheManager from "../utils/messageCacheManager";
 
 const NEAR_BOTTOM_PX = 100;
 
@@ -85,6 +86,9 @@ const Chat = ({}) => {
   const [messages, setMessages] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
   const [isMsgLoading, setIsMsgLoading] = useState(false);
+  const [showNewMessagesNotification, setShowNewMessagesNotification] = useState(false);
+  const [newMessagesCount, setNewMessagesCount] = useState(0);
+  const [isFirstMessageLoad, setIsFirstMessageLoad] = useState(true);
   const [typeMessage, setTypeMessage] = useState("");
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   // Default as "at bottom" so load-older logic does not run until the user scrolls (real % from handler).
@@ -111,6 +115,9 @@ const Chat = ({}) => {
     return getDistanceFromBottom(el) <= threshold;
   };
 
+  const params = useParams();
+  const friendId = params.profile;
+
   const scrollToLastMessage = useCallback((behavior = "smooth") => {
     const el = msgListRef.current;
     if (!el) return;
@@ -135,8 +142,12 @@ const Chat = ({}) => {
     });
   }, []);
 
-  const params = useParams();
-  const friendId = params.profile;
+  // Update cache when messages change (but not on first load)
+  useEffect(() => {
+    if (!isFirstMessageLoad && userId && friendId && messages.length > 0) {
+      MessageCacheManager.setCachedMessages(userId, friendId, messages);
+    }
+  }, [messages, userId, friendId, isFirstMessageLoad]);
 
   const fetchChatHistory = useCallback(
     async (profileId, friendIdArg, limit = 20) => {
@@ -148,6 +159,13 @@ const Chat = ({}) => {
             limit,
           },
         });
+        
+        // Cache the fetched messages
+        if (response.data && response.data.messages && Array.isArray(response.data.messages)) {
+          MessageCacheManager.setCachedMessages(profileId, friendIdArg, response.data.messages);
+          console.log('📦 Updated message cache for conversation');
+        }
+        
         return response.data;
       } catch (error) {
         console.error("Error fetching messages:", error);
@@ -179,6 +197,18 @@ const Chat = ({}) => {
     },
     [],
   );
+
+  // Load cached messages on chat open if available
+  useEffect(() => {
+    if (userId && friendId) {
+      const cachedMessages = MessageCacheManager.getCachedMessages(userId, friendId);
+      if (cachedMessages && cachedMessages.length > 0) {
+        setMessages(cachedMessages);
+        console.log('📦 Loaded messages from cache:', cachedMessages.length);
+        setIsMsgLoading(false);
+      }
+    }
+  }, [userId, friendId]);
 
   useEffect(() => {
     if (friendId) dispatch(seenMessage(friendId));
@@ -228,6 +258,31 @@ const Chat = ({}) => {
     isNearBottomRef.current = checkIsNearBottom(el);
   }, [messages]);
 
+  // Detect new messages from fresh API fetch and show notification
+  useEffect(() => {
+    if (!isFirstMessageLoad && userId && friendId && messages.length > 0) {
+      // Get cached messages to compare
+      const cachedMessages = MessageCacheManager.getCachedMessages(userId, friendId);
+      if (cachedMessages && cachedMessages.length > 0) {
+        const cachedMessageIds = new Set(cachedMessages.map(m => m._id));
+        const newMessagesInFetch = messages.filter(m => !cachedMessageIds.has(m._id));
+        
+        if (newMessagesInFetch.length > 0) {
+          setNewMessagesCount(newMessagesInFetch.length);
+          setShowNewMessagesNotification(true);
+          console.log('🆕 New messages detected:', newMessagesInFetch.length);
+          
+          // Auto-hide notification after 5 seconds
+          const timeout = setTimeout(() => {
+            setShowNewMessagesNotification(false);
+          }, 5000);
+          
+          return () => clearTimeout(timeout);
+        }
+      }
+    }
+  }, [messages, userId, friendId, isFirstMessageLoad]);
+
   useEffect(() => {
     if (!friendId || !userId || !hasMoreMessages) return;
     if (scrollPercent >= 30 || !Number.isFinite(scrollPercent)) return;
@@ -270,32 +325,11 @@ const Chat = ({}) => {
         console.error("Error loading older messages:", error);
       } finally {
         setIsMsgLoading(false);
-        loadingOlderRef.current = false;
+        setIsFirstMessageLoad(false);
       }
     })();
     // Intentionally omit isMsgLoading: when it flips false, deps would match again and load every page in one burst.
   }, [scrollPercent, hasMoreMessages, userId, friendId, fetchOldMessages]);
-
-  // Get online status from contacts data (no separate API calls)
-  const getOnlineStatusFromContacts = () => {
-    // Try to get online status from localStorage or Redux store if available
-    try {
-      const contactsData = localStorage.getItem("contactsData");
-      if (contactsData) {
-        const contacts = JSON.parse(contactsData);
-        const friendContact = contacts.find((c) => c.person?._id === friendId);
-        if (friendContact) {
-          return {
-            isActive: friendContact.isOnline || false,
-            lastSeen: friendContact.lastSeen || null,
-          };
-        }
-      }
-    } catch (error) {
-      console.error("Error getting online status from contacts:", error);
-    }
-    return { isActive: false, lastSeen: null };
-  };
 
   // WebSocket-based message sending with optimistic UI
   const sendMessage = async (messageData) => {
@@ -378,14 +412,29 @@ const Chat = ({}) => {
     }
   };
 
-  // Mark only the last message as seen
-  const markMessageAsSeen = async (message) => {
+  // Mark all unseen messages from friend as seen
+  const markMessageAsSeen = useCallback(async () => {
     try {
-      await api.post("/message/seen", { messageId: message._id });
+      // Get all unseen messages from the friend in this conversation
+      const unseenMessageIds = messages
+        .filter(msg => msg.senderId === friendId && !msg.isSeen)
+        .map(msg => msg._id);
+      
+      if (unseenMessageIds.length === 0) return;
+      
+      // Mark all unseen messages as seen
+      await api.post("/message/seen", { messageIds: unseenMessageIds });
+      
+      // Update local state to mark them as seen
+      setMessages(prevMessages =>
+        prevMessages.map(msg =>
+          unseenMessageIds.includes(msg._id) ? { ...msg, isSeen: true } : msg
+        )
+      );
     } catch (error) {
-      console.error("Error marking message as seen:", error);
+      console.error("Error marking messages as seen:", error);
     }
-  };
+  }, [messages, friendId]);
 
   // Real-time socket listeners for new messages
   useEffect(() => {
@@ -473,23 +522,51 @@ const Chat = ({}) => {
       );
     };
 
+    const handleDeleteMessage = (deletedMessageId) => {
+      setMessages((prev) =>
+        prev.filter((msg) => String(msg._id) !== String(deletedMessageId)),
+      );
+    };
+
     socket.on("newMessage", handleNewMessage);
     socket.on("newMessageToUser", handleNewMessageToUser);
     socket.on("messageSeen", handleMessageSeen);
+    socket.on("deleteMessage", handleDeleteMessage);
 
     return () => {
       socket.off("newMessage", handleNewMessage);
       socket.off("newMessageToUser", handleNewMessageToUser);
       socket.off("messageSeen", handleMessageSeen);
+      socket.off("deleteMessage", handleDeleteMessage);
       socket.emit("leaveRoom", roomId);
     };
   }, [friendId, userId, scrollToLastMessage]);
 
-  useEffect(() => {
+  // Get online status from contacts data (no separate API calls)
+  const getOnlineStatusFromContacts = useCallback(function() {
+    // Try to get online status from localStorage or Redux store if available
+    try {
+      const contactsData = localStorage.getItem("contactsData");
+      if (contactsData) {
+        const contacts = JSON.parse(contactsData);
+        const friendContact = contacts.find((c) => c.person?._id === friendId);
+        if (friendContact) {
+          return {
+            isActive: friendContact.isOnline || false,
+            lastSeen: friendContact.lastSeen || null,
+          };
+        }
+      }
+    } catch (error) {
+      console.error("Error getting online status from contacts:", error);
+    }
+    return { isActive: false, lastSeen: null };
+  }, [friendId]);
+
+  useEffect(function() {
     if (!friendId || !userId) return;
 
-    // Get online status from contacts data (no API calls)
-    const setOnlineStatus = () => {
+    const setOnlineStatus = function() {
       const statusData = getOnlineStatusFromContacts();
       setIsActive(statusData.isActive);
 
@@ -516,20 +593,20 @@ const Chat = ({}) => {
     // Refresh online status every 2 minutes (aligned with contacts refresh)
     const statusInterval = setInterval(setOnlineStatus, 120000);
 
-    return () => clearInterval(statusInterval);
-  }, [friendId, userId]);
+    return function() { clearInterval(statusInterval); };
+  }, [friendId, userId, getOnlineStatusFromContacts]);
 
-  useEffect(() => {
+  useEffect(function() {
     if (!friendId) return;
     fetchProfileCached(friendId, { ttlMs: 60000, storageTtlMs: 300000 })
-      .then((profileData) => {
+      .then(function(profileData) {
         setFriendProfile(profileData);
         dispatch(setLoading(false));
       })
-      .catch((e) => console.log(e));
+      .catch(function(e) { console.log(e); });
   }, [friendId, dispatch]);
 
-  useEffect(() => {
+  useEffect(function() {
     if (friendProfile && profile._id) {
       setIsBlockedMe(
         friendProfile.blockedUsers
@@ -539,7 +616,7 @@ const Chat = ({}) => {
     }
   }, [friendProfile, profile._id]);
 
-  useEffect(() => {
+  useEffect(function() {
     if (!friendId || !userId) return;
     setRoom([userId, friendId].sort().join("_"));
     setMessages([]);
@@ -550,7 +627,7 @@ const Chat = ({}) => {
     pendingScrollRestoreRef.current = null;
     isNearBottomRef.current = true;
 
-    const fetchInitialMessages = async () => {
+    const fetchInitialMessages = async function() {
       setIsMsgLoading(true);
       try {
         const response = await fetchChatHistory(userId, friendId, 20);
@@ -571,6 +648,7 @@ const Chat = ({}) => {
       }
     };
 
+    setIsFirstMessageLoad(true);
     fetchInitialMessages();
   }, [friendId, userId, fetchChatHistory]);
 
@@ -585,28 +663,36 @@ const Chat = ({}) => {
   useEffect(() => {
     if (messages.length > 0 && friendId && friendProfile?._id) {
       const t = setTimeout(() => {
-        const lastMessage = messages[messages.length - 1];
-        if (
-          lastMessage &&
-          lastMessage.senderId !== userId &&
-          lastMessage.senderId === friendId
-        ) {
-          markMessageAsSeen(lastMessage);
+        // Check if there are any unseen messages from the friend
+        const hasUnseenFromFriend = messages.some(
+          msg => msg.senderId === friendId && !msg.isSeen
+        );
+        
+        if (hasUnseenFromFriend) {
+          markMessageAsSeen();
           dispatch(seenMessage(friendId));
 
+          // Hide all seen status indicators for sent messages
           $(
             "#chatMessageList .message-sent.chat-message-container .chat-message-seen-status",
           ).css("visibility", "hidden");
-          $(
-            "#chatMessageList .message-sent.chat-message-container.message-id-" +
-              lastMessage._id +
-              ":last-child .chat-message-seen-status",
-          ).css("visibility", "visible");
+          
+          // Show seen status for the last sent message
+          const lastSentMessage = [...messages]
+            .reverse()
+            .find(msg => msg.senderId === userId);
+          if (lastSentMessage) {
+            $(
+              "#chatMessageList .message-sent.chat-message-container.message-id-" +
+                lastSentMessage._id +
+                ":last-child .chat-message-seen-status",
+            ).css("visibility", "visible");
+          }
         }
       }, 2000);
       return () => clearTimeout(t);
     }
-  }, [messages, friendId, friendProfile?._id, userId, dispatch]);
+  }, [messages, friendId, friendProfile?._id, userId, dispatch, markMessageAsSeen]);
 
   const footerProps = {
     chatFooter,
@@ -721,6 +807,12 @@ const Chat = ({}) => {
             backgroundAttachment: "fixed",
           }}
         >
+          {showNewMessagesNotification && (
+            <div className="alert alert-info alert-dismissible fade show" role="alert" style={{ margin: '10px', marginBottom: '10px' }}>
+              <strong>🆕 New Messages!</strong> {newMessagesCount} new {newMessagesCount === 1 ? 'message' : 'messages'} available
+              <button type="button" className="btn-close" onClick={() => setShowNewMessagesNotification(false)}></button>
+            </div>
+          )}
           <div
             className="chat-message-list"
             id="chatMessageList"
