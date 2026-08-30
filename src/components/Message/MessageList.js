@@ -170,8 +170,8 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
         setActiveFriends(onlineFriends);
 
         // Cache contacts using ContactCacheManager
-        ContactCacheManager.setCachedContacts(contactsData);
-        ContactCacheManager.setCachedActiveFriends(onlineFriends);
+        ContactCacheManager.setCachedContacts(effectiveProfileId, contactsData);
+        ContactCacheManager.setCachedActiveFriends(effectiveProfileId, onlineFriends);
         console.log('📦 Updated contact cache with fresh data');
 
         // Store contacts data in localStorage for Chat.js and cache (skeleton only on first load)
@@ -191,19 +191,22 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
 
   // Load cached contacts on mount if available
   useEffect(() => {
-    const cachedContacts = ContactCacheManager.getCachedContacts();
+    if (!effectiveProfileId) return;
+
+    const cachedContacts = ContactCacheManager.getCachedContacts(effectiveProfileId);
     if (cachedContacts && cachedContacts.length > 0) {
       setContacts(cachedContacts);
       setLoading(false);
       console.log('📦 Loaded contacts from cache:', cachedContacts.length);
-      
+
       // Also restore active friends from cache
-      const cachedActiveFriends = ContactCacheManager.getCachedActiveFriends();
+      const cachedActiveFriends =
+        ContactCacheManager.getCachedActiveFriends(effectiveProfileId);
       if (cachedActiveFriends && cachedActiveFriends.length > 0) {
         setActiveFriends(cachedActiveFriends);
       }
     }
-  }, []);
+  }, [effectiveProfileId]);
 
   useEffect(() => {
     if (!effectiveProfileId) return;

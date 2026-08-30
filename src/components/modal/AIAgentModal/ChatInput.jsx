@@ -182,7 +182,7 @@ const ChatInput = ({
   const [isFocused, setIsFocused] = useState(false);
   const [isListening, setIsListening] = useState(false);
   // "bn" -> Node.js + Deepgram live transcription (streamed over WebSocket)
-  // "en" -> browser's native SpeechRecognition (fast, free, no server round-trip)
+  // "en" -> browser SpeechRecognition when available, otherwise Deepgram fallback
   const [voiceMode, setVoiceMode] = useState("bn");
   const [isBanglaSupported, setIsBanglaSupported] = useState(false);
   const [isEnglishSupported, setIsEnglishSupported] = useState(false);
@@ -490,7 +490,7 @@ const ChatInput = ({
     if (payload.type === "utterance-end") {
       if (autoRunActionsRef.current && isListeningRef.current) {
         speechLog("Silence detected; finalizing voice input for auto-run");
-        stopBanglaVoiceInput();
+        stopDeepgramVoiceInput();
       }
       return;
     }
@@ -536,13 +536,14 @@ const ChatInput = ({
     }
   };
 
-  // ── Bangla voice input: mic -> WebSocket -> Node.js -> Deepgram live STT ───
-  const startBanglaVoiceInput = async () => {
+  // ── Deepgram voice input: mic -> WebSocket -> Node.js -> Deepgram live STT ───
+  const startDeepgramVoiceInput = async (language = "bn") => {
     if (!isBanglaSupported || isLoading || isListeningRef.current) {
-      speechLog("startBanglaVoiceInput blocked", {
+      speechLog("startDeepgramVoiceInput blocked", {
         isBanglaSupported,
         isLoading,
         isListening: isListeningRef.current,
+        language,
       });
       return;
     }
@@ -653,7 +654,7 @@ const ChatInput = ({
 
       const startPayload = {
         type: "start",
-        language: "bn",
+        language,
         mimeType: mimeType || "audio/webm",
         chunkDurationMs: AUDIO_TIMESLICE_MS,
       };
@@ -664,11 +665,13 @@ const ChatInput = ({
       speechLog(
         "MediaRecorder started with timeslice(ms)=",
         AUDIO_TIMESLICE_MS,
+        "language=",
+        language,
       );
       setIsListening(true);
       inputRef.current?.focus();
     } catch (err) {
-      speechLog("startBanglaVoiceInput failed", err);
+      speechLog("startDeepgramVoiceInput failed", err);
       stopListeningLocal();
       closeWebSocket();
     }
@@ -681,13 +684,13 @@ const ChatInput = ({
   const STOP_TIMEOUT_NORMAL_MS = 5000;
   const STOP_TIMEOUT_MODEL_LOADING_MS = 12000;
 
-  const stopBanglaVoiceInput = async () => {
+  const stopDeepgramVoiceInput = async () => {
     if (!isListeningRef.current) return;
 
     if (isFinalizing) {
       // Second click while we're already waiting for the server: force an
       // immediate local finalize instead of waiting out the full timeout.
-      speechLog("Force-finalizing (user requested early stop)");
+      speechLog("Force-finalizing Deepgram session (user requested early stop)");
       clearStopTimeout();
       const withFinal = finalizeWithText(finalTranscriptRef.current || value);
       closeWebSocket();
@@ -698,7 +701,7 @@ const ChatInput = ({
       return;
     }
 
-    speechLog("stopBanglaVoiceInput called");
+    speechLog("stopDeepgramVoiceInput called");
 
     stopMediaRecorder();
     stopMediaStream();
@@ -781,8 +784,12 @@ const ChatInput = ({
     }
   };
 
-  activeStopRef.current =
-    voiceMode === "en" ? stopEnglishRecognition : stopBanglaVoiceInput;
+  const shouldUseBrowserEnglishRecognition =
+    voiceMode === "en" && isEnglishSupported;
+
+  activeStopRef.current = shouldUseBrowserEnglishRecognition
+    ? stopEnglishRecognition
+    : stopDeepgramVoiceInput;
 
   useEffect(() => {
     if (isLoading && isListening) {
@@ -833,11 +840,15 @@ const ChatInput = ({
   const toggleVoiceInput = () => {
     if (isListening) {
       activeStopRef.current();
-    } else if (voiceMode === "en") {
-      startEnglishRecognition();
-    } else {
-      startBanglaVoiceInput();
+      return;
     }
+
+    if (shouldUseBrowserEnglishRecognition) {
+      startEnglishRecognition();
+      return;
+    }
+
+    startDeepgramVoiceInput(voiceMode === "en" ? "en" : "bn");
   };
 
   const toggleVoiceMode = () => {
@@ -854,7 +865,9 @@ const ChatInput = ({
   };
 
   const isSpeechSupported =
-    voiceMode === "en" ? isEnglishSupported : isBanglaSupported;
+    voiceMode === "en"
+      ? isEnglishSupported || isBanglaSupported
+      : isBanglaSupported;
 
   return (
     <motion.div
@@ -926,7 +939,9 @@ const ChatInput = ({
                   ? "Stop voice input"
                   : voiceMode === "bn"
                     ? "Start Bangla voice input"
-                    : "Start English voice input"
+                    : isEnglishSupported
+                      ? "Start English voice input"
+                      : "Start English voice input (Deepgram fallback)"
                 : "Voice input is not supported in this browser"
           }
           aria-label={
@@ -936,7 +951,9 @@ const ChatInput = ({
                 ? "Stop voice recognition"
                 : voiceMode === "bn"
                   ? "Start Bangla voice recognition"
-                  : "Start English voice recognition"
+                  : isEnglishSupported
+                    ? "Start English voice recognition"
+                    : "Start English voice recognition with Deepgram fallback"
           }
         >
           <i

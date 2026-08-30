@@ -220,6 +220,127 @@ const Video = () => {
             overflow: hidden;
             text-overflow: ellipsis;
         }
+
+        /* Feed skeletons to mirror watch feed cards */
+        .watch-feed-skeleton {
+            pointer-events: none;
+            animation: watchFeedSkeletonPulse 1.6s ease-in-out infinite;
+        }
+        .watch-feed-skeleton .watch-feed-skeleton-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: rgba(148, 163, 184, 0.35);
+        }
+        .watch-feed-skeleton .watch-feed-skeleton-line {
+            display: block;
+            height: 11px;
+            border-radius: 999px;
+            background: rgba(148, 163, 184, 0.38);
+            margin-bottom: 8px;
+        }
+        .watch-feed-skeleton .watch-feed-skeleton-line.name { width: 160px; }
+        .watch-feed-skeleton .watch-feed-skeleton-line.time { width: 90px; margin-bottom: 0; }
+        .watch-feed-skeleton .watch-feed-skeleton-dot {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: rgba(148, 163, 184, 0.3);
+            margin-left: 8px;
+        }
+        .watch-feed-skeleton .watch-feed-skeleton-line.caption { width: 88%; }
+        .watch-feed-skeleton .watch-feed-skeleton-line.caption.short { width: 56%; }
+        .watch-feed-skeleton .watch-feed-skeleton-media {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            border-radius: 12px;
+            background: linear-gradient(120deg, rgba(30,41,59,0.65), rgba(51,65,85,0.75), rgba(30,41,59,0.65));
+            background-size: 200% 100%;
+        }
+        .watch-feed-skeleton .watch-feed-skeleton-meta {
+            display: flex;
+            gap: 8px;
+            margin: 12px 0;
+        }
+        .watch-feed-skeleton .watch-feed-skeleton-pill {
+            width: 74px;
+            height: 10px;
+            border-radius: 999px;
+            background: rgba(148, 163, 184, 0.36);
+            display: inline-block;
+        }
+        .watch-feed-skeleton .watch-feed-skeleton-actions {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .watch-feed-skeleton .watch-feed-skeleton-btn {
+            height: 34px;
+            border-radius: 10px;
+            background: rgba(148, 163, 184, 0.3);
+            display: block;
+        }
+        @keyframes watchFeedSkeletonPulse {
+            0% { opacity: 0.68; }
+            50% { opacity: 1; }
+            100% { opacity: 0.68; }
+        }
+
+        /* Album skeletons to mirror real grid cards */
+        .watch-album-card-skeleton {
+            pointer-events: none;
+            animation: watchAlbumSkeletonPulse 1.6s ease-in-out infinite;
+        }
+        .watch-album-card-skeleton .watch-album-thumb {
+            background: linear-gradient(120deg, rgba(30,41,59,0.65), rgba(51,65,85,0.75), rgba(30,41,59,0.65));
+            background-size: 200% 100%;
+        }
+        .watch-album-card-skeleton .watch-album-thumb::after {
+            background: linear-gradient(180deg, rgba(0,0,0,0.02) 35%, rgba(0,0,0,0.18) 100%);
+        }
+        .watch-album-card-skeleton .watch-album-play {
+            width: 54px;
+            height: 54px;
+            background: rgba(15, 23, 42, 0.72);
+            border: 1px solid rgba(148, 163, 184, 0.24);
+            box-shadow: none;
+        }
+        .watch-album-overlay-skeleton {
+            background: rgba(15,23,42,0.45);
+            border: 1px solid rgba(148,163,184,0.16);
+        }
+        .watch-album-pill {
+            width: 42px;
+            height: 10px;
+            border-radius: 999px;
+            background: rgba(203, 213, 225, 0.5);
+            display: inline-block;
+        }
+        .watch-album-line {
+            height: 11px;
+            border-radius: 999px;
+            background: rgba(148, 163, 184, 0.42);
+            display: block;
+            margin-bottom: 8px;
+        }
+        .watch-album-line.short {
+            width: 68%;
+        }
+        .watch-album-line.author {
+            width: 88px;
+            margin-bottom: 0;
+        }
+        .watch-album-line.icon {
+            width: 20px;
+            margin-bottom: 0;
+        }
+        @keyframes watchAlbumSkeletonPulse {
+            0% { opacity: 0.68; }
+            50% { opacity: 1; }
+            100% { opacity: 0.68; }
+        }
+
         @media (max-width: 992px) {
             .watch-album-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
         }
@@ -309,7 +430,7 @@ const Video = () => {
                                             )
                                         })}
                                     </div>
-                                ) : <WatchSkeleton count={3} />
+                                ) : <WatchSkeleton count={6} variant="album" />
                             )}
                         </div>
                     </div>

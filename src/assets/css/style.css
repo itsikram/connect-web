@@ -4722,6 +4722,20 @@ body {
 #chatBox .chat-header .chat-header-action .chat-header-action-btn-container .action-button:hover {
   background-color: #3B3C3C;
 }
+#chatBox .chat-body .chat-message-list .chat-load-older-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 8px 0 10px;
+}
+#chatBox .chat-body .chat-message-list .chat-load-older-indicator .spinner-border {
+  width: 0.9rem;
+  height: 0.9rem;
+  border-width: 0.15em;
+  color: #29B1A9;
+  text-align: center;
+
+}
 #chatBox .chat-body .chat-message-list .chat-message-container:hover .chat-message-options {
   display: flex;
 }
@@ -5575,7 +5589,7 @@ body {
 }
 
 .nf-create-post .bottom .button-container li .button-icon {
-  background-image: url(/assets/images/new-icons.png);  
+  background-image: url(/assets/images/new-icons.png);
 }
 
 .page-title {

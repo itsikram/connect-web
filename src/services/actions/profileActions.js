@@ -1,23 +1,12 @@
 import {GET_PROFILE_REQ,GET_PROFILE_FAILED,GET_PROFILE_SUCCESS} from '../constants/profileConsts'
-
-const PROFILE_STORAGE_KEY = 'cachedProfileData'
-
-const persistProfileToStorage = (profile) => {
-    try {
-        localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile))
-    } catch (error) {
-        console.error('Error saving profile to localStorage:', error)
-    }
-}
+import ProfileCacheManager from '../../utils/profileCacheManager'
 
 export const getCachedProfile = () => {
-    try {
-        const cachedProfile = localStorage.getItem(PROFILE_STORAGE_KEY)
-        return cachedProfile ? JSON.parse(cachedProfile) : null
-    } catch (error) {
-        console.error('Error reading profile from localStorage:', error)
-        return null
-    }
+    return ProfileCacheManager.getCachedProfile()
+}
+
+export const clearCachedProfile = () => {
+    ProfileCacheManager.clearCache()
 }
 
 export const getPorfileReq = () => {
@@ -30,7 +19,7 @@ export const getProfileSuccess = (profileData) => {
     let coverPicUrl = profileData.coverPic
 
     let profile = {...profileData, coverPic: coverPicUrl,profilePic: profilePicUrl}
-    persistProfileToStorage(profile)
+    ProfileCacheManager.setCachedProfile(profile)
     return {
         type: GET_PROFILE_SUCCESS,
         payload: profile

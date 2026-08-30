@@ -20,7 +20,13 @@ import ModalContainer from "../modal/ModalContainer";
 import useIsMobile from "../../utils/useIsMobile";
 import checkImgLoading from "../../utils/checkImgLoading";
 import isValidUrl from "../../utils/isValiUrl";
-import { addPost } from "../../services/actions/postActions";
+import { addPost, removePost } from "../../services/actions/postActions";
+import CacheManager from "../../utils/cacheManager";
+import {
+  prependProfilePostCache,
+  removeProfilePostCache,
+  updateProfilePostCache,
+} from "../../utils/requestCache";
 import config from "../../config/config.json";
 import "./CommentStyles.css";
 import "./PostCard.css";
@@ -38,7 +44,30 @@ let setVisitedPost = (id) => {
   localStorage.setItem("lastPostId", id);
 };
 
-const Post = React.memo(({ data, postContainer, index }) => {
+const Post = React.memo(({ data, postContainer, index, onPostDeleted, onPostUpdated }) => {
+  const buildCompletePost = useCallback(
+    (incomingPost = {}) => ({
+      ...(data || {}),
+      ...incomingPost,
+      author:
+        incomingPost?.author && typeof incomingPost.author === "object"
+          ? incomingPost.author
+          : data?.author,
+      parentPost:
+        incomingPost?.parentPost && typeof incomingPost.parentPost === "object"
+          ? incomingPost.parentPost
+          : data?.parentPost,
+      comments:
+        Array.isArray(incomingPost?.comments) &&
+        incomingPost.comments.some((comment) => comment && typeof comment === "object")
+          ? incomingPost.comments
+          : data?.comments || [],
+      reacts: Array.isArray(incomingPost?.reacts) ? incomingPost.reacts : data?.reacts || [],
+      shares: Array.isArray(incomingPost?.shares) ? incomingPost.shares : data?.shares || [],
+      viewers: Array.isArray(incomingPost?.viewers) ? incomingPost.viewers : data?.viewers || [],
+    }),
+    [data],
+  );
   let post = data || {};
   let myProfile = useSelector((state) => state.profile);
   let myProfileId = myProfile._id;
@@ -165,17 +194,11 @@ const Post = React.memo(({ data, postContainer, index }) => {
                   authorId: post.author._id,
                 });
                 if (deleteRes.status === 200) {
-                  $(target).parents(".nf-post").css({
-                    "min-height": "0px",
-                    padding: "10px",
-                  });
-                  $(target)
-                    .parents(".nf-post")
-                    .html(
-                      '<p class="fs-6 mb-0 text-center text-danger">' +
-                        deleteRes.data.message +
-                        "</p>",
-                    );
+                  dispatch(removePost(post._id));
+                  CacheManager.removeCachedPost(post._id);
+                  removeProfilePostCache(post.author._id, post._id);
+                  onPostDeleted?.(post._id);
+                  setIsPostOption(false);
                 } else {
                   alert("Failed to delete post");
                 }
@@ -191,7 +214,7 @@ const Post = React.memo(({ data, postContainer, index }) => {
         $(target).parents(".nf-post").hide();
       }
     },
-    [isAuth, post._id, post.author._id],
+    [dispatch, isAuth, onPostDeleted, post._id, post.author._id],
   );
 
   let removeReact = useCallback(
@@ -344,6 +367,8 @@ const Post = React.memo(({ data, postContainer, index }) => {
         if (res.status == 200) {
           setTotalShares((state) => state + 1);
           dispatch(addPost(res.data.post));
+          CacheManager.prependCachedPost(res.data.post);
+          prependProfilePostCache(myProfileId, res.data.post);
           setIsShareModal(false);
           setShareCap(""); // Clear the caption after successful share
         }
@@ -354,7 +379,7 @@ const Post = React.memo(({ data, postContainer, index }) => {
         setIsSharing(false);
       }
     },
-    [dispatch, post._id, shareCap],
+    [dispatch, myProfileId, post._id, shareCap],
   );
 
   let authProfilePicture = useSelector((state) => state.profile.profilePic);
@@ -417,8 +442,15 @@ const Post = React.memo(({ data, postContainer, index }) => {
         audience: selectedAudience,
       });
       if (res.status === 200) {
+        const updatedPost = buildCompletePost(
+          res.data?.post || { ...(data || {}), audience: selectedAudience },
+        );
+
+        CacheManager.updateCachedPost(updatedPost);
+        updateProfilePostCache(post.author._id, updatedPost);
+        onPostUpdated?.(updatedPost);
+        setSelectedAudience(updatedPost.audience || selectedAudience);
         setIsEditAudienceModal(false);
-        // Optionally refresh the post or show success message
       }
     } catch (error) {
       console.error("Error updating audience:", error);
@@ -426,7 +458,7 @@ const Post = React.memo(({ data, postContainer, index }) => {
     } finally {
       setIsUpdatingAudience(false);
     }
-  }, [post._id, selectedAudience]);
+  }, [buildCompletePost, data, onPostUpdated, post._id, post.author._id, selectedAudience]);
 
   // useEffect(() => {
 

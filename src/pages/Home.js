@@ -1,6 +1,7 @@
 import React, { Fragment, useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Container, Col, Row } from 'react-bootstrap';
 import { useDispatch, useSelector } from "react-redux";
+import { useLocation } from "react-router-dom";
 import Ls from '../partials/sidebar/Ls';
 import Rs from '../partials/sidebar/Rs';
 import CreatePost from "../components/post/CreatePost";
@@ -17,6 +18,7 @@ import CacheManager from "../utils/cacheManager"
 const Home = () => {
 
     const dispatch = useDispatch()
+    const location = useLocation()
     const myProfile = useSelector(state => state.profile)
     const userInfo = JSON.parse(localStorage.getItem('user') || '{}')
     const effectiveProfileId = myProfile._id || userInfo.profile || 'guest'
@@ -36,7 +38,7 @@ const Home = () => {
     const [hasNewPosts, setHasNewPosts] = useState(true);
     const [showNewPostsNotification, setShowNewPostsNotification] = useState(false);
     const [newPostsCount, setNewPostsCount] = useState(0);
-    const [isFirstLoad, setIsFirstLoad] = useState(true);
+    const isFirstLoadRef = useRef(true);
 
     // setting state to store posts data
 
@@ -58,6 +60,18 @@ const Home = () => {
     const [pageNumber, setPageNumber] = useState(0)
     const newsFeedPosts = useSelector(state => state.post)
 
+    const uniqueNewsFeedPosts = useMemo(() => {
+        if (!Array.isArray(newsFeedPosts)) return []
+        const seen = new Set()
+        return newsFeedPosts.filter((post) => {
+            const id = post?._id
+            if (!id) return true
+            if (seen.has(id)) return false
+            seen.add(id)
+            return true
+        })
+    }, [newsFeedPosts])
+
     const writeStoriesCache = useCallback((storyList) => {
         try {
             localStorage.setItem(storiesCacheKey, JSON.stringify(storyList))
@@ -67,6 +81,11 @@ const Home = () => {
     }, [storiesCacheKey])
 
     const fetchProfileWithFallback = useCallback(async () => {
+        const cachedProfile = getCachedProfile()
+        if (cachedProfile) {
+            dispatch(getProfileSuccess(cachedProfile))
+        }
+
         try {
             const user = JSON.parse(localStorage.getItem('user') || '{}')
             const profileId = user?.profile
@@ -76,15 +95,48 @@ const Home = () => {
             const profileRes = await api.post('/profile', { profile: profileId })
             if (profileRes.status === 200 && profileRes.data) {
                 dispatch(getProfileSuccess(profileRes.data))
-                return
             }
         } catch (error) {
             console.error('Error fetching live profile:', error)
         }
+    }, [dispatch])
 
-        const cachedProfile = getCachedProfile()
-        if (cachedProfile) {
-            dispatch(getProfileSuccess(cachedProfile))
+    const refreshFeed = useCallback(async () => {
+        try {
+            const previousCachedPosts = CacheManager.getCachedPosts() || []
+            const previousCachedPostIds = new Set(previousCachedPosts.map(post => post?._id))
+            const nfRes = await api.get('/post/newsFeed/', {
+                params: {
+                    pageNumber: 1
+                }
+            })
+
+            if (nfRes.status === 200) {
+                const latestPosts = Array.isArray(nfRes.data.posts) ? nfRes.data.posts : []
+                const newPostsInFetch = isFirstLoadRef.current
+                    ? []
+                    : latestPosts.filter(post => !previousCachedPostIds.has(post?._id))
+
+                dispatch(loadPosts(latestPosts, { append: false }))
+                CacheManager.setCachedPosts(latestPosts)
+                setPageNumber(1)
+                setHasNewPosts(nfRes.data.hasNewPost ?? false)
+
+                if (newPostsInFetch.length > 0) {
+                    setNewPostsCount(newPostsInFetch.length)
+                    setShowNewPostsNotification(true)
+                } else {
+                    setNewPostsCount(0)
+                    setShowNewPostsNotification(false)
+                }
+            }
+        } catch (error) {
+            console.error('Error refreshing news feed:', error)
+        } finally {
+            setLoadNewPosts(false)
+            setFeedLoaded(true)
+            dispatch(setLoading(false))
+            isFirstLoadRef.current = false
         }
     }, [dispatch])
 
@@ -100,15 +152,8 @@ const Home = () => {
                 }
             })
             if (nfRes.status === 200) {
-                const newPosts = [...nfRes.data.posts] || [];
-                
-                // Only cache page 1 data
-                if (nextPage === 1) {
-                    CacheManager.setCachedPosts(newPosts);
-                    console.log('📦 Updated cache with fresh posts');
-                }
-                
-                dispatch(loadPosts(newPosts))
+                const newPosts = Array.isArray(nfRes.data.posts) ? nfRes.data.posts : []
+                dispatch(loadPosts(newPosts, { append: true }))
                 setPageNumber(nextPage)
                 setHasNewPosts(nfRes.data.hasNewPost ?? false)
             }
@@ -118,7 +163,6 @@ const Home = () => {
             setLoadNewPosts(false)
             setFeedLoaded(true)
             dispatch(setLoading(false))
-            setIsFirstLoad(false);
         }
     }, [dispatch, hasNewPosts, pageNumber])
 
@@ -187,19 +231,27 @@ const Home = () => {
         // Load cached posts if available
         const cachedPosts = CacheManager.getCachedPosts();
         if (cachedPosts && cachedPosts.length > 0) {
-            dispatch(loadPosts(cachedPosts));
+            dispatch(loadPosts(cachedPosts, { append: false }));
             console.log('📦 Loaded posts from cache:', cachedPosts.length);
         }
         
-        setHasNewPosts(true)
-        setLoadNewPosts(true)
-        fetchStories()
         fetchProfileWithFallback()
 
         return () => {
             mediaQuery.removeEventListener('change', handleMediaChange)
         }
-    }, [dispatch, fetchProfileWithFallback, fetchStories])
+    }, [dispatch, fetchProfileWithFallback])
+
+    useEffect(() => {
+        if (location.pathname !== '/') return
+
+        setFeedLoaded(false)
+        setHasNewPosts(true)
+        setPageNumber(0)
+        setLoadNewPosts(false)
+        refreshFeed()
+        fetchStories()
+    }, [fetchStories, location.pathname, refreshFeed])
 
     useEffect(() => {
         const handleStoryCreated = () => {
@@ -210,37 +262,14 @@ const Home = () => {
     }, [fetchStories])
 
     useEffect(() => {
-        if (newsFeedPosts.length > 0) {
-            const pageNumber = Math.ceil(newsFeedPosts.length / 10)
-            setPageNumber(pageNumber)
-            // alert(pageNumber)
-        }
-    }, [newsFeedPosts])
+        if (!showNewPostsNotification) return
 
-    // Detect new posts from fresh API fetch and show notification
-    useEffect(() => {
-        if (!isFirstLoad && feedLoaded && pageNumber === 1 && newsFeedPosts.length > 0) {
-            // Get cached posts to compare
-            const cachedPosts = CacheManager.getCachedPosts();
-            if (cachedPosts && cachedPosts.length > 0) {
-                const cachedPostIds = new Set(cachedPosts.map(p => p._id));
-                const newPostsInFetch = newsFeedPosts.filter(p => !cachedPostIds.has(p._id));
-                
-                if (newPostsInFetch.length > 0) {
-                    setNewPostsCount(newPostsInFetch.length);
-                    setShowNewPostsNotification(true);
-                    console.log('🆕 New posts detected:', newPostsInFetch.length);
-                    
-                    // Auto-hide notification after 5 seconds
-                    const timeout = setTimeout(() => {
-                        setShowNewPostsNotification(false);
-                    }, 5000);
-                    
-                    return () => clearTimeout(timeout);
-                }
-            }
-        }
-    }, [feedLoaded, newsFeedPosts, isFirstLoad, pageNumber])
+        const timeout = setTimeout(() => {
+            setShowNewPostsNotification(false)
+        }, 5000)
+
+        return () => clearTimeout(timeout)
+    }, [showNewPostsNotification])
 
     return (
         <Fragment>
@@ -305,9 +334,9 @@ const Home = () => {
                                 <div id="nf-post-container" ref={postContainer}>
 
                                     {
-                                        newsFeedPosts.length > 0 ?
-                                            newsFeedPosts.map((newsFeed, index) => {
-                                                return <Post key={newsFeed._id} index={index} postContainer={postContainer} data={newsFeed}></Post>
+                                        uniqueNewsFeedPosts.length > 0 ?
+                                            uniqueNewsFeedPosts.map((newsFeed, index) => {
+                                                return <Post key={newsFeed._id || `post-${index}`} index={index} postContainer={postContainer} data={newsFeed}></Post>
                                             })
                                         : feedLoaded ? (
                                             <div className="no-posts-message text-center py-4">
@@ -319,7 +348,7 @@ const Home = () => {
                                         )
                                     }
                                     {
-                                        hasNewPosts && newsFeedPosts.length > 0 && <PostSkeleton count={1} />
+                                        hasNewPosts && uniqueNewsFeedPosts.length > 0 && <PostSkeleton count={1} />
                                     }
 
                                 </div>

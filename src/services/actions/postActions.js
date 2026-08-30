@@ -1,10 +1,13 @@
 import { LOAD_POSTS,REMOVE_POST,ADD_POST } from "../constants/postConsts";
 
-export const loadPosts = (posts) => {
+export const loadPosts = (posts, options = {}) => {
 
     return {
         type: LOAD_POSTS,
-        payload: posts
+        payload: Array.isArray(posts) ? posts : [],
+        meta: {
+            append: Boolean(options.append)
+        }
     }
 
 }

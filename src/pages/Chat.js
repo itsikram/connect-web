@@ -69,7 +69,7 @@ const getImageBrightness = async (imageUrl) => {
   });
 };
 
-const Chat = ({}) => {
+const Chat = () => {
   const dispatch = useDispatch();
   const profile = useSelector((state) => state.profile);
   const settings = useSelector((state) => state.setting);
@@ -86,9 +86,7 @@ const Chat = ({}) => {
   const [messages, setMessages] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
   const [isMsgLoading, setIsMsgLoading] = useState(false);
-  const [showNewMessagesNotification, setShowNewMessagesNotification] = useState(false);
-  const [newMessagesCount, setNewMessagesCount] = useState(0);
-  const [isFirstMessageLoad, setIsFirstMessageLoad] = useState(true);
+  const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false);
   const [typeMessage, setTypeMessage] = useState("");
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   // Default as "at bottom" so load-older logic does not run until the user scrolls (real % from handler).
@@ -101,19 +99,24 @@ const Chat = ({}) => {
   const isNearBottomRef = useRef(true);
   const pendingScrollRestoreRef = useRef(null);
   const hasInitialScrolledRef = useRef(false);
+  const hasLoadedFreshMessagesRef = useRef(false);
+  const isMsgLoadingRef = useRef(false);
 
   const chatNewAttachment = useRef(null);
   const messageActionButtonContainer = useRef(null);
 
-  const getDistanceFromBottom = (el) => {
+  const getDistanceFromBottom = useCallback((el) => {
     if (!el) return 0;
     return el.scrollHeight - el.scrollTop - el.clientHeight;
-  };
+  }, []);
 
-  const checkIsNearBottom = (el, threshold = NEAR_BOTTOM_PX) => {
-    if (!el) return true;
-    return getDistanceFromBottom(el) <= threshold;
-  };
+  const checkIsNearBottom = useCallback(
+    (el, threshold = NEAR_BOTTOM_PX) => {
+      if (!el) return true;
+      return getDistanceFromBottom(el) <= threshold;
+    },
+    [getDistanceFromBottom],
+  );
 
   const params = useParams();
   const friendId = params.profile;
@@ -142,12 +145,15 @@ const Chat = ({}) => {
     });
   }, []);
 
-  // Update cache when messages change (but not on first load)
   useEffect(() => {
-    if (!isFirstMessageLoad && userId && friendId && messages.length > 0) {
-      MessageCacheManager.setCachedMessages(userId, friendId, messages);
-    }
-  }, [messages, userId, friendId, isFirstMessageLoad]);
+    isMsgLoadingRef.current = isMsgLoading;
+  }, [isMsgLoading]);
+
+  // Persist conversation changes after fresh data has been loaded once.
+  useEffect(() => {
+    if (!hasLoadedFreshMessagesRef.current || !userId || !friendId) return;
+    MessageCacheManager.setCachedMessages(userId, friendId, messages);
+  }, [messages, userId, friendId]);
 
   const fetchChatHistory = useCallback(
     async (profileId, friendIdArg, limit = 20) => {
@@ -159,14 +165,22 @@ const Chat = ({}) => {
             limit,
           },
         });
-        
+
+        const messages = Array.isArray(response?.data?.messages)
+          ? response.data.messages
+          : [];
+        const hasMore =
+          typeof response?.data?.hasMore === "boolean"
+            ? response.data.hasMore
+            : messages.length >= limit;
+
         // Cache the fetched messages
-        if (response.data && response.data.messages && Array.isArray(response.data.messages)) {
-          MessageCacheManager.setCachedMessages(profileId, friendIdArg, response.data.messages);
-          console.log('📦 Updated message cache for conversation');
+        if (messages.length > 0) {
+          MessageCacheManager.setCachedMessages(profileId, friendIdArg, messages);
+          console.log("📦 Updated message cache for conversation");
         }
-        
-        return response.data;
+
+        return { messages, hasMore };
       } catch (error) {
         console.error("Error fetching messages:", error);
         return { messages: [], hasMore: false };
@@ -189,7 +203,16 @@ const Chat = ({}) => {
             limit,
           },
         });
-        return response.data;
+
+        const messages = Array.isArray(response?.data?.messages)
+          ? response.data.messages
+          : [];
+        const hasMore =
+          typeof response?.data?.hasMore === "boolean"
+            ? response.data.hasMore
+            : messages.length >= limit;
+
+        return { messages, hasMore };
       } catch (error) {
         console.error("Error fetching old messages:", error);
         return { messages: [], hasMore: false };
@@ -239,7 +262,7 @@ const Chat = ({}) => {
         el.removeEventListener("scroll", handleScroll);
       }
     };
-  }, [friendId]);
+  }, [friendId, checkIsNearBottom]);
 
   const messagesRef = useRef(messages);
   useEffect(() => {
@@ -256,39 +279,15 @@ const Chat = ({}) => {
     el.scrollTop = restore.prevTop + (el.scrollHeight - restore.prevHeight);
     pendingScrollRestoreRef.current = null;
     isNearBottomRef.current = checkIsNearBottom(el);
-  }, [messages]);
+  }, [messages, checkIsNearBottom]);
 
-  // Detect new messages from fresh API fetch and show notification
-  useEffect(() => {
-    if (!isFirstMessageLoad && userId && friendId && messages.length > 0) {
-      // Get cached messages to compare
-      const cachedMessages = MessageCacheManager.getCachedMessages(userId, friendId);
-      if (cachedMessages && cachedMessages.length > 0) {
-        const cachedMessageIds = new Set(cachedMessages.map(m => m._id));
-        const newMessagesInFetch = messages.filter(m => !cachedMessageIds.has(m._id));
-        
-        if (newMessagesInFetch.length > 0) {
-          setNewMessagesCount(newMessagesInFetch.length);
-          setShowNewMessagesNotification(true);
-          console.log('🆕 New messages detected:', newMessagesInFetch.length);
-          
-          // Auto-hide notification after 5 seconds
-          const timeout = setTimeout(() => {
-            setShowNewMessagesNotification(false);
-          }, 5000);
-          
-          return () => clearTimeout(timeout);
-        }
-      }
-    }
-  }, [messages, userId, friendId, isFirstMessageLoad]);
 
   useEffect(() => {
     if (!friendId || !userId || !hasMoreMessages) return;
     if (scrollPercent >= 30 || !Number.isFinite(scrollPercent)) return;
     const skip = messagesRef.current.length;
     if (skip === 0) return;
-    if (loadingOlderRef.current || isMsgLoading) return;
+    if (loadingOlderRef.current || isMsgLoadingRef.current) return;
 
     const oldestMessage = messagesRef.current[0];
     const beforeTimestamp =
@@ -296,6 +295,7 @@ const Chat = ({}) => {
     if (!beforeTimestamp) return;
 
     loadingOlderRef.current = true;
+    setIsLoadingOlderMessages(true);
     (async () => {
       setIsMsgLoading(true);
       try {
@@ -324,8 +324,9 @@ const Chat = ({}) => {
         pendingScrollRestoreRef.current = null;
         console.error("Error loading older messages:", error);
       } finally {
+        loadingOlderRef.current = false;
+        setIsLoadingOlderMessages(false);
         setIsMsgLoading(false);
-        setIsFirstMessageLoad(false);
       }
     })();
     // Intentionally omit isMsgLoading: when it flips false, deps would match again and load every page in one burst.
@@ -546,7 +547,11 @@ const Chat = ({}) => {
   const getOnlineStatusFromContacts = useCallback(function() {
     // Try to get online status from localStorage or Redux store if available
     try {
-      const contactsData = localStorage.getItem("contactsData");
+      const scopedContactsKey = userId ? `contactsData_${userId}` : null;
+      const contactsData =
+        (scopedContactsKey && localStorage.getItem(scopedContactsKey)) ||
+        localStorage.getItem("contactsData");
+
       if (contactsData) {
         const contacts = JSON.parse(contactsData);
         const friendContact = contacts.find((c) => c.person?._id === friendId);
@@ -561,7 +566,7 @@ const Chat = ({}) => {
       console.error("Error getting online status from contacts:", error);
     }
     return { isActive: false, lastSeen: null };
-  }, [friendId]);
+  }, [friendId, userId]);
 
   useEffect(function() {
     if (!friendId || !userId) return;
@@ -619,6 +624,7 @@ const Chat = ({}) => {
   useEffect(function() {
     if (!friendId || !userId) return;
     setRoom([userId, friendId].sort().join("_"));
+    hasLoadedFreshMessagesRef.current = false;
     setMessages([]);
     setHasMoreMessages(true);
     setScrollPercent(100);
@@ -635,6 +641,7 @@ const Chat = ({}) => {
         if (response.messages) {
           setMessages(response.messages);
           setHasMoreMessages(response.hasMore ?? false);
+          hasLoadedFreshMessagesRef.current = true;
         } else {
           setMessages([]);
           setHasMoreMessages(false);
@@ -643,12 +650,12 @@ const Chat = ({}) => {
         console.error("Error fetching initial messages:", error);
         setMessages([]);
         setHasMoreMessages(false);
+        hasLoadedFreshMessagesRef.current = true;
       } finally {
         setIsMsgLoading(false);
       }
     };
 
-    setIsFirstMessageLoad(true);
     fetchInitialMessages();
   }, [friendId, userId, fetchChatHistory]);
 
@@ -807,17 +814,22 @@ const Chat = ({}) => {
             backgroundAttachment: "fixed",
           }}
         >
-          {showNewMessagesNotification && (
-            <div className="alert alert-info alert-dismissible fade show" role="alert" style={{ margin: '10px', marginBottom: '10px' }}>
-              <strong>🆕 New Messages!</strong> {newMessagesCount} new {newMessagesCount === 1 ? 'message' : 'messages'} available
-              <button type="button" className="btn-close" onClick={() => setShowNewMessagesNotification(false)}></button>
-            </div>
-          )}
+
           <div
             className="chat-message-list"
             id="chatMessageList"
             ref={msgListRef}
           >
+            {messages.length > 0 && isLoadingOlderMessages && (
+              <div
+                className="chat-load-older-indicator"
+                aria-live="polite"
+                aria-label="Loading previous messages"
+              >
+                <div className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+              </div>
+            )}
+
             {messages.length > 0 ? (
               messages.map((msg, index) => {
                 return (

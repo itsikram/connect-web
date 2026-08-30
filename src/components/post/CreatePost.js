@@ -1,11 +1,12 @@
-import React, { Fragment, useState, useEffect, useCallback } from "react";
+import React, { Fragment, useState, useEffect, useCallback, useMemo } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import ModalContainer from '../modal/ModalContainer'
 import UserPP from "../UserPP";
 import $, { post } from 'jquery'
 import api from "../../api/api";
-import { fetchProfileHasStoryCached } from "../../utils/requestCache";
+import { fetchProfileHasStoryCached, prependProfilePostCache } from "../../utils/requestCache";
 import { addPost } from "../../services/actions/postActions";
+import CacheManager from "../../utils/cacheManager";
 
 const loadingImgUrl = 'https://res.cloudinary.com/dz88yjerw/image/upload/v1743092084/i5lcu63atrbkpcy6oqam.gif'
 
@@ -56,14 +57,14 @@ let CreatePost = ({ setPosts = null }) => {
         setShowAudienceMenu(false)
     }
 
-    const postDataInit = {
+    const postDataInit = useMemo(() => ({
         caption: '',
         attachments: null,
         urls: null,
         location: '',
         feelings: '',
         audience: 3 // Default: Only Me
-    }
+    }), [])
 
     let [postData, setPostData] = useState(postDataInit)
     let [attachmentType, setAttachmentType] = useState(false)
@@ -271,6 +272,8 @@ let CreatePost = ({ setPosts = null }) => {
 
                     if (res.status === 200) {
                         dispatch(addPost(res.data.post))
+                        CacheManager.prependCachedPost(res.data.post)
+                        prependProfilePostCache(profileId, res.data.post)
                         setPostData(postDataInit)
                         setAttachmentType(false)
                         if (setPosts) {
@@ -299,6 +302,8 @@ let CreatePost = ({ setPosts = null }) => {
                         setPostData(postDataInit)
                         setAttachmentType(false)
                         dispatch(addPost(videoRes.data.post))
+                        CacheManager.prependCachedPost(videoRes.data.post)
+                        prependProfilePostCache(profileId, videoRes.data.post)
                         if (setPosts) {
                             setPosts(posts => [videoRes.data.post, ...posts])
                         }
@@ -325,6 +330,8 @@ let CreatePost = ({ setPosts = null }) => {
                         setPostData(postDataInit)
                         setAttachmentType(false)
                         dispatch(addPost(defaultRes.data.post))
+                        CacheManager.prependCachedPost(defaultRes.data.post)
+                        prependProfilePostCache(profileId, defaultRes.data.post)
                         if (setPosts) {
                             setPosts(posts => [defaultRes.data.post, ...posts])
                         }
@@ -345,7 +352,7 @@ let CreatePost = ({ setPosts = null }) => {
             setIsSubmitting(false)
         }
 
-    }, [postData])
+    }, [dispatch, postData, postDataInit, profileId, setPosts])
 
 
 

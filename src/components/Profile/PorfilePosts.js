@@ -7,7 +7,7 @@ import ProfileDetails from "./ProfileDetails";
 import api from "../../api/api";
 import $ from 'jquery'
 import PostSkeleton from "../../skletons/post/PostSkeleton";
-import { fetchProfileCached, fetchProfilePostsCached } from "../../utils/requestCache";
+import { fetchProfileCached, fetchProfilePostsCached, primeCachedResource } from "../../utils/requestCache";
 
 
 let PorfilePosts = () => {
@@ -19,9 +19,12 @@ let PorfilePosts = () => {
     const [bio, setBio] = useState(myProfileData.bio)
     let navigate = useNavigate()
     let postContainer = useRef(null)
+    const [hasLoadedPosts, setHasLoadedPosts] = useState(false)
 
     useEffect(() => {
         if (!profile) return;
+
+        setHasLoadedPosts(false)
 
         Promise.all([
             fetchProfilePostsCached(profile, { ttlMs: 60000, storageTtlMs: 180000 }),
@@ -30,11 +33,30 @@ let PorfilePosts = () => {
             setPosts(Array.isArray(postsResponse) ? postsResponse : [])
             setProfileData(profileResponse)
             setBio(profileResponse?.bio || myProfileData.bio || '')
+            setHasLoadedPosts(true)
         }).catch(e => console.log(e))
 
     }, [profile, myProfileData.bio])
 
 
+
+    useEffect(() => {
+        if (!profile || !hasLoadedPosts) return
+
+        primeCachedResource(`profilePosts:${profile}`, posts)
+    }, [hasLoadedPosts, posts, profile])
+
+    const handlePostDeleted = useCallback((postId) => {
+        setPosts(currentPosts => currentPosts.filter(post => post?._id !== postId))
+    }, [])
+
+    const handlePostUpdated = useCallback((updatedPost) => {
+        if (!updatedPost?._id) return
+
+        setPosts(currentPosts => currentPosts.map(post =>
+            post?._id === updatedPost._id ? { ...post, ...updatedPost } : post
+        ))
+    }, [])
 
     // handle edit bio functions
     let updateBioData = (e) => {
@@ -104,7 +126,7 @@ let PorfilePosts = () => {
                     }
 
                     {posts.length > 0 ? posts.map((data, index) => {
-                        return <Post key={data._id} myProfile={myProfileData} postContainer={postContainer} data={data} index={index}></Post>
+                        return <Post key={data._id} myProfile={myProfileData} postContainer={postContainer} data={data} index={index} onPostDeleted={handlePostDeleted} onPostUpdated={handlePostUpdated}></Post>
                     })
                         :
                         <PostSkeleton count={3} />

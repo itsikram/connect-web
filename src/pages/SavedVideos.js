@@ -1,23 +1,74 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { getAllSavedVideos } from '../utils/useSavedVideos';
+import { getAllSavedVideos, getSavedVideosHistory, saveVideoFromUrl, deleteSavedVideoHistoryById } from '../utils/useSavedVideos';
 import VideoCard from '../components/downloads/VideoCard';
 import { subscribeWatchDownloads } from '../utils/watchDownloadProgress';
 import { formatBytes } from '../utils/downloadFileWithProgress';
 import './SavedVideos.css';
 
+const getRestorableUrl = (video) => {
+    const meta = video?.metadata || {};
+    const candidates = [
+        video?.sourceUrl,
+        meta.videoURL,
+        meta.videoUrl,
+        meta.url,
+        meta.downloadUrl,
+        meta.downloadURL,
+        meta.mediaUrl,
+        meta.mediaURL,
+        meta?.video?.url,
+    ];
+
+    return String(candidates.find((v) => typeof v === 'string' && v.trim()) || '').trim();
+};
+
 const SavedVideos = () => {
     const [videos, setVideos] = useState([]);
+    const [previousVideos, setPreviousVideos] = useState([]);
     const [activeDownloads, setActiveDownloads] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
+    const [isDownloadingAll, setIsDownloadingAll] = useState(false);
+    const [isLoadingPrevious, setIsLoadingPrevious] = useState(false);
+    const [deletingPreviousId, setDeletingPreviousId] = useState('');
 
     const refreshSaved = useCallback(() => {
+        console.log('[SavedVideos] Refreshing local saved videos...');
         getAllSavedVideos((data) => {
             setVideos(Array.isArray(data) ? data : []);
+            console.log('[SavedVideos] Local videos count:', data?.length || 0);
         });
     }, []);
 
+    // Load previous videos from backend - runs once on mount
     useEffect(() => {
+        const loadPreviousVideos = async () => {
+            setIsLoadingPrevious(true);
+            try {
+                console.log('[SavedVideos] Loading previous videos from backend...');
+                const history = await getSavedVideosHistory();
+                console.log('[SavedVideos] Backend response:', history);
+                
+                if (history && Array.isArray(history) && history.length > 0) {
+                    setPreviousVideos(history);
+                    console.log(`[SavedVideos] Loaded ${history.length} previous videos`);
+                } else {
+                    console.log('[SavedVideos] No previous videos found');
+                    setPreviousVideos([]);
+                }
+            } catch (error) {
+                console.error('[SavedVideos] Error loading previous videos:', error);
+                setPreviousVideos([]);
+            } finally {
+                setIsLoadingPrevious(false);
+            }
+        };
+
+        loadPreviousVideos();
+    }, []); // Empty dependencies - run once on mount
+
+    useEffect(() => {
+        console.log('[SavedVideos] Component mounted, loading saved videos...');
         refreshSaved();
     }, [refreshSaved]);
 
@@ -43,8 +94,77 @@ const SavedVideos = () => {
         });
     }, [videos, searchQuery]);
 
+    const filteredPreviousVideos = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
+        if (!q) return previousVideos;
+        return previousVideos.filter((video) => {
+            const meta = video.metadata || {};
+            const caption = (meta.caption || '').toLowerCase();
+            const author = (meta.author?.fullName || meta.author?.name || '').toLowerCase();
+            return caption.includes(q) || author.includes(q);
+        });
+    }, [previousVideos, searchQuery]);
+
+    const handleDownloadAll = async () => {
+        if (isDownloadingAll || previousVideos.length === 0) return;
+        
+        console.log('[SavedVideos] Starting download all for', previousVideos.length, 'videos');
+        setIsDownloadingAll(true);
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const video of previousVideos) {
+            try {
+                const videoURL = getRestorableUrl(video);
+                console.log('[SavedVideos] Downloading video:', {
+                    videoId: video.videoId,
+                    hasURL: !!videoURL,
+                    title: video.metadata?.caption
+                });
+                
+                if (videoURL) {
+                    const success = await saveVideoFromUrl(
+                        video.videoId,
+                        videoURL,
+                        video.metadata
+                    );
+                    if (success) {
+                        successCount++;
+                        console.log('[SavedVideos] Video downloaded successfully');
+                    } else {
+                        failCount++;
+                        console.warn('[SavedVideos] Video download failed');
+                    }
+                } else {
+                    console.warn('[SavedVideos] No URL for video:', video.videoId);
+                    failCount++;
+                }
+            } catch (error) {
+                console.error('[SavedVideos] Error downloading video:', error);
+                failCount++;
+            }
+        }
+
+        setIsDownloadingAll(false);
+        console.log(`[SavedVideos] Download all complete - Success: ${successCount}, Failed: ${failCount}`);
+    };
+
+    const handleDeletePrevious = async (videoId) => {
+        if (!videoId || deletingPreviousId) return;
+        setDeletingPreviousId(String(videoId));
+        try {
+            const ok = await deleteSavedVideoHistoryById(String(videoId));
+            if (ok) {
+                setPreviousVideos((prev) => prev.filter((v) => String(v.videoId) !== String(videoId)));
+            }
+        } finally {
+            setDeletingPreviousId('');
+        }
+    };
+
     const isEmpty = videos.length === 0 && downloading.length === 0;
     const noResults = !isEmpty && filteredVideos.length === 0 && searchQuery.trim();
+    const noPreviousResults = !isEmpty && filteredPreviousVideos.length === 0 && searchQuery.trim();
 
     return (
         <div className="sv-page">
@@ -60,7 +180,7 @@ const SavedVideos = () => {
                     </div>
                 </header>
 
-                {videos.length > 0 && (
+                {(videos.length > 0 || previousVideos.length > 0) && (
                     <div className="sv-search-wrap">
                         <i className="fas fa-search sv-search-icon" aria-hidden="true" />
                         <input
@@ -144,7 +264,7 @@ const SavedVideos = () => {
                     </section>
                 )}
 
-                {isEmpty ? (
+                {isEmpty && previousVideos.length === 0 ? (
                     <div className="sv-empty">
                         <div className="sv-empty-icon" aria-hidden="true">
                             <i className="fas fa-film" />
@@ -170,24 +290,124 @@ const SavedVideos = () => {
                         </button>
                     </div>
                 ) : (
-                    <section className="sv-section">
-                        {downloading.length > 0 && (
-                            <h2 className="sv-section-title">
-                                <i className="fas fa-folder-open" aria-hidden="true" />
-                                Your library
-                            </h2>
+                    <>
+                        {/* Current local saved videos */}
+                        {!isEmpty && (
+                            <section className="sv-section">
+                                {downloading.length > 0 && (
+                                    <h2 className="sv-section-title">
+                                        <i className="fas fa-folder-open" aria-hidden="true" />
+                                        Your library
+                                    </h2>
+                                )}
+                                <div className="sv-grid">
+                                    {filteredVideos.map((video) => (
+                                        <VideoCard
+                                            key={video.id || video.metadata?._id}
+                                            videoData={video.metadata}
+                                            videoUrl={video.videoURL}
+                                            onDelete={refreshSaved}
+                                        />
+                                    ))}
+                                </div>
+                            </section>
                         )}
-                        <div className="sv-grid">
-                            {filteredVideos.map((video) => (
-                                <VideoCard
-                                    key={video.id || video.metadata?._id}
-                                    videoData={video.metadata}
-                                    videoUrl={video.videoURL}
-                                    onDelete={refreshSaved}
-                                />
-                            ))}
-                        </div>
-                    </section>
+
+                        {/* Previous downloads section */}
+                        {previousVideos.length > 0 && (
+                            <section className="sv-section sv-previous-section">
+                                <div className="sv-previous-header">
+                                    <div>
+                                        <h2 className="sv-section-title">
+                                            <i className="fas fa-history" aria-hidden="true" />
+                                            Previous Downloads
+                                            <span className="sv-section-badge">{previousVideos.length}</span>
+                                        </h2>
+                                        <p className="sv-previous-subtitle">
+                                            These videos were previously downloaded. Your browser cache may have been cleared.
+                                        </p>
+                                    </div>
+                                    {previousVideos.length > 0 && (
+                                        <button
+                                            type="button"
+                                            className="sv-btn sv-btn--primary sv-btn--download-all"
+                                            onClick={handleDownloadAll}
+                                            disabled={isDownloadingAll}
+                                            aria-label="Download all previous videos"
+                                        >
+                                            <i className={`fas ${isDownloadingAll ? 'fa-spinner fa-spin' : 'fa-download'}`} aria-hidden="true" />
+                                            {isDownloadingAll ? 'Downloading...' : 'Download All'}
+                                        </button>
+                                    )}
+                                </div>
+                                
+                                {isLoadingPrevious ? (
+                                    <div style={{ textAlign: 'center', padding: '20px', color: '#9ca3af' }}>
+                                        <i className="fas fa-spinner fa-spin" style={{ marginRight: '8px' }} />
+                                        Loading previous downloads...
+                                    </div>
+                                ) : noPreviousResults ? (
+                                    <div className="sv-empty sv-empty--compact" style={{ marginTop: '12px' }}>
+                                        <p>No videos match &ldquo;{searchQuery.trim()}&rdquo;</p>
+                                    </div>
+                                ) : (
+                                    <div className="sv-grid">
+                                        {filteredPreviousVideos.map((video) => (
+                                            <div className="sv-video-restore-card" key={video._id || video.videoId}>
+                                                <div className="sv-video-restore-media">
+                                                    {video.metadata?.thumbnail ? (
+                                                        <img src={video.metadata.thumbnail} alt={video.metadata?.caption || 'Video'} loading="lazy" />
+                                                    ) : (
+                                                        <div className="sv-video-restore-placeholder">
+                                                            <i className="fas fa-video" />
+                                                        </div>
+                                                    )}
+                                                    <div className="sv-video-restore-overlay">
+                                                        <div className="sv-video-restore-actions">
+                                                            <button
+                                                                type="button"
+                                                                className="sv-btn sv-btn--small sv-btn--primary"
+                                                                onClick={async () => {
+                                                                    const videoURL = getRestorableUrl(video);
+                                                                    if (videoURL) {
+                                                                        await saveVideoFromUrl(
+                                                                            video.videoId,
+                                                                            videoURL,
+                                                                            video.metadata
+                                                                        );
+                                                                    }
+                                                                }}
+                                                                aria-label="Download this video"
+                                                            >
+                                                                <i className="fas fa-download" aria-hidden="true" />
+                                                                Restore
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="sv-btn sv-btn--small sv-btn--danger"
+                                                                onClick={() => handleDeletePrevious(video.videoId)}
+                                                                disabled={deletingPreviousId === String(video.videoId)}
+                                                                aria-label="Delete this previous download"
+                                                            >
+                                                                <i className={`fas ${deletingPreviousId === String(video.videoId) ? 'fa-spinner fa-spin' : 'fa-trash'}`} aria-hidden="true" />
+                                                                {deletingPreviousId === String(video.videoId) ? 'Deleting...' : 'Delete'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="sv-video-restore-info">
+                                                    <h4 className="sv-video-restore-title">{video.metadata?.caption || 'Video'}</h4>
+                                                    <p className="sv-video-restore-author">
+                                                        {video.metadata?.author?.fullName || video.metadata?.author?.name || 'Unknown'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </section>
+                        )}
+                    </>
                 )}
             </div>
         </div>

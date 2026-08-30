@@ -4,10 +4,10 @@
  */
 
 const CACHE_KEYS = {
-  CONTACTS: 'cached_message_contacts',
-  CONTACTS_TIMESTAMP: 'message_contacts_timestamp',
-  ACTIVE_FRIENDS: 'cached_active_friends',
-  ACTIVE_FRIENDS_TIMESTAMP: 'active_friends_timestamp',
+  CONTACTS_PREFIX: 'cached_message_contacts_',
+  CONTACTS_TIMESTAMP_PREFIX: 'message_contacts_timestamp_',
+  ACTIVE_FRIENDS_PREFIX: 'cached_active_friends_',
+  ACTIVE_FRIENDS_TIMESTAMP_PREFIX: 'active_friends_timestamp_',
   CACHE_VERSION: 'contact_cache_version',
 };
 
@@ -15,6 +15,22 @@ const CACHE_VERSION = '1.0';
 const CONTACT_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes in milliseconds
 
 class ContactCacheManager {
+  static getContactsKey(profileId) {
+    return `${CACHE_KEYS.CONTACTS_PREFIX}${profileId}`;
+  }
+
+  static getContactsTimestampKey(profileId) {
+    return `${CACHE_KEYS.CONTACTS_TIMESTAMP_PREFIX}${profileId}`;
+  }
+
+  static getActiveFriendsKey(profileId) {
+    return `${CACHE_KEYS.ACTIVE_FRIENDS_PREFIX}${profileId}`;
+  }
+
+  static getActiveFriendsTimestampKey(profileId) {
+    return `${CACHE_KEYS.ACTIVE_FRIENDS_TIMESTAMP_PREFIX}${profileId}`;
+  }
+
   /**
    * Initialize cache manager and check version
    */
@@ -34,10 +50,12 @@ class ContactCacheManager {
    * Get cached contacts
    * @returns {Array|null} Cached contacts or null if expired/not found
    */
-  static getCachedContacts() {
+  static getCachedContacts(profileId) {
     try {
-      const cachedData = localStorage.getItem(CACHE_KEYS.CONTACTS);
-      const timestamp = localStorage.getItem(CACHE_KEYS.CONTACTS_TIMESTAMP);
+      if (!profileId) return null;
+
+      const cachedData = localStorage.getItem(this.getContactsKey(profileId));
+      const timestamp = localStorage.getItem(this.getContactsTimestampKey(profileId));
 
       if (!cachedData || !timestamp) {
         return null;
@@ -63,15 +81,16 @@ class ContactCacheManager {
    * Save contacts to cache
    * @param {Array} contacts - Contacts to cache
    */
-  static setCachedContacts(contacts) {
+  static setCachedContacts(profileId, contacts) {
     try {
+      if (!profileId) return false;
       if (!Array.isArray(contacts)) {
         console.warn('Invalid contacts format for cache');
         return false;
       }
 
-      localStorage.setItem(CACHE_KEYS.CONTACTS, JSON.stringify(contacts));
-      localStorage.setItem(CACHE_KEYS.CONTACTS_TIMESTAMP, Date.now().toString());
+      localStorage.setItem(this.getContactsKey(profileId), JSON.stringify(contacts));
+      localStorage.setItem(this.getContactsTimestampKey(profileId), Date.now().toString());
       console.log('💾 Contacts cached successfully:', contacts.length);
       return true;
     } catch (error) {
@@ -84,10 +103,12 @@ class ContactCacheManager {
    * Get cached active friends (online friends list)
    * @returns {Array|null} Cached active friend IDs or null if expired/not found
    */
-  static getCachedActiveFriends() {
+  static getCachedActiveFriends(profileId) {
     try {
-      const cachedData = localStorage.getItem(CACHE_KEYS.ACTIVE_FRIENDS);
-      const timestamp = localStorage.getItem(CACHE_KEYS.ACTIVE_FRIENDS_TIMESTAMP);
+      if (!profileId) return null;
+
+      const cachedData = localStorage.getItem(this.getActiveFriendsKey(profileId));
+      const timestamp = localStorage.getItem(this.getActiveFriendsTimestampKey(profileId));
 
       if (!cachedData || !timestamp) {
         return null;
@@ -96,7 +117,7 @@ class ContactCacheManager {
       const timeSinceCache = Date.now() - parseInt(timestamp, 10);
       if (timeSinceCache > CONTACT_CACHE_DURATION) {
         console.log('📦 Active friends cache expired, clearing');
-        this.clearActiveFriendsCache();
+        this.clearActiveFriendsCache(profileId);
         return null;
       }
 
@@ -113,15 +134,16 @@ class ContactCacheManager {
    * Save active friends to cache
    * @param {Array} activeFriends - Active friend IDs to cache
    */
-  static setCachedActiveFriends(activeFriends) {
+  static setCachedActiveFriends(profileId, activeFriends) {
     try {
+      if (!profileId) return false;
       if (!Array.isArray(activeFriends)) {
         console.warn('Invalid active friends format for cache');
         return false;
       }
 
-      localStorage.setItem(CACHE_KEYS.ACTIVE_FRIENDS, JSON.stringify(activeFriends));
-      localStorage.setItem(CACHE_KEYS.ACTIVE_FRIENDS_TIMESTAMP, Date.now().toString());
+      localStorage.setItem(this.getActiveFriendsKey(profileId), JSON.stringify(activeFriends));
+      localStorage.setItem(this.getActiveFriendsTimestampKey(profileId), Date.now().toString());
       console.log('💾 Active friends cached successfully:', activeFriends.length);
       return true;
     } catch (error) {
@@ -163,10 +185,12 @@ class ContactCacheManager {
    * Check if contact cache is still valid
    * @returns {boolean} True if cache exists and is not expired
    */
-  static isCacheValid() {
+  static isCacheValid(profileId) {
     try {
-      const cachedData = localStorage.getItem(CACHE_KEYS.CONTACTS);
-      const timestamp = localStorage.getItem(CACHE_KEYS.CONTACTS_TIMESTAMP);
+      if (!profileId) return false;
+
+      const cachedData = localStorage.getItem(this.getContactsKey(profileId));
+      const timestamp = localStorage.getItem(this.getContactsTimestampKey(profileId));
 
       if (!cachedData || !timestamp) {
         return false;
@@ -183,12 +207,27 @@ class ContactCacheManager {
   /**
    * Clear all cached contacts and active friends
    */
-  static clearCache() {
+  static clearCache(profileId = null) {
     try {
-      localStorage.removeItem(CACHE_KEYS.CONTACTS);
-      localStorage.removeItem(CACHE_KEYS.CONTACTS_TIMESTAMP);
-      localStorage.removeItem(CACHE_KEYS.ACTIVE_FRIENDS);
-      localStorage.removeItem(CACHE_KEYS.ACTIVE_FRIENDS_TIMESTAMP);
+      if (profileId) {
+        localStorage.removeItem(this.getContactsKey(profileId));
+        localStorage.removeItem(this.getContactsTimestampKey(profileId));
+        localStorage.removeItem(this.getActiveFriendsKey(profileId));
+        localStorage.removeItem(this.getActiveFriendsTimestampKey(profileId));
+        return;
+      }
+
+      const keys = Object.keys(localStorage);
+      keys.forEach((key) => {
+        if (
+          key.startsWith(CACHE_KEYS.CONTACTS_PREFIX) ||
+          key.startsWith(CACHE_KEYS.CONTACTS_TIMESTAMP_PREFIX) ||
+          key.startsWith(CACHE_KEYS.ACTIVE_FRIENDS_PREFIX) ||
+          key.startsWith(CACHE_KEYS.ACTIVE_FRIENDS_TIMESTAMP_PREFIX)
+        ) {
+          localStorage.removeItem(key);
+        }
+      });
       console.log('🗑️ All contact caches cleared');
     } catch (error) {
       console.error('Error clearing contact cache:', error);
@@ -198,10 +237,11 @@ class ContactCacheManager {
   /**
    * Clear only active friends cache
    */
-  static clearActiveFriendsCache() {
+  static clearActiveFriendsCache(profileId) {
     try {
-      localStorage.removeItem(CACHE_KEYS.ACTIVE_FRIENDS);
-      localStorage.removeItem(CACHE_KEYS.ACTIVE_FRIENDS_TIMESTAMP);
+      if (!profileId) return;
+      localStorage.removeItem(this.getActiveFriendsKey(profileId));
+      localStorage.removeItem(this.getActiveFriendsTimestampKey(profileId));
       console.log('🗑️ Active friends cache cleared');
     } catch (error) {
       console.error('Error clearing active friends cache:', error);
@@ -212,10 +252,17 @@ class ContactCacheManager {
    * Get cache statistics
    * @returns {Object} Cache stats
    */
-  static getStats() {
+  static getStats(profileId) {
     try {
-      const cachedData = localStorage.getItem(CACHE_KEYS.CONTACTS);
-      const timestamp = localStorage.getItem(CACHE_KEYS.CONTACTS_TIMESTAMP);
+      if (!profileId) {
+        return {
+          contacts: { cached: false, count: 0, age: null, expiresIn: null },
+          activeFriends: { cached: false, count: 0 },
+        };
+      }
+
+      const cachedData = localStorage.getItem(this.getContactsKey(profileId));
+      const timestamp = localStorage.getItem(this.getContactsTimestampKey(profileId));
 
       if (!cachedData || !timestamp) {
         return {
@@ -230,7 +277,7 @@ class ContactCacheManager {
       const age = now - cacheTime;
       const expiresIn = Math.max(0, CONTACT_CACHE_DURATION - age);
 
-      const activeFriendsData = localStorage.getItem(CACHE_KEYS.ACTIVE_FRIENDS);
+      const activeFriendsData = localStorage.getItem(this.getActiveFriendsKey(profileId));
       const activeFriends = activeFriendsData ? JSON.parse(activeFriendsData) : [];
 
       return {

@@ -158,6 +158,86 @@ class CacheManager {
   }
 
   /**
+   * Add or move a post to the front of the cached home feed
+   * @param {Object} post - Post to cache
+   * @returns {boolean}
+   */
+  static prependCachedPost(post) {
+    try {
+      if (!post) return false;
+
+      const cachedPosts = this.getCachedPosts() || [];
+      const updatedPosts = [
+        post,
+        ...cachedPosts.filter((cachedPost) => cachedPost?._id !== post?._id),
+      ];
+
+      return this.setCachedPosts(updatedPosts);
+    } catch (error) {
+      console.error('Error prepending cached post:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Remove a post from the cached home feed
+   * @param {string} postId - Post ID to remove from cache
+   * @returns {boolean}
+   */
+  static removeCachedPost(postId) {
+    try {
+      if (!postId) return false;
+
+      const cachedPosts = this.getCachedPosts() || [];
+      const updatedPosts = cachedPosts.filter((post) => post?._id !== postId);
+
+      return this.setCachedPosts(updatedPosts);
+    } catch (error) {
+      console.error('Error removing cached post:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Update a cached post in the home feed
+   * @param {Object} updatedPost - Updated post payload
+   * @returns {boolean}
+   */
+  static updateCachedPost(updatedPost) {
+    try {
+      if (!updatedPost?._id) return false;
+
+      const cachedPosts = this.getCachedPosts() || [];
+      const nextPosts = cachedPosts.map((post) => {
+        if (post?._id !== updatedPost._id) return post;
+
+        return {
+          ...post,
+          ...updatedPost,
+          author:
+            updatedPost?.author && typeof updatedPost.author === 'object'
+              ? updatedPost.author
+              : post?.author,
+          parentPost:
+            updatedPost?.parentPost && typeof updatedPost.parentPost === 'object'
+              ? updatedPost.parentPost
+              : post?.parentPost,
+          comments:
+            Array.isArray(updatedPost?.comments) &&
+            updatedPost.comments.some((comment) => comment && typeof comment === 'object')
+              ? updatedPost.comments
+              : post?.comments,
+        };
+      });
+
+      return this.setCachedPosts(nextPosts);
+    } catch (error) {
+      console.error('Error updating cached post:', error);
+      return false;
+    }
+  }
+
+  /**
    * Get cache statistics
    * @returns {Object} Cache stats
    */

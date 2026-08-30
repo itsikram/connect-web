@@ -163,3 +163,56 @@ export const fetchProfilePostsCached = async (
     },
   });
 };
+
+export const prependProfilePostCache = (profileId, post) => {
+  if (!profileId || !post) return;
+
+  const key = `profilePosts:${profileId}`;
+  const cachedPosts = readMemoryCache(key) ?? readStorageCache(key) ?? [];
+  const nextPosts = [
+    post,
+    ...cachedPosts.filter((cachedPost) => cachedPost?._id !== post?._id),
+  ];
+
+  primeCachedResource(key, nextPosts);
+};
+
+export const removeProfilePostCache = (profileId, postId) => {
+  if (!profileId || !postId) return;
+
+  const key = `profilePosts:${profileId}`;
+  const cachedPosts = readMemoryCache(key) ?? readStorageCache(key) ?? [];
+  const nextPosts = cachedPosts.filter((post) => post?._id !== postId);
+
+  primeCachedResource(key, nextPosts);
+};
+
+export const updateProfilePostCache = (profileId, updatedPost) => {
+  if (!profileId || !updatedPost?._id) return;
+
+  const key = `profilePosts:${profileId}`;
+  const cachedPosts = readMemoryCache(key) ?? readStorageCache(key) ?? [];
+  const nextPosts = cachedPosts.map((post) => {
+    if (post?._id !== updatedPost._id) return post;
+
+    return {
+      ...post,
+      ...updatedPost,
+      author:
+        updatedPost?.author && typeof updatedPost.author === "object"
+          ? updatedPost.author
+          : post?.author,
+      parentPost:
+        updatedPost?.parentPost && typeof updatedPost.parentPost === "object"
+          ? updatedPost.parentPost
+          : post?.parentPost,
+      comments:
+        Array.isArray(updatedPost?.comments) &&
+        updatedPost.comments.some((comment) => comment && typeof comment === "object")
+          ? updatedPost.comments
+          : post?.comments,
+    };
+  });
+
+  primeCachedResource(key, nextPosts);
+};
