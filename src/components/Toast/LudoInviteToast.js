@@ -39,7 +39,8 @@ const LudoInviteToast = ({
 
   return (
     <div className="ludo-invite-toast">
-      <button 
+      <button
+        type="button"
         className="ludo-invite-toast__close-btn" 
         onClick={(e) => {
           e.preventDefault();
@@ -69,7 +70,8 @@ const LudoInviteToast = ({
       </div>
       
       <div className="ludo-invite-toast__actions">
-        <button 
+        <button
+          type="button"
           className="ludo-invite-toast__btn ludo-invite-toast__btn--accept"
           onClick={(e) => {
             e.preventDefault();
@@ -86,7 +88,8 @@ const LudoInviteToast = ({
         >
           Accept
         </button>
-        <button 
+        <button
+          type="button"
           className="ludo-invite-toast__btn ludo-invite-toast__btn--decline"
           onClick={(e) => {
             e.preventDefault();

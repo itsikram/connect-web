@@ -6,6 +6,7 @@ import { useSelector } from 'react-redux';
 import checkImgLoading from '../../utils/checkImgLoading';
 import ImageSkleton from '../../skletons/friend/ImageSkleton';
 import config from "../../config/config.json";
+import ReportModal from '../modal/ReportModal';
 const default_pp_src = config?.defaultProfile;
 
 
@@ -17,6 +18,7 @@ const PFI = (props) => {
     let params = useParams();
 
     let [isFriend, setIsFriend] = useState(false)
+    let [isReportOpen, setIsReportOpen] = useState(false)
 
     useEffect(() => {
         myProfile.friends && myProfile.friends.filter(singleFrnd => {
@@ -123,11 +125,34 @@ const PFI = (props) => {
                                     <div className='menu-item-text'>Add Friend</div>
                                 </div>
                         }
+                        {friend._id !== myProfile._id && (
+                            <div
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsReportOpen(true);
+                                }}
+                                className='friend-options-menu-item'
+                            >
+                                <div className='menu-item-icon'>
+                                    <i className="fas fa-flag"></i>
+                                </div>
+                                <div className='menu-item-text'>Report Profile</div>
+                            </div>
+                        )}
 
                     </div>
 
                 </div>
             </div>
+            {isReportOpen && friend?._id && (
+                <ReportModal
+                    isOpen={isReportOpen}
+                    onRequestClose={() => setIsReportOpen(false)}
+                    type="profile"
+                    targetId={friend._id}
+                    targetLabel={friendFullName || 'this profile'}
+                />
+            )}
         </>
     );
 }

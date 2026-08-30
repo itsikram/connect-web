@@ -6,6 +6,8 @@ import { useSelector } from "react-redux";
 import ProfileButtons from "../components/Profile/ProfileButtons";
 import CoverPic from "../components/Profile/CoverPic";
 import ProfilePic from "../components/Profile/ProfilePic";
+import OptionsDropdown from "../components/post/OptionsDropdown";
+import ReportModal from "../components/modal/ReportModal";
 
 
 
@@ -15,6 +17,8 @@ let Profile = (props) => {
     let myProfileId = myProfileData._id
     let [profileData, setProfileData] = useState(null)
     let [profileLoading, setProfileLoading] = useState(true)
+    let [isProfileOption, setIsProfileOption] = useState(false)
+    let [isReportOpen, setIsReportOpen] = useState(false)
 
     const profileIdentifier = params.profile
     const isAuth = profileData?._id === myProfileId || profileData?.username === myProfileData.username
@@ -124,8 +128,29 @@ let Profile = (props) => {
                                         <NavLink to={profilePath + "videos"} onClick={profileTabItemClick} className="header-nav-menu-item">Videos</NavLink>
                                     </div>
                                 </div>
-                                <div className="options-menu">
-                                    <i className="fa fa-ellipsis-h"></i>
+                                <div className="options-menu-wrap">
+                                    {!isAuth && (
+                                        <OptionsDropdown
+                                            open={isProfileOption}
+                                            onToggle={() => setIsProfileOption((prev) => !prev)}
+                                            onClose={() => setIsProfileOption(false)}
+                                            ariaLabel="Profile options"
+                                            buttonClassName="options-menu"
+                                            menuClassName="post-option-menu"
+                                            iconClassName="fa fa-ellipsis-h"
+                                        >
+                                            <ul>
+                                                <li
+                                                    onClick={() => {
+                                                        setIsProfileOption(false)
+                                                        setIsReportOpen(true)
+                                                    }}
+                                                >
+                                                    Report this profile
+                                                </li>
+                                            </ul>
+                                        </OptionsDropdown>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -136,6 +161,19 @@ let Profile = (props) => {
                 )}
             </div>
 
+            {isReportOpen && profileData?._id && (
+                <ReportModal
+                    isOpen={isReportOpen}
+                    onRequestClose={() => setIsReportOpen(false)}
+                    type="profile"
+                    targetId={profileData._id}
+                    targetLabel={
+                        [profileData.user?.firstName, profileData.user?.surname].filter(Boolean).join(' ')
+                        || profileData.displayName
+                        || 'this profile'
+                    }
+                />
+            )}
 
         </Fragment>
     )

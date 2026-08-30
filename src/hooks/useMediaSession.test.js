@@ -137,6 +137,7 @@ describe('useMediaSession', () => {
     const { rerender } = render(
       <Harness
         enabled
+        bindKey="track-a"
         metadata={{ title: 'Track A', artist: 'Artist A', album: 'Album A' }}
         playbackState="paused"
       />,
@@ -147,6 +148,7 @@ describe('useMediaSession', () => {
     rerender(
       <Harness
         enabled
+        bindKey="track-b"
         metadata={{ title: 'Track B', artist: 'Artist B', album: 'Album B' }}
         playbackState="playing"
       />,
@@ -154,6 +156,7 @@ describe('useMediaSession', () => {
 
     expect(navigator.mediaSession.metadata.title).toBe('Track B');
     expect(navigator.mediaSession.metadata.artist).toBe('Artist B');
+    expect(navigator.mediaSession.playbackState).toBe('playing');
   });
 
   it('updates position state with valid values', () => {
@@ -219,5 +222,77 @@ describe('useMediaSession', () => {
         />,
       );
     }).not.toThrow();
+  });
+
+  it('clears the session when playback is disabled', () => {
+    const { mediaSession } = createMediaSessionMock();
+    Object.defineProperty(navigator, 'mediaSession', {
+      configurable: true,
+      writable: true,
+      value: mediaSession,
+    });
+
+    const { rerender } = render(
+      <Harness
+        enabled
+        bindKey="watch-1"
+        metadata={{ title: 'Watch A' }}
+        playbackState="playing"
+      />,
+    );
+
+    expect(navigator.mediaSession.metadata.title).toBe('Watch A');
+
+    rerender(
+      <Harness
+        enabled={false}
+        bindKey="watch-1"
+        metadata={{ title: 'Watch A' }}
+        playbackState="paused"
+      />,
+    );
+
+    expect(navigator.mediaSession.playbackState).toBe('none');
+    expect(navigator.mediaSession.metadata).toBe(null);
+  });
+
+  it('uses live playback state when opening or hiding the page', () => {
+    const { mediaSession } = createMediaSessionMock();
+    Object.defineProperty(navigator, 'mediaSession', {
+      configurable: true,
+      writable: true,
+      value: mediaSession,
+    });
+
+    const getPlaybackState = jest.fn(() => 'playing');
+    const getPositionState = jest.fn(() => ({
+      duration: 40,
+      position: 12,
+      playbackRate: 1,
+    }));
+
+    render(
+      <Harness
+        enabled
+        bindKey="watch-1"
+        metadata={{ title: 'Watch A' }}
+        playbackState="paused"
+        getPlaybackState={getPlaybackState}
+        getPositionState={getPositionState}
+      />,
+    );
+
+    expect(navigator.mediaSession.playbackState).toBe('playing');
+
+    getPlaybackState.mockReturnValue('paused');
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(getPlaybackState).toHaveBeenCalled();
+    expect(navigator.mediaSession.playbackState).toBe('paused');
+    expect(navigator.mediaSession.setPositionState).toHaveBeenCalledWith({
+      duration: 40,
+      position: 12,
+      playbackRate: 1,
+    });
   });
 });

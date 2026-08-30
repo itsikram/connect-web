@@ -4,7 +4,7 @@ import LudoInviteToast from '../components/Toast/LudoInviteToast';
 
 // Toast configuration
 const toastConfig = {
-  position: "top-right",
+  position: "top-center",
   autoClose: 5000,
   hideProgressBar: false,
   closeOnClick: true,

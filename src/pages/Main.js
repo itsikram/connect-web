@@ -7,7 +7,7 @@ import React, {
   lazy,
   Suspense,
 } from "react";
-import { ToastContainer } from "react-toastify";
+import { ToastContainer, Slide } from "react-toastify";
 import {
   Routes,
   Route,
@@ -2301,12 +2301,16 @@ const Main = () => {
         rtl={false}
         pauseOnFocusLoss={false}
         draggable
+        draggablePercent={40}
         pauseOnHover={false}
         theme="light"
         className="custom-toast-container"
         icon={false}
         closeButton={false}
         toastClassName="custom-toast-item"
+        transition={Slide}
+        limit={4}
+        style={{ zIndex: 10050 }}
       />
       <MinimizedCallBar />
       <WatchPipPlayer />

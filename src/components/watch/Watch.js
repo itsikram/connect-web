@@ -562,6 +562,12 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
               watchId={watch._id}
               videoUrl={watchUrl}
               thumbnail={watch?.thumbnail}
+              title={caption || `${watch?.author?.user?.firstName || "Watch"}`}
+              artist={
+                [watch?.author?.user?.firstName, watch?.author?.user?.surname]
+                  .filter(Boolean)
+                  .join(" ") || "Connect Watch"
+              }
               videoRef={displayedWatch}
               isPipActive={isThisPip}
               onRestorePip={() => watchPip?.closePip?.()}

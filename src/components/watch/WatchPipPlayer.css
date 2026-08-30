@@ -231,6 +231,33 @@ html.standalone-pwa .watch-pip-player {
   bottom: calc(16px + env(safe-area-inset-bottom, 0px));
 }
 
+@media (max-width: 768px) {
+  .watch-pip-player:not(.is-minimized) {
+    height: fit-content;
+  }
+
+  .watch-pip-player:not(.is-minimized) .watch-pip-video-wrap {
+    aspect-ratio: unset;
+    height: fit-content;
+    max-height: none;
+  }
+
+  .watch-pip-player:not(.is-minimized) .watch-pip-video-wrap.is-loading {
+    aspect-ratio: 16 / 9;
+    max-height: min(46vh, 360px);
+  }
+
+  .watch-pip-player.is-watch:not(.is-minimized) .watch-pip-video-wrap.is-loading {
+    aspect-ratio: 9 / 16;
+  }
+
+  .watch-pip-player:not(.is-minimized) .watch-pip-video {
+    width: 100%;
+    height: auto;
+    max-height: min(46vh, 360px);
+  }
+}
+
 @media (min-width: 769px) {
   .watch-pip-player {
     width: min(46vw, 440px);

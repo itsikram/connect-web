@@ -37,68 +37,77 @@ export default function useSpeechToText({
     }
     setListening(false);
     setInterim("");
+    onInterimRef.current?.("");
   }, []);
 
-  const start = useCallback(() => {
-    const Ctor = SpeechRecognitionCtor();
-    if (!Ctor) return false;
+  const start = useCallback(
+    (overrideLang) => {
+      const Ctor = SpeechRecognitionCtor();
+      if (!Ctor) return false;
 
-    stop();
-    wantListenRef.current = true;
-    const rec = new Ctor();
-    rec.lang =
-      lang ||
-      (typeof navigator !== "undefined" && navigator.language?.startsWith("bn")
-        ? "bn-BD"
-        : "en-US");
-    rec.interimResults = true;
-    rec.continuous = Boolean(continuous);
+      const nextLang =
+        (typeof overrideLang === "string" && overrideLang) ||
+        lang ||
+        (typeof navigator !== "undefined" &&
+        navigator.language?.startsWith("bn")
+          ? "bn-BD"
+          : "en-US");
 
-    rec.onresult = (event) => {
-      let interimText = "";
-      let finalText = "";
-      for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        const piece = event.results[i][0]?.transcript || "";
-        if (event.results[i].isFinal) finalText += piece;
-        else interimText += piece;
-      }
-      if (interimText) {
-        setInterim(interimText);
-        onInterimRef.current?.(interimText);
-      }
-      if (finalText) {
-        setInterim("");
-        onInterimRef.current?.("");
-        onFinalRef.current?.(finalText.trim());
-      }
-    };
+      stop();
+      wantListenRef.current = true;
+      const rec = new Ctor();
+      rec.lang = nextLang;
+      rec.interimResults = true;
+      rec.continuous = Boolean(continuous);
+      rec.maxAlternatives = 3;
 
-    rec.onerror = () => {
-      wantListenRef.current = false;
-      setListening(false);
-    };
-    rec.onend = () => {
-      if (recRef.current !== rec) return;
-      if (wantListenRef.current && continuous) {
-        try {
-          rec.start();
-          setListening(true);
-          return;
-        } catch (_) {
-          /* fall through */
+      rec.onresult = (event) => {
+        let interimText = "";
+        let finalText = "";
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+          const piece = event.results[i][0]?.transcript || "";
+          if (event.results[i].isFinal) finalText += piece;
+          else interimText += piece;
         }
-      }
-      wantListenRef.current = false;
-      setListening(false);
-      recRef.current = null;
-    };
+        if (interimText) {
+          setInterim(interimText);
+          onInterimRef.current?.(interimText);
+        }
+        if (finalText) {
+          setInterim("");
+          onInterimRef.current?.("");
+          onFinalRef.current?.(finalText.trim());
+        }
+      };
 
-    recRef.current = rec;
-    rec.start();
-    setListening(true);
-    setInterim("");
-    return true;
-  }, [lang, continuous, stop]);
+      rec.onerror = () => {
+        wantListenRef.current = false;
+        setListening(false);
+      };
+      rec.onend = () => {
+        if (recRef.current !== rec) return;
+        if (wantListenRef.current && continuous) {
+          try {
+            rec.start();
+            setListening(true);
+            return;
+          } catch (_) {
+            /* fall through */
+          }
+        }
+        wantListenRef.current = false;
+        setListening(false);
+        recRef.current = null;
+      };
+
+      recRef.current = rec;
+      rec.start();
+      setListening(true);
+      setInterim("");
+      return true;
+    },
+    [lang, continuous, stop],
+  );
 
   const toggle = useCallback(() => {
     if (listening) stop();

@@ -7,7 +7,8 @@ import EmojiPicker from "emoji-picker-react";
 import socket from "../../common/socket";
 import "./StickyChatFooter.css";
 import ComposerContextPreview from "./ComposerContextPreview";
-import useSpeechToText from "../../hooks/useSpeechToText";
+import ComposerMicMenu from "./ComposerMicMenu";
+import useComposerLiveTranscribe from "../../hooks/useComposerLiveTranscribe";
 
 const StickyChatFooter = ({
   room,
@@ -37,6 +38,8 @@ const StickyChatFooter = ({
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [showMicMenu, setShowMicMenu] = useState(false);
+  const [micMenuView, setMicMenuView] = useState("main");
+  const [transcribeLang, setTranscribeLang] = useState("en-US");
   const [recordingMs, setRecordingMs] = useState(0);
   const [actionEmoji, setActionEmoji] = useState("👍");
 
@@ -51,12 +54,18 @@ const StickyChatFooter = ({
   const emojiContainerRef = useRef(null);
   const emojiButtonRef = useRef(null);
   const micMenuRef = useRef(null);
+  const transcribeBaseRef = useRef("");
+  const inputValueRef = useRef("");
   const messageInput = useRef(null);
   const [emojiPosition, setEmojiPosition] = useState({ top: 0, right: 0 });
 
   useEffect(() => {
     setActionEmoji(settings.actionEmoji || "👍");
   }, [settings]);
+
+  useEffect(() => {
+    inputValueRef.current = inputValue;
+  }, [inputValue]);
 
   const scrollToLastMessage = () => {
     if (msgListRef?.current) {
@@ -128,33 +137,42 @@ const StickyChatFooter = ({
     }
   }, [settings?.showIsTyping, removeTyping]);
 
+  const handleTranscriptInterim = useCallback(
+    (text) => {
+      if (!text) return;
+      const next = [transcribeBaseRef.current, text].filter(Boolean).join(" ");
+      setInputValue(next);
+      if (next) addTyping(next);
+    },
+    [addTyping],
+  );
+
   const handleTranscriptFinal = useCallback(
     (text) => {
       if (!text) return;
-      setInputValue((prev) => {
-        const next = prev.trim() ? `${prev.trimEnd()} ${text}` : text;
-        addTyping(next);
-        return next;
-      });
+      const next = [transcribeBaseRef.current, text].filter(Boolean).join(" ");
+      transcribeBaseRef.current = next;
+      setInputValue(next);
+      addTyping(next);
     },
     [addTyping],
   );
 
   const {
     listening: isTranscribing,
-    interim: transcribeInterim,
-    supported: isSpeechSupported,
+    supported: isTranscribeSupported,
     start: startTranscription,
     stop: stopTranscription,
-  } = useSpeechToText({
+  } = useComposerLiveTranscribe({
     onFinal: handleTranscriptFinal,
-    continuous: true,
+    onInterim: handleTranscriptInterim,
   });
 
   useEffect(() => {
     const onDown = (event) => {
       if (micMenuRef.current && !micMenuRef.current.contains(event.target)) {
         setShowMicMenu(false);
+        setMicMenuView("main");
       }
     };
     document.addEventListener("mousedown", onDown);
@@ -242,6 +260,7 @@ const StickyChatFooter = ({
   const handleInputChange = (e) => {
     const value = e.target.value;
     setInputValue(value);
+    transcribeBaseRef.current = value.trim();
 
     if (value.trim().length > 0) {
       addTyping(value);
@@ -376,19 +395,33 @@ const StickyChatFooter = ({
     }
   }, [isRecording, isUploadingAudio, stopTranscription]);
 
-  const startLiveTranscribe = useCallback(() => {
-    setShowMicMenu(false);
-    if (!isSpeechSupported) {
-      window.alert(
-        "Live transcription is not supported in this browser. Try Chrome or Edge.",
-      );
-      return;
-    }
-    startTranscription();
-  }, [isSpeechSupported, startTranscription]);
+  const startLiveTranscribe = useCallback(
+    async (langCode) => {
+      setShowMicMenu(false);
+      setMicMenuView("main");
+      if (!isTranscribeSupported) {
+        window.alert(
+          "Live transcription is not available. Use Chrome or Edge for English, or check your connection for Deepgram.",
+        );
+        return;
+      }
+      setTranscribeLang(langCode);
+      transcribeBaseRef.current = String(inputValueRef.current || "").trim();
+      const started = await startTranscription(langCode);
+      if (started) {
+        messageInput?.current?.focus?.({ preventScroll: true });
+      } else {
+        window.alert(
+          "Could not start live transcription. Please allow microphone access and try again.",
+        );
+      }
+    },
+    [isTranscribeSupported, startTranscription],
+  );
 
   const startVoiceMessage = useCallback(() => {
     setShowMicMenu(false);
+    setMicMenuView("main");
     startRecording();
   }, [startRecording]);
 
@@ -430,6 +463,7 @@ const StickyChatFooter = ({
       stopTranscription();
       return;
     }
+    setMicMenuView("main");
     setShowMicMenu((prev) => !prev);
   };
 
@@ -560,9 +594,12 @@ const StickyChatFooter = ({
         <div className="composer-transcribe-bar" aria-live="polite">
           <span className="composer-transcribe-dot" aria-hidden="true" />
           <div className="composer-transcribe-copy">
-            <span className="composer-transcribe-label">Listening</span>
+            <span className="composer-transcribe-label">
+              Listening ·{" "}
+              {String(transcribeLang).startsWith("bn") ? "Bangla" : "English"}
+            </span>
             <span className="composer-transcribe-interim">
-              {transcribeInterim || "Speak now — words appear in the message box"}
+              Speak now — text appears in the message box
             </span>
           </div>
           <button
@@ -672,46 +709,15 @@ const StickyChatFooter = ({
                   }
                 ></i>
               </button>
-              {showMicMenu && (
-                <div className="composer-mic-menu" role="menu">
-                  <button
-                    type="button"
-                    className="composer-mic-menu-item"
-                    role="menuitem"
-                    onClick={startLiveTranscribe}
-                  >
-                    <span className="composer-mic-menu-icon transcribe">
-                      <i className="fas fa-closed-captioning"></i>
-                    </span>
-                    <span className="composer-mic-menu-copy">
-                      <span className="composer-mic-menu-title">
-                        Live transcribe
-                      </span>
-                      <span className="composer-mic-menu-desc">
-                        Speech to text in the message box
-                      </span>
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="composer-mic-menu-item"
-                    role="menuitem"
-                    onClick={startVoiceMessage}
-                  >
-                    <span className="composer-mic-menu-icon voice">
-                      <i className="fas fa-microphone"></i>
-                    </span>
-                    <span className="composer-mic-menu-copy">
-                      <span className="composer-mic-menu-title">
-                        Voice message
-                      </span>
-                      <span className="composer-mic-menu-desc">
-                        Record audio and send it
-                      </span>
-                    </span>
-                  </button>
-                </div>
-              )}
+              {showMicMenu ? (
+                <ComposerMicMenu
+                  view={micMenuView}
+                  onOpenTranscribe={() => setMicMenuView("transcribe")}
+                  onBack={() => setMicMenuView("main")}
+                  onSelectLang={startLiveTranscribe}
+                  onVoiceMessage={startVoiceMessage}
+                />
+              ) : null}
             </div>
           </div>
         )}
@@ -733,7 +739,13 @@ const StickyChatFooter = ({
               setIsInputFocused(false);
               removeTyping();
             }}
-            placeholder="Type a message..."
+            placeholder={
+              isTranscribing
+                ? String(transcribeLang).startsWith("bn")
+                  ? "Listening in Bangla…"
+                  : "Listening in English…"
+                : "Type a message..."
+            }
             className={`sticky-chat-input ${isInputFocused ? "focused" : ""}`}
             disabled={isRecording || isUploadingAudio}
           />

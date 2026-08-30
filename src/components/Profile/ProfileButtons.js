@@ -4,6 +4,7 @@ import $ from 'jquery';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import CreateStoryModal from '../story/CreateStoryModal';
+import ReportModal from '../modal/ReportModal';
 
 const ProfileButtons = (props) => {
     const navigate = useNavigate();
@@ -19,6 +20,7 @@ const ProfileButtons = (props) => {
     const [isCancelingReq, setIsCancelingReq] = useState(false);
     const [isConfirmingReq, setIsConfirmingReq] = useState(false);
     const [isUnfriending, setIsUnfriending] = useState(false);
+    const [isReportOpen, setIsReportOpen] = useState(false);
 
     const clickAddFriendBtn = async (e) => {
         const target = e.currentTarget;
@@ -133,6 +135,18 @@ const ProfileButtons = (props) => {
                                         {isUnfriending ? 'Removing...' : 'Remove Friend'}
                                     </div>
                                 </div>
+                                <div
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setIsReportOpen(true);
+                                    }}
+                                    className="friend-options-menu-item"
+                                >
+                                    <div className="menu-item-icon">
+                                        <i className="fas fa-flag" />
+                                    </div>
+                                    <div className="menu-item-text">Report Profile</div>
+                                </div>
                             </div>
                         </div>
                         <div onClick={clickMessageBtn} className="highligh-btn button message-button">
@@ -187,6 +201,19 @@ const ProfileButtons = (props) => {
                     </div>
                 )
             }
+            {isReportOpen && profileData?._id && (
+                <ReportModal
+                    isOpen={isReportOpen}
+                    onRequestClose={() => setIsReportOpen(false)}
+                    type="profile"
+                    targetId={profileData._id}
+                    targetLabel={
+                        [profileData.user?.firstName, profileData.user?.surname].filter(Boolean).join(' ')
+                        || profileData.displayName
+                        || 'this profile'
+                    }
+                />
+            )}
         </Fragment>
     );
 };

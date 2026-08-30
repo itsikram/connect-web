@@ -553,6 +553,12 @@ const SinglePost = (watch) => {
                                                         watchId={watchData?._id || watchId}
                                                         videoUrl={watchUrl}
                                                         thumbnail={watchData?.thumbnail}
+                                                        title={watchData?.caption || "Watch"}
+                                                        artist={
+                                                            watchData?.author?.user
+                                                                ? `${watchData.author.user.firstName || ""} ${watchData.author.user.surname || ""}`.trim()
+                                                                : "Connect Watch"
+                                                        }
                                                         videoRef={displayedWatch}
                                                         eager
                                                         isPipActive={watchPip?.pip?.watchId === (watchData?._id || watchId)}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 const ACTIONS = [
   "play",
@@ -92,19 +92,44 @@ const bindActionHandlers = (mediaSession, handlersRef) => {
   });
 };
 
+const clearSession = (mediaSession) => {
+  ACTIONS.forEach((action) => {
+    setActionHandlerSafely(mediaSession, action, null);
+  });
+  try {
+    mediaSession.playbackState = "none";
+  } catch (_) {}
+  try {
+    mediaSession.metadata = null;
+  } catch (_) {}
+};
+
 const useMediaSession = ({
   enabled = true,
   metadata,
   playbackState,
   positionState,
+  getPositionState,
+  getPlaybackState,
   handlers,
   bindKey,
 }) => {
   const handlersRef = useRef(handlers || {});
+  const metadataRef = useRef(metadata);
+  const playbackStateRef = useRef(playbackState);
+  const positionStateRef = useRef(positionState);
+  const getPositionStateRef = useRef(getPositionState);
+  const getPlaybackStateRef = useRef(getPlaybackState);
 
   useEffect(() => {
     handlersRef.current = handlers || {};
   }, [handlers]);
+
+  metadataRef.current = metadata;
+  playbackStateRef.current = playbackState;
+  positionStateRef.current = positionState;
+  getPositionStateRef.current = getPositionState;
+  getPlaybackStateRef.current = getPlaybackState;
 
   const mediaSessionAvailable =
     typeof navigator !== "undefined" &&
@@ -113,13 +138,36 @@ const useMediaSession = ({
 
   const supported = enabled && mediaSessionAvailable;
 
-  const safePositionState = useMemo(
-    () => sanitizePositionState(positionState),
-    [positionState],
-  );
-
   const metadataTitle = metadata?.title || "";
   const metadataArtist = metadata?.artist || "";
+  const artworkSrc = metadata?.artwork?.[0]?.src || "";
+
+  const applySession = () => {
+    if (!mediaSessionAvailable || !enabled) return;
+    const mediaSession = navigator.mediaSession;
+    try {
+      mediaSession.metadata = resolveMediaMetadata(metadataRef.current);
+    } catch (_) {}
+    try {
+      let nextState = playbackStateRef.current || "none";
+      if (typeof getPlaybackStateRef.current === "function") {
+        const liveState = getPlaybackStateRef.current();
+        if (liveState) nextState = liveState;
+      }
+      mediaSession.playbackState = nextState;
+    } catch (_) {}
+    bindActionHandlers(mediaSession, handlersRef);
+    if (typeof mediaSession.setPositionState !== "function") return;
+    const live =
+      typeof getPositionStateRef.current === "function"
+        ? getPositionStateRef.current()
+        : positionStateRef.current;
+    const safe = sanitizePositionState(live);
+    if (!safe) return;
+    try {
+      mediaSession.setPositionState(safe);
+    } catch (_) {}
+  };
 
   useEffect(() => {
     if (!supported) return undefined;
@@ -128,62 +176,54 @@ const useMediaSession = ({
     const ownerId = (sessionOwnerSeq += 1);
     activeSessionOwner = ownerId;
 
-    bindActionHandlers(mediaSession, handlersRef);
+    applySession();
+
+    const onVis = () => {
+      if (activeSessionOwner !== ownerId) return;
+      applySession();
+    };
+
+    document.addEventListener("visibilitychange", onVis);
+    document.addEventListener("freeze", onVis);
+    document.addEventListener("resume", onVis);
+    window.addEventListener("pageshow", onVis);
+    window.addEventListener("pagehide", onVis);
+    window.addEventListener("focus", onVis);
+
+    const timer = window.setInterval(() => {
+      if (activeSessionOwner !== ownerId) return;
+      applySession();
+    }, 500);
 
     return () => {
-      if (activeSessionOwner !== ownerId) return;
-      ACTIONS.forEach((action) => {
-        setActionHandlerSafely(mediaSession, action, null);
-      });
-    };
-  }, [supported, bindKey, metadataTitle, metadataArtist]);
-
-  useEffect(() => {
-    if (!mediaSessionAvailable || !enabled) return;
-
-    try {
-      navigator.mediaSession.metadata = resolveMediaMetadata(metadata);
-    } catch (error) {
-      if (process.env.NODE_ENV !== "production") {
-        console.debug("Failed to set Media Session metadata", error);
-      }
-    }
-  }, [mediaSessionAvailable, enabled, metadata]);
-
-  useEffect(() => {
-    if (!mediaSessionAvailable || !enabled) return;
-
-    try {
-      navigator.mediaSession.playbackState = playbackState || "none";
-    } catch (error) {
-      if (process.env.NODE_ENV !== "production") {
-        console.debug("Failed to set Media Session playbackState", error);
-      }
-    }
-  }, [mediaSessionAvailable, enabled, playbackState]);
-
-  useEffect(() => {
-    if (!supported) return undefined;
-    if (typeof navigator.mediaSession.setPositionState !== "function") {
-      return undefined;
-    }
-    if (!safePositionState) return undefined;
-
-    const apply = () => {
-      try {
-        navigator.mediaSession.setPositionState(safePositionState);
-      } catch (error) {
-        if (process.env.NODE_ENV !== "production") {
-          console.debug("Failed to set Media Session position state", error);
-        }
+      document.removeEventListener("visibilitychange", onVis);
+      document.removeEventListener("freeze", onVis);
+      document.removeEventListener("resume", onVis);
+      window.removeEventListener("pageshow", onVis);
+      window.removeEventListener("pagehide", onVis);
+      window.removeEventListener("focus", onVis);
+      window.clearInterval(timer);
+      if (activeSessionOwner === ownerId) {
+        clearSession(mediaSession);
       }
     };
+    // Keep one owner while this player is enabled. Track changes re-apply
+    // metadata below without clearing Now Playing (iOS drops the session if we do).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supported]);
 
-    apply();
-    if (playbackState !== "playing") return undefined;
-    const timer = window.setInterval(apply, 1000);
-    return () => window.clearInterval(timer);
-  }, [supported, safePositionState, playbackState]);
+  useEffect(() => {
+    if (!supported) return;
+    applySession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    supported,
+    bindKey,
+    metadataTitle,
+    metadataArtist,
+    artworkSrc,
+    playbackState,
+  ]);
 };
 
 export default useMediaSession;

@@ -33,6 +33,7 @@ import {
   closeCallNotification,
 } from "../../utils/callNotification";
 import LocationMap from "../modal/LocationMap";
+import ReportModal from "../modal/ReportModal";
 import "./UserInfoModal.css";
 // Using Agora RTC SDK instead of simple-peer
 
@@ -68,6 +69,7 @@ const ChatHeader = ({
   const [loadingUserInfo, setLoadingUserInfo] = useState(false);
   const [friendLocation, setFriendLocation] = useState(null);
   const [isCallDropdownOpen, setIsCallDropdownOpen] = useState(false);
+  const [isReportModal, setIsReportModal] = useState(false);
   const [mapLoading, setMapLoading] = useState(false);
   const callStartTime = useRef(null);
 
@@ -2584,9 +2586,15 @@ const ChatHeader = ({
                       </li>
                     )}
                     <li
+                      onClick={() => {
+                        setIsChatOptionMenu(false);
+                        setIsReportModal(true);
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
+                          setIsChatOptionMenu(false);
+                          setIsReportModal(true);
                         }
                       }}
                       tabIndex={0}
@@ -3144,6 +3152,20 @@ const ChatHeader = ({
             )}
           </div>
         </ModalContainer>
+        )}
+
+        {isReportModal && (friendId || friendProfile?._id) && (
+          <ReportModal
+            isOpen={isReportModal}
+            onRequestClose={() => setIsReportModal(false)}
+            type="profile"
+            targetId={friendId || friendProfile._id}
+            targetLabel={
+              friendProfile?.user
+                ? `${friendProfile.user.firstName || ""} ${friendProfile.user.surname || ""}`.trim()
+                : "this profile"
+            }
+          />
         )}
 
       </div>

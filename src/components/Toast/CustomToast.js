@@ -39,52 +39,57 @@ const CustomToast = ({
     }
   }, [toastProps]);
 
-  const ToastContent = () => (
-    <div className={`custom-toast custom-toast--${type}`}>
-      <button 
-        className="custom-toast__close-btn" 
+  const inner = (
+    <>
+      {showIcon && !showAvatar && (
+        <div className="custom-toast__icon" aria-hidden="true">
+          {getIcon()}
+        </div>
+      )}
+
+      <div className="custom-toast__body">
+        {showAvatar && avatar && (
+          <div className="custom-toast__avatar">
+            <img src={avatar} alt="" />
+          </div>
+        )}
+
+        <div className="custom-toast__text">
+          {title && <div className="custom-toast__title">{title}</div>}
+          <div className="custom-toast__message">{message}</div>
+        </div>
+      </div>
+    </>
+  );
+
+  return (
+    <div className={`custom-toast custom-toast--${type}`} role="status">
+      <button
+        type="button"
+        className="custom-toast__close-btn"
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
           if (closeToast) closeToast();
         }}
-        aria-label="Close"
+        aria-label="Close notification"
       >
         ×
       </button>
       <div className="custom-toast__content">
-        {showIcon && !showAvatar && (
-          <div className="custom-toast__icon">
-            {getIcon()}
-          </div>
+        {link ? (
+          <Link to={link} className="custom-toast__link">
+            {inner}
+          </Link>
+        ) : (
+          inner
         )}
-        
-        <div className="custom-toast__body">
-          {showAvatar && avatar && (
-            <div className="custom-toast__avatar">
-              <img src={avatar} alt="Avatar" />
-            </div>
-          )}
-          
-          <div className="custom-toast__text">
-            {title && <div className="custom-toast__title">{title}</div>}
-            <div className="custom-toast__message">{message}</div>
-          </div>
-        </div>
       </div>
-      <div 
+      <div
         ref={progressBarRef}
         className={`custom-toast__progress-bar custom-toast__progress-bar--${type}`}
-      ></div>
+      />
     </div>
-  );
-
-  return link ? (
-    <Link to={link} className="custom-toast__link">
-      <ToastContent />
-    </Link>
-  ) : (
-    <ToastContent />
   );
 };
 

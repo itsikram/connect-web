@@ -29,6 +29,7 @@ import {
 } from "../../utils/requestCache";
 import config from "../../config/config.json";
 import OptionsDropdown from "./OptionsDropdown";
+import ReportModal from "../modal/ReportModal";
 import { AuthorDisplayName } from "../feed/OfficialBadge";
 import "./CommentStyles.css";
 import "./PostCard.css";
@@ -114,6 +115,7 @@ const Post = React.memo(
     let [isSharing, setIsSharing] = useState(false);
     let [isPostOption, setIsPostOption] = useState(false);
     let [isEditAudienceModal, setIsEditAudienceModal] = useState(false);
+    let [isReportModal, setIsReportModal] = useState(false);
     let [selectedAudience, setSelectedAudience] = useState(post.audience || 1);
     let [isUpdatingAudience, setIsUpdatingAudience] = useState(false);
     const [isLoaded, setIsloaded] = useState(false);
@@ -458,6 +460,11 @@ const Post = React.memo(
       setIsPostOption(false);
     }, []);
 
+    const openReportModal = useCallback(() => {
+      setIsPostOption(false);
+      setIsReportModal(true);
+    }, []);
+
     const postOptionClick = useCallback(() => {
       setIsPostOption((prev) => !prev);
     }, []);
@@ -615,7 +622,9 @@ const Post = React.memo(
                               </li>
                             </>
                           )}
-                          <li onClick={closePostOption}>Report This Post</li>
+                          {!isAuth && (
+                            <li onClick={openReportModal}>Report This Post</li>
+                          )}
                         </ul>
                       </OptionsDropdown>
                     </>
@@ -976,7 +985,9 @@ const Post = React.memo(
                             <li onClick={editAudienceClick}>Edit Audience</li>
                           </>
                         )}
-                        <li onClick={closePostOption}>Report This Post</li>
+                        {!isAuth && (
+                          <li onClick={openReportModal}>Report This Post</li>
+                        )}
                       </ul>
                     </OptionsDropdown>
 
@@ -1219,6 +1230,7 @@ const Post = React.memo(
       hideThisPost,
       postOptionClick,
       closePostOption,
+      openReportModal,
       gotoEdit,
       displayedPost,
       likeBtnOnClick,
@@ -1247,6 +1259,15 @@ const Post = React.memo(
     return (
       <>
         {PostContent}
+        {isReportModal && post?._id && (
+          <ReportModal
+            isOpen={isReportModal}
+            onRequestClose={() => setIsReportModal(false)}
+            type="post"
+            targetId={post._id}
+            targetLabel="this post"
+          />
+        )}
         {isEditAudienceModal && (
         <ModalContainer
           title="Edit Audience"

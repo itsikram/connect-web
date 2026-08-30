@@ -2682,6 +2682,37 @@
     -webkit-text-fill-color: #00d4ff !important;
 }
 
+.composer-mic-menu-icon.back {
+    background: rgba(255, 255, 255, 0.08);
+    color: #e2e8f0;
+    -webkit-text-fill-color: #e2e8f0 !important;
+}
+
+.composer-mic-menu-icon.lang-bn,
+.composer-mic-menu-icon.lang-en {
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+}
+
+.composer-mic-menu-icon.lang-bn {
+    background: rgba(245, 158, 11, 0.16);
+    color: #fbbf24;
+    -webkit-text-fill-color: #fbbf24 !important;
+}
+
+.composer-mic-menu-icon.lang-en {
+    background: rgba(99, 102, 241, 0.18);
+    color: #a5b4fc;
+    -webkit-text-fill-color: #a5b4fc !important;
+}
+
+.composer-mic-menu-item.is-back {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px 10px 0 0;
+    margin-bottom: 4px;
+}
+
 .composer-mic-menu-icon.voice {
     background: rgba(29, 185, 84, 0.16);
     color: #4ade80;

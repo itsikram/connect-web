@@ -38,6 +38,7 @@ import "./SharePostModal.css";
 import "./CommentStyles.css";
 import "./SinglePost.css";
 import OptionsDropdown from "./OptionsDropdown";
+import ReportModal from "../modal/ReportModal";
 const default_pp_src = config?.defaultProfile;
 
 const SinglePost = () => {
@@ -261,11 +262,16 @@ const SinglePost = () => {
   };
 
   const [isPostOption, setIsPostOption] = useState(false);
+  const [isReportModal, setIsReportModal] = useState(false);
   const closePostOption = useCallback(() => {
     setIsPostOption(false);
   }, []);
   const postOptionClick = useCallback(() => {
     setIsPostOption((prev) => !prev);
+  }, []);
+  const openReportModal = useCallback(() => {
+    setIsPostOption(false);
+    setIsReportModal(true);
   }, []);
 
   let authProfilePicture = useSelector((state) => state.profile.profilePic);
@@ -417,7 +423,9 @@ const SinglePost = () => {
                           Edit Post
                         </li>
                       )}
-                      <li onClick={closePostOption}>Report This Post</li>
+                      {!isAuth && (
+                        <li onClick={openReportModal}>Report This Post</li>
+                      )}
                     </ul>
                   </OptionsDropdown>
 
@@ -723,7 +731,9 @@ const SinglePost = () => {
                             Edit Post
                           </li>
                         )}
-                        <li onClick={closePostOption}>Report This Post</li>
+                        {!isAuth && (
+                          <li onClick={openReportModal}>Report This Post</li>
+                        )}
                       </ul>
                     </OptionsDropdown>
                   )}
@@ -1271,6 +1281,15 @@ const SinglePost = () => {
           </div>
         )}
       </Container>
+      {isReportModal && postData?._id && (
+        <ReportModal
+          isOpen={isReportModal}
+          onRequestClose={() => setIsReportModal(false)}
+          type="post"
+          targetId={postData._id}
+          targetLabel="this post"
+        />
+      )}
     </div>
   );
 };

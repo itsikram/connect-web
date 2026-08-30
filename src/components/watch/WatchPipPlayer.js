@@ -502,8 +502,46 @@ const WatchPipPlayer = () => {
     return artwork;
   }, [pip?.thumbnail]);
 
+  const getLivePosition = useCallback(() => {
+    const audio = backgroundAudio.audioRef.current;
+    const video = videoRef.current;
+    if (audio && !audio.paused && Number(audio.duration) > 0) {
+      return {
+        duration: Number(audio.duration),
+        position: Number(audio.currentTime) || 0,
+        playbackRate: Number(audio.playbackRate) > 0 ? Number(audio.playbackRate) : 1,
+      };
+    }
+    if (video && Number(video.duration) > 0) {
+      return {
+        duration: Number(video.duration),
+        position: Number(video.currentTime) || 0,
+        playbackRate: Number(video.playbackRate) > 0 ? Number(video.playbackRate) : 1,
+      };
+    }
+    return {
+      duration,
+      position: currentTime,
+      playbackRate,
+    };
+  }, [backgroundAudio, currentTime, duration, playbackRate]);
+
+  const getPlaybackState = useCallback(() => {
+    const audio = backgroundAudio.audioRef.current;
+    if (audio && !audio.paused) return "playing";
+    const video = videoRef.current;
+    if (video && !video.paused) return "playing";
+    if (backgroundAudio.isAudioPlaying()) return "playing";
+    return paused ? "paused" : "playing";
+  }, [backgroundAudio, paused]);
+
+  const sessionPlaying =
+    backgroundAudio.mediaPosition.playing ||
+    backgroundAudio.isAudioPlaying() ||
+    (!paused && pip?.playing !== false);
+
   useMediaSession({
-    enabled: !!pip,
+    enabled: !!pip && !!pip.videoUrl,
     bindKey: pipTrackKey,
     metadata: pip
       ? {
@@ -514,24 +552,10 @@ const WatchPipPlayer = () => {
           artwork: mediaArtwork,
         }
       : null,
-    playbackState: backgroundAudio.mediaPosition.playing || !paused
-      ? "playing"
-      : "paused",
-    positionState: {
-      duration:
-        backgroundAudio.mediaPosition.playing &&
-        backgroundAudio.mediaPosition.duration > 0
-          ? backgroundAudio.mediaPosition.duration
-          : duration,
-      position:
-        backgroundAudio.mediaPosition.playing &&
-        backgroundAudio.mediaPosition.duration > 0
-          ? backgroundAudio.mediaPosition.position
-          : currentTime,
-      playbackRate: backgroundAudio.mediaPosition.playing
-        ? backgroundAudio.mediaPosition.playbackRate
-        : playbackRate,
-    },
+    playbackState: sessionPlaying ? "playing" : "paused",
+    positionState: getLivePosition(),
+    getPositionState: getLivePosition,
+    getPlaybackState,
     handlers: mediaSessionHandlers,
   });
 

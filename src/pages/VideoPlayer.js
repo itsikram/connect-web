@@ -1183,6 +1183,39 @@ const VideoPlayer = () => {
     [playCurrent, pauseCurrent, handlePrev, handleNext, seekBy, seekTo],
   );
 
+  const getLivePosition = useCallback(() => {
+    const audio = backgroundAudio.audioRef.current;
+    const video = videoRef.current;
+    if (audio && !audio.paused && Number(audio.duration) > 0) {
+      return {
+        duration: Number(audio.duration),
+        position: Number(audio.currentTime) || 0,
+        playbackRate: Number(audio.playbackRate) > 0 ? Number(audio.playbackRate) : 1,
+      };
+    }
+    if (video && Number(video.duration) > 0) {
+      return {
+        duration: Number(video.duration),
+        position: Number(video.currentTime) || 0,
+        playbackRate: Number(video.playbackRate) > 0 ? Number(video.playbackRate) : 1,
+      };
+    }
+    return {
+      duration: sessionDuration,
+      position: sessionPosition,
+      playbackRate: sessionRate,
+    };
+  }, [backgroundAudio, sessionDuration, sessionPosition, sessionRate]);
+
+  const getPlaybackState = useCallback(() => {
+    const audio = backgroundAudio.audioRef.current;
+    if (audio && !audio.paused) return "playing";
+    const video = videoRef.current;
+    if (video && !video.paused) return "playing";
+    if (backgroundAudio.isAudioPlaying()) return "playing";
+    return playerIsPlaying ? "playing" : "paused";
+  }, [backgroundAudio, playerIsPlaying]);
+
   useMediaSession({
     enabled: !!currentVideo && !isThisPip,
     bindKey: currentTrackKey,
@@ -1200,6 +1233,8 @@ const VideoPlayer = () => {
       position: sessionPosition,
       playbackRate: sessionRate,
     },
+    getPositionState: getLivePosition,
+    getPlaybackState,
     handlers: mediaSessionHandlers,
   });
 

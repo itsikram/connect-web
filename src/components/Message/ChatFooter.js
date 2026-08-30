@@ -7,7 +7,8 @@ import EmojiPicker from "emoji-picker-react";
 import { useParams } from "react-router-dom";
 import socket from "../../common/socket";
 import ComposerContextPreview from "./ComposerContextPreview";
-import useSpeechToText from "../../hooks/useSpeechToText";
+import ComposerMicMenu from "./ComposerMicMenu";
+import useComposerLiveTranscribe from "../../hooks/useComposerLiveTranscribe";
 
 const UPLOAD_PLACEHOLDER =
   "https://res.cloudinary.com/dz88yjerw/image/upload/v1743092084/i5lcu63atrbkpcy6oqam.gif";
@@ -47,6 +48,8 @@ const ChatFooter = ({
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [showAttachTray, setShowAttachTray] = useState(false);
   const [showMicMenu, setShowMicMenu] = useState(false);
+  const [micMenuView, setMicMenuView] = useState("main");
+  const [transcribeLang, setTranscribeLang] = useState("en-US");
   const [isLiveVoiceConnecting, setIsLiveVoiceConnecting] = useState(false);
   const [isLiveVoiceActive, setIsLiveVoiceActive] = useState(false);
   // Voice message recording
@@ -67,12 +70,18 @@ const ChatFooter = ({
   const imageInput = useRef(null);
   const uploadFileInput = useRef(null);
   const micMenuRef = useRef(null);
+  const transcribeBaseRef = useRef("");
+  const inputValueRef = useRef("");
   const settings = useSelector((state) => state.setting);
   const { profile } = useParams();
 
   useEffect(() => {
     if (profile === "ai-chat") setIsAi(true);
   }, [profile]);
+
+  useEffect(() => {
+    inputValueRef.current = inputValue;
+  }, [inputValue]);
 
   useEffect(() => {
     setActionEmoji(settings?.actionEmoji || "👍");
@@ -146,27 +155,35 @@ const ChatFooter = ({
     }
   }, [settings?.showIsTyping, removeTyping]);
 
+  const handleTranscriptInterim = useCallback(
+    (text) => {
+      if (!text) return;
+      const next = [transcribeBaseRef.current, text].filter(Boolean).join(" ");
+      setInputValue(next);
+      if (next) addTyping(next);
+    },
+    [addTyping],
+  );
+
   const handleTranscriptFinal = useCallback(
     (text) => {
       if (!text) return;
-      setInputValue((prev) => {
-        const next = prev.trim() ? `${prev.trimEnd()} ${text}` : text;
-        addTyping(next);
-        return next;
-      });
+      const next = [transcribeBaseRef.current, text].filter(Boolean).join(" ");
+      transcribeBaseRef.current = next;
+      setInputValue(next);
+      addTyping(next);
     },
     [addTyping],
   );
 
   const {
     listening: isTranscribing,
-    interim: transcribeInterim,
-    supported: isSpeechSupported,
+    supported: isTranscribeSupported,
     start: startTranscription,
     stop: stopTranscription,
-  } = useSpeechToText({
+  } = useComposerLiveTranscribe({
     onFinal: handleTranscriptFinal,
-    continuous: true,
+    onInterim: handleTranscriptInterim,
   });
 
   useEffect(() => {
@@ -176,6 +193,7 @@ const ChatFooter = ({
         !micMenuRef.current.contains(event.target)
       ) {
         setShowMicMenu(false);
+        setMicMenuView("main");
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -305,6 +323,7 @@ const ChatFooter = ({
   const handleInputChange = (e) => {
     const value = e.target.value;
     setInputValue(value);
+    transcribeBaseRef.current = value.trim();
 
     if (value.trim().length > 0) {
       addTyping(value);
@@ -565,25 +584,36 @@ const ChatFooter = ({
     }
   }, [isRecording, isUploadingAudio, stopTranscription]);
 
-  const startLiveTranscribe = useCallback(() => {
-    setShowMicMenu(false);
-    setShowAttachTray(false);
-    if (!isSpeechSupported) {
-      window.alert(
-        "Live transcription is not supported in this browser. Try Chrome or Edge.",
-      );
-      return;
-    }
-    const started = startTranscription();
-    if (started) {
-      requestAnimationFrame(() => {
-        messageInput?.current?.focus?.({ preventScroll: true });
-      });
-    }
-  }, [isSpeechSupported, startTranscription, messageInput]);
+  const startLiveTranscribe = useCallback(
+    async (langCode) => {
+      setShowMicMenu(false);
+      setMicMenuView("main");
+      setShowAttachTray(false);
+      if (!isTranscribeSupported) {
+        window.alert(
+          "Live transcription is not available. Use Chrome or Edge for English, or check your connection for Deepgram.",
+        );
+        return;
+      }
+      setTranscribeLang(langCode);
+      transcribeBaseRef.current = String(inputValueRef.current || "").trim();
+      const started = await startTranscription(langCode);
+      if (started) {
+        requestAnimationFrame(() => {
+          messageInput?.current?.focus?.({ preventScroll: true });
+        });
+      } else {
+        window.alert(
+          "Could not start live transcription. Please allow microphone access and try again.",
+        );
+      }
+    },
+    [isTranscribeSupported, startTranscription, messageInput],
+  );
 
   const startVoiceMessage = useCallback(() => {
     setShowMicMenu(false);
+    setMicMenuView("main");
     setShowAttachTray(false);
     startRecording();
   }, [startRecording]);
@@ -633,6 +663,7 @@ const ChatFooter = ({
       return;
     }
     setShowAttachTray(false);
+    setMicMenuView("main");
     setShowMicMenu((prev) => !prev);
   };
 
@@ -818,6 +849,7 @@ const ChatFooter = ({
   const toggleAttachTray = () => {
     setShowAttachTray((prev) => !prev);
     setShowMicMenu(false);
+    setMicMenuView("main");
     setIsEmojiContainer(false);
     setIsEmojiChangeContainer(false);
   };
@@ -843,10 +875,12 @@ const ChatFooter = ({
           <div className="composer-transcribe-bar" aria-live="polite">
             <span className="composer-transcribe-dot" aria-hidden="true" />
             <div className="composer-transcribe-copy">
-              <span className="composer-transcribe-label">Listening</span>
+              <span className="composer-transcribe-label">
+                Listening ·{" "}
+                {String(transcribeLang).startsWith("bn") ? "Bangla" : "English"}
+              </span>
               <span className="composer-transcribe-interim">
-                {transcribeInterim ||
-                  "Speak now — words appear in the message box"}
+                Speak now — text appears in the message box
               </span>
             </div>
             <button
@@ -942,7 +976,13 @@ const ChatFooter = ({
                 onChange={handleInputChange}
                 value={inputValue}
                 onKeyDown={handleKeyPress}
-                placeholder={isTranscribing ? "Listening…" : "Message"}
+                placeholder={
+                  isTranscribing
+                    ? String(transcribeLang).startsWith("bn")
+                      ? "Listening in Bangla…"
+                      : "Listening in English…"
+                    : "Message"
+                }
                 id="newMessageInput"
                 className="new-message-input"
                 onTouchStart={(e) => {
@@ -1085,52 +1125,13 @@ const ChatFooter = ({
                     ></i>
                   </div>
                   {showMicMenu ? (
-                    <div className="composer-mic-menu" role="menu">
-                      <button
-                        type="button"
-                        className="composer-mic-menu-item"
-                        role="menuitem"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          startLiveTranscribe();
-                        }}
-                      >
-                        <span className="composer-mic-menu-icon transcribe">
-                          <i className="fas fa-closed-captioning"></i>
-                        </span>
-                        <span className="composer-mic-menu-copy">
-                          <span className="composer-mic-menu-title">
-                            Live transcribe
-                          </span>
-                          <span className="composer-mic-menu-desc">
-                            Speech to text in the message box
-                          </span>
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        className="composer-mic-menu-item"
-                        role="menuitem"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          startVoiceMessage();
-                        }}
-                      >
-                        <span className="composer-mic-menu-icon voice">
-                          <i className="fas fa-microphone"></i>
-                        </span>
-                        <span className="composer-mic-menu-copy">
-                          <span className="composer-mic-menu-title">
-                            Voice message
-                          </span>
-                          <span className="composer-mic-menu-desc">
-                            Record audio and send it
-                          </span>
-                        </span>
-                      </button>
-                    </div>
+                    <ComposerMicMenu
+                      view={micMenuView}
+                      onOpenTranscribe={() => setMicMenuView("transcribe")}
+                      onBack={() => setMicMenuView("main")}
+                      onSelectLang={startLiveTranscribe}
+                      onVoiceMessage={startVoiceMessage}
+                    />
                   ) : null}
                 </div>
                 <div
