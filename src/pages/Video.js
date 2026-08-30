@@ -262,8 +262,8 @@ const Video = () => {
             background: rgba(148, 163, 184, 0.3);
             margin-left: 8px;
         }
-        .watch-feed-skeleton .watch-feed-skeleton-line.caption { width: 88%; }
-        .watch-feed-skeleton .watch-feed-skeleton-line.caption.short { width: 56%; }
+        .watch-feed-skeleton .watch-feed-skeleton-line.caption { width: 88%; margin-left: 10px !important }
+        .watch-feed-skeleton .watch-feed-skeleton-line.caption.short { width: 56%; margin-left: 10px !important }
         .watch-feed-skeleton .watch-feed-skeleton-media {
             width: 100%;
             aspect-ratio: 16 / 9;

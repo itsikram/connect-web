@@ -6,6 +6,7 @@ export const PLAYER_LETTERS = ['R', 'G', 'B', 'Y'];
 export const BOARD_GRID_STROKE = '#C5CDD6';
 export const BOARD_OUTER_STROKE = '#1A2330';
 export const DEFAULT_MAX_STEPS = 59;
+export const HOME_COLUMN_LENGTH = 6;
 
 // Precomputed board paths (identical to RN)
 export const PATHS = {
@@ -81,6 +82,11 @@ export const SAFE_CELLS = new Set([
     '13,7',  // green start
     '7,2',   // blue start
     '2,7',   // yellow start
+    // Colored home columns (cannot capture here)
+    '1,7', '2,7', '3,7', '4,7', '5,7', '6,7',
+    '7,1', '7,2', '7,3', '7,4', '7,5', '7,6',
+    '7,8', '7,9', '7,10', '7,11', '7,12', '7,13',
+    '8,7', '9,7', '10,7', '11,7', '12,7', '13,7',
 ]);
 
 // Home positions for each player

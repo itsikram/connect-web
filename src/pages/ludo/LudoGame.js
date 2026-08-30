@@ -19,23 +19,17 @@ import {
   PLAYER_EMOJIS,
   PLAYER_LETTERS,
   PATHS,
-  SAFE_CELLS,
   HOME_POSITIONS,
   STEP_DURATION_MS,
-  DEFAULT_MAX_STEPS,
+  HOME_COLUMN_LENGTH,
   BOARD_GRID_STROKE,
   BOARD_OUTER_STROKE,
 } from "./constants/gameConstants";
 import "./LudoGame.css";
 import { adjustHexColor } from "./utils/colorUtils";
 import {
-  getPositionOnPath,
-  isSafePosition,
   getMaxSteps,
-  checkForCapture,
-  checkForCaptureAfterMoveAway,
-  getPlayablePieces,
-  getNextActivePlayer,
+  getPieceSteps,
 } from "./utils/gameLogic";
 import {
   saveGameStateToDB,
@@ -88,6 +82,21 @@ const getPlayerIndexForBoardSeat = (boardSeatIndex, playerCount) => {
   return Number(boardSeatIndex) < Number(playerCount)
     ? Number(boardSeatIndex)
     : null;
+};
+
+const applyPieceLifecycle = (piece, steps, maxStepsValue) => {
+  const safeSteps = Number.isFinite(Number(steps))
+    ? Math.max(0, Math.trunc(Number(steps)))
+    : 0;
+  piece.steps = safeSteps;
+  piece.isHome = safeSteps === 0;
+  piece.isInPlay = safeSteps > 0 && safeSteps < maxStepsValue;
+  return piece;
+};
+
+const isHomeColumnSteps = (steps, maxStepsValue) => {
+  const homeStart = maxStepsValue - (HOME_COLUMN_LENGTH - 1);
+  return steps >= homeStart && steps <= maxStepsValue;
 };
 
 /**
@@ -718,35 +727,46 @@ const LudoGame = () => {
   const botActingPlayerIndexRef = useRef(null);
   const botTurnTimerRef = useRef(null);
 
-  // Watchdog: recover from stuck rolling/moving state when host broadcast is delayed/dropped
+  // Watchdog: recover from stuck rolling/moving state (online snapshot delay
+  // or a local home-column auto-move that returned before clearing flags).
   useEffect(() => {
-    // Runs only when the game is active and we're not waiting in lobby
-    if (!onlineMode || !gameStarted || gameEnded || waitingForPlayers) return;
+    if (!gameStarted || gameEnded || waitingForPlayers) return;
     const CHECK_INTERVAL_MS = 1000;
-    const STUCK_THRESHOLD_MS = 4000; // If stuck longer than this, force-clear
+    const STUCK_THRESHOLD_MS = 4000;
 
     const watcher = setInterval(() => {
       try {
         const myIdx = myPlayerIndexRef.current;
-        const isMyTurn =
-          typeof myIdx === "number" && currentPlayerRef.current === myIdx;
+        const isMyTurn = onlineMode
+          ? typeof myIdx === "number" && currentPlayerRef.current === myIdx
+          : !playersRef.current[currentPlayerRef.current]?.isBot;
         const isHostControlledBotTurn = Boolean(
-          myIdx === 0 && playersRef.current[currentPlayerRef.current]?.isBot,
+          (onlineMode
+            ? myIdx === 0
+            : playWithComputerRef.current) &&
+            playersRef.current[currentPlayerRef.current]?.isBot,
         );
 
-        const stuckRolling =
-          (isMyTurn || isHostControlledBotTurn) &&
-          isRollingRef.current === true &&
-          diceValueRef.current === 0;
-
-        // Use lastLocalDiceRollTimeRef as primary timing signal; fall back to lastRollTimeRef
         const now = Date.now();
         const lastLocalRoll = lastLocalDiceRollTimeRef.current || 0;
         const lastRoll = lastRollTimeRef.current || 0;
         const timeSinceLocalRoll =
           lastLocalRoll > 0 ? now - lastLocalRoll : now - lastRoll;
 
-        if (stuckRolling && timeSinceLocalRoll > STUCK_THRESHOLD_MS) {
+        const stuckRolling =
+          (isMyTurn || isHostControlledBotTurn) &&
+          isRollingRef.current === true &&
+          diceValueRef.current === 0;
+
+        const stuckMoving =
+          (isMyTurn || isHostControlledBotTurn) &&
+          (isMovingRef.current || isAutoMovingRef.current) &&
+          timeSinceLocalRoll > STUCK_THRESHOLD_MS;
+
+        if (
+          (stuckRolling && timeSinceLocalRoll > STUCK_THRESHOLD_MS) ||
+          stuckMoving
+        ) {
           console.log(
             "[WATCHDOG] Detected stuck rolling/move state - forcing recovery",
             {
@@ -1541,6 +1561,9 @@ const LudoGame = () => {
    */
   const [controlMode, setControlMode] = useState(false);
   const [showDiceValueModal, setShowDiceValueModal] = useState(false);
+  const [debugPlayerIndex, setDebugPlayerIndex] = useState(0);
+  const [debugPieceIndex, setDebugPieceIndex] = useState(0);
+  const [debugSteps, setDebugSteps] = useState("");
 
   /**
    * Check if current user is a special user (has access to control mode)
@@ -1671,6 +1694,12 @@ const LudoGame = () => {
       [7, 2], // blue start
       [2, 7], // yellow start
     ];
+    Object.values(PATHS).forEach((path) => {
+      if (!Array.isArray(path)) return;
+      path.slice(-HOME_COLUMN_LENGTH).forEach((p) => {
+        cells.push([p.x, p.y]);
+      });
+    });
     const map = new Set(cells.map(([x, y]) => `${x},${y}`));
     return map;
   }, []);
@@ -1697,6 +1726,10 @@ const LudoGame = () => {
         ? playersRef.current
         : players;
     const captured = [];
+
+    if (isHomeColumnSteps(movingPieceNewSteps, maxSteps)) {
+      return captured;
+    }
 
     // Count tokens per player at the target position (including the moving player)
     const tokensAtPosition = new Map(); // playerIndex -> count
@@ -4391,9 +4424,12 @@ const LudoGame = () => {
       if (!playerData || !Array.isArray(playerData.pieces)) return [];
       const playable = [];
       playerData.pieces.forEach((piece, pieceIndex) => {
-        if (piece.isHome && diceVal === 6) {
-          playable.push(pieceIndex);
-        } else if (piece.isInPlay && piece.steps + diceVal <= maxSteps) {
+        const steps = getPieceSteps(piece);
+        if (steps <= 0) {
+          if (diceVal === 6) playable.push(pieceIndex);
+          return;
+        }
+        if (steps < maxSteps && steps + diceVal <= maxSteps) {
           playable.push(pieceIndex);
         }
       });
@@ -4939,18 +4975,24 @@ const LudoGame = () => {
         isAutoMovingRef.current = true;
         setCanRollDice(false);
         setTimeout(() => {
-          if (
-            diceValueRef.current === value &&
-            currentPlayerRef.current === currentRollPlayer
-          ) {
-            movePiece(playablePieces[0]);
-          } else {
-            isAutoMovingRef.current = false;
-            if (!onlineMode) {
-              setCanRollDice(true);
+          try {
+            if (
+              diceValueRef.current === value &&
+              currentPlayerRef.current === currentRollPlayer
+            ) {
+              movePiece(playablePieces[0]);
             } else {
-              setCanRollDice(false);
+              isAutoMovingRef.current = false;
+              if (!onlineMode) {
+                setCanRollDice(true);
+              } else {
+                setCanRollDice(false);
+              }
             }
+          } catch (err) {
+            console.error("[ROLL_DICE] Auto-move failed", err);
+            isAutoMovingRef.current = false;
+            isMovingRef.current = false;
           }
         }, AUTO_MOVE_DELAY_MS);
       } else {
@@ -5073,9 +5115,11 @@ const LudoGame = () => {
               ...p,
               pieces: p.pieces.map((pc) => ({ ...pc })),
             }));
-            copy[playerIndex].pieces[pieceIndex].steps = fromSteps + s;
-            copy[playerIndex].pieces[pieceIndex].isHome = false;
-            copy[playerIndex].pieces[pieceIndex].isInPlay = true;
+            applyPieceLifecycle(
+              copy[playerIndex].pieces[pieceIndex],
+              fromSteps + s,
+              maxStepsRef.current,
+            );
             // Update ref immediately to keep in sync
             playersRef.current = copy;
             return copy;
@@ -5106,9 +5150,11 @@ const LudoGame = () => {
             ...p,
             pieces: p.pieces.map((pc) => ({ ...pc })),
           }));
-          copy[playerIndex].pieces[pieceIndex].steps = toSteps;
-          copy[playerIndex].pieces[pieceIndex].isHome = false;
-          copy[playerIndex].pieces[pieceIndex].isInPlay = true;
+          applyPieceLifecycle(
+            copy[playerIndex].pieces[pieceIndex],
+            toSteps,
+            maxStepsRef.current,
+          );
           // Update ref immediately to keep in sync
           playersRef.current = copy;
           return copy;
@@ -5118,7 +5164,13 @@ const LudoGame = () => {
       setTimeout(() => {
         recentMovesRef.current.delete(pieceKey);
       }, 2000);
-      onComplete && onComplete();
+      try {
+        onComplete && onComplete();
+      } catch (err) {
+        console.error("[ANIMATE] onComplete failed", err);
+        isMovingRef.current = false;
+        isAutoMovingRef.current = false;
+      }
     }, completionDelay);
     timers.push(finalTimer);
 
@@ -5142,12 +5194,32 @@ const LudoGame = () => {
     const effectiveDiceValue =
       diceValueRef.current > 0 ? diceValueRef.current : diceValue;
 
+    const abortMove = (reason, { skipTurnIfNoMoves = false } = {}) => {
+      console.log("[MOVE_PIECE] Aborted", reason);
+      isMovingRef.current = false;
+      isAutoMovingRef.current = false;
+      if (!skipTurnIfNoMoves) return;
+      const diceVal =
+        diceValueRef.current > 0 ? diceValueRef.current : diceValue;
+      const remaining = getPlayablePieces(
+        currentPlayerRef.current,
+        diceVal,
+      );
+      if (remaining.length === 0 && diceVal > 0) {
+        setTimeout(() => {
+          advanceTurnForPlayer(currentPlayerRef.current);
+        }, TURN_TRANSITION_DELAY_MS);
+      }
+    };
+
     if (effectiveDiceValue === 0) {
+      abortMove("no dice value");
       return;
     }
 
     // Double-check: if dice value ref is 0, don't allow move (prevents race conditions)
     if (diceValueRef.current === 0 && diceValue === 0) {
+      abortMove("dice refs empty");
       return;
     }
 
@@ -5167,11 +5239,13 @@ const LudoGame = () => {
         currentSeatIsBot,
       );
       if (currentSeatIsBot && !isBotActingForCurrentPlayer) {
+        abortMove("bot seat not acting");
         return;
       }
       const cpuTurn = isBotActingForCurrentPlayer;
       if (!cpuTurn && currentMyPlayerIndex !== currentPlayerIndex) {
-        return; // Not the current player's turn
+        abortMove("not current player");
+        return;
       }
     }
 
@@ -5196,13 +5270,17 @@ const LudoGame = () => {
     }
     const piece = currentPlayerData.pieces[pieceId];
     if (!piece) {
+      abortMove("missing piece");
       return;
     }
 
-    if (piece.isHome && effectiveDiceValue !== 6) {
+    const pieceSteps = getPieceSteps(piece);
+    if (pieceSteps <= 0 && effectiveDiceValue !== 6) {
+      abortMove("need 6 to leave yard", { skipTurnIfNoMoves: true });
       return;
     }
-    if (piece.isInPlay && piece.steps + effectiveDiceValue > maxSteps) {
+    if (pieceSteps > 0 && pieceSteps + effectiveDiceValue > maxSteps) {
+      abortMove("home-column overshoot", { skipTurnIfNoMoves: true });
       return;
     }
 
@@ -5243,7 +5321,7 @@ const LudoGame = () => {
     lastLocalDiceRollTimeRef.current = 0;
 
     const globalMove = () => {
-      if (piece.isHome && effectiveDiceValue === 6) {
+      if (pieceSteps <= 0 && effectiveDiceValue === 6) {
         // Play piece out sound
         playSound("pieceOut");
 
@@ -5269,13 +5347,14 @@ const LudoGame = () => {
             ? p.pieces.map((pc) => ({ ...pc }))
             : [],
         }));
-        movedPlayers[movingPlayerIndex].pieces[pieceId] = {
-          ...movedPlayers[movingPlayerIndex].pieces[pieceId],
-          ...piece,
-          isHome: false,
-          isInPlay: true,
-          steps: 1,
-        };
+        movedPlayers[movingPlayerIndex].pieces[pieceId] = applyPieceLifecycle(
+          {
+            ...movedPlayers[movingPlayerIndex].pieces[pieceId],
+            ...piece,
+          },
+          1,
+          maxSteps,
+        );
         playersRef.current = movedPlayers;
 
         // Compute captures synchronously (state already reflects the move)
@@ -5297,12 +5376,13 @@ const LudoGame = () => {
         }));
         finalCaptures.forEach(({ playerIndex, pieceIndex }) => {
           if (finalPlayers[playerIndex]?.pieces?.[pieceIndex]) {
-            finalPlayers[playerIndex].pieces[pieceIndex] = {
-              ...finalPlayers[playerIndex].pieces[pieceIndex],
-              isHome: true,
-              isInPlay: false,
-              steps: 0,
-            };
+            finalPlayers[playerIndex].pieces[pieceIndex] = applyPieceLifecycle(
+              {
+                ...finalPlayers[playerIndex].pieces[pieceIndex],
+              },
+              0,
+              maxSteps,
+            );
             const captureKey = `${playerIndex}-${pieceIndex}`;
             recentMovesRef.current.set(captureKey, {
               toSteps: 0,
@@ -5467,14 +5547,14 @@ const LudoGame = () => {
 
         // Authoritative online sync for move-out-of-home is emitted only after
         // the host resolves the final keep-turn or turn-advance state above.
-      } else if (piece.isInPlay) {
+      } else if (pieceSteps > 0) {
         // Play piece move sound
         playSound("pieceMove");
 
         const movingPlayerIndex = actingPlayerIndex;
-        const oldSteps = piece.steps;
+        const oldSteps = pieceSteps;
         const oldPosition = getPositionOnPath(movingPlayerIndex, oldSteps);
-        const newSteps = piece.steps + effectiveDiceValue;
+        const newSteps = pieceSteps + effectiveDiceValue;
         if (newSteps <= maxSteps) {
           // CRITICAL: Use the rolled dice value that was captured at the start of the move
           const capturedRolledValue = rolledDiceValue;
@@ -5497,12 +5577,13 @@ const LudoGame = () => {
               ? p.pieces.map((pc) => ({ ...pc }))
               : [],
           }));
-          movedPlayers[movingPlayerIndex].pieces[pieceId] = {
-            ...movedPlayers[movingPlayerIndex].pieces[pieceId],
-            steps: newSteps,
-            isHome: false,
-            isInPlay: newSteps > 0 && newSteps < maxSteps,
-          };
+          movedPlayers[movingPlayerIndex].pieces[pieceId] = applyPieceLifecycle(
+            {
+              ...movedPlayers[movingPlayerIndex].pieces[pieceId],
+            },
+            newSteps,
+            maxSteps,
+          );
           playersRef.current = movedPlayers;
 
           // Compute captures synchronously (state already reflects the move)
@@ -5548,12 +5629,14 @@ const LudoGame = () => {
           }));
           finalCaptures.forEach(({ playerIndex, pieceIndex }) => {
             if (finalPlayers[playerIndex]?.pieces?.[pieceIndex]) {
-              finalPlayers[playerIndex].pieces[pieceIndex] = {
-                ...finalPlayers[playerIndex].pieces[pieceIndex],
-                steps: 0,
-                isHome: true,
-                isInPlay: false,
-              };
+              finalPlayers[playerIndex].pieces[pieceIndex] =
+                applyPieceLifecycle(
+                  {
+                    ...finalPlayers[playerIndex].pieces[pieceIndex],
+                  },
+                  0,
+                  maxSteps,
+                );
               const captureKey = `${playerIndex}-${pieceIndex}`;
               recentMovesRef.current.set(captureKey, {
                 toSteps: 0,
@@ -5835,7 +5918,13 @@ const LudoGame = () => {
       }
     };
 
-    globalMove();
+    try {
+      globalMove();
+    } catch (err) {
+      console.error("[MOVE_PIECE] Move failed", err);
+      isMovingRef.current = false;
+      isAutoMovingRef.current = false;
+    }
   };
 
   // Online socket listeners (gameplay + sync)
@@ -6163,8 +6252,9 @@ const LudoGame = () => {
 
       // Check if current player can move
       const canMove = currentPlayerData?.pieces?.some((piece) => {
-        if (piece.isHome && value === 6) return true;
-        if (piece.isInPlay && piece.steps + value <= maxStepsRef.current)
+        const steps = getPieceSteps(piece);
+        if (steps <= 0) return value === 6;
+        if (steps < maxStepsRef.current && steps + value <= maxStepsRef.current)
           return true;
         return false;
       });
@@ -9658,6 +9748,70 @@ const LudoGame = () => {
     } catch (_e) {}
   };
 
+  const debugTeleportPiece = () => {
+    if (!isDebug || !gameStarted) return;
+    const playerIndex = Number(debugPlayerIndex);
+    const pieceIndex = Number(debugPieceIndex);
+    const homeColumnStart = maxSteps - (HOME_COLUMN_LENGTH - 1);
+    const requestedSteps =
+      debugSteps === "" || debugSteps == null
+        ? homeColumnStart
+        : Number(debugSteps);
+    if (
+      !Number.isInteger(playerIndex) ||
+      playerIndex < 0 ||
+      playerIndex >= selectedPlayerCount
+    ) {
+      return;
+    }
+    if (!Number.isInteger(pieceIndex) || pieceIndex < 0 || pieceIndex > 3) {
+      return;
+    }
+    if (!Number.isFinite(requestedSteps)) return;
+    const targetSteps = Math.max(
+      0,
+      Math.min(maxSteps, Math.trunc(requestedSteps)),
+    );
+
+    isMovingRef.current = false;
+    isAutoMovingRef.current = false;
+    isRollingRef.current = false;
+    moveTimersRef.current.forEach((t) => {
+      try {
+        clearTimeout(t);
+      } catch (_e) {}
+    });
+    moveTimersRef.current = [];
+
+    setPlayers((prev) => {
+      const copy = prev.map((p) => ({
+        ...p,
+        pieces: Array.isArray(p.pieces)
+          ? p.pieces.map((pc) => ({ ...pc }))
+          : [],
+      }));
+      if (!copy[playerIndex]?.pieces?.[pieceIndex]) return prev;
+      applyPieceLifecycle(
+        copy[playerIndex].pieces[pieceIndex],
+        targetSteps,
+        maxSteps,
+      );
+      playersRef.current = copy;
+      return copy;
+    });
+
+    setDiceValueImmediate(0);
+    if (!onlineMode) {
+      setCanRollDice(true);
+    }
+    console.log("[DEBUG] Teleported piece", {
+      playerIndex,
+      pieceIndex,
+      steps: targetSteps,
+      homeColumnStart: maxSteps - (HOME_COLUMN_LENGTH - 1),
+    });
+  };
+
   const resetGame = () => {
     // Confirm restart if game is in progress
     if (gameStarted && !gameEnded) {
@@ -10481,16 +10635,15 @@ const LudoGame = () => {
       const player = players[playerIndex];
       if (!player) return;
       player.pieces.forEach((piece, pieceIndex) => {
-        // Only track pieces that are in play or finished (not at home)
-        if (piece.isInPlay || (piece.steps > 0 && piece.steps === maxSteps)) {
-          const stepsToUse = piece.steps === maxSteps ? maxSteps : piece.steps;
-          const pos = getPositionOnPath(playerIndex, stepsToUse);
-          const key = `${pos.x},${pos.y}`;
-          if (!occupancy.has(key)) {
-            occupancy.set(key, []);
-          }
-          occupancy.get(key).push({ playerIndex, pieceIndex });
+        const steps = getPieceSteps(piece);
+        if (steps <= 0) return;
+        const stepsToUse = steps >= maxSteps ? maxSteps : steps;
+        const pos = getPositionOnPath(playerIndex, stepsToUse);
+        const key = `${pos.x},${pos.y}`;
+        if (!occupancy.has(key)) {
+          occupancy.set(key, []);
         }
+        occupancy.get(key).push({ playerIndex, pieceIndex });
       });
     });
     return occupancy;
@@ -10499,7 +10652,8 @@ const LudoGame = () => {
   const tokenNode = (playerIndex, pieceIndex, piece) => {
     let x = 0;
     let y = 0;
-    if (piece.isHome) {
+    const pieceSteps = getPieceSteps(piece);
+    if (pieceSteps <= 0) {
       const boardSeatIndex = getBoardSeatIndex(
         playerIndex,
         selectedPlayerCount,
@@ -10516,13 +10670,9 @@ const LudoGame = () => {
       // Token left = cell center - half token width
       x = cellCenterX - tokenSize / 2;
       y = cellCenterY - tokenSize / 2;
-    } else if (
-      piece.isInPlay ||
-      (piece.steps > 0 && piece.steps === maxSteps)
-    ) {
-      // Position piece on board - either in play or finished (at end of path)
-      // For finished pieces, use maxSteps to get the last position on the path
-      const stepsToUse = piece.steps === maxSteps ? maxSteps : piece.steps;
+    } else {
+      // Position piece on board - in play, home column, or finished
+      const stepsToUse = pieceSteps >= maxSteps ? maxSteps : pieceSteps;
       const pos = getPositionOnPath(playerIndex, stepsToUse);
       // Calculate cell center position precisely
       const cellLeft = pos.x * CELL_SIZE;
@@ -10586,8 +10736,10 @@ const LudoGame = () => {
       effectiveDiceValue > 0 &&
       !isMovingRef.current &&
       !isAutoMovingRef.current &&
-      ((piece.isHome && effectiveDiceValue === 6) ||
-        (piece.isInPlay && piece.steps + effectiveDiceValue <= maxSteps));
+      ((pieceSteps <= 0 && effectiveDiceValue === 6) ||
+        (pieceSteps > 0 &&
+          pieceSteps < maxSteps &&
+          pieceSteps + effectiveDiceValue <= maxSteps));
 
     // Debug: Log if this is my turn but I can't move due to missing dice
     if (isDiceValueMissing && isActivePlayer) {
@@ -10631,6 +10783,7 @@ const LudoGame = () => {
                 myPlayerIndexRef.current === currentPlayerRef.current) &&
               isActivePlayer &&
               isCurrentPlayer &&
+              canMove &&
               currentDiceValue > 0 &&
               !isMovingRef.current &&
               !isAutoMovingRef.current
@@ -10652,6 +10805,7 @@ const LudoGame = () => {
             !isActivePlayer ||
             !isCurrentPlayer ||
             effectiveDiceValue === 0 ||
+            !canMove ||
             isMovingRef.current ||
             isAutoMovingRef.current ||
             isDiceValueMissing
@@ -10950,6 +11104,69 @@ const LudoGame = () => {
         onToggleControlMode={() => setControlMode(!controlMode)}
         onPlaySound={playSound}
       />
+
+      {isDebug && gameStarted && (
+        <div className="ludo-debug-move">
+          <div className="ludo-debug-move__title">
+            Localhost move
+            <span>
+              Home column {maxSteps - (HOME_COLUMN_LENGTH - 1)}–{maxSteps}
+            </span>
+          </div>
+          <label>
+            Player
+            <select
+              value={debugPlayerIndex}
+              onChange={(e) => setDebugPlayerIndex(Number(e.target.value))}
+            >
+              {Array.from({ length: selectedPlayerCount }).map((_, idx) => (
+                <option key={idx} value={idx}>
+                  {players[idx]?.name || `P${idx + 1}`} ({idx})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Piece
+            <select
+              value={debugPieceIndex}
+              onChange={(e) => setDebugPieceIndex(Number(e.target.value))}
+            >
+              {[0, 1, 2, 3].map((idx) => {
+                const steps = getPieceSteps(
+                  players[debugPlayerIndex]?.pieces?.[idx],
+                );
+                return (
+                  <option key={idx} value={idx}>
+                    {idx + 1} (steps {steps})
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+          <label>
+            Steps
+            <input
+              type="number"
+              min={0}
+              max={maxSteps}
+              placeholder={`${maxSteps - (HOME_COLUMN_LENGTH - 1)}`}
+              value={debugSteps}
+              onChange={(e) => setDebugSteps(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") debugTeleportPiece();
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className="ludo-btn ludo-btn--sm ludo-btn--primary"
+            onClick={debugTeleportPiece}
+          >
+            Move
+          </button>
+        </div>
+      )}
 
       {showDiceValueModal && (
         <div

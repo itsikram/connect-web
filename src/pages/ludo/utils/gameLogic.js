@@ -202,15 +202,25 @@ export const checkForCaptureAfterMoveAway = (movingPlayerIndex, oldPosition, pla
     return captured;
 };
 
-// Get playable pieces for a given dice value
+export const getPieceSteps = (piece) => {
+    const steps = Number(piece?.steps);
+    return Number.isFinite(steps) && steps > 0 ? steps : 0;
+};
+
+// Get playable pieces for a given dice value.
+// Trust step counts rather than isHome/isInPlay flags — those can go stale
+// after a home-column move and then lock the board on the next roll.
 export const getPlayablePieces = (playerIndex, diceVal, players, maxSteps) => {
     const playerData = players[playerIndex];
     if (!playerData || !Array.isArray(playerData.pieces)) return [];
     const playable = [];
     playerData.pieces.forEach((piece, pieceIndex) => {
-        if (piece.isHome && diceVal === 6) {
-            playable.push(pieceIndex);
-        } else if (piece.isInPlay && piece.steps + diceVal <= maxSteps) {
+        const steps = getPieceSteps(piece);
+        if (steps <= 0) {
+            if (diceVal === 6) playable.push(pieceIndex);
+            return;
+        }
+        if (steps < maxSteps && steps + diceVal <= maxSteps) {
             playable.push(pieceIndex);
         }
     });
