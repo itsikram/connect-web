@@ -2,6 +2,16 @@
 
 export const MENU_APPS = [
   {
+    key: "camera",
+    name: "Camera",
+    desc: "Capture photos and video with iOS-style filters",
+    icon: "📷",
+    faIcon: "fa-camera",
+    href: "/camera",
+    colorA: "#3B82F6",
+    colorB: "#111827",
+  },
+  {
     key: "ludo",
     name: "Ludo Game",
     desc: "Play the classic board game",

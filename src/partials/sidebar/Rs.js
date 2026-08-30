@@ -1,9 +1,8 @@
 import React, { Fragment, useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import UserPP from '../../components/UserPP';
-import api from '../../api/api';
 import RsMenuItemSkleton from '../../skletons/rs/RsMenuItemSkleton';
-import { fetchProfileCached } from '../../utils/requestCache';
+import { fetchChatListCached, fetchOnlineStatusesCached } from '../../utils/requestCache';
 
 let RightSidebar = () => {
     let userJson = localStorage.getItem('user') ? localStorage.getItem('user') : '{}'
@@ -27,8 +26,6 @@ let RightSidebar = () => {
             return []
         }
     });
-    const [triggerUpdate, setTriggerUpdate] = useState(0); // Force re-sort when messages update
-    const messageIntervalRef = useRef(null);
     const statusIntervalRef = useRef(null);
     const contactsIntervalRef = useRef(null);
     const effectiveProfileId = myProfile._id || profile;
@@ -81,6 +78,11 @@ let RightSidebar = () => {
             .map(contact => contact?.person)
             .filter(friend => friend?._id);
     }, [myProfile.friends, contactsData]);
+
+    const sidebarFriendIdsKey = useMemo(
+        () => sidebarFriends.map((friend) => friend?._id).filter(Boolean).join(','),
+        [sidebarFriends]
+    );
 
     const contactStatusMap = useMemo(() => {
         const statusMap = new Map();
@@ -150,21 +152,15 @@ let RightSidebar = () => {
         if (!effectiveProfileId) return;
 
         try {
-            const response = await api.get('/message/chatList', {
-                params: { profileId: effectiveProfileId }
+            const nextContacts = await fetchChatListCached(effectiveProfileId, {
+                ttlMs: 30000,
+                storageTtlMs: 120000,
             });
 
-            const body = response.data;
-            const nextContacts = Array.isArray(body)
-                ? body
-                : Array.isArray(body?.contacts)
-                    ? body.contacts
-                    : Array.isArray(body?.data)
-                        ? body.data
-                        : [];
-
-            setCachedContacts(nextContacts);
-            persistContactsCache(nextContacts);
+            if (Array.isArray(nextContacts) && nextContacts.length > 0) {
+                setCachedContacts(nextContacts);
+                persistContactsCache(nextContacts);
+            }
         } catch (error) {
             console.error('Error refreshing RS contacts:', error);
         }
@@ -195,31 +191,21 @@ let RightSidebar = () => {
             });
         }
 
-        const statusResults = await Promise.allSettled(
-            friends
-                .filter(friend => friend?._id)
-                .map(async (friend) => {
-                    const profileData = await fetchProfileCached(friend._id, {
-                        ttlMs: 15000,
-                        storageTtlMs: 60000,
-                    });
-
-                    return {
-                        profileId: friend._id,
-                        isOnline: Boolean(profileData?.isActive),
-                    };
-                })
-        );
-
+        const friendIds = friends.map((friend) => friend?._id).filter(Boolean);
+        if (typeof document !== 'undefined' && document.hidden) {
+            return;
+        }
+        const statuses = await fetchOnlineStatusesCached(friendIds, { ttlMs: 30000 });
         const nextStatusMap = {};
         const liveOnlineFriends = [];
 
-        statusResults.forEach(result => {
-            if (result.status === 'fulfilled' && result.value?.profileId) {
-                nextStatusMap[result.value.profileId] = result.value.isOnline;
-                if (result.value.isOnline) {
-                    liveOnlineFriends.push(result.value.profileId);
-                }
+        friendIds.forEach((profileId) => {
+            const isOnline = Boolean(
+                statuses[profileId]?.isActive ?? getOnlineStatusFromContacts(profileId)
+            );
+            nextStatusMap[profileId] = isOnline;
+            if (isOnline) {
+                liveOnlineFriends.push(profileId);
             }
         });
 
@@ -236,39 +222,16 @@ let RightSidebar = () => {
                 return statusFromContacts;
             }
 
-            // Fallback to API call only if not found in contacts
-            const response = await api.get('/profile/online-status', {
-                params: { profileId }
-            });
-            return response.data.isActive || false;
+            const statuses = await fetchOnlineStatusesCached([profileId], { ttlMs: 30000 });
+            return Boolean(statuses[profileId]?.isActive);
         } catch (error) {
             console.error('Error checking online status:', error);
             return false;
         }
     }, [getOnlineStatusFromContacts]);
 
-    // HTTP-based message checking for sorting - memoized to prevent recreation
-    const checkForNewMessages = useCallback(async () => {
-        if (!myProfile._id) return;
-        try {
-            const response = await api.get('/message/new-messages-count', {
-                params: { profileId: myProfile._id }
-            });
-            if (response.data.hasNewMessages) {
-                setTriggerUpdate(prev => prev + 1);
-            }
-        } catch (error) {
-            console.error('Error checking for new messages:', error);
-        }
-    }, [myProfile._id]);
-
     useEffect(() => {
         if (!effectiveProfileId || !sidebarFriends || !Array.isArray(sidebarFriends) || sidebarFriends.length === 0) {
-            // Clear intervals if profile is not available
-            if (messageIntervalRef.current) {
-                clearInterval(messageIntervalRef.current);
-                messageIntervalRef.current = null;
-            }
             if (statusIntervalRef.current) {
                 clearInterval(statusIntervalRef.current);
                 statusIntervalRef.current = null;
@@ -280,11 +243,6 @@ let RightSidebar = () => {
             return;
         }
 
-        // Clear any existing intervals before creating new ones
-        if (messageIntervalRef.current) {
-            clearInterval(messageIntervalRef.current);
-            messageIntervalRef.current = null;
-        }
         if (statusIntervalRef.current) {
             clearInterval(statusIntervalRef.current);
             statusIntervalRef.current = null;
@@ -294,32 +252,25 @@ let RightSidebar = () => {
             contactsIntervalRef.current = null;
         }
 
-        refreshContacts();
-        contactsIntervalRef.current = setInterval(refreshContacts, 120000);
+        if (reduxContacts.length === 0) {
+            refreshContacts();
+        }
+        contactsIntervalRef.current = setInterval(refreshContacts, 300000);
 
         refreshOnlineStatuses();
-
-        // Refresh online status regularly using live checks so RS matches chat header behavior
-        statusIntervalRef.current = setInterval(refreshOnlineStatuses, 30000);
-
-        // Poll for new messages every 30 seconds (reduced frequency to prevent loops)
-        messageIntervalRef.current = setInterval(checkForNewMessages, 30000);
+        statusIntervalRef.current = setInterval(refreshOnlineStatuses, 90000);
 
         return () => {
             if (statusIntervalRef.current) {
                 clearInterval(statusIntervalRef.current);
                 statusIntervalRef.current = null;
             }
-            if (messageIntervalRef.current) {
-                clearInterval(messageIntervalRef.current);
-                messageIntervalRef.current = null;
-            }
             if (contactsIntervalRef.current) {
                 clearInterval(contactsIntervalRef.current);
                 contactsIntervalRef.current = null;
             }
         };
-    }, [effectiveProfileId, sidebarFriends, refreshContacts, refreshOnlineStatuses, checkForNewMessages])
+    }, [effectiveProfileId, sidebarFriendIdsKey, reduxContacts.length, refreshContacts, refreshOnlineStatuses])
 
     // Remove duplicate message polling since it's already handled above
 

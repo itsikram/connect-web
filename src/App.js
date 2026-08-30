@@ -23,16 +23,21 @@ const DownloadAppModal = lazy(() =>
 function App() {
   const [showDownloadModal, setShowDownloadModal] = useState(false);
 
-  // Send HTTP request to yt-dl service on app start
+  // Wake emotion-detection service after first paint so it does not compete with feed load
   useEffect(() => {
-    fetch('https://yt-dl-ufvy.onrender.com')
-      .catch(() => {
-        // Silently fail - fire and forget
-      });
-    fetch('https://emotion-detection-z1b2.onrender.com')
-      .catch(() => {
-        // Silently fail - fire and forget
-      });
+    const wake = () => {
+      fetch("https://emotion-detection-z1b2.onrender.com").catch(() => {});
+    };
+    const idle = window.requestIdleCallback
+      ? window.requestIdleCallback(wake, { timeout: 8000 })
+      : window.setTimeout(wake, 4000);
+    return () => {
+      if (window.cancelIdleCallback && typeof idle === "number") {
+        window.cancelIdleCallback(idle);
+      } else {
+        window.clearTimeout(idle);
+      }
+    };
   }, []);
 
   // Block pinch / multi-touch zoom on mobile (esp. iOS Safari / home-screen app)

@@ -6,6 +6,7 @@ export function openCreatePost({
   caption = "",
   audience,
   navigate,
+  file = null,
 } = {}) {
   const fire = () => {
     window.dispatchEvent(
@@ -13,6 +14,7 @@ export function openCreatePost({
         detail: {
           caption: String(caption || "").slice(0, 500),
           audience,
+          file,
         },
       }),
     );

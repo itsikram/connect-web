@@ -19,6 +19,7 @@ import {
   deleteNotification,
 } from "../../services/actions/notificationActions";
 import { shouldShowLudoInviteAlert } from "../../utils/ludoInviteUtils";
+import { shouldShowChessInviteAlert } from "../../utils/chessInviteUtils";
 import "./NotificationMenu.css";
 
 function getShortTimeAgo(timestamp) {
@@ -54,6 +55,7 @@ const NotificationMenu = ({
   dispatch,
   onClose,
   pendingLudoInvites = [],
+  pendingChessInvites = [],
 }) => {
   const navigate = useNavigate();
   const [filter, setFilter] = useState("all"); // all | unread
@@ -90,17 +92,43 @@ const NotificationMenu = ({
       }));
   }, [pendingLudoInvites]);
 
+  const chessInviteFeed = useMemo(() => {
+    if (!Array.isArray(pendingChessInvites)) return [];
+    return pendingChessInvites
+      .filter((inv) => shouldShowChessInviteAlert(inv.gameId, inv.from, inv))
+      .map((inv) => ({
+        _id: `chess-invite-${inv.gameId}-${inv.from}`,
+        isSeen: false,
+        isChessInvite: true,
+        type: "chess_invite",
+        timestamp: inv.ts || Date.now(),
+        title: "Chess Invitation",
+        text: `${inv.name || "A friend"} invited you to play Chess`,
+        icon: inv.avatar,
+        inviterName: inv.name,
+        inviterAvatar: inv.avatar,
+        invitePayload: inv,
+      }));
+  }, [pendingChessInvites]);
+
   const combinedFeed = useMemo(() => {
-    const inviteKeys = new Set(
+    const ludoInviteKeys = new Set(
       ludoInviteFeed.map((item) => {
         const payload = item.invitePayload || {};
-        return `${payload.gameId || ""}:${payload.from || ""}`;
+        return `ludo:${payload.gameId || ""}:${payload.from || ""}`;
+      }),
+    );
+    const chessInviteKeys = new Set(
+      chessInviteFeed.map((item) => {
+        const payload = item.invitePayload || {};
+        return `chess:${payload.gameId || ""}:${payload.from || ""}`;
       }),
     );
 
     const filteredBaseFeed = feed.filter((item) => {
       const isPlainLudoInvite = item?.type === "ludo_invite";
-      if (!isPlainLudoInvite) return true;
+      const isPlainChessInvite = item?.type === "chess_invite";
+      if (!isPlainLudoInvite && !isPlainChessInvite) return true;
 
       const gameId =
         item?.gameId || item?.data?.gameId || item?.linkData?.gameId;
@@ -112,28 +140,28 @@ const NotificationMenu = ({
         item?.data?.from ||
         item?.linkData?.inviterId;
 
-      // Once the invite has been accepted/declined, or the user has already
-      // joined this game, stop showing it entirely - invitation alerts and
-      // notifications should only ever be visible before the invite is
-      // resolved.
       const inviteMeta = item?.data || item?.linkData || item;
-      if (gameId && !shouldShowLudoInviteAlert(gameId, from, inviteMeta)) {
-        return false;
+      if (isPlainLudoInvite) {
+        if (gameId && !shouldShowLudoInviteAlert(gameId, from, inviteMeta)) {
+          return false;
+        }
+        return !ludoInviteKeys.has(`ludo:${gameId || ""}:${from || ""}`);
       }
 
-      // Otherwise avoid showing it twice: once via the richer ludoInviteFeed
-      // treatment, and again as a plain generic notification.
-      return !inviteKeys.has(`${gameId || ""}:${from || ""}`);
+      if (gameId && !shouldShowChessInviteAlert(gameId, from, inviteMeta)) {
+        return false;
+      }
+      return !chessInviteKeys.has(`chess:${gameId || ""}:${from || ""}`);
     });
 
     const existingIds = new Set(
       filteredBaseFeed.map((item) => String(item._id)),
     );
-    const extra = ludoInviteFeed.filter(
+    const extra = [...ludoInviteFeed, ...chessInviteFeed].filter(
       (item) => !existingIds.has(String(item._id)),
     );
     return [...extra, ...filteredBaseFeed];
-  }, [feed, ludoInviteFeed]);
+  }, [feed, ludoInviteFeed, chessInviteFeed]);
 
   const filtered = useMemo(() => {
     const list =
@@ -195,6 +223,13 @@ const NotificationMenu = ({
       if (notification?.isLudoInvite) {
         if (typeof window.acceptLudoInviteFromHeader === "function") {
           window.acceptLudoInviteFromHeader(notification.invitePayload);
+          onClose?.();
+        }
+        return;
+      }
+      if (notification?.isChessInvite) {
+        if (typeof window.acceptChessInviteFromHeader === "function") {
+          window.acceptChessInviteFromHeader(notification.invitePayload);
           onClose?.();
         }
         return;
@@ -271,7 +306,7 @@ const NotificationMenu = ({
   const renderItem = (notification) => {
     const derivedInvitePayload =
       notification?.invitePayload ||
-      (notification?.type === "ludo_invite"
+      (notification?.type === "ludo_invite" || notification?.type === "chess_invite"
         ? {
             gameId:
               notification?.gameId ||
@@ -322,6 +357,18 @@ const NotificationMenu = ({
           derivedInvitePayload,
         )),
     );
+    const isChessInvite = Boolean(
+      notification?.isChessInvite ||
+      (notification?.type === "chess_invite" &&
+        derivedInvitePayload?.gameId &&
+        derivedInvitePayload?.from &&
+        shouldShowChessInviteAlert(
+          derivedInvitePayload.gameId,
+          derivedInvitePayload.from,
+          derivedInvitePayload,
+        )),
+    );
+    const isGameInvite = isLudoInvite || isChessInvite;
     const parts = isLudoInvite
       ? {
           avatar:
@@ -340,10 +387,28 @@ const NotificationMenu = ({
             icon: "fas fa-dice",
           },
         }
+      : isChessInvite
+      ? {
+          avatar:
+            notification.inviterAvatar ||
+            notification.icon ||
+            derivedInvitePayload?.avatar,
+          actorName:
+            notification.inviterName ||
+            derivedInvitePayload?.name ||
+            "A friend",
+          headline: `${notification.inviterName || derivedInvitePayload?.name || "A friend"} invited you to play Chess`,
+          description: "",
+          typeMeta: {
+            label: "Chess Invite",
+            color: "#2E7D32",
+            icon: "fas fa-chess",
+          },
+        }
       : getNotificationDisplayParts(notification);
     const unread = notification.isSeen === false;
     const isMenuOpen =
-      !isLudoInvite && String(itemMenuId) === String(notification._id);
+      !isGameInvite && String(itemMenuId) === String(notification._id);
 
     return (
       <li
@@ -386,14 +451,18 @@ const NotificationMenu = ({
               <p className="notif-preview">“{parts.description}”</p>
             ) : null}
 
-            {isLudoInvite ? (
+            {isGameInvite ? (
               <div className="notif-ludo-actions">
                 <button
                   type="button"
                   className="notif-ludo-btn accept"
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (
+                    if (isChessInvite) {
+                      if (typeof window.acceptChessInviteFromHeader === "function") {
+                        window.acceptChessInviteFromHeader(derivedInvitePayload);
+                      }
+                    } else if (
                       typeof window.acceptLudoInviteFromHeader === "function"
                     ) {
                       window.acceptLudoInviteFromHeader(derivedInvitePayload);
@@ -408,7 +477,11 @@ const NotificationMenu = ({
                   className="notif-ludo-btn decline"
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (
+                    if (isChessInvite) {
+                      if (typeof window.declineChessInviteFromHeader === "function") {
+                        window.declineChessInviteFromHeader(derivedInvitePayload);
+                      }
+                    } else if (
                       typeof window.declineLudoInviteFromHeader === "function"
                     ) {
                       window.declineLudoInviteFromHeader(derivedInvitePayload);
@@ -445,7 +518,7 @@ const NotificationMenu = ({
           {unread ? <span className="notif-unread-dot" aria-hidden /> : null}
         </button>
 
-        {!isLudoInvite && (
+        {!isGameInvite && (
           <div
             className="notif-item-actions"
             ref={isMenuOpen ? itemMenuRef : null}

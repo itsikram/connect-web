@@ -23,6 +23,8 @@ class WebNotificationService {
       typeof Notification !== 'undefined' && Notification.permission === 'granted';
     this._api = null;
     this._profileId = null;
+    this._initPromise = null;
+    this._initializedProfileId = null;
   }
 
   isStandaloneApp() {
@@ -287,6 +289,16 @@ class WebNotificationService {
       return false;
     }
 
+    if (this._initializedProfileId === profileId && this._initPromise) {
+      return this._initPromise;
+    }
+
+    this._initializedProfileId = profileId;
+    this._initPromise = this._initializeInternal(profileId, api, socket);
+    return this._initPromise;
+  }
+
+  async _initializeInternal(profileId, api, socket) {
     try {
       try {
         await this.registerServiceWorker();
@@ -321,7 +333,6 @@ class WebNotificationService {
         Notification.permission === 'default' &&
         !this.needsUserGestureForPermission()
       ) {
-        // Desktop: try permission once (still may be blocked without gesture)
         const granted = await this.requestPermission();
         if (granted && this.canUseBackgroundPush()) {
           await this.subscribeToPush(api, profileId);
@@ -331,6 +342,8 @@ class WebNotificationService {
       return true;
     } catch (error) {
       console.error('Error initializing web notification service:', error);
+      this._initializedProfileId = null;
+      this._initPromise = null;
       return false;
     }
   }

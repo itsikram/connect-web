@@ -89,25 +89,29 @@ const FeedBoostCards = ({ postCount = 0, feedLoaded = false }) => {
       }
     };
 
-    loadSuggestions();
+    const timer = window.setTimeout(loadSuggestions, 1800);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [myProfileId]);
 
   useEffect(() => {
     if (!myProfileId) return undefined;
     let cancelled = false;
-    api
-      .get("/content/digest")
-      .then((res) => {
-        if (!cancelled && res.data) setDigest(res.data);
-      })
-      .catch(() => {
-        if (!cancelled) setDigest(null);
-      });
+    const timer = window.setTimeout(() => {
+      api
+        .get("/content/digest")
+        .then((res) => {
+          if (!cancelled && res.data) setDigest(res.data);
+        })
+        .catch(() => {
+          if (!cancelled) setDigest(null);
+        });
+    }, 2200);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [myProfileId]);
 

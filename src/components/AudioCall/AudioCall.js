@@ -44,9 +44,6 @@ const AudioCall = ({ myId }) => {
 
   useEffect(() => {
     isMountedRef.current = true;
-    if (process.env.NODE_ENV === "development") {
-      console.log("AudioCall mounted with myId:", myId);
-    }
     return () => {
       isMountedRef.current = false;
     };
@@ -204,12 +201,6 @@ const AudioCall = ({ myId }) => {
 
   const resolveIncomingRingtoneSrc = useCallback(() => {
     const ringtoneId = normalizeRingtoneId(mySettings?.ringtone);
-
-    const preloadedAudio = audioPreloader.getRingtone(ringtoneId);
-    if (preloadedAudio?.src) {
-      return preloadedAudio.src;
-    }
-
     const ringtone = ringtones.find((r) => r.id === ringtoneId);
     return (
       ringtone?.src || config?.defaultRingtone || config?.callingBeep || ""
@@ -871,7 +862,6 @@ const AudioCall = ({ myId }) => {
   // Keep receivingCallRef and callAcceptedRef in sync with state
   useEffect(() => {
     receivingCallRef.current = receivingCall;
-    console.log("AudioCall: receivingCall state changed to", receivingCall);
   }, [receivingCall]);
 
   useEffect(() => {
@@ -1071,8 +1061,6 @@ const AudioCall = ({ myId }) => {
     };
 
     window.addEventListener("startAudioCall", handleOutgoingAudioCall);
-
-    console.log("AudioCall: Mounted and ready for calls");
 
     const onCallAccepted = ({ channelName, isAudio, callerId }) => {
       // Caller side should join upon acceptance; callee already joined in answerCall

@@ -711,6 +711,7 @@ const Chat = () => {
           let profileData = await fetchProfileCached(friendId, {
             ttlMs: 60000,
             storageTtlMs: 300000,
+            lite: true,
           });
 
           // If cached data is partial/missing, force a fresh profile fetch.
@@ -718,6 +719,7 @@ const Chat = () => {
             profileData = await fetchProfileCached(friendId, {
               ttlMs: 60000,
               storageTtlMs: 300000,
+              lite: true,
               forceRefresh: true,
             });
           }

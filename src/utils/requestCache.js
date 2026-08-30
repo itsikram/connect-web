@@ -103,21 +103,143 @@ export const primeCachedResource = (key, data, storageKey = key) => {
 
 export const fetchProfileCached = async (
   profileId,
-  { ttlMs = 60000, storageTtlMs = 300000, forceRefresh = false } = {},
+  { ttlMs = 60000, storageTtlMs = 300000, forceRefresh = false, lite = false } = {},
 ) => {
   if (!profileId) return null;
 
+  const cacheKey = lite ? `profileLite:${profileId}` : `profile:${profileId}`;
+
   return getCachedResource({
-    key: `profile:${profileId}`,
-    storageKey: `profile:${profileId}`,
+    key: cacheKey,
+    storageKey: cacheKey,
     ttlMs,
     storageTtlMs,
     forceRefresh,
     fetcher: async () => {
       const response = await api.get("/profile", {
+        params: lite ? { profileId, lite: 1 } : { profileId },
+      });
+      const profile = response.data?.profile || response.data;
+      if (profile && !lite) {
+        writeMemoryCache(`profileLite:${profileId}`, profile);
+      }
+      return profile;
+    },
+  });
+};
+
+const parseOnlineStatusPayload = (data, fallbackIds = []) => {
+  const statuses = {};
+  if (data?.statuses && typeof data.statuses === "object") {
+    Object.entries(data.statuses).forEach(([id, status]) => {
+      statuses[String(id)] = {
+        isActive: Boolean(status?.isActive),
+        lastSeen: status?.lastSeen || null,
+      };
+    });
+  }
+
+  if (fallbackIds.length === 1 && data && data.isActive !== undefined) {
+    const id = String(fallbackIds[0]);
+    statuses[id] = {
+      isActive: Boolean(data.isActive),
+      lastSeen: data.lastSeen || statuses[id]?.lastSeen || null,
+    };
+  }
+
+  return statuses;
+};
+
+export const fetchOnlineStatusesCached = async (
+  profileIds,
+  { ttlMs = 30000, forceRefresh = false } = {},
+) => {
+  const ids = [
+    ...new Set((profileIds || []).map((id) => String(id || "")).filter(Boolean)),
+  ];
+  if (ids.length === 0) return {};
+
+  const statuses = {};
+  const missingIds = [];
+
+  ids.forEach((id) => {
+    if (!forceRefresh) {
+      const cached = readMemoryCache(`onlineStatus:${id}`, ttlMs);
+      if (cached !== null) {
+        statuses[id] = cached;
+        return;
+      }
+    }
+    missingIds.push(id);
+  });
+
+  if (missingIds.length === 0) return statuses;
+
+  const inflightKey = `onlineStatusBatch:${[...missingIds].sort().join(",")}`;
+  if (inflightRequests.has(inflightKey)) {
+    const inflightStatuses = await inflightRequests.get(inflightKey);
+    return { ...inflightStatuses, ...statuses };
+  }
+
+  const request = (async () => {
+    const response = await api.get("/profile/online-status", {
+      params:
+        missingIds.length === 1
+          ? { profileId: missingIds[0] }
+          : { profileIds: missingIds.join(",") },
+    });
+    const batch = parseOnlineStatusPayload(response.data, missingIds);
+    missingIds.forEach((id) => {
+      const status = batch[id] || { isActive: false, lastSeen: null };
+      writeMemoryCache(`onlineStatus:${id}`, status);
+      statuses[id] = status;
+    });
+    return statuses;
+  })();
+
+  inflightRequests.set(inflightKey, request);
+  try {
+    return await request;
+  } finally {
+    inflightRequests.delete(inflightKey);
+  }
+};
+
+export const fetchChatListCached = async (
+  profileId,
+  { ttlMs = 30000, storageTtlMs = 120000, forceRefresh = false } = {},
+) => {
+  if (!profileId) return [];
+
+  return getCachedResource({
+    key: `chatList:${profileId}`,
+    storageKey: `chatList:${profileId}`,
+    ttlMs,
+    storageTtlMs,
+    forceRefresh,
+    fetcher: async () => {
+      const response = await api.get("/message/chatList", {
         params: { profileId },
       });
-      return response.data?.profile || response.data;
+      const body = response.data;
+      const contacts = Array.isArray(body)
+        ? body
+        : Array.isArray(body?.contacts)
+          ? body.contacts
+          : Array.isArray(body?.data)
+            ? body.data
+            : [];
+
+      contacts.forEach((contact) => {
+        const personId = contact?.person?._id;
+        if (!personId) return;
+        writeMemoryCache(`onlineStatus:${personId}`, {
+          isActive: Boolean(contact.isOnline),
+          lastSeen: contact.lastSeen || null,
+        });
+      });
+
+      return contacts;
     },
   });
 };

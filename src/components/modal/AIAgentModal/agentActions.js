@@ -547,6 +547,24 @@ export const executeAction = async ({
         };
       }
 
+      case "INVITE_CHESS": {
+        try {
+          localStorage.setItem(
+            "chess_invite_target",
+            JSON.stringify({
+              friendId: friend._id,
+              friendName,
+              friendAvatar: friend.profilePic,
+            }),
+          );
+        } catch (_) {}
+        go("/chess-game");
+        return {
+          success: true,
+          message: `♟️ Navigating to Chess to invite ${friendName}…`,
+        };
+      }
+
       // ── Block ──────────────────────────────────────────────────────────────
       case "BLOCK": {
         const res = await api.post("friend/block", { friendId: friend._id });
@@ -1100,6 +1118,7 @@ export const getActionMeta = (action) => {
     },
     BUMP: { label: "Bump", icon: "fa-hand-rock", color: "#f59e0b" },
     INVITE_LUDO: { label: "Invite to Ludo", icon: "fa-dice", color: "#8b5cf6" },
+    INVITE_CHESS: { label: "Invite to Chess", icon: "fa-chess", color: "#2E7D32" },
     CREATE_LUDO: { label: "Play Ludo", icon: "fa-gamepad", color: "#8b5cf6" },
     CREATE_CHESS: { label: "Play Chess", icon: "fa-chess", color: "#8b5cf6" },
     CREATE_POST: { label: "Create Post", icon: "fa-pen", color: "#6366f1" },

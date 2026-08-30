@@ -9,9 +9,8 @@ import React, {
 import UserPP from "../UserPP";
 import { useSelector } from "react-redux";
 import { Link, useParams, useNavigate } from "react-router-dom";
-import api from "../../api/api";
 import moment from "moment";
-import { fetchProfileCached } from "../../utils/requestCache";
+import { fetchChatListCached, fetchOnlineStatusesCached } from "../../utils/requestCache";
 import MsgListSkleton from "../../skletons/message/MsgListSkleton";
 import ContactCacheManager from "../../utils/contactCacheManager";
 import socket from "../../common/socket";
@@ -155,19 +154,11 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
       if (!effectiveProfileId) return;
       try {
         if (showLoading) setLoading(true);
-        const response = await api.get("/message/chatList", {
-          params: { profileId: effectiveProfileId },
+        const contactsData = await fetchChatListCached(effectiveProfileId, {
+          ttlMs: 30000,
+          storageTtlMs: 120000,
         });
-        console.log("fetch contacts", response.data);
-        // API should return an array, but be defensive in case backend returns a wrapper.
-        const body = response.data;
-        const contactsData = Array.isArray(body)
-          ? body
-          : Array.isArray(body?.contacts)
-            ? body.contacts
-            : Array.isArray(body?.data)
-              ? body.data
-              : [];
+        if (!Array.isArray(contactsData)) return;
         setContacts((prev) => {
           const merged = mergeContactsPreferNewer(contactsData, prev);
           try {
@@ -243,7 +234,7 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
   useEffect(() => {
     if (!effectiveProfileId) return;
     fetchContacts(cachedContacts.length === 0); // show loading only when no cache
-    const interval = setInterval(() => fetchContacts(false), 120000);
+    const interval = setInterval(() => fetchContacts(false), 300000);
     return () => clearInterval(interval);
   }, [effectiveProfileId, cachedContacts.length, fetchContacts]);
 
@@ -343,29 +334,23 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
       return;
     }
 
-    const results = await Promise.allSettled(
-      contactPeople.map(async (person) => {
-        const profileData = await fetchProfileCached(person._id, {
-          ttlMs: 15000,
-          storageTtlMs: 60000,
-        });
+    if (typeof document !== "undefined" && document.hidden) {
+      return;
+    }
 
-        return {
-          profileId: person._id,
-          isActive: Boolean(profileData?.isActive),
-        };
-      }),
+    const results = await fetchOnlineStatusesCached(
+      contactPeople.map((person) => person._id),
+      { ttlMs: 30000 },
     );
 
     const nextStatusMap = {};
     const nextActiveFriends = [];
 
-    results.forEach((result) => {
-      if (result.status === "fulfilled" && result.value?.profileId) {
-        nextStatusMap[result.value.profileId] = result.value.isActive;
-        if (result.value.isActive) {
-          nextActiveFriends.push(result.value.profileId);
-        }
+    contactPeople.forEach((person) => {
+      const isActive = Boolean(results[person._id]?.isActive);
+      nextStatusMap[person._id] = isActive;
+      if (isActive) {
+        nextActiveFriends.push(person._id);
       }
     });
 
@@ -377,7 +362,7 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
     if (!effectiveProfileId || contacts.length === 0) return;
 
     refreshProfileStatuses();
-    const interval = setInterval(refreshProfileStatuses, 30000);
+    const interval = setInterval(refreshProfileStatuses, 90000);
 
     return () => clearInterval(interval);
   }, [effectiveProfileId, contacts, refreshProfileStatuses]);

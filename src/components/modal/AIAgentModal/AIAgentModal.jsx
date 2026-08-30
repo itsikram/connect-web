@@ -39,6 +39,12 @@ import {
 } from "./agentCatalog";
 import api from "../../../api/api";
 import { fetchLatestAIChat, saveAIChat } from "../../../services/aiChatService";
+import {
+  getResolvedAgentSettings,
+  subscribeAgentSettings,
+} from "../../../services/aiAgentSettings";
+import { fetchAiProviderStatus } from "../../../services/llmClient";
+import AgentSettingsPanel from "./AgentSettingsPanel";
 
 const createId = () => Date.now() + Math.random();
 
@@ -141,6 +147,8 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   const autoRunActionsRef = useRef(autoRunActions);
   const pendingIntentRef = useRef(null);
   const [isFetchingHistory, setIsFetchingHistory] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [llmInfo, setLlmInfo] = useState(() => getResolvedAgentSettings());
 
   // Fetch chat history from database
   const fetchChatHistory = useCallback(async () => {
@@ -210,8 +218,17 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   useEffect(() => {
     if (!isOpen) {
       pendingIntentRef.current = null;
+      setSettingsOpen(false);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    setLlmInfo(getResolvedAgentSettings());
+    fetchAiProviderStatus();
+    return subscribeAgentSettings(() => {
+      setLlmInfo(getResolvedAgentSettings());
+    });
+  }, []);
 
 
 
@@ -761,10 +778,19 @@ const AIAgentModal = ({ isOpen, onClose }) => {
               isSidebarOpen={isSidebarOpen}
               autoRunActions={autoRunActions}
               onToggleAutoRun={() => setAutoRunActions((value) => !value)}
+              onOpenSettings={() => setSettingsOpen((value) => !value)}
+              settingsOpen={settingsOpen}
+              providerLabel={llmInfo.meta?.shortLabel || "AI"}
+              modelLabel={String(llmInfo.model || "").split("/").pop()}
             />
 
             {/* Body */}
             <div className="ai-agent-modal-body">
+              {settingsOpen && (
+                <div className="ai-agent-settings-overlay">
+                  <AgentSettingsPanel onClose={() => setSettingsOpen(false)} />
+                </div>
+              )}
               {/* Sidebar overlay backdrop — mobile only */}
               {isSidebarOpen && (
                 <div

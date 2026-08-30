@@ -3,29 +3,46 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Chess } from 'chess.js';
 import { useSelector } from 'react-redux';
 import socket from '../common/socket';
+import api from '../api/api';
+import siteConfig from '../config/config.json';
 import { pickComputerMove } from '../utils/chessComputer';
 import { openCreatePost } from '../utils/openComposer';
+import {
+  setActiveChessGameId,
+  clearActiveChessGameId,
+  markChessInviteHandled,
+  resolveChessInviteNotifications,
+} from '../utils/chessInviteUtils';
+import './ChessGame.css';
 
 const BOARD_SIZE = 8;
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 
-// Unicode chess pieces
 const unicodeForPiece = (piece, color) => {
   const map = {
-    wk: '\u2654', // White King
-    wq: '\u2655', // White Queen
-    wr: '\u2656', // White Rook
-    wb: '\u2657', // White Bishop
-    wn: '\u2658', // White Knight
-    wp: '\u2659', // White Pawn
-    bk: '\u265A', // Black King
-    bq: '\u265B', // Black Queen
-    br: '\u265C', // Black Rook
-    bb: '\u265D', // Black Bishop
-    bn: '\u265E', // Black Knight
-    bp: '\u265F', // Black Pawn
+    wk: '\u2654',
+    wq: '\u2655',
+    wr: '\u2656',
+    wb: '\u2657',
+    wn: '\u2658',
+    wp: '\u2659',
+    bk: '\u265A',
+    bq: '\u265B',
+    br: '\u265C',
+    bb: '\u265D',
+    bn: '\u265E',
+    bp: '\u265F',
   };
   return map[`${color}${piece}`] || '';
+};
+
+const normalizeUsers = (res) => {
+  const body = res && (res.data || res);
+  if (Array.isArray(body)) return body;
+  if (Array.isArray(body?.users)) return body.users;
+  if (Array.isArray(body?.data)) return body.data;
+  if (Array.isArray(res?.users)) return res.users;
+  return [];
 };
 
 const ChessGame = () => {
@@ -33,7 +50,7 @@ const ChessGame = () => {
   const [searchParams] = useSearchParams();
   const profile = useSelector(state => state.profile);
   const profileId = profile?._id;
-  
+
   const [engine] = useState(() => new Chess());
   const [selected, setSelected] = useState(null);
   const [legalTargets, setLegalTargets] = useState([]);
@@ -41,33 +58,151 @@ const ChessGame = () => {
   const [promotionFromTo, setPromotionFromTo] = useState(null);
   const [boardSize, setBoardSize] = useState(600);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 640);
-  
-  // Multiplayer state
-  const [gameMode, setGameMode] = useState(null); // null (not set), 'local', 'online', or 'computer'
+
+  const [gameMode, setGameMode] = useState(null);
   const [gameId, setGameId] = useState(null);
-  const [myColor, setMyColor] = useState(null); // 'w' or 'b'
+  const [myColor, setMyColor] = useState(null);
   const [whitePlayer, setWhitePlayer] = useState(null);
   const [blackPlayer, setBlackPlayer] = useState(null);
+  const [whitePlayerInfo, setWhitePlayerInfo] = useState(null);
+  const [blackPlayerInfo, setBlackPlayerInfo] = useState(null);
   const [waitingForOpponent, setWaitingForOpponent] = useState(false);
   const [showGameModeSelect, setShowGameModeSelect] = useState(true);
+  const [showOnlineSetup, setShowOnlineSetup] = useState(false);
   const [opponentDisconnected, setOpponentDisconnected] = useState(false);
+  const [joinGameIdInput, setJoinGameIdInput] = useState('');
+  const [inviteCopied, setInviteCopied] = useState(false);
+  const [invitedFriend, setInvitedFriend] = useState(null);
+  const [inviteStatus, setInviteStatus] = useState('idle');
+
+  const [friendSearchQuery, setFriendSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [loadingSearch, setLoadingSearch] = useState(false);
+  const [friendList, setFriendList] = useState([]);
+  const [loadingFriends, setLoadingFriends] = useState(false);
+
   const isProcessingRemoteMove = useRef(false);
   const lastLocalMoveRef = useRef(null);
   const computerThinkingRef = useRef(false);
-  
-  // Check URL params for gameId (from invite)
+  const searchTimeoutRef = useRef(null);
+  const pendingInviteProcessedRef = useRef(false);
+  const gameIdRef = useRef(null);
+
+  const myIdentity = useCallback(() => ({
+    name: profile?.fullName || 'Player',
+    avatar: profile?.profilePic || '',
+  }), [profile?.fullName, profile?.profilePic]);
+
+  const persistActiveGame = useCallback((id) => {
+    if (!id) return;
+    setActiveChessGameId(id);
+    try {
+      localStorage.setItem('chess_game_state', JSON.stringify({ gameId: id }));
+    } catch (_e) {}
+  }, []);
+
+  const emitWhenReady = useCallback((event, payload) => {
+    if (socket.connected) {
+      socket.emit(event, payload);
+      return;
+    }
+    socket.once('connect', () => {
+      socket.emit(event, payload);
+    });
+  }, []);
+
+  const emitJoin = useCallback((id) => {
+    if (!id) return;
+    const identity = myIdentity();
+    emitWhenReady('chess:join', { gameId: id, name: identity.name, avatar: identity.avatar });
+  }, [myIdentity, emitWhenReady]);
+
+  // URL gameId (shared invite link)
   useEffect(() => {
     const urlGameId = searchParams.get('gameId');
     if (urlGameId && profileId) {
-      console.log('[CHESS] URL gameId detected:', urlGameId);
       setGameId(urlGameId);
+      gameIdRef.current = urlGameId;
       setGameMode('online');
       setShowGameModeSelect(false);
-      setWaitingForOpponent(true); // Initially waiting until we get state update
+      setShowOnlineSetup(false);
+      setWaitingForOpponent(true);
+      persistActiveGame(urlGameId);
     }
-  }, [searchParams, profileId]);
+  }, [searchParams, profileId, persistActiveGame]);
 
-  // Responsive board size and mobile detection
+  const processPendingInvite = useCallback((inviteFromEvent) => {
+    if (!profileId) return;
+    try {
+      let pendingInvite = inviteFromEvent || null;
+      if (!pendingInvite) {
+        const raw = localStorage.getItem('chess_pending_invite');
+        if (!raw) return;
+        pendingInvite = JSON.parse(raw);
+      }
+      if (!pendingInvite?.gameId || !pendingInvite.autoAccept) {
+        localStorage.removeItem('chess_pending_invite');
+        return;
+      }
+      localStorage.removeItem('chess_pending_invite');
+      if (pendingInviteProcessedRef.current && gameIdRef.current === pendingInvite.gameId) {
+        return;
+      }
+      pendingInviteProcessedRef.current = true;
+
+      const gid = pendingInvite.gameId;
+      gameIdRef.current = gid;
+      setGameId(gid);
+      setGameMode('online');
+      setShowGameModeSelect(false);
+      setShowOnlineSetup(false);
+      setWaitingForOpponent(true);
+      persistActiveGame(gid);
+      markChessInviteHandled(gid, pendingInvite.from);
+      resolveChessInviteNotifications(gid, pendingInvite.from);
+
+      const identity = myIdentity();
+      const joinPayload = { gameId: gid, name: identity.name, avatar: identity.avatar };
+      const acceptPayload = {
+        gameId: gid,
+        from: pendingInvite.from,
+        name: identity.name,
+        avatar: identity.avatar,
+      };
+
+      const sendAccept = () => {
+        socket.emit('chess:accept', acceptPayload);
+        socket.emit('chess:join', joinPayload);
+        socket.emit('chess:invites:dismiss', { gameId: gid, by: pendingInvite.from });
+      };
+
+      if (socket.connected) {
+        sendAccept();
+      } else {
+        socket.once('connect', sendAccept);
+      }
+    } catch (error) {
+      console.error('[CHESS] Error processing pending invite:', error);
+      try {
+        localStorage.removeItem('chess_pending_invite');
+      } catch (_e) {}
+    }
+  }, [profileId, persistActiveGame, myIdentity]);
+
+  useEffect(() => {
+    processPendingInvite();
+  }, [processPendingInvite]);
+
+  useEffect(() => {
+    const onPendingInviteUpdated = (e) => {
+      processPendingInvite(e?.detail);
+    };
+    window.addEventListener('chess:pendingInviteUpdated', onPendingInviteUpdated);
+    return () => {
+      window.removeEventListener('chess:pendingInviteUpdated', onPendingInviteUpdated);
+    };
+  }, [processPendingInvite]);
+
   useEffect(() => {
     const updateLayout = () => {
       const width = window.innerWidth;
@@ -86,51 +221,100 @@ const ChessGame = () => {
     return () => window.removeEventListener('resize', updateLayout);
   }, []);
 
-  // Socket event handlers for online play
+  useEffect(() => {
+    if (!showOnlineSetup && !waitingForOpponent) return;
+    if (!profileId) return;
+    let cancelled = false;
+    (async () => {
+      setLoadingFriends(true);
+      try {
+        const res = await api.get('/friend/getFriends', { params: { profile: profileId } });
+        if (cancelled) return;
+        const friends = Array.isArray(res.data) ? res.data : [];
+        setFriendList(friends.filter((f) => f && String(f._id) !== String(profileId)));
+      } catch (_e) {
+        if (!cancelled) setFriendList([]);
+      } finally {
+        if (!cancelled) setLoadingFriends(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showOnlineSetup, waitingForOpponent, profileId]);
+
+  const onChangeFriendSearch = (text) => {
+    setFriendSearchQuery(text);
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = null;
+    }
+    const q = (text || '').trim();
+    if (q.length < 2) {
+      setSearchResults([]);
+      setLoadingSearch(false);
+      return;
+    }
+    setLoadingSearch(true);
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        let res;
+        try {
+          res = await api.get(`/search?input=${encodeURIComponent(q)}`);
+        } catch (e) {
+          res = await api.get('/search', { params: { input: q } });
+        }
+        setSearchResults(
+          normalizeUsers(res).filter((f) => f && String(f._id) !== String(profileId)),
+        );
+      } catch (_e) {
+        setSearchResults([]);
+      } finally {
+        setLoadingSearch(false);
+      }
+    }, 300);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     if (gameMode !== 'online' || !gameId || !profileId) return;
 
     const handleJoined = (data) => {
       if (data.gameId !== gameId) return;
-      console.log('[CHESS] Joined game room', data);
     };
-    
 
     const handleState = (data) => {
       if (data.gameId !== gameId) return;
-      console.log('[CHESS] Received state update', data);
       setWhitePlayer(data.whitePlayer);
       setBlackPlayer(data.blackPlayer);
-      
-      // Determine my color FIRST (before checking waitingForOpponent)
+      setWhitePlayerInfo(data.whitePlayerInfo || null);
+      setBlackPlayerInfo(data.blackPlayerInfo || null);
+
       if (profileId) {
         const pid = String(profileId);
         if (data.whitePlayer && String(data.whitePlayer) === pid) {
-          console.log('[CHESS] I am white player');
           setMyColor('w');
         } else if (data.blackPlayer && String(data.blackPlayer) === pid) {
-          console.log('[CHESS] I am black player');
           setMyColor('b');
-        } else {
-          console.log('[CHESS] Color not assigned yet', { 
-            myProfileId: pid, 
-            whitePlayer: data.whitePlayer, 
-            blackPlayer: data.blackPlayer 
-          });
         }
       }
-      
-      // Check if waiting for opponent
+
       const isWaiting = !data.whitePlayer || !data.blackPlayer;
-      console.log('[CHESS] Waiting for opponent?', isWaiting);
       setWaitingForOpponent(isWaiting);
-      
-      // If state has FEN and it's different, sync engine
+      if (!isWaiting) {
+        setInviteStatus('joined');
+        persistActiveGame(gameId);
+      }
+
       if (data.fen && data.fen !== engine.fen()) {
         try {
           engine.load(data.fen);
           setFenVersion(v => v + 1);
-          console.log('[CHESS] Loaded FEN:', data.fen);
         } catch (e) {
           console.error('Error loading FEN:', e);
         }
@@ -140,19 +324,17 @@ const ChessGame = () => {
     const handleMove = (data) => {
       if (data.gameId !== gameId) return;
       if (!data.move) return;
-      
-      // Don't process our own moves (they're already applied locally)
+
       const moveKey = `${data.move.from}-${data.move.to}-${data.move.promotion || ''}`;
       if (lastLocalMoveRef.current === moveKey) {
-        lastLocalMoveRef.current = null; // Clear after one use
+        lastLocalMoveRef.current = null;
         return;
       }
-      
-      // If the FEN matches what we already have, skip (might be our own move)
+
       if (data.move.fen && data.move.fen === engine.fen()) {
         return;
       }
-      
+
       isProcessingRemoteMove.current = true;
       try {
         const move = engine.move({
@@ -160,7 +342,7 @@ const ChessGame = () => {
           to: data.move.to,
           promotion: data.move.promotion
         });
-        
+
         if (move) {
           setSelected(null);
           setLegalTargets([]);
@@ -181,10 +363,7 @@ const ChessGame = () => {
       setFenVersion(v => v + 1);
     };
 
-    const handleGameOver = (data) => {
-      if (data.gameId !== gameId) return;
-      // Game over is already detected by engine, but we can handle additional logic here
-    };
+    const handleGameOver = () => {};
 
     const handlePlayerOffline = (data) => {
       if (data.gameId === gameId && data.profileId !== profileId) {
@@ -198,6 +377,11 @@ const ChessGame = () => {
       }
     };
 
+    const handleAccepted = (data) => {
+      if (data.gameId !== gameId) return;
+      setInviteStatus('joined');
+    };
+
     socket.on('chess:joined', handleJoined);
     socket.on('chess:state', handleState);
     socket.on('chess:move', handleMove);
@@ -205,21 +389,9 @@ const ChessGame = () => {
     socket.on('chess:gameover', handleGameOver);
     socket.on('chess:player:offline', handlePlayerOffline);
     socket.on('chess:player:online', handlePlayerOnline);
+    socket.on('chess:accepted', handleAccepted);
 
-    // Join game room - ensure socket is connected
-    const attemptJoin = () => {
-      if (socket.connected) {
-        socket.emit('chess:join', { gameId });
-      } else {
-        // If not connected, wait for connection
-        socket.once('connect', () => {
-          socket.emit('chess:join', { gameId });
-        });
-      }
-    };
-
-    // Attempt join immediately or on connect
-    attemptJoin();
+    emitJoin(gameId);
 
     return () => {
       socket.off('chess:joined', handleJoined);
@@ -229,14 +401,14 @@ const ChessGame = () => {
       socket.off('chess:gameover', handleGameOver);
       socket.off('chess:player:offline', handlePlayerOffline);
       socket.off('chess:player:online', handlePlayerOnline);
+      socket.off('chess:accepted', handleAccepted);
     };
-  }, [gameMode, gameId, profileId, engine]);
+  }, [gameMode, gameId, profileId, engine, emitJoin, persistActiveGame]);
 
   const turnColor = engine.turn();
   const gameOver = engine.isGameOver();
   const inCheck = engine.isCheck();
 
-  // Computer opponent (plays black)
   useEffect(() => {
     if (gameMode !== 'computer' || gameOver || promotionFromTo) return;
     if (engine.turn() !== 'b') return;
@@ -266,19 +438,11 @@ const ChessGame = () => {
     if (isProcessingRemoteMove.current) return;
     if (waitingForOpponent) return;
 
-    // In online mode, require myColor to be set and only allow moves on your turn
     if (gameMode === 'online') {
-      if (!myColor) {
-        console.log('[CHESS] Cannot move: myColor not set yet', { myColor, whitePlayer, blackPlayer });
-        return;
-      }
-      if (turnColor !== myColor) {
-        console.log('[CHESS] Cannot move: not your turn', { myColor, turnColor });
-        return;
-      }
+      if (!myColor) return;
+      if (turnColor !== myColor) return;
     }
 
-    // Vs computer: you play white only
     if (gameMode === 'computer' && turnColor !== 'w') {
       return;
     }
@@ -290,37 +454,19 @@ const ChessGame = () => {
     }
 
     const piece = engine.get(square);
-    console.log('[CHESS] Square clicked', { 
-      square, 
-      piece: piece ? { type: piece.type, color: piece.color } : null, 
-      turnColor, 
-      myColor, 
-      gameMode,
-      waitingForOpponent
-    });
 
-    // If selecting own piece, show legal moves
     if (piece && piece.color === turnColor) {
       const moves = engine.moves({ square, verbose: true });
-      console.log('[CHESS] Legal moves found:', moves.length);
       setSelected(square);
       setLegalTargets(moves.map(m => m.to));
       return;
-    } else if (piece) {
-      console.log('[CHESS] Cannot select piece - not your turn', {
-        pieceColor: piece.color,
-        turnColor,
-        myColor
-      });
     }
 
-    // If clicking a legal target from previously selected
     if (selected && legalTargets.includes(square)) {
       const moves = engine.moves({ square: selected, verbose: true });
       const move = moves.find(m => m.to === square);
       if (!move) return;
 
-      // Handle promotion
       const needsPromotion = move.promotion || (move.piece === 'p' && (square.endsWith('8') || square.endsWith('1')));
       if (needsPromotion) {
         setPromotionFromTo({ from: selected, to: square });
@@ -329,17 +475,14 @@ const ChessGame = () => {
 
       const result = engine.move({ from: selected, to: square });
       if (result) {
-        console.log('[CHESS] Move executed successfully', { from: selected, to: square });
         const moveKey = `${selected}-${square}-`;
         lastLocalMoveRef.current = moveKey;
-        
+
         setSelected(null);
         setLegalTargets([]);
         setFenVersion(v => v + 1);
-        
-        // Broadcast move in online mode
+
         if (gameMode === 'online' && gameId) {
-          console.log('[CHESS] Broadcasting move to server');
           socket.emit('chess:move', {
             gameId,
             move: {
@@ -348,26 +491,22 @@ const ChessGame = () => {
               fen: engine.fen()
             }
           });
-          
-          // Check if game is over
+
           if (engine.isGameOver()) {
-            let result = 'draw';
+            let resultValue = 'draw';
             if (engine.isCheckmate()) {
-              result = turnColor === 'w' ? 'black_wins' : 'white_wins';
+              resultValue = turnColor === 'w' ? 'black_wins' : 'white_wins';
             }
-            socket.emit('chess:gameover', { gameId, result });
+            socket.emit('chess:gameover', { gameId, result: resultValue });
           }
         }
-      } else {
-        console.log('[CHESS] Move failed - invalid move', { from: selected, to: square });
       }
       return;
     }
 
-    // Otherwise clear selection
     setSelected(null);
     setLegalTargets([]);
-  }, [selected, legalTargets, promotionFromTo, turnColor, gameOver, engine, gameMode, myColor, gameId]);
+  }, [selected, legalTargets, promotionFromTo, turnColor, gameOver, engine, gameMode, myColor, gameId, waitingForOpponent]);
 
   const doPromote = (piece) => {
     if (!promotionFromTo) return;
@@ -375,13 +514,12 @@ const ChessGame = () => {
     if (result) {
       const moveKey = `${promotionFromTo.from}-${promotionFromTo.to}-${piece}`;
       lastLocalMoveRef.current = moveKey;
-      
+
       setPromotionFromTo(null);
       setSelected(null);
       setLegalTargets([]);
       setFenVersion(v => v + 1);
-      
-      // Broadcast move in online mode
+
       if (gameMode === 'online' && gameId) {
         socket.emit('chess:move', {
           gameId,
@@ -392,21 +530,19 @@ const ChessGame = () => {
             fen: engine.fen()
           }
         });
-        
-        // Check if game is over
+
         if (engine.isGameOver()) {
-          let result = 'draw';
+          let resultValue = 'draw';
           if (engine.isCheckmate()) {
-            result = engine.turn() === 'w' ? 'black_wins' : 'white_wins';
+            resultValue = engine.turn() === 'w' ? 'black_wins' : 'white_wins';
           }
-          socket.emit('chess:gameover', { gameId, result });
+          socket.emit('chess:gameover', { gameId, result: resultValue });
         }
       }
     }
   };
 
   const undo = () => {
-    // Only allow undo in local mode
     if (gameMode === 'local') {
       engine.undo();
       setSelected(null);
@@ -420,32 +556,121 @@ const ChessGame = () => {
     setSelected(null);
     setLegalTargets([]);
     setFenVersion(v => v + 1);
-    
-    // Broadcast reset in online mode
+
     if (gameMode === 'online' && gameId) {
       socket.emit('chess:reset', { gameId });
     }
   };
 
-  // Create new online game
-  const createOnlineGame = () => {
-    if (!profileId) return;
-    const newGameId = `chess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const makeOnlineGameId = () => `chess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+  const startOnlineGame = useCallback((existingId) => {
+    const newGameId = existingId || makeOnlineGameId();
+    gameIdRef.current = newGameId;
     setGameId(newGameId);
     setGameMode('online');
     setShowGameModeSelect(false);
+    setShowOnlineSetup(false);
     setWaitingForOpponent(true);
-    socket.emit('chess:create', { gameId: newGameId });
-    socket.emit('chess:join', { gameId: newGameId });
+    persistActiveGame(newGameId);
+    const identity = myIdentity();
+    emitWhenReady('chess:create', { gameId: newGameId, name: identity.name, avatar: identity.avatar });
+    emitJoin(newGameId);
+    return newGameId;
+  }, [emitJoin, emitWhenReady, myIdentity, persistActiveGame]);
+
+  const sendInviteNotificationToFriend = async (friend, gid) => {
+    try {
+      const notificationData = {
+        title: 'Chess Invitation',
+        text: `${profile?.fullName || 'A friend'} invited you to play Chess`,
+        icon: profile?.profilePic || siteConfig.logo,
+        link: `/chess-game?gameId=${encodeURIComponent(gid)}`,
+        type: 'chess_invite',
+        data: {
+          gameId: gid,
+          inviterId: profile?._id,
+          inviterName: profile?.fullName,
+          inviterAvatar: profile?.profilePic,
+          inviterCover: profile?.coverPic,
+        },
+      };
+      await api.post('/web-notification/send-to-all-browsers', {
+        profileId: friend?._id,
+        notificationData,
+      });
+    } catch (_e) {}
   };
 
-  // Join existing game by ID
+  const inviteFriend = useCallback(async (friend, options = {}) => {
+    if (!friend?._id || !profileId) return;
+    const gid = gameIdRef.current || startOnlineGame();
+    setInvitedFriend(friend);
+    setInviteStatus('invited');
+    const identity = myIdentity();
+    emitWhenReady('chess:invite', {
+      to: friend._id,
+      by: profileId,
+      name: identity.name,
+      avatar: identity.avatar,
+      cover: profile?.coverPic,
+      gameId: gid,
+      reinvite: options.reinvite === true,
+      ts: Date.now(),
+    });
+    try {
+      await sendInviteNotificationToFriend(friend, gid);
+    } catch (_e) {}
+  }, [profileId, startOnlineGame, myIdentity, emitWhenReady, profile?.coverPic, profile?.fullName, profile?.profilePic, profile?._id]);
+
+  useEffect(() => {
+    if (!profileId) return;
+    try {
+      const raw = localStorage.getItem('chess_invite_target');
+      if (!raw) return;
+      localStorage.removeItem('chess_invite_target');
+      const target = JSON.parse(raw);
+      if (!target?.friendId) return;
+      inviteFriend({
+        _id: target.friendId,
+        fullName: target.friendName,
+        profilePic: target.friendAvatar,
+      });
+    } catch (_e) {}
+  }, [profileId, inviteFriend]);
+
   const joinGameById = (id) => {
+    if (!id) return;
+    gameIdRef.current = id;
     setGameId(id);
     setGameMode('online');
     setShowGameModeSelect(false);
-    socket.emit('chess:join', { gameId: id });
+    setShowOnlineSetup(false);
+    persistActiveGame(id);
+    emitJoin(id);
   };
+
+  const copyInviteLink = async () => {
+    if (!gameId) return;
+    const url = `${window.location.origin}/chess-game?gameId=${encodeURIComponent(gameId)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setInviteCopied(true);
+      setTimeout(() => setInviteCopied(false), 2000);
+    } catch (_e) {
+      alert(url);
+    }
+  };
+
+  const leaveGame = () => {
+    clearActiveChessGameId();
+    try {
+      localStorage.removeItem('chess_game_state');
+    } catch (_e) {}
+    navigate('/menu');
+  };
+
+  const visibleFriends = friendSearchQuery.trim().length >= 2 ? searchResults : friendList;
 
   const renderSquare = (row, col) => {
     const isDark = (row + col) % 2 === 1;
@@ -453,8 +678,8 @@ const ChessGame = () => {
     const piece = engine.get(square);
     const isSelected = selected === square;
     const isTarget = legalTargets.includes(square);
-
     const squareSize = boardSize / BOARD_SIZE;
+    const rotatePieces = gameMode === 'local';
 
     return (
       <div
@@ -473,23 +698,23 @@ const ChessGame = () => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          cursor: 'pointer',
+          cursor: waitingForOpponent ? 'default' : 'pointer',
           transition: 'background-color 0.2s',
           fontSize: squareSize * 0.6,
           userSelect: 'none',
         }}
       >
         {piece && (
-          <span style={{ 
+          <span style={{
             fontSize: squareSize * 0.6,
             color: piece.color === 'w' ? '#2C2C2C' : '#F0F0F0',
-            textShadow: piece.color === 'w' 
-              ? '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 0 3px rgba(255, 255, 255, 0.8)' 
+            textShadow: piece.color === 'w'
+              ? '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 0 3px rgba(255, 255, 255, 0.8)'
               : '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 0 3px rgba(0, 0, 0, 0.5)',
             fontWeight: 'bold',
             lineHeight: 1,
             display: 'inline-block',
-            transform: piece.color !== 'w' ? 'rotate(180deg)' : 'none',
+            transform: rotatePieces && piece.color !== 'w' ? 'rotate(180deg)' : 'none',
           }}>
             {unicodeForPiece(piece.type, piece.color)}
           </span>
@@ -498,19 +723,17 @@ const ChessGame = () => {
     );
   };
 
-  const renderRow = (row) => {
-    return (
-      <div
-        key={`row-${row}`}
-        style={{
-          display: 'flex',
-          flexDirection: 'row',
-        }}
-      >
-        {new Array(BOARD_SIZE).fill(null).map((_, col) => renderSquare(row, col))}
-      </div>
-    );
-  };
+  const renderRow = (row, cols) => (
+    <div
+      key={`row-${row}`}
+      style={{
+        display: 'flex',
+        flexDirection: 'row',
+      }}
+    >
+      {cols.map((col) => renderSquare(row, col))}
+    </div>
+  );
 
   const getGameStatus = () => {
     if (gameMode === 'computer') {
@@ -531,19 +754,21 @@ const ChessGame = () => {
 
     if (gameMode === 'online') {
       if (waitingForOpponent) {
-        return 'Waiting for opponent...';
+        return invitedFriend
+          ? `Waiting for ${invitedFriend.fullName || invitedFriend.displayName || 'opponent'}...`
+          : 'Waiting for opponent...';
       }
-      
+
       if (!myColor) {
         return 'Assigning your color...';
       }
-      
+
       if (opponentDisconnected) {
         return 'Opponent disconnected';
       }
-      
+
       const colorName = myColor === 'w' ? 'White' : 'Black';
-      
+
       if (gameOver) {
         if (engine.isCheckmate()) return 'Checkmate';
         if (engine.isStalemate()) return 'Stalemate';
@@ -551,15 +776,14 @@ const ChessGame = () => {
         if (engine.isInsufficientMaterial()) return 'Draw by insufficient material';
         return 'Draw';
       }
-      
+
       if (turnColor !== myColor) {
         return `Opponent's turn... (You are ${colorName})`;
       }
-      
+
       return `Your turn! (You are ${colorName})${inCheck ? ' (check)' : ''}`;
     }
-    
-    // Local mode
+
     if (gameOver) {
       if (engine.isCheckmate()) return 'Checkmate';
       if (engine.isStalemate()) return 'Stalemate';
@@ -567,15 +791,14 @@ const ChessGame = () => {
       if (engine.isInsufficientMaterial()) return 'Draw by insufficient material';
       return 'Draw';
     }
-    
+
     return `${turnColor === 'w' ? 'White' : 'Black'} to move${inCheck ? ' (check)' : ''}`;
   };
 
   const getWinnerMessage = () => {
     if (!gameOver) return null;
-    
+
     if (engine.isCheckmate()) {
-      // The player who just moved won (opposite of current turn)
       const winner = turnColor === 'w' ? 'Black' : 'White';
       return {
         title: '🎉 Checkmate!',
@@ -583,7 +806,7 @@ const ChessGame = () => {
         isDraw: false
       };
     }
-    
+
     if (engine.isStalemate()) {
       return {
         title: '🤝 Stalemate',
@@ -591,7 +814,7 @@ const ChessGame = () => {
         isDraw: true
       };
     }
-    
+
     if (engine.isThreefoldRepetition()) {
       return {
         title: '🔄 Draw',
@@ -599,7 +822,7 @@ const ChessGame = () => {
         isDraw: true
       };
     }
-    
+
     if (engine.isInsufficientMaterial()) {
       return {
         title: '🤝 Draw',
@@ -607,7 +830,7 @@ const ChessGame = () => {
         isDraw: true
       };
     }
-    
+
     return {
       title: '🤝 Draw',
       message: 'The game ended in a draw',
@@ -682,6 +905,7 @@ const ChessGame = () => {
     overflow: 'hidden',
     boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
     border: '2px solid rgba(255, 255, 255, 0.1)',
+    position: 'relative',
   };
 
   const modalBackdropStyle = {
@@ -780,85 +1004,188 @@ const ChessGame = () => {
     width: '100%',
   };
 
-  // Game mode selection modal
+  const inviteBtnStyle = {
+    ...buttonStyle,
+    padding: '6px 12px',
+    fontSize: '12px',
+    backgroundColor: '#2E7D32',
+    borderColor: 'rgba(255,255,255,0.2)',
+  };
+
+  const renderFriendPicker = (allowInvite) => (
+    <>
+      <div className="chess-section-title">Invite a friend</div>
+      <div className="chess-search">
+        <span aria-hidden="true">⌕</span>
+        <input
+          placeholder="Search friends by name..."
+          value={friendSearchQuery}
+          onChange={(e) => onChangeFriendSearch(e.target.value)}
+          aria-label="Search friends"
+        />
+      </div>
+      <div className="chess-friend-list">
+        {(loadingSearch || loadingFriends) && (
+          <div className="chess-empty">Searching…</div>
+        )}
+        {!loadingSearch && !loadingFriends && visibleFriends.length === 0 && (
+          <div className="chess-empty">
+            {friendSearchQuery ? 'No friends match your search' : 'No friends to show yet'}
+          </div>
+        )}
+        {visibleFriends.map((f) => {
+          const key = f?._id || String(f?.id);
+          const invited = invitedFriend && String(invitedFriend._id) === String(f._id);
+          const initial = (f?.fullName || '?').trim().charAt(0).toUpperCase();
+          return (
+            <div key={key} className="chess-friend">
+              <div className="chess-friend__left">
+                <div className="chess-friend__avatar">
+                  {f?.profilePic ? <img src={f.profilePic} alt="" /> : initial}
+                </div>
+                <div className="chess-friend__name">{f?.fullName || 'Unknown'}</div>
+              </div>
+              {allowInvite && (
+                <button
+                  type="button"
+                  style={inviteBtnStyle}
+                  onClick={() => inviteFriend(f, { reinvite: invited })}
+                >
+                  {invited && inviteStatus === 'invited' ? 'Resend' : invited && inviteStatus === 'joined' ? 'Joined' : 'Invite'}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+
   if (showGameModeSelect) {
     return (
       <div style={pageStyle}>
         <div style={containerStyle}>
-          <div style={{
-            backgroundColor: 'rgba(30, 30, 50, 0.95)',
-            borderRadius: '16px',
-            padding: '32px',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-            minWidth: '320px',
-            maxWidth: '400px',
-            textAlign: 'center',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
-          }}>
-            <h2 style={{ ...titleStyle, marginBottom: '24px' }}>Choose Game Mode</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <button
-                style={winnerButtonStyle}
-                onClick={() => {
-                  setGameMode('local');
-                  setShowGameModeSelect(false);
-                }}
-                onMouseEnter={(e) => Object.assign(e.currentTarget.style, buttonHoverStyle)}
-                onMouseLeave={(e) => Object.assign(e.currentTarget.style, winnerButtonStyle)}
-              >
-                Local Game (2 Players)
-              </button>
-              <button
-                style={winnerButtonStyle}
-                onClick={() => {
-                  setGameMode('computer');
-                  setMyColor('w');
-                  setShowGameModeSelect(false);
-                }}
-                onMouseEnter={(e) => Object.assign(e.currentTarget.style, buttonHoverStyle)}
-                onMouseLeave={(e) => Object.assign(e.currentTarget.style, winnerButtonStyle)}
-              >
-                Play vs Computer
-              </button>
-              <button
-                style={winnerButtonStyle}
-                onClick={createOnlineGame}
-                onMouseEnter={(e) => Object.assign(e.currentTarget.style, buttonHoverStyle)}
-                onMouseLeave={(e) => Object.assign(e.currentTarget.style, winnerButtonStyle)}
-              >
-                Create Online Game
-              </button>
-              <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-                <input
-                  type="text"
-                  placeholder="Or enter game ID"
-                  style={{
-                    ...winnerButtonStyle,
-                    textAlign: 'left',
-                    padding: '8px 16px',
-                    marginBottom: '8px',
+          <div className="chess-setup-card">
+            <h2 style={{ ...titleStyle, marginBottom: '24px' }}>
+              {showOnlineSetup ? 'Play Online' : 'Choose Game Mode'}
+            </h2>
+            {!showOnlineSetup ? (
+              <div className="chess-setup-actions">
+                <button
+                  style={winnerButtonStyle}
+                  onClick={() => {
+                    setGameMode('local');
+                    setShowGameModeSelect(false);
                   }}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter' && e.target.value.trim()) {
-                      joinGameById(e.target.value.trim());
-                    }
+                  onMouseEnter={(e) => Object.assign(e.currentTarget.style, buttonHoverStyle)}
+                  onMouseLeave={(e) => Object.assign(e.currentTarget.style, winnerButtonStyle)}
+                >
+                  Local Game (2 Players)
+                </button>
+                <button
+                  style={winnerButtonStyle}
+                  onClick={() => {
+                    setGameMode('computer');
+                    setMyColor('w');
+                    setShowGameModeSelect(false);
                   }}
-                />
+                  onMouseEnter={(e) => Object.assign(e.currentTarget.style, buttonHoverStyle)}
+                  onMouseLeave={(e) => Object.assign(e.currentTarget.style, winnerButtonStyle)}
+                >
+                  Play vs Computer
+                </button>
+                <button
+                  style={winnerButtonStyle}
+                  onClick={() => setShowOnlineSetup(true)}
+                  onMouseEnter={(e) => Object.assign(e.currentTarget.style, buttonHoverStyle)}
+                  onMouseLeave={(e) => Object.assign(e.currentTarget.style, winnerButtonStyle)}
+                >
+                  Play Online with Friends
+                </button>
+                <button
+                  style={{ ...winnerButtonStyle, backgroundColor: 'rgba(255, 0, 0, 0.2)' }}
+                  onClick={() => navigate('/menu')}
+                  onMouseEnter={(e) => Object.assign(e.currentTarget.style, { backgroundColor: 'rgba(255, 0, 0, 0.3)' })}
+                  onMouseLeave={(e) => Object.assign(e.currentTarget.style, { backgroundColor: 'rgba(255, 0, 0, 0.2)' })}
+                >
+                  Back to Menu
+                </button>
               </div>
-              <button
-                style={{ ...winnerButtonStyle, backgroundColor: 'rgba(255, 0, 0, 0.2)' }}
-                onClick={() => navigate('/menu')}
-                onMouseEnter={(e) => Object.assign(e.currentTarget.style, { backgroundColor: 'rgba(255, 0, 0, 0.3)' })}
-                onMouseLeave={(e) => Object.assign(e.currentTarget.style, { backgroundColor: 'rgba(255, 0, 0, 0.2)' })}
-              >
-                Back to Menu
-              </button>
-            </div>
+            ) : (
+              <div className="chess-setup-actions">
+                {renderFriendPicker(true)}
+                <button
+                  style={{ ...winnerButtonStyle, backgroundColor: '#2E7D32' }}
+                  onClick={() => startOnlineGame()}
+                >
+                  Create room & share link
+                </button>
+                <div style={{ marginTop: '8px', paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                  <input
+                    type="text"
+                    placeholder="Or enter game ID to join"
+                    value={joinGameIdInput}
+                    onChange={(e) => setJoinGameIdInput(e.target.value)}
+                    style={{
+                      ...winnerButtonStyle,
+                      textAlign: 'left',
+                      padding: '8px 16px',
+                      marginBottom: '8px',
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && joinGameIdInput.trim()) {
+                        joinGameById(joinGameIdInput.trim());
+                      }
+                    }}
+                  />
+                  <button
+                    style={winnerButtonStyle}
+                    onClick={() => {
+                      if (joinGameIdInput.trim()) joinGameById(joinGameIdInput.trim());
+                    }}
+                  >
+                    Join Game
+                  </button>
+                </div>
+                <button
+                  style={winnerButtonStyle}
+                  onClick={() => setShowOnlineSetup(false)}
+                >
+                  Back
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
     );
   }
+
+  const viewAsBlack = gameMode === 'online' && myColor === 'b';
+  const rows = viewAsBlack
+    ? [...Array(BOARD_SIZE).keys()]
+    : [...Array(BOARD_SIZE).keys()].map((_, idx) => BOARD_SIZE - 1 - idx);
+  const cols = viewAsBlack
+    ? [...Array(BOARD_SIZE).keys()].reverse()
+    : [...Array(BOARD_SIZE).keys()];
+
+  const opponentInfo = myColor === 'w' ? blackPlayerInfo : whitePlayerInfo;
+  const selfInfo = myColor === 'w' ? whitePlayerInfo : blackPlayerInfo;
+
+  const playerChip = (info, label) => {
+    const name = info?.name || label;
+    const initial = (name || '?').trim().charAt(0).toUpperCase();
+    return (
+      <div className="chess-player-chip">
+        {info?.avatar ? (
+          <img src={info.avatar} alt="" />
+        ) : (
+          <span className="chess-player-chip__fallback">{initial}</span>
+        )}
+        <span>{name}</span>
+      </div>
+    );
+  };
 
   return (
     <div style={pageStyle} key={`fen-${fenVersion}`}>
@@ -867,9 +1194,9 @@ const ChessGame = () => {
           <h1 style={titleStyle}>
             Chess
             {gameMode === 'computer' && <span style={{ fontSize: '12px', opacity: 0.7 }}> (vs Computer)</span>}
-            {gameMode === 'online' && gameId && <span style={{ fontSize: '12px', opacity: 0.7 }}>({gameId.substring(0, 8)}...)</span>}
+            {gameMode === 'online' && <span style={{ fontSize: '12px', opacity: 0.7 }}> (Online)</span>}
           </h1>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
             {gameMode === 'local' && (
               <button
                 style={buttonStyle}
@@ -891,19 +1218,16 @@ const ChessGame = () => {
             {gameMode === 'online' && gameId && (
               <button
                 style={buttonStyle}
-                onClick={() => {
-                  navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}?gameId=${gameId}`);
-                  alert('Game ID copied to clipboard!');
-                }}
+                onClick={copyInviteLink}
                 onMouseEnter={(e) => Object.assign(e.currentTarget.style, buttonHoverStyle)}
                 onMouseLeave={(e) => Object.assign(e.currentTarget.style, buttonStyle)}
               >
-                Copy Game ID
+                {inviteCopied ? 'Copied!' : 'Copy Invite Link'}
               </button>
             )}
             <button
               style={buttonStyle}
-              onClick={() => navigate('/menu')}
+              onClick={leaveGame}
               onMouseEnter={(e) => Object.assign(e.currentTarget.style, buttonHoverStyle)}
               onMouseLeave={(e) => Object.assign(e.currentTarget.style, buttonStyle)}
             >
@@ -912,13 +1236,39 @@ const ChessGame = () => {
           </div>
         </div>
 
+        {gameMode === 'online' && waitingForOpponent && (
+          <div className="chess-waiting-banner">
+            <div className="chess-waiting-banner__text">
+              <div className="chess-waiting-banner__title">Waiting for opponent</div>
+              <div className="chess-waiting-banner__sub">
+                {invitedFriend
+                  ? `Invite sent to ${invitedFriend.fullName || 'your friend'}. They’ll join when they accept.`
+                  : 'Invite a friend or share the link to start playing.'}
+              </div>
+            </div>
+            <button style={buttonStyle} onClick={copyInviteLink}>
+              {inviteCopied ? 'Copied!' : 'Copy link'}
+            </button>
+          </div>
+        )}
+
+        {gameMode === 'online' && waitingForOpponent && (
+          <div style={{ width: '100%', maxWidth: boardSize, marginBottom: 12 }}>
+            {renderFriendPicker(true)}
+          </div>
+        )}
+
+        {gameMode === 'online' && !waitingForOpponent && (
+          <div className="chess-player-row">
+            {playerChip(viewAsBlack ? selfInfo : opponentInfo, viewAsBlack ? 'You' : 'Opponent')}
+            {playerChip(viewAsBlack ? opponentInfo : selfInfo, viewAsBlack ? 'Opponent' : 'You')}
+          </div>
+        )}
+
         <div style={statusStyle}>{getGameStatus()}</div>
 
         <div style={boardStyle}>
-          {new Array(BOARD_SIZE)
-            .fill(null)
-            .map((_, idx) => BOARD_SIZE - 1 - idx)
-            .map(row => renderRow(row))}
+          {rows.map(row => renderRow(row, cols))}
         </div>
 
         {promotionFromTo && (
@@ -960,7 +1310,7 @@ const ChessGame = () => {
                 </button>
                 <button
                   style={winnerButtonStyle}
-                  onClick={() => navigate('/menu')}
+                  onClick={leaveGame}
                   onMouseEnter={(e) => Object.assign(e.currentTarget.style, buttonHoverStyle)}
                   onMouseLeave={(e) => Object.assign(e.currentTarget.style, winnerButtonStyle)}
                 >
@@ -992,4 +1342,3 @@ const ChessGame = () => {
 };
 
 export default ChessGame;
-

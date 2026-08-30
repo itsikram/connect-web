@@ -115,6 +115,17 @@ export function getNotificationLink(notification) {
         return `/${senderId}`;
     }
 
+    if (notification?.type === 'chess_invite') {
+        const gameId = data.gameId || notification?.gameId;
+        return gameId
+            ? `/chess-game?gameId=${encodeURIComponent(String(gameId))}`
+            : '/chess-game';
+    }
+
+    if (notification?.type === 'ludo_invite') {
+        return '/ludo-game';
+    }
+
     return link || '/';
 }
 
@@ -131,6 +142,8 @@ const TYPE_META = {
     message: { label: 'Message', icon: 'fas fa-comment-alt', color: '#2078F4' },
     general: { label: 'Update', icon: 'fas fa-bell', color: '#F7B928' },
     test: { label: 'Update', icon: 'fas fa-bell', color: '#F7B928' },
+    ludo_invite: { label: 'Ludo Invite', icon: 'fas fa-dice', color: '#8B5CF6' },
+    chess_invite: { label: 'Chess Invite', icon: 'fas fa-chess', color: '#2E7D32' },
 };
 
 const REACT_ICONS = {

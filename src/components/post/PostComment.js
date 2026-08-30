@@ -243,7 +243,9 @@ const PostComment = ({
     $(e.currentTarget).children("input").trigger("click");
   }, []);
 
-  const commentsList = Array.isArray(comments) ? comments.filter(Boolean) : [];
+  const commentsList = Array.isArray(comments)
+    ? comments.filter((comment) => comment && typeof comment === "object")
+    : [];
 
   const commentsToRender = (() => {
     if (isSingle && parsedInitialVisibleCount) {

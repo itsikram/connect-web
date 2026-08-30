@@ -12,11 +12,10 @@ import HeaderLeft from "./HeaderLeft";
 import HeaderNav from "./HeaderNav";
 import HeaderRight from "./HeaderRight";
 import Ls from "../sidebar/Ls";
-import $ from "jquery";
 import { setHeaderHeight } from "../../services/actions/optionAction.js";
 import { useDispatch, useSelector } from "react-redux";
 
-const Header = ({ pendingLudoInvites = [], onAIAgentOpen }) => {
+const Header = ({ pendingLudoInvites = [], pendingChessInvites = [], onAIAgentOpen }) => {
   const dispatch = useDispatch();
   let localtion = useLocation();
   let myProfile = useSelector((state) => state.profile);
@@ -24,7 +23,7 @@ const Header = ({ pendingLudoInvites = [], onAIAgentOpen }) => {
   let headerRef = useRef(null);
   const [height, setHeight] = useState(null);
 
-  const hrProps = { dispatch, useSelector, pendingLudoInvites };
+  const hrProps = { dispatch, useSelector, pendingLudoInvites, pendingChessInvites };
 
   useEffect(() => {
     dispatch(setHeaderHeight(height));
@@ -41,22 +40,41 @@ const Header = ({ pendingLudoInvites = [], onAIAgentOpen }) => {
   );
 
   useEffect(() => {
-    $(window).on("scroll", (e) => {
-      if (window.pageYOffset > 100) {
-        $("#header").addClass("sticky-header");
-        let headerHeight = $("#header").height();
-        $("#main-container").css("padding-top", headerHeight);
-      } else {
-        $("#header").removeClass("sticky-header");
-        $("#main-container").css("padding-top", 0);
+    const headerEl = headerRef.current;
+    const mainEl = document.getElementById("main-container");
+    let ticking = false;
+
+    const applyStuckState = () => {
+      ticking = false;
+      const shouldStick = window.scrollY > 80;
+      if (headerEl) {
+        headerEl.classList.toggle("sticky-header", shouldStick);
       }
-    });
-    if (headerRef.current) {
-      setHeight(headerRef.current?.offsetHeight);
+      if (mainEl) {
+        mainEl.classList.toggle("header-stuck", shouldStick);
+      }
+    };
+
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(applyStuckState);
+    };
+
+    if (headerEl) {
+      setHeight(headerEl.offsetHeight);
     }
-    window.matchMedia("(max-width:768px)").addEventListener("change", (e) => {
-      setMatch(e.matches);
-    });
+    applyStuckState();
+    window.addEventListener("scroll", onScroll, { passive: true });
+
+    const media = window.matchMedia("(max-width:768px)");
+    const onMedia = (e) => setMatch(e.matches);
+    media.addEventListener("change", onMedia);
+
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      media.removeEventListener("change", onMedia);
+    };
   }, []);
 
   return (

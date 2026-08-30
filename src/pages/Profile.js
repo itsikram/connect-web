@@ -1,7 +1,7 @@
 import React, { Fragment, useEffect, useState } from "react";
 import { NavLink, Outlet, useParams, Link } from "react-router-dom";
 import $ from 'jquery'
-import api from "../api/api";
+import { fetchProfileCached } from "../utils/requestCache";
 import { useSelector } from "react-redux";
 import ProfileButtons from "../components/Profile/ProfileButtons";
 import CoverPic from "../components/Profile/CoverPic";
@@ -42,11 +42,13 @@ let Profile = (props) => {
             }
 
             try {
-                const res = await api.post('/profile', { profile: profileIdentifier })
+                const profileResponse = await fetchProfileCached(profileIdentifier, {
+                    ttlMs: 60000,
+                    storageTtlMs: 300000,
+                })
                 if (!active) return
 
-                if (res.status === 200) {
-                    const profileResponse = res.data?.profile || res.data
+                if (profileResponse) {
                     setProfileData(profileResponse)
                 }
             } catch (e) {
@@ -67,7 +69,7 @@ let Profile = (props) => {
         return () => {
             active = false
         }
-    }, [profileIdentifier, myProfileId, myProfileData._id, myProfileData.username, myProfileData])
+    }, [profileIdentifier, myProfileId, myProfileData.username])
 
 
     let profilePath = profileData && profileData._id ? "/" + profileData._id + "/" : "/";

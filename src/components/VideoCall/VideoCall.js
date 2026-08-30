@@ -106,9 +106,6 @@ const VideoCall = ({ myId }) => {
 
   useEffect(() => {
     isMountedRef.current = true;
-    if (process.env.NODE_ENV === "development") {
-      console.log("VideoCall mounted with myId:", myId);
-    }
     return () => {
       isMountedRef.current = false;
     };
@@ -275,12 +272,6 @@ const VideoCall = ({ myId }) => {
 
   const resolveIncomingRingtoneSrc = useCallback(() => {
     const ringtoneId = normalizeRingtoneId(mySettings?.ringtone);
-
-    const preloadedAudio = audioPreloader.getRingtone(ringtoneId);
-    if (preloadedAudio?.src) {
-      return preloadedAudio.src;
-    }
-
     const ringtone = ringtones.find((r) => r.id === ringtoneId);
     return (
       ringtone?.src || config?.defaultRingtone || config?.callingBeep || ""

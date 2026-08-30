@@ -19,6 +19,7 @@ import NProgress from "nprogress";
 import {
   showMessageToast,
   showLudoInviteToast,
+  showChessInviteToast,
   dismissToast,
 } from "../utils/toastUtils";
 import {
@@ -28,6 +29,13 @@ import {
   shouldShowLudoInviteAlert,
   resolveLudoInviteNotifications,
 } from "../utils/ludoInviteUtils";
+import {
+  isUserInChessGame,
+  markChessInviteHandled,
+  setActiveChessGameId,
+  shouldShowChessInviteAlert,
+  resolveChessInviteNotifications,
+} from "../utils/chessInviteUtils";
 import { getNotificationLink } from "../utils/notificationUtils";
 import "react-toastify/dist/ReactToastify.css";
 import "../components/Toast/CustomToast.css";
@@ -39,31 +47,6 @@ import Header from "../partials/header/Header";
 import ProtectedRoute from "../components/ProtectedRoute.js";
 import { useAuth } from "../hooks/useAuth";
 import Home from "./Home";
-import Profile from "./Profile";
-import Friends from "./Friends";
-import Video from "./Video.js";
-import Marketplace from "./Marketplace";
-import Groups from "./Groups";
-import Menu from "./Menu";
-import YtDownload from "./YtDownload.js";
-import Message from "./Message";
-import Story from "./Story";
-import StoryReacts from "../components/story/StoryReacts.js";
-import StoryComments from "../components/story/StoryComments.js";
-import SingleStory from "../components/story/SingleStory";
-import SingleWatch from "../components/watch/SingleWatch.js";
-import ProfileAbout from "../components/Profile/ProfileAbout";
-import PorfilePosts from "../components/Profile/PorfilePosts";
-import ProfileFriends from "../components/Profile/ProfileFriends";
-import ProfileImages from "../components/Profile/ProfileImages.js";
-import ProfileVideos from "../components/Profile/ProfileVideos.js";
-import VideoCall from "../components/VideoCall/VideoCall.js";
-import AudioCall from "../components/AudioCall/AudioCall.js";
-import LiveVoice from "../components/LiveVoice/LiveVoice.js";
-import SinglePost from "../components/post/SinglePost.js";
-import NotificationTest from "../components/NotificationTest.js";
-import PostComments from "../components/post/PostComments.js";
-import PostReacts from "../components/post/PostReacts.js";
 import Login from "./Login.js";
 import SignUP from "./SignUp.js";
 import ForgotPassword from "./ForgotPassword.js";
@@ -75,22 +58,11 @@ import audioPreloader from "../utils/audioPreloader";
 import { playBumpSound, resumeAudioFromGesture } from "../utils/audioUnlock";
 import IosAddToHomeScreen from "../components/IosAddToHomeScreen";
 import WatchPipPlayer from "../components/watch/WatchPipPlayer";
-
-// portoflio
-import PortfolioContainer from "./portfolio/PortfolioContainer.js";
-import PortfolioContact from "./portfolio/PortfolioContact.js";
-import PortfolioHome from "./portfolio/PortfolioHome.js";
-import PortfolioAbout from "./portfolio/PortfolioAbout.js";
-import PortfolioBlog from "./portfolio/PortfolioBlog.js";
-import PortfolioResume from "./portfolio/PortfolioResume.js";
-
-import FriendRequests from "../components/friend/FriendRequests";
-import FriendSuggest from "../components/friend/FriendSuggest";
-import FriendHome from "../components/friend/FriendHome";
-import PlacesNearYou from "../components/friend/PlacesNearYou";
 import { useDispatch, useSelector } from "react-redux";
 import api from "../api/api";
+import { fetchChatListCached, fetchProfileCached, primeCachedResource } from "../utils/requestCache";
 import {
+  getCachedProfile,
   getPorfileReq,
   getProfileFailed,
   getProfileSuccess,
@@ -102,39 +74,80 @@ import {
 import { addMessages, newMessage } from "../services/actions/messageActions.js";
 import { emitChatMessage, idOf } from "../utils/optimisticMessage";
 import { setBodyHeight, setLoading } from "../services/actions/optionAction";
-import Settings from "./Settings";
 import { loadSettings } from "../services/actions/settingsActions.js";
 import { applyThemeMode } from "../utils/applyThemeMode";
-import ProfileSetting from "../components/setting/ProfileSetting.js";
-import AccountSetting from "../components/setting/AccountSetting.js";
-import PrivacySetting from "../components/setting/PrivacySetting.js";
-import NotificationSetting from "../components/setting/NotificationSetting.js";
-import MessageSetting from "../components/setting/MessageSetting.js";
-import PreferenceSetting from "../components/setting/PreferenceSetting.js";
-import SoundSetting from "../components/setting/SoundSetting.js";
-import CacheSetting from "../components/setting/CacheSetting.js";
 
+const Profile = lazy(() => import("./Profile"));
+const Friends = lazy(() => import("./Friends"));
+const Video = lazy(() => import("./Video.js"));
+const Marketplace = lazy(() => import("./Marketplace"));
+const Groups = lazy(() => import("./Groups"));
+const Menu = lazy(() => import("./Menu"));
+const YtDownload = lazy(() => import("./YtDownload.js"));
+const Message = lazy(() => import("./Message"));
+const Story = lazy(() => import("./Story"));
+const StoryReacts = lazy(() => import("../components/story/StoryReacts.js"));
+const StoryComments = lazy(() => import("../components/story/StoryComments.js"));
+const SingleStory = lazy(() => import("../components/story/SingleStory"));
+const SingleWatch = lazy(() => import("../components/watch/SingleWatch.js"));
+const ProfileAbout = lazy(() => import("../components/Profile/ProfileAbout"));
+const PorfilePosts = lazy(() => import("../components/Profile/PorfilePosts"));
+const ProfileFriends = lazy(() => import("../components/Profile/ProfileFriends"));
+const ProfileImages = lazy(() => import("../components/Profile/ProfileImages.js"));
+const ProfileVideos = lazy(() => import("../components/Profile/ProfileVideos.js"));
+const VideoCall = lazy(() => import("../components/VideoCall/VideoCall.js"));
+const AudioCall = lazy(() => import("../components/AudioCall/AudioCall.js"));
+const LiveVoice = lazy(() => import("../components/LiveVoice/LiveVoice.js"));
+const SinglePost = lazy(() => import("../components/post/SinglePost.js"));
+const NotificationTest = lazy(() => import("../components/NotificationTest.js"));
+const PostComments = lazy(() => import("../components/post/PostComments.js"));
+const PostReacts = lazy(() => import("../components/post/PostReacts.js"));
+const PortfolioContainer = lazy(() => import("./portfolio/PortfolioContainer.js"));
+const PortfolioContact = lazy(() => import("./portfolio/PortfolioContact.js"));
+const PortfolioHome = lazy(() => import("./portfolio/PortfolioHome.js"));
+const PortfolioAbout = lazy(() => import("./portfolio/PortfolioAbout.js"));
+const PortfolioBlog = lazy(() => import("./portfolio/PortfolioBlog.js"));
+const PortfolioResume = lazy(() => import("./portfolio/PortfolioResume.js"));
+const FriendRequests = lazy(() => import("../components/friend/FriendRequests"));
+const FriendSuggest = lazy(() => import("../components/friend/FriendSuggest"));
+const FriendHome = lazy(() => import("../components/friend/FriendHome"));
+const PlacesNearYou = lazy(() => import("../components/friend/PlacesNearYou"));
+const Settings = lazy(() => import("./Settings"));
+const ProfileSetting = lazy(() => import("../components/setting/ProfileSetting.js"));
+const AccountSetting = lazy(() => import("../components/setting/AccountSetting.js"));
+const PrivacySetting = lazy(() => import("../components/setting/PrivacySetting.js"));
+const NotificationSetting = lazy(() => import("../components/setting/NotificationSetting.js"));
+const MessageSetting = lazy(() => import("../components/setting/MessageSetting.js"));
+const PreferenceSetting = lazy(() => import("../components/setting/PreferenceSetting.js"));
+const SoundSetting = lazy(() => import("../components/setting/SoundSetting.js"));
+const CacheSetting = lazy(() => import("../components/setting/CacheSetting.js"));
+const VideoCallPage = lazy(() => import("./VideoCallPage.js"));
+const Youtebe = lazy(() => import("./Youtebe.js"));
+const SingleVideo = lazy(() => import("../components/downloads/SingleVideo.js"));
+const SavedVideos = lazy(() => import("./SavedVideos.js"));
+const LudoGame = lazy(() => import("./ludo"));
+const ChessGame = lazy(() => import("./ChessGame"));
+const VideoPlayer = lazy(() => import("./VideoPlayer.js"));
+const Notes = lazy(() => import("./Notes.js"));
+const Tasks = lazy(() => import("./Tasks.js"));
+const FocusTimer = lazy(() => import("./FocusTimer.js"));
+const Flashcards = lazy(() => import("./Flashcards.js"));
+const Calendar = lazy(() => import("./Calendar.js"));
+const Habits = lazy(() => import("./Habits.js"));
+const Health = lazy(() => import("./Health.js"));
+const Rehab = lazy(() => import("./Rehab.js"));
+const Camera = lazy(() => import("./Camera.js"));
 const AIAgentModal = lazy(() =>
   import("../components/modal/AIAgentModal/AIAgentModal"),
 );
 
-import VideoCallPage from "./VideoCallPage.js";
-
-import Youtebe from "./Youtebe.js";
-
-import SingleVideo from "../components/downloads/SingleVideo.js";
-import SavedVideos from "./SavedVideos.js";
-import LudoGame from "./ludo";
-import ChessGame from "./ChessGame";
-import VideoPlayer from "./VideoPlayer.js";
-import Notes from "./Notes.js";
-import Tasks from "./Tasks.js";
-import FocusTimer from "./FocusTimer.js";
-import Flashcards from "./Flashcards.js";
-import Calendar from "./Calendar.js";
-import Habits from "./Habits.js";
-import Health from "./Health.js";
-import Rehab from "./Rehab.js";
+const RouteFallback = () => (
+  <div id="site-loader" className="route-fallback">
+    <div className="loader-logo-container">
+      <img src={config?.logo} alt="connect" />
+    </div>
+  </div>
+);
 
 // import MicRecorder from 'mic-recorder-to-mp3';
 // const recorder = new MicRecorder({ bitRate: 128 });
@@ -516,6 +529,9 @@ const Main = () => {
   const shownLudoInviteToastsRef = useRef(new Map()); // inviteKey -> timestamp
   // Track current active ludo invite toast ID (only one toast at a time)
   const currentLudoInviteToastIdRef = useRef(null);
+  const [pendingChessInvites, setPendingChessInvites] = useState([]);
+  const shownChessInviteToastsRef = useRef(new Map());
+  const currentChessInviteToastIdRef = useRef(null);
 
   const profileId = user?.profile;
 
@@ -661,21 +677,12 @@ const Main = () => {
 
     const abortController = new AbortController();
 
-    api
-      .get("message/chatList", {
-        params: {
-          profileId,
-        },
-        signal: abortController.signal,
-      })
-      .then((res) => {
-        dispatch(addMessages(res.data, true));
-
-        console.log("oldMessages", res.data);
-        dispatch(addMessages(res?.data?.reverse(), true));
+    fetchChatListCached(profileId, { ttlMs: 30000, storageTtlMs: 120000 })
+      .then((contacts) => {
+        if (!Array.isArray(contacts) || contacts.length === 0) return;
+        dispatch(addMessages(contacts, true));
       })
       .catch((err) => {
-        // Don't log aborted requests as errors
         if (err.code !== "ECONNABORTED" && err.name !== "CanceledError") {
           console.error("Error fetching messages:", err);
         }
@@ -905,6 +912,7 @@ const Main = () => {
   // HTTP-based message polling - memoized to prevent recreation on every render
   const fetchNewMessages = useCallback(async () => {
     if (!profileId) return;
+    if (typeof document !== "undefined" && document.hidden) return;
 
     try {
       const response = await api.get("/message/new-messages", {
@@ -1759,18 +1767,377 @@ const Main = () => {
     location.pathname,
   ]);
 
+  // Global chess game invitation handlers - work throughout the entire app
+  useEffect(() => {
+    if (!profileId || !myProfile?._id || !isAuthenticated) return;
+
+    const dismissInviteToast = () => {
+      if (currentChessInviteToastIdRef.current !== null) {
+        try {
+          dismissToast(currentChessInviteToastIdRef.current);
+        } catch (_e) {}
+        currentChessInviteToastIdRef.current = null;
+      }
+    };
+
+    const removePendingInvite = (gameId, from) => {
+      setPendingChessInvites((prev) =>
+        prev.filter(
+          (inv) =>
+            !(
+              String(inv.gameId) === String(gameId) &&
+              String(inv.from) === String(from)
+            ),
+        ),
+      );
+    };
+
+    const upsertPendingInvite = (invite) => {
+      if (!invite?.gameId || !invite?.from) return;
+      setPendingChessInvites((prev) => {
+        const exists = prev.some(
+          (item) =>
+            String(item.gameId) === String(invite.gameId) &&
+            String(item.from) === String(invite.from),
+        );
+        if (exists) {
+          return [
+            invite,
+            ...prev.filter(
+              (item) =>
+                !(
+                  String(item.gameId) === String(invite.gameId) &&
+                  String(item.from) === String(invite.from)
+                ),
+            ),
+          ].slice(0, 20);
+        }
+        return [invite, ...prev].slice(0, 20);
+      });
+    };
+
+    const acceptChessInvite = (invite) => {
+      if (!invite?.gameId) return;
+      try {
+        dismissInviteToast();
+        markChessInviteHandled(invite.gameId, invite.from);
+        setActiveChessGameId(invite.gameId);
+        removePendingInvite(invite.gameId, invite.from);
+        resolveChessInviteNotifications(invite.gameId, invite.from);
+
+        try {
+          if (socket && socket.connected) {
+            socket.emit("chess:invites:dismiss", {
+              gameId: invite.gameId,
+              by: invite.from,
+            });
+          }
+        } catch (_e) {}
+
+        const inviteData = {
+          from: invite.from,
+          name: invite.name,
+          avatar: invite.avatar,
+          cover: invite.cover,
+          gameId: invite.gameId,
+          reinvite: invite.reinvite === true,
+          inviteId: invite.inviteId,
+          ts: invite.ts || Date.now(),
+          autoAccept: true,
+          source: "notification-menu",
+        };
+        localStorage.setItem("chess_pending_invite", JSON.stringify(inviteData));
+        try {
+          window.dispatchEvent(
+            new CustomEvent("chess:pendingInviteUpdated", {
+              detail: inviteData,
+            }),
+          );
+        } catch (_e) {}
+        navigate("/chess-game");
+      } catch (error) {
+        console.error("[CHESS_INVITE] Error accepting invite:", error);
+      }
+    };
+
+    const declineChessInvite = (invite) => {
+      if (!invite?.gameId) return;
+      try {
+        markChessInviteHandled(invite.gameId, invite.from);
+        removePendingInvite(invite.gameId, invite.from);
+        resolveChessInviteNotifications(invite.gameId, invite.from);
+        if (socket && socket.connected) {
+          socket.emit("chess:invites:dismiss", {
+            gameId: invite.gameId,
+            by: invite.from,
+          });
+        }
+        if (currentChessInviteToastIdRef.current !== null) {
+          dismissInviteToast();
+        }
+      } catch (_e) {
+        console.error("[CHESS_INVITE] Error declining invite:", _e);
+      }
+    };
+
+    window.acceptChessInviteFromHeader = acceptChessInvite;
+    window.declineChessInviteFromHeader = declineChessInvite;
+
+    const onInvite = (payload) => {
+      try {
+        if (!payload) return;
+        if (location.pathname.includes("/chess-game")) {
+          try {
+            const activeInvite = localStorage.getItem("chess_pending_invite");
+            const parsedInvite = activeInvite ? JSON.parse(activeInvite) : null;
+            const samePendingGame =
+              parsedInvite?.gameId &&
+              String(parsedInvite.gameId) === String(payload.gameId);
+            if (samePendingGame || isUserInChessGame(payload.gameId)) {
+              if (socket && socket.connected) {
+                socket.emit("chess:invites:dismiss", {
+                  gameId: payload.gameId,
+                  by: payload.by,
+                });
+              }
+              return;
+            }
+          } catch (_e) {}
+        }
+        if (payload.to && String(payload.to) !== String(myProfile._id)) return;
+
+        if (!payload.reinvite && isUserInChessGame(payload.gameId)) {
+          try {
+            if (socket && socket.connected) {
+              socket.emit("chess:invites:dismiss", {
+                gameId: payload.gameId,
+                by: payload.by,
+              });
+            }
+          } catch (_e) {}
+          return;
+        }
+
+        if (!shouldShowChessInviteAlert(payload.gameId, payload.by, payload)) {
+          return;
+        }
+
+        const inviteKey = payload.inviteId || `${payload.gameId}:${payload.by}`;
+        const now = Date.now();
+        const lastShownTime = shownChessInviteToastsRef.current.get(inviteKey);
+        if (lastShownTime && now - lastShownTime < 30000) {
+          return;
+        }
+
+        shownChessInviteToastsRef.current.set(inviteKey, now);
+        for (const [key, timestamp] of shownChessInviteToastsRef.current.entries()) {
+          if (now - timestamp > 60000) {
+            shownChessInviteToastsRef.current.delete(key);
+          }
+        }
+
+        const invite = {
+          from: payload.by,
+          name: payload.name,
+          avatar: payload.avatar,
+          cover: payload.cover,
+          gameId: payload.gameId,
+          reinvite: payload.reinvite === true,
+          inviteId: payload.inviteId,
+          ts: payload.ts || now,
+        };
+
+        upsertPendingInvite(invite);
+        dismissInviteToast();
+
+        const toastId = showChessInviteToast(
+          payload.name || "A friend",
+          payload.avatar,
+          () => {
+            acceptChessInvite(invite);
+          },
+          () => {
+            declineChessInvite(invite);
+            if (currentChessInviteToastIdRef.current === toastId) {
+              currentChessInviteToastIdRef.current = null;
+            }
+          },
+        );
+        currentChessInviteToastIdRef.current = toastId;
+      } catch (error) {
+        console.error("[CHESS_INVITE] Error handling invite:", error);
+      }
+    };
+
+    const onInvites = (payload) => {
+      try {
+        const arr = Array.isArray(payload?.invites) ? payload.invites : [];
+        const normalized = arr.map((x) => ({
+          from: x.by ?? x.from,
+          name: x.name,
+          avatar: x.avatar,
+          cover: x.cover,
+          gameId: x.gameId,
+          reinvite: x.reinvite === true,
+          inviteId: x.inviteId,
+          ts: x.ts || Date.now(),
+        }));
+
+        const filteredNormalized = normalized.filter((inv) => {
+          if (!inv.reinvite && isUserInChessGame(inv.gameId)) {
+            try {
+              if (socket && socket.connected) {
+                socket.emit("chess:invites:dismiss", {
+                  gameId: inv.gameId,
+                  by: inv.from,
+                });
+              }
+            } catch (_e) {}
+            return false;
+          }
+          if (location.pathname.includes("/chess-game")) {
+            try {
+              const activeInvite = localStorage.getItem("chess_pending_invite");
+              const parsedInvite = activeInvite
+                ? JSON.parse(activeInvite)
+                : null;
+              const samePendingGame =
+                parsedInvite?.gameId &&
+                String(parsedInvite.gameId) === String(inv.gameId);
+              if (samePendingGame) {
+                if (socket && socket.connected) {
+                  socket.emit("chess:invites:dismiss", {
+                    gameId: inv.gameId,
+                    by: inv.from,
+                  });
+                }
+                return false;
+              }
+            } catch (_e) {}
+          }
+          return shouldShowChessInviteAlert(inv.gameId, inv.from, inv);
+        });
+
+        filteredNormalized.forEach(upsertPendingInvite);
+
+        const now = Date.now();
+        const newInvites = filteredNormalized.filter((inv) => {
+          const inviteKey = inv.inviteId || `${inv.gameId}:${inv.from}`;
+          const lastShownTime = shownChessInviteToastsRef.current.get(inviteKey);
+          if (lastShownTime && now - lastShownTime < 30000) {
+            return false;
+          }
+          shownChessInviteToastsRef.current.set(inviteKey, now);
+          return true;
+        });
+
+        for (const [key, timestamp] of shownChessInviteToastsRef.current.entries()) {
+          if (now - timestamp > 60000) {
+            shownChessInviteToastsRef.current.delete(key);
+          }
+        }
+
+        dismissInviteToast();
+
+        if (newInvites.length > 0) {
+          const inv = newInvites[0];
+          const toastId = showChessInviteToast(
+            inv.name || "A friend",
+            inv.avatar,
+            () => {
+              acceptChessInvite(inv);
+            },
+            () => {
+              declineChessInvite(inv);
+              if (currentChessInviteToastIdRef.current === toastId) {
+                currentChessInviteToastIdRef.current = null;
+              }
+            },
+          );
+          currentChessInviteToastIdRef.current = toastId;
+        }
+      } catch (error) {
+        console.error("[CHESS_INVITES] Error handling invites:", error);
+      }
+    };
+
+    const onState = (payload) => {
+      try {
+        if (!payload?.gameId) return;
+        const pid = myProfile?._id ? String(myProfile._id) : "";
+        const isPlayer =
+          (payload.whitePlayer && String(payload.whitePlayer) === pid) ||
+          (payload.blackPlayer && String(payload.blackPlayer) === pid);
+        if (!isPlayer) return;
+
+        setActiveChessGameId(payload.gameId);
+        markChessInviteHandled(payload.gameId, payload.from);
+        resolveChessInviteNotifications(payload.gameId, payload.from);
+        setPendingChessInvites((prev) =>
+          prev.filter((inv) => String(inv.gameId) !== String(payload.gameId)),
+        );
+        dismissInviteToast();
+      } catch (error) {
+        console.error("[CHESS_STATE] Error handling state event:", error);
+      }
+    };
+
+    if (socket) {
+      socket.on("chess:invite", onInvite);
+      socket.on("chess:invites", onInvites);
+      socket.on("chess:state", onState);
+
+      const requestInvites = () => {
+        try {
+          socket.emit("chess:invites:get", {});
+        } catch (_e) {}
+      };
+      if (socket.connected) {
+        requestInvites();
+      }
+      socket.on("connect", requestInvites);
+
+      return () => {
+        delete window.acceptChessInviteFromHeader;
+        delete window.declineChessInviteFromHeader;
+        socket.off("chess:invite", onInvite);
+        socket.off("chess:invites", onInvites);
+        socket.off("chess:state", onState);
+        socket.off("connect", requestInvites);
+      };
+    }
+
+    return () => {
+      delete window.acceptChessInviteFromHeader;
+      delete window.declineChessInviteFromHeader;
+    };
+  }, [
+    profileId,
+    myProfile?._id,
+    isAuthenticated,
+    navigate,
+    socket,
+    location.pathname,
+  ]);
+
   useEffect(() => {
     dispatch(setBodyHeight(window.innerHeight));
     dispatch(setLoading(false));
 
     if (!token || !profileId || !isAuthenticated) return;
 
-    api
-      .post(`/profile`, { profile: profileId })
-      .then((res) => {
-        dispatch(getPorfileReq());
-        if (res.status === 200) {
-          dispatch(getProfileSuccess(res.data));
+    const cachedProfile = getCachedProfile();
+    if (cachedProfile?._id) {
+      dispatch(getProfileSuccess(cachedProfile));
+    } else {
+      dispatch(getPorfileReq());
+    }
+
+    fetchProfileCached(profileId, { ttlMs: 60000, storageTtlMs: 300000 })
+      .then((profileData) => {
+        if (profileData) {
+          dispatch(getProfileSuccess(profileData));
+          primeCachedResource(`profile:${profileId}`, profileData);
         }
       })
       .catch((e) => {
@@ -1783,6 +2150,16 @@ const Main = () => {
 
     // Do not depend on `useParams()` object — it is often a new reference each render and would re-POST /profile endlessly.
   }, [token, profileId, isAuthenticated, dispatch]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !profileId) return undefined;
+    const timer = window.setTimeout(() => {
+      import("../components/VideoCall/VideoCall.js");
+      import("../components/AudioCall/AudioCall.js");
+      import("../components/LiveVoice/LiveVoice.js");
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [isAuthenticated, profileId]);
 
   // Listen for auth logout events from API interceptor
   useEffect(() => {
@@ -1930,7 +2307,8 @@ const Main = () => {
 
   const isHeaderHiddenRoute =
     location.pathname.startsWith("/portfolio") ||
-    location.pathname.startsWith("/youtube");
+    location.pathname.startsWith("/youtube") ||
+    location.pathname.startsWith("/camera");
 
   // AI Agent Modal State
   const [isAIAgentModalOpen, setIsAIAgentModalOpen] = useState(false);
@@ -1979,6 +2357,7 @@ const Main = () => {
       {!isHeaderHiddenRoute && isAuthenticated && (
         <Header
           pendingLudoInvites={pendingLudoInvites}
+          pendingChessInvites={pendingChessInvites}
           onAIAgentOpen={() => setIsAIAgentModalOpen(true)}
         />
       )}
@@ -1986,6 +2365,7 @@ const Main = () => {
       <div id="main-container" className={isLoading ? "loading" : ""}>
         {/* <Face /> */}
 
+        <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/">
             <Route path="menu" element={<Menu />}></Route>
@@ -2169,6 +2549,16 @@ const Main = () => {
               {" "}
             </Route>
             <Route
+              path="/camera"
+              element={
+                <ProtectedRoute>
+                  <Camera />
+                </ProtectedRoute>
+              }
+            >
+              {" "}
+            </Route>
+            <Route
               path="/notes"
               element={
                 <ProtectedRoute>
@@ -2276,13 +2666,16 @@ const Main = () => {
             />
           </Route>
         </Routes>
+        </Suspense>
       </div>
 
-      <>
-        <VideoCall myId={profileId}></VideoCall>
-        <AudioCall myId={profileId}></AudioCall>
-        <LiveVoice myId={profileId}></LiveVoice>
-      </>
+      {isAuthenticated && profileId ? (
+        <Suspense fallback={null}>
+          <VideoCall myId={profileId}></VideoCall>
+          <AudioCall myId={profileId}></AudioCall>
+          <LiveVoice myId={profileId}></LiveVoice>
+        </Suspense>
+      ) : null}
       <StickyChatBoxContainer />
       {isAIAgentModalOpen && (
         <Suspense fallback={null}>

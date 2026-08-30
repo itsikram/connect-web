@@ -15,7 +15,7 @@ import { useAuth } from "../../hooks/useAuth";
 import config from "../../config/config.json";
 import "../../pages/Message.css";
 
-let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [] }) => {
+let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [], pendingChessInvites = [] }) => {
   const { user, logout, isAuthenticated } = useAuth();
   let profileData = useSelector((state) => state.profile);
   let optionData = useSelector((state) => state.option);
@@ -318,6 +318,7 @@ let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [] }) => {
                   dispatch={dispatch}
                   onClose={() => setIsNotificationMenu(false)}
                   pendingLudoInvites={pendingLudoInvites}
+                  pendingChessInvites={pendingChessInvites}
                 />
               </div>
             </MegaMC>

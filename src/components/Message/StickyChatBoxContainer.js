@@ -100,6 +100,7 @@ const StickyChatBoxContainer = () => {
             const profileData = await fetchProfileCached(profileId, {
                 ttlMs: 60000,
                 storageTtlMs: 300000,
+                lite: true,
             });
 
             // Update the chat with real profile data

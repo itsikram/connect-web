@@ -295,6 +295,63 @@ export const showLudoInviteToast = (inviterName, inviterAvatar, onAccept, onDecl
   return id;
 };
 
+export const showChessInviteToast = (inviterName, inviterAvatar, onAccept, onDecline, options = {}) => {
+  const { autoClose = false } = options;
+
+  const id = toast.info(
+    ({ closeToast }) => {
+      const safeClose = () => {
+        try {
+          if (closeToast && typeof closeToast === 'function') {
+            requestAnimationFrame(() => {
+              try {
+                closeToast();
+              } catch (error) {
+                try {
+                  toast.dismiss(id);
+                } catch (dismissError) {
+                  if (process.env.NODE_ENV === 'development') {
+                    console.warn('Error dismissing toast (ignored):', dismissError);
+                  }
+                }
+              }
+            });
+          } else {
+            toast.dismiss(id);
+          }
+        } catch (error) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('Error closing toast (ignored):', error);
+          }
+        }
+      };
+
+      return (
+        <LudoInviteToast 
+          inviterName={inviterName}
+          inviterAvatar={inviterAvatar}
+          onAccept={onAccept}
+          onDecline={onDecline}
+          closeToast={safeClose}
+          gameName="Chess"
+          placeholderEmoji="♟️"
+          variant="chess"
+        />
+      );
+    }, 
+    { 
+      ...toastConfig, 
+      autoClose,
+      className: 'custom-toast-chess-invite',
+      closeOnClick: false,
+      pauseOnHover: true,
+      draggable: false,
+    }
+  );
+  
+  return id;
+};
+
 // Dismiss all toasts
 export const dismissAllToasts = () => {
   toast.dismiss();
@@ -314,6 +371,7 @@ export default {
   profileUpdate: showProfileUpdateToast,
   videoSaved: showVideoSavedToast,
   ludoInvite: showLudoInviteToast,
+  chessInvite: showChessInviteToast,
   custom: showCustomToast,
   dismissAll: dismissAllToasts,
   dismiss: dismissToast

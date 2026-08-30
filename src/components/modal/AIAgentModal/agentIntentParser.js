@@ -40,6 +40,7 @@ export const ACTION_RESPONSE_MODE = {
   AUDIO_CALL: "confirm",
   BUMP: "confirm",
   INVITE_LUDO: "confirm",
+  INVITE_CHESS: "confirm",
   BLOCK: "confirm",
   UNBLOCK: "confirm",
   ADD_FRIEND: "confirm",
@@ -788,6 +789,17 @@ const INTENT_PATTERNS = [
       /play\s+ludo\s+with\s+(.+)/i,
       /ludo\s+(?:with|and)\s+(.+)/i,
       /(?:ask|tell)\s+(.+?)\s+to\s+(?:play\s+)?ludo/i,
+    ],
+  },
+
+  // ── Invite to Chess ────────────────────────────────────────────────────────
+  {
+    action: "INVITE_CHESS",
+    patterns: [
+      /invite\s+(.+?)\s+to\s+(?:a?\s*)?chess/i,
+      /play\s+chess\s+with\s+(.+)/i,
+      /chess\s+(?:with|and)\s+(.+)/i,
+      /(?:ask|tell)\s+(.+?)\s+to\s+(?:play\s+)?chess/i,
     ],
   },
 

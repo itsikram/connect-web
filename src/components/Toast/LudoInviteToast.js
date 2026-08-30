@@ -6,7 +6,10 @@ const LudoInviteToast = ({
   inviterAvatar, 
   onAccept, 
   onDecline, 
-  closeToast 
+  closeToast,
+  gameName = 'Ludo',
+  placeholderEmoji = '🎲',
+  variant = 'ludo',
 }) => {
   const isClosingRef = useRef(false);
 
@@ -38,7 +41,7 @@ const LudoInviteToast = ({
   };
 
   return (
-    <div className="ludo-invite-toast">
+    <div className={`ludo-invite-toast${variant === 'chess' ? ' ludo-invite-toast--chess' : ''}`}>
       <button
         type="button"
         className="ludo-invite-toast__close-btn" 
@@ -57,14 +60,14 @@ const LudoInviteToast = ({
           {inviterAvatar ? (
             <img src={inviterAvatar} alt={inviterName} />
           ) : (
-            <div className="ludo-invite-toast__avatar-placeholder">🎲</div>
+            <div className="ludo-invite-toast__avatar-placeholder">{placeholderEmoji}</div>
           )}
         </div>
         
         <div className="ludo-invite-toast__text">
           <div className="ludo-invite-toast__title">Game Invitation</div>
           <div className="ludo-invite-toast__message">
-            {inviterName} invited you to play Ludo!
+            {inviterName} invited you to play {gameName}!
           </div>
         </div>
       </div>

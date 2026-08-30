@@ -107,7 +107,11 @@ const getGetRequestOptimization = (requestConfig) => {
   }
 
   if (pathname.includes("/message/chatList")) {
-    return { cacheTtl: 10000 };
+    return { cacheTtl: 30000 };
+  }
+
+  if (pathname.includes("/profile/online-status")) {
+    return { cacheTtl: 15000 };
   }
 
   if (pathname.includes("/story/")) {
@@ -118,14 +122,25 @@ const getGetRequestOptimization = (requestConfig) => {
     pathname.endsWith("/profile") &&
     (!requestUrl.search || searchParams.has("profileId"))
   ) {
-    return { cacheTtl: 15000 };
+    return { cacheTtl: 60000 };
+  }
+
+  if (pathname.includes("/setting") && !pathname.includes("/update")) {
+    return { cacheTtl: 60000 };
+  }
+
+  if (
+    pathname.includes("/notification/") &&
+    !pathname.includes("/notification/new")
+  ) {
+    return { cacheTtl: 20000 };
   }
 
   if (
     pathname.includes("/post/newsFeed/") &&
     searchParams.get("pageNumber") === "1"
   ) {
-    return { cacheTtl: 5000 };
+    return { cacheTtl: 10000 };
   }
 
   return null;
@@ -232,6 +247,13 @@ api.interceptors.request.use(
       // Ensure headers object exists
       if (!requestConfig.headers) {
         requestConfig.headers = {};
+      }
+
+      if (String(requestConfig.url || "").includes("ai-chat/complete")) {
+        requestConfig.timeout = Math.max(
+          Number(requestConfig.timeout) || 0,
+          180000,
+        );
       }
 
       if (token) {

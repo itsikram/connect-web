@@ -7,12 +7,14 @@ const ModalHeader = ({
   isSidebarOpen,
   autoRunActions,
   onToggleAutoRun,
+  onOpenSettings,
+  settingsOpen = false,
+  providerLabel = "Gemini",
+  modelLabel = "",
 }) => {
   return (
     <div className="ai-agent-modal-header">
-      {/* ── Single compact row ─────────────────────────────────────── */}
       <div className="ai-agent-header-row">
-        {/* Hamburger — visible only on mobile, hidden on desktop */}
         <button
           className="ai-agent-menu-btn"
           onClick={onMenuToggle}
@@ -21,7 +23,6 @@ const ModalHeader = ({
           <i className={`fas ${isSidebarOpen ? "fa-times" : "fa-bars"}`} />
         </button>
 
-        {/* Animated brain icon */}
         <motion.div
           className="ai-agent-icon"
           animate={{ y: [0, -4, 0] }}
@@ -30,12 +31,14 @@ const ModalHeader = ({
           <i className="fas fa-brain" />
         </motion.div>
 
-        {/* Title block */}
         <div className="ai-agent-header-text">
           <h2 className="ai-agent-title">AI Agent</h2>
           <div className="ai-agent-status-bar">
             <span className="ai-agent-status-indicator" />
-            <span className="ai-agent-status-text">Ready to assist</span>
+            <span className="ai-agent-status-text">
+              {providerLabel}
+              {modelLabel ? ` · ${modelLabel}` : ""}
+            </span>
           </div>
         </div>
 
@@ -53,7 +56,16 @@ const ModalHeader = ({
           <span className="ai-agent-auto-run-label">Auto-run</span>
         </label>
 
-        {/* Close button */}
+        <button
+          className={`ai-agent-settings-btn-header ${settingsOpen ? "active" : ""}`}
+          onClick={onOpenSettings}
+          aria-label="AI Agent settings"
+          title="AI provider, model, and API keys"
+          type="button"
+        >
+          <i className="fas fa-cog" />
+        </button>
+
         <button
           className="ai-agent-close-btn"
           onClick={onClose}

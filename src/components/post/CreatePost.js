@@ -24,6 +24,7 @@ let CreatePost = ({ setPosts = null }) => {
     let [isPostModal, setPostModal] = useState(false)
     let [isUploading, setIsUploading] = useState(false)
     let [isSubmitting, setIsSubmitting] = useState(false)
+    const uploadAttachmentRef = React.useRef(null)
 
     let handleCpFieldClick = (e) => {
         setPostModal(true)
@@ -39,6 +40,7 @@ let CreatePost = ({ setPosts = null }) => {
             setPostModal(true);
             const caption = event?.detail?.caption;
             const audience = event?.detail?.audience;
+            const file = event?.detail?.file;
             if (caption || audience) {
                 setPostData((prev) => ({
                     ...prev,
@@ -47,6 +49,16 @@ let CreatePost = ({ setPosts = null }) => {
                         audience != null ? parseInt(audience, 10) : prev.audience,
                 }));
                 if (caption) setAttachmentType("caption");
+            }
+            if (file) {
+                const asFile = file instanceof File
+                    ? file
+                    : new File([file], file.name || "camera-capture.jpg", {
+                        type: file.type || "image/jpeg",
+                    });
+                window.setTimeout(() => {
+                    uploadAttachmentRef.current?.(asFile.type || "image/jpeg", asFile);
+                }, 50);
             }
         };
         window.addEventListener("openCreatePost", openComposer);
@@ -289,6 +301,8 @@ let CreatePost = ({ setPosts = null }) => {
         }
 
     }
+
+    uploadAttachmentRef.current = handleUploadAttachment;
 
     let handlePostSubmit = useCallback(async (e) => {
         e.preventDefault()

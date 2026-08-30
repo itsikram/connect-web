@@ -1654,6 +1654,9 @@ select {
     }
 }
 
+#main-container.header-stuck {
+    padding-top: var(--site-header-height, 64px);
+}
 
 #left-sidebar {
     margin-top: 12px;

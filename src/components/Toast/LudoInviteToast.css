@@ -221,6 +221,19 @@
   }
 }
 
+.ludo-invite-toast--chess {
+  background: linear-gradient(135deg, #1f6b3a 0%, #0f172a 100%);
+  border-color: rgba(238, 238, 210, 0.35);
+}
+
+.ludo-invite-toast--chess .ludo-invite-toast__title {
+  color: #eeeed2;
+}
+
+.ludo-invite-toast--chess .ludo-invite-toast__avatar {
+  border-color: rgba(238, 238, 210, 0.55);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ludo-invite-toast {
     animation: none;

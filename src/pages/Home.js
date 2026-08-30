@@ -82,25 +82,13 @@ const Home = () => {
     }, [storiesCacheKey])
 
     const fetchProfileWithFallback = useCallback(async () => {
+        if (myProfile?._id) return
+
         const cachedProfile = getCachedProfile()
         if (cachedProfile) {
             dispatch(getProfileSuccess(cachedProfile))
         }
-
-        try {
-            const user = JSON.parse(localStorage.getItem('user') || '{}')
-            const profileId = user?.profile
-
-            if (!profileId) return
-
-            const profileRes = await api.post('/profile', { profile: profileId })
-            if (profileRes.status === 200 && profileRes.data) {
-                dispatch(getProfileSuccess(profileRes.data))
-            }
-        } catch (error) {
-            console.error('Error fetching live profile:', error)
-        }
-    }, [dispatch])
+    }, [dispatch, myProfile?._id])
 
     const refreshFeed = useCallback(async () => {
         try {
@@ -233,7 +221,6 @@ const Home = () => {
         const cachedPosts = CacheManager.getCachedPosts();
         if (cachedPosts && cachedPosts.length > 0) {
             dispatch(loadPosts(cachedPosts, { append: false }));
-            console.log('📦 Loaded posts from cache:', cachedPosts.length);
         }
         
         fetchProfileWithFallback()
@@ -251,7 +238,8 @@ const Home = () => {
         setPageNumber(0)
         setLoadNewPosts(false)
         refreshFeed()
-        fetchStories()
+        const storyTimer = window.setTimeout(fetchStories, 250)
+        return () => window.clearTimeout(storyTimer)
     }, [fetchStories, location.pathname, refreshFeed])
 
     useEffect(() => {

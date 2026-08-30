@@ -3,13 +3,14 @@
 import { MENU_APPS } from '../../constants/menuApps';
 
 const PLATFORM_NAV_ITEMS = [
+    { id: 'camera', label: 'Camera', to: '/camera', icon: 'fa-camera', accent: '#3B82F6' },
     { id: 'friends', label: 'Find Friends', to: '/friends/', icon: 'fa-user-friends', accent: '#1877f2' },
     { id: 'watch', label: 'Watch', to: '/watch/', icon: 'fa-tv', accent: '#ef4444' },
     { id: 'saved-videos', label: 'Saved Videos', to: '/downloads/', icon: 'fa-film', accent: '#8b5cf6' },
     { id: 'marketplace', label: 'Marketplace', to: '/marketplace/', icon: 'fa-store', accent: '#10b981' },
 ];
 
-const MENU_APP_ITEMS = MENU_APPS.map((app) => ({
+const MENU_APP_ITEMS = MENU_APPS.filter((app) => app.key !== 'camera').map((app) => ({
     id: app.key,
     label: app.name,
     to: app.href,

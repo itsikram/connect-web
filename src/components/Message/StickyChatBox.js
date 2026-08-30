@@ -11,7 +11,7 @@ import { useNavigate } from "react-router-dom";
 import moment from "moment";
 import UserPP from "../UserPP";
 import api from "../../api/api";
-import { fetchProfileCached } from "../../utils/requestCache";
+import { fetchOnlineStatusesCached, fetchProfileCached } from "../../utils/requestCache";
 import socket from "../../common/socket";
 import { sendBumpToFriend } from "../../utils/sendBump";
 import { newMessage, seenMessage } from "../../services/actions/messageActions";
@@ -189,10 +189,8 @@ const StickyChatBox = ({
 
   const checkOnlineStatus = async (profileId) => {
     try {
-      const response = await api.get("/profile/online-status", {
-        params: { profileId },
-      });
-      return response.data.isActive || false;
+      const statuses = await fetchOnlineStatusesCached([profileId], { ttlMs: 30000 });
+      return Boolean(statuses[profileId]?.isActive);
     } catch (error) {
       console.error("Error checking online status:", error);
       return false;
@@ -345,6 +343,10 @@ const StickyChatBox = ({
   useEffect(() => {
     if (!friendId || !userId || isLoading) return;
 
+    if (friendProfile?.isActive) {
+      setIsActive(true);
+    }
+
     const checkStatus = async () => {
       const isOnline = await checkOnlineStatus(friendId);
       setIsActive(isOnline);
@@ -355,11 +357,8 @@ const StickyChatBox = ({
       }
     };
 
-    // Initial check
     checkStatus();
-
-    // Poll for online status every 30 seconds
-    const interval = setInterval(checkStatus, 30000);
+    const interval = setInterval(checkStatus, 90000);
 
     return () => clearInterval(interval);
   }, [friendId, userId, isLoading]);

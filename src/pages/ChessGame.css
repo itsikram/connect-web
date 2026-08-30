@@ -1,0 +1,187 @@
+.chess-setup-card {
+  background-color: rgba(30, 30, 50, 0.95);
+  border-radius: 16px;
+  padding: 28px 24px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  min-width: min(320px, 92vw);
+  max-width: min(440px, 94vw);
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.chess-setup-card h2 {
+  margin: 0 0 20px;
+}
+
+.chess-setup-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chess-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.06);
+  margin-top: 4px;
+}
+
+.chess-search input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #e5e7eb;
+  font-size: 0.9rem;
+  min-width: 0;
+}
+
+.chess-search input::placeholder {
+  color: #9aa3b2;
+}
+
+.chess-friend-list {
+  max-height: 220px;
+  overflow: auto;
+  margin-top: 8px;
+  text-align: left;
+}
+
+.chess-friend {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.04);
+  margin-bottom: 6px;
+}
+
+.chess-friend__left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.chess-friend__avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.12);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #e5e7eb;
+}
+
+.chess-friend__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.chess-friend__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e5e7eb;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chess-empty {
+  color: #9aa3b2;
+  font-size: 13px;
+  padding: 14px 8px;
+  text-align: center;
+}
+
+.chess-section-title {
+  font-weight: 700;
+  font-size: 0.9rem;
+  margin: 8px 0 6px;
+  text-align: left;
+  color: #e5e7eb;
+}
+
+.chess-waiting-banner {
+  width: 100%;
+  max-width: 640px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(30, 41, 59, 0.85);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.chess-waiting-banner__text {
+  text-align: left;
+  min-width: 0;
+}
+
+.chess-waiting-banner__title {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.chess-waiting-banner__sub {
+  font-size: 13px;
+  opacity: 0.8;
+  margin-top: 2px;
+}
+
+.chess-player-row {
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.chess-player-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chess-player-chip img,
+.chess-player-chip__fallback {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.chess-player-chip span {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

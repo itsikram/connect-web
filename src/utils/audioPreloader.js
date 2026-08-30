@@ -211,8 +211,7 @@ class AudioPreloader {
             return clone;
         }
 
-        // If not preloaded, create a new one (fallback)
-        console.warn(`⚠️ Audio not preloaded: ${src}, creating on-demand`);
+        // Preload may still be in progress; create on demand without warning
         const audio = new Audio(src);
         audio.preload = 'auto';
         audio.volume = 1.0;
@@ -425,22 +424,9 @@ if (typeof window !== 'undefined') {
     };
 
     // Add user interaction listeners
-    document.addEventListener('click', handleUserInteraction, { once: true });
-    document.addEventListener('touchstart', handleUserInteraction, { once: true });
+    document.addEventListener('click', handleUserInteraction, { once: true, passive: true });
+    document.addEventListener('touchstart', handleUserInteraction, { once: true, passive: true });
     document.addEventListener('keydown', handleUserInteraction, { once: true });
-
-    // Also try to preload on page load (fallback)
-    if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        // Already loaded, start preloading after a delay
-        console.log('🎵 Page loaded, starting audio preload');
-        startPreloading();
-    } else {
-        // Wait for window load
-        window.addEventListener('load', () => {
-            console.log('🎵 Window loaded, starting audio preload');
-            startPreloading();
-        }, { once: true });
-    }
 }
 
 export default audioPreloader;
