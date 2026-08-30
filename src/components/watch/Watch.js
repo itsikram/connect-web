@@ -26,6 +26,7 @@ import ModalContainer from "../modal/ModalContainer";
 import useIsMobile from "../../utils/useIsMobile";
 import WatchVideoPlayer from "./WatchVideoPlayer";
 import WatchCacheManager from "../../utils/watchCacheManager";
+import OptionsDropdown from "../post/OptionsDropdown";
 const default_pp_src = config?.defaultProfile;
 const APP_PRIMARY_COLOR = "#29B1A9";
 const APP_PRIMARY_TINT = "rgba(41, 177, 169, 0.12)";
@@ -52,7 +53,6 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
   const [isUpdatingAudience, setIsUpdatingAudience] = useState(false);
   const displayedWatch = useRef(null); // document.getElementById(`watch-${watch._id}`)
   const nfwatch = useRef(null); // document.getElementById(`watch-${watch._id}`)
-  const watchOptionMenu = useRef(null);
   const watchPip = useWatchPipOptional();
   const skipPipOnUnmount = useRef(false);
   const isMobile = useIsMobile();
@@ -88,22 +88,11 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
     img.onerror = () => setImageExists(false);
   };
 
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (
-        watchOptionMenu.current &&
-        !watchOptionMenu.current.contains(event.target)
-      ) {
-        setIsWatchOption(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
+  const closeWatchOption = useCallback(() => {
+    setIsWatchOption(false);
   }, []);
 
-  let watchOptionClick = useCallback((e) => {
+  const watchOptionClick = useCallback((e) => {
     e?.stopPropagation?.();
     setIsWatchOption((prev) => !prev);
   }, []);
@@ -516,29 +505,27 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
               >
                 <i className="fas fa-download"></i>
               </button>
-              <>
-                <button
-                  onClick={watchOptionClick}
-                  className="watch-three-dot"
-                  aria-label="Video options"
-                >
-                  <i className="far fa-ellipsis-h"></i>
-                </button>
-                {isWatchOption && (
-                  <div className="watch-option-menu" ref={watchOptionMenu}>
-                    <ul>
-                      {isAuth && (
-                        <>
-                          <li onClick={startEditCaption}>Edit Video</li>
-                          <li onClick={editAudienceClick}>Edit Audience</li>
-                          <li onClick={deleteFromMenu}>Delete Video</li>
-                        </>
-                      )}
-                      {!isAuth && <li>Report This Video</li>}
-                    </ul>
-                  </div>
-                )}
-              </>
+              <OptionsDropdown
+                open={isWatchOption}
+                onToggle={watchOptionClick}
+                onClose={closeWatchOption}
+                buttonClassName="watch-three-dot"
+                menuClassName="watch-option-menu"
+                ariaLabel="Video options"
+              >
+                <ul>
+                  {isAuth && (
+                    <>
+                      <li onClick={startEditCaption}>Edit Video</li>
+                      <li onClick={editAudienceClick}>Edit Audience</li>
+                      <li onClick={deleteFromMenu}>Delete Video</li>
+                    </>
+                  )}
+                  {!isAuth && (
+                    <li onClick={closeWatchOption}>Report This Video</li>
+                  )}
+                </ul>
+              </OptionsDropdown>
 
               <button
                 onClick={hideThisWatch.bind(this)}

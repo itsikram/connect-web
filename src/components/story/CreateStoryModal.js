@@ -238,7 +238,9 @@ const CreateStoryModal = ({ isOpen, onRequestClose, profileData, onStoryCreated 
                             <button
                                 type="button"
                                 className="cpm-audience-button"
-                                onClick={() => setShowAudienceMenu(!showAudienceMenu)}
+                                onClick={() => setShowAudienceMenu((prev) => !prev)}
+                                aria-expanded={showAudienceMenu}
+                                aria-haspopup="true"
                             >
                                 <i className={getAudienceIcon(storyData.audience)} aria-hidden="true" />
                                 <span>{getAudienceLabel(storyData.audience)}</span>

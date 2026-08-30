@@ -10,8 +10,9 @@ const SingleReply = ({item,myProfile,setReplies,comment}) => {
     const [totalReacts, setTotalReacts] = useState(item.reacts.length)
     const [isReply, setIsReply] = useState(false)
     // let [replyList, setReplyList] = 
-    const handleReplyOptionClick = () => {
-        setIsReplyOption(!isReplyOption)
+    const handleReplyOptionClick = (e) => {
+        e?.stopPropagation?.();
+        setIsReplyOption((prev) => !prev);
     }
 
     const handleDeleteReplyBtn = async(e) => {

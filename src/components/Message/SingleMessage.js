@@ -659,15 +659,31 @@ const SingleMessage = ({
               <span className="message-react">
                 <i>👍</i>
               </span>
-              {msg.isSeen ? (
+              {msg.sendFailed ? (
                 <span
-                  className="message-seen-check"
+                  className="message-seen-check failed"
+                  title="Failed to send"
+                  aria-label="Failed to send"
+                >
+                  <i className="fas fa-exclamation-circle"></i>
+                </span>
+              ) : msg.isSeen ? (
+                <span
+                  className="message-seen-check seen"
                   title="Seen"
                   aria-label="Seen"
                 >
                   <i className="fas fa-check-double"></i>
                 </span>
-              ) : null}
+              ) : (
+                <span
+                  className="message-seen-check sent"
+                  title="Sent"
+                  aria-label="Sent"
+                >
+                  <i className="fas fa-check"></i>
+                </span>
+              )}
             </div>
           </div>
 

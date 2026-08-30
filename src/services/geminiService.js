@@ -3,6 +3,12 @@
  * Handles communication with Google Gemini 1.5 Flash API (free tier)
  */
 
+import {
+  ALLOWED_ACTIONS,
+  CONNECT_ROUTES,
+  QUERY_TYPES,
+} from "../components/modal/AIAgentModal/agentCatalog";
+
 export const parseGeminiApiKeys = (value = "") => [
   ...new Set(
     String(value)
@@ -157,6 +163,223 @@ export const translateBanglaToEnglish = async (text) => {
   }
 
   return translation;
+};
+
+const extractJsonObject = (text = "") => {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenced?.[1] || raw;
+  const start = candidate.indexOf("{");
+  const end = candidate.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return null;
+
+  try {
+    return JSON.parse(candidate.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+};
+
+const buildContents = (message, conversationHistory = []) => {
+  const priorContents = [];
+  let foundFirstUser = false;
+
+  for (const msg of conversationHistory) {
+    const role = msg.role === "assistant" ? "model" : "user";
+    if (!foundFirstUser && role !== "user") continue;
+    foundFirstUser = true;
+    const content = typeof msg.content === "string" ? msg.content : "";
+    if (!content.trim()) continue;
+    priorContents.push({ role, parts: [{ text: content }] });
+  }
+
+  return [...priorContents, { role: "user", parts: [{ text: message }] }];
+};
+
+const AGENT_JSON_PROMPT = `You are the command interpreter for "Connect", a social app.
+Read the user's message (Bangla or English) and return ONLY JSON:
+
+{
+  "reply": "short user-facing reply in the same language as the user",
+  "actions": [
+    {
+      "action": "ACTION_NAME",
+      "targetName": "person name or null",
+      "targetRoute": "route token or path or null",
+      "subPath": "profile subpath like /friends /images /videos /about or empty",
+      "label": "human label",
+      "searchQuery": "search or content text",
+      "messageText": "message body if sending a chat message",
+      "queryType": "search|friends|posts|videos|notes|tasks|notifications|profile|feed|habits|calendar|user|requests|suggestions|watch|null"
+    }
+  ]
+}
+
+Rules:
+- actions may be empty for pure conversation.
+- Use QUERY_CONTENT when the user asks for details, lists, summaries, "what is", "show my", "how many", or any app content.
+- Use NAVIGATE (with targetRoute from the route list) to open a page.
+- Use friend actions only when a person is involved. Put their name in targetName.
+- For "send X to Y" use SEND_MESSAGE_TO_USER with messageText and targetName.
+- For posting text use CREATE_POST. Put the EXACT caption to publish in searchQuery. Reply is confirmation only — the client publishes the action.
+- If they ask for a funny/witty/random caption, invent one and put that caption in searchQuery. Never claim you posted without including CREATE_POST.
+- Only omit searchQuery when they asked to open the composer and write it themselves.
+- Never invent private data. If you need live app data, emit QUERY_CONTENT / SEARCH_* / LIST_* and put a brief reply.
+- Prefer one clear action. Use multiple only when the user asked for more than one thing.
+- Match Bangla commands to the same action names.`;
+
+export const interpretAgentCommand = async ({
+  message,
+  conversationHistory = [],
+  appContext = {},
+} = {}) => {
+  const sourceText = String(message || "").trim();
+  if (!sourceText) {
+    return { reply: "", actions: [], success: false };
+  }
+
+  if (GEMINI_API_KEYS.length === 0) {
+    return { reply: "", actions: [], success: false };
+  }
+
+  const contextBlock = JSON.stringify(
+    {
+      currentUser: appContext.user || null,
+      friends: appContext.friends || [],
+      availableActions: Array.from(ALLOWED_ACTIONS),
+      routes: CONNECT_ROUTES,
+      queryTypes: QUERY_TYPES,
+    },
+    null,
+    0,
+  );
+
+  const requestBody = {
+    systemInstruction: {
+      parts: [
+        {
+          text: `${AGENT_JSON_PROMPT}\n\nLive app context:\n${contextBlock}`,
+        },
+      ],
+    },
+    contents: buildContents(sourceText, conversationHistory),
+    generationConfig: {
+      temperature: 0.15,
+      topK: 32,
+      topP: 0.9,
+      maxOutputTokens: 1024,
+      responseMimeType: "application/json",
+    },
+  };
+
+  let data;
+  try {
+    data = await requestGemini(requestBody, "Agent interpreter");
+  } catch (_jsonModeError) {
+    const fallbackBody = {
+      ...requestBody,
+      generationConfig: {
+        temperature: 0.15,
+        topK: 32,
+        topP: 0.9,
+        maxOutputTokens: 1024,
+      },
+    };
+    data = await requestGemini(fallbackBody, "Agent interpreter");
+  }
+
+  const parsed = extractJsonObject(extractGeminiText(data));
+  const reply = String(parsed?.reply || "").trim();
+  let rawActions = parsed?.actions;
+  if (!Array.isArray(rawActions)) {
+    if (rawActions && typeof rawActions === "object") {
+      rawActions = [rawActions];
+    } else if (parsed?.action) {
+      rawActions = [parsed];
+    } else {
+      rawActions = [];
+    }
+  }
+
+  return {
+    reply,
+    actions: rawActions,
+    success: Boolean(parsed),
+    raw: parsed,
+  };
+};
+
+export const generatePostCaption = async (userRequest = "") => {
+  if (GEMINI_API_KEYS.length === 0) return "";
+
+  const geminiData = await requestGemini(
+    {
+      systemInstruction: {
+        parts: [
+          {
+            text: `Write one original social-media caption for Connect. Match the user's language. If they asked for funny, make it witty. Return ONLY the caption — no quotes, no preamble, no hashtags unless they fit naturally. Max 180 characters.`,
+          },
+        ],
+      },
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: String(userRequest || "").trim() || "Write a short funny caption.",
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.85,
+        maxOutputTokens: 80,
+      },
+    },
+    "Post caption",
+  );
+
+  let caption = extractGeminiText(geminiData)
+    .replace(/^here(?:'s| is)[^.:\n]*[:\-]\s*/i, "")
+    .trim();
+  caption = caption.replace(/^['"‘’“”]+/, "").replace(/['"‘’“”]+$/, "").trim();
+  return caption.slice(0, 500);
+};
+
+export const answerFromAppData = async ({
+  question,
+  data,
+  conversationHistory = [],
+} = {}) => {
+  const payload = JSON.stringify(data ?? {}, null, 0).slice(0, 12000);
+  const geminiData = await requestGemini(
+    {
+      systemInstruction: {
+        parts: [
+          {
+            text: `You are Connect's in-app assistant. Answer ONLY from the provided JSON app data. If the data does not contain the answer, say you could not find it. Be concise (2-8 sentences or a short list). Reply in the same language as the question. Do not invent names, counts, dates, or captions.`,
+          },
+        ],
+      },
+      contents: buildContents(
+        `Question:\n${question}\n\nApp data JSON:\n${payload}`,
+        conversationHistory.slice(-4),
+      ),
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 700,
+      },
+    },
+    "App data answer",
+  );
+
+  const response = extractGeminiText(geminiData);
+  if (!response) {
+    throw new Error("Gemini returned an empty grounded answer");
+  }
+  return response;
 };
 
 export const sendToGemini = async (message, conversationHistory = []) => {
@@ -327,6 +550,9 @@ export const getModelInfo = () => ({
 const geminiService = {
   sendToGemini,
   translateBanglaToEnglish,
+  interpretAgentCommand,
+  generatePostCaption,
+  answerFromAppData,
   getAICapabilities,
   getModelInfo,
 };

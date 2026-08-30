@@ -3,10 +3,10 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   useRef,
 } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import $ from "jquery";
 import api from "../../api/api";
 import UserPP from "../../components/UserPP";
 import useIsMobile from "../../utils/useIsMobile";
@@ -14,21 +14,187 @@ import AppMenuModal from "./AppMenuModal";
 import AIAgentModal from "../../components/modal/AIAgentModal/AIAgentModal";
 import config from "../../config/config.json";
 
+const RECENT_SEARCH_KEY = "headerRecentSearches";
+const MAX_RECENT_SEARCHES = 8;
+const MAX_RESULTS_PER_SECTION = 5;
+const SEARCH_DEBOUNCE_MS = 280;
+const MIN_QUERY_LENGTH = 1;
+
+const emptySearchData = { users: [], posts: [], videos: [] };
+
+const escapeRegExp = (value) =>
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const loadRecentSearches = () => {
+  try {
+    const stored = localStorage.getItem(RECENT_SEARCH_KEY);
+    const parsed = stored ? JSON.parse(stored) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const persistRecentSearches = (items) => {
+  try {
+    localStorage.setItem(RECENT_SEARCH_KEY, JSON.stringify(items));
+  } catch {
+    // Ignore quota / private-mode failures.
+  }
+};
+
+const getDisplayName = (profile) =>
+  profile?.fullName ||
+  profile?.displayName ||
+  profile?.nickname ||
+  profile?.username ||
+  "Unknown";
+
+const truncateText = (text, wordCount = 8) => {
+  if (!text) return "";
+  const words = String(text).trim().split(/\s+/);
+  if (words.length <= wordCount) return words.join(" ");
+  return `${words.slice(0, wordCount).join(" ")}…`;
+};
+
+const HighlightMatch = ({ text, query }) => {
+  const value = String(text || "");
+  const q = String(query || "").trim();
+  if (!value || !q) return value;
+
+  const parts = value.split(new RegExp(`(${escapeRegExp(q)})`, "gi"));
+  return parts.map((part, index) =>
+    part.toLowerCase() === q.toLowerCase() ? (
+      <mark key={`${part}-${index}`} className="search-highlight">
+        {part}
+      </mark>
+    ) : (
+      <Fragment key={`${part}-${index}`}>{part}</Fragment>
+    ),
+  );
+};
+
+const buildFlatResults = (data) => {
+  const users = (data?.users || []).slice(0, MAX_RESULTS_PER_SECTION).map((item) => ({
+    id: `user-${item._id}`,
+    type: "user",
+    label: getDisplayName(item),
+    sublabel: item.username
+      ? `@${item.username}`
+      : item.nickname || "Profile",
+    url: `/${item._id}`,
+    profilePic: item.profilePic,
+    profileId: item._id,
+  }));
+
+  const videos = (data?.videos || []).slice(0, MAX_RESULTS_PER_SECTION).map((item) => ({
+    id: `video-${item._id}`,
+    type: "video",
+    label: truncateText(item.caption) || "Untitled video",
+    sublabel: item.author ? getDisplayName(item.author) : "Video",
+    url: `/watch/${item._id}`,
+    profilePic: item.author?.profilePic,
+    profileId: item.author?._id,
+  }));
+
+  const posts = (data?.posts || []).slice(0, MAX_RESULTS_PER_SECTION).map((item) => ({
+    id: `post-${item._id}`,
+    type: "post",
+    label: truncateText(item.caption) || "Untitled post",
+    sublabel: item.author ? getDisplayName(item.author) : "Post",
+    url: `/post/${item._id}`,
+    profilePic: item.author?.profilePic,
+    profileId: item.author?._id,
+  }));
+
+  return [...users, ...videos, ...posts];
+};
+
+const resultTypeMeta = {
+  user: { icon: "fal fa-user", label: "Profile" },
+  video: { icon: "fal fa-video", label: "Video" },
+  post: { icon: "fal fa-file-alt", label: "Post" },
+};
+
 let HeaderLeft = () => {
-  let [searchedData, setSearchedData] = useState([]);
-  let [hasSearchResult, setHasSearchResult] = useState(false);
+  let [searchedData, setSearchedData] = useState(emptySearchData);
+  let [isSearchOpen, setIsSearchOpen] = useState(false);
   let [mobileSearchMenu, setMobileSearchMenu] = useState(false);
   let [isAppMenuOpen, setIsAppMenuOpen] = useState(false);
   let [isAIAgentModalOpen, setIsAIAgentModalOpen] = useState(false);
   let [searchQuery, setSearchQuery] = useState("");
+  let [isSearching, setIsSearching] = useState(false);
+  let [searchError, setSearchError] = useState("");
+  let [activeResultIndex, setActiveResultIndex] = useState(-1);
+  let [recentSearches, setRecentSearches] = useState(loadRecentSearches);
   let location = useLocation();
   let isMobile = useIsMobile();
   let navigate = useNavigate();
   const longPressTimerRef = useRef(null);
   const longPressTriggeredRef = useRef(false);
+  const searchRootRef = useRef(null);
+  const searchInputRef = useRef(null);
+  const searchAbortRef = useRef(null);
+  const resultItemRefs = useRef([]);
+
   useEffect(() => {
     setIsAppMenuOpen(false);
   }, [location]);
+
+  const closeSearch = useCallback(() => {
+    searchAbortRef.current?.abort();
+    setIsSearching(false);
+    setIsSearchOpen(false);
+    setMobileSearchMenu(false);
+    setActiveResultIndex(-1);
+    setSearchError("");
+    searchInputRef.current?.blur();
+  }, []);
+
+  const openSearch = useCallback(() => {
+    setIsSearchOpen(true);
+    if (isMobile) setMobileSearchMenu(true);
+    const focusInput = () => searchInputRef.current?.focus();
+    requestAnimationFrame(() => {
+      focusInput();
+      requestAnimationFrame(focusInput);
+    });
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (!isMobile || !isSearchOpen) return undefined;
+
+    const syncSearchViewport = () => {
+      const viewport = window.visualViewport;
+      const top = viewport?.offsetTop ?? 0;
+      const height = viewport?.height ?? window.innerHeight;
+      document.documentElement.style.setProperty("--search-vv-top", `${top}px`);
+      document.documentElement.style.setProperty("--search-vvh", `${height}px`);
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.body.classList.add("header-search-open");
+    syncSearchViewport();
+
+    window.visualViewport?.addEventListener("resize", syncSearchViewport);
+    window.visualViewport?.addEventListener("scroll", syncSearchViewport);
+    window.addEventListener("resize", syncSearchViewport);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.classList.remove("header-search-open");
+      document.documentElement.style.removeProperty("--search-vv-top");
+      document.documentElement.style.removeProperty("--search-vvh");
+      window.visualViewport?.removeEventListener("resize", syncSearchViewport);
+      window.visualViewport?.removeEventListener("scroll", syncSearchViewport);
+      window.removeEventListener("resize", syncSearchViewport);
+    };
+  }, [isMobile, isSearchOpen]);
+
+  useEffect(() => {
+    closeSearch();
+  }, [location.pathname, closeSearch]);
 
   const clearLogoLongPressTimer = useCallback(() => {
     if (longPressTimerRef.current) {
@@ -107,6 +273,7 @@ let HeaderLeft = () => {
   useEffect(() => {
     return () => {
       clearLogoLongPressTimer();
+      searchAbortRef.current?.abort();
     };
   }, [clearLogoLongPressTimer]);
 
@@ -135,105 +302,267 @@ let HeaderLeft = () => {
     );
   };
 
-  const useMediaQuery = (query) => {
-    const [matches, setMatches] = useState(window.matchMedia(query).matches);
+  const trimmedQuery = searchQuery.trim();
+  const liveResults = useMemo(
+    () => buildFlatResults(searchedData),
+    [searchedData],
+  );
+  const showingRecents = isSearchOpen && !trimmedQuery && recentSearches.length > 0;
+  const keyboardItems = showingRecents ? recentSearches : liveResults;
 
-    useEffect(() => {
-      const media = window.matchMedia(query);
-      const listener = (e) => setMatches(e.matches);
-      media.addEventListener("change", listener);
-      return () => media.removeEventListener("change", listener);
-    }, [query]);
-
-    return matches;
-  };
-
-  let onSearchFocus = () => {
-    if (!isMobile) {
-      $(".header-search-icon, .header-logo").hide();
-      $(".header-search-back-container").fadeIn("slow");
-      $(".header-search-icon, .header-logo-container").animate(
-        {
-          left: "-10px",
-          opacity: 0,
-        },
-        "fast",
-      );
-      $("#header-search").css({
-        width: "100%",
-        display: "block",
-      });
-    }
-  };
-
-  let onSearchFocusOut = () => {
-    if (!isMobile) {
-      $(".header-search-back-container").hide();
-      $(".header-search-icon, .header-logo-container").animate(
-        {
-          left: "0",
-          opacity: 1,
-        },
-        "fast",
-      );
-      $(".header-search-icon, .header-logo").fadeIn();
-      $("#header-search").css({
-        width: "auto",
-        display: "block",
-      });
-      // if(isMobile) {
-      //   $('.header-search-icon').css('display', 'block !important');
-      // }
-    }
-    // setMobileSearchMenu(false)
-    // setSearchedUsers([])
-    // setSearchQuery('')
-    if (searchQuery.length > 0) {
-      return setHasSearchResult(true);
-    }
-    setHasSearchResult(false);
-  };
-
-  let handleKeyUp = async (e) => {
-    if (searchQuery.length > 0) {
-      let searchResult = await api.get("search/", {
-        params: {
-          input: searchQuery,
-        },
-      });
-      if (searchResult.status === 200) {
-        console.log("data", searchResult.data);
-        setSearchedData(searchResult.data);
-        setHasSearchResult(
-          searchResult.data.users !== null ||
-            searchResult.data.posts !== null ||
-            searchResult.data.videos !== null,
-        );
-      }
-    } else {
-      setSearchedData([]);
-      setHasSearchResult(false);
-    }
-  };
-
-  let headerSearchIcon = (e) => {
-    if (isMobile) {
-      setMobileSearchMenu(!mobileSearchMenu);
-      onSearchFocus();
-    }
-  };
-
-  let handleBackButtonClick = (e) => {
-    setMobileSearchMenu(false);
-  };
-
-  let goToItem = useCallback((e) => {
-    navigate(e.currentTarget.dataset.url);
+  const saveRecentSearch = useCallback((item) => {
+    if (!item?.url) return;
+    setRecentSearches((prev) => {
+      const next = [
+        item,
+        ...prev.filter((entry) => entry.id !== item.id && entry.url !== item.url),
+      ].slice(0, MAX_RECENT_SEARCHES);
+      persistRecentSearches(next);
+      return next;
+    });
   }, []);
 
-  function truncateToFourWords(text) {
-    return text.split(/\s+/).slice(0, 4).join(" ");
-  }
+  const removeRecentSearch = useCallback((id, event) => {
+    event?.stopPropagation();
+    event?.preventDefault();
+    setRecentSearches((prev) => {
+      const next = prev.filter((entry) => entry.id !== id);
+      persistRecentSearches(next);
+      return next;
+    });
+  }, []);
+
+  const clearRecentSearches = useCallback((event) => {
+    event?.stopPropagation();
+    setRecentSearches([]);
+    persistRecentSearches([]);
+  }, []);
+
+  const goToSearchItem = useCallback(
+    (item) => {
+      if (!item?.url) return;
+      saveRecentSearch(item);
+      setSearchQuery("");
+      setSearchedData(emptySearchData);
+      closeSearch();
+      navigate(item.url);
+    },
+    [closeSearch, navigate, saveRecentSearch],
+  );
+
+  useEffect(() => {
+    if (!isSearchOpen) return undefined;
+
+    const onPointerDown = (event) => {
+      if (!searchRootRef.current?.contains(event.target)) {
+        closeSearch();
+      }
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+    };
+  }, [isSearchOpen, closeSearch]);
+
+  useEffect(() => {
+    const q = trimmedQuery;
+    if (!isSearchOpen) return undefined;
+
+    if (q.length < MIN_QUERY_LENGTH) {
+      searchAbortRef.current?.abort();
+      setSearchedData(emptySearchData);
+      setIsSearching(false);
+      setSearchError("");
+      setActiveResultIndex(-1);
+      return undefined;
+    }
+
+    setIsSearching(true);
+    setSearchError("");
+    setActiveResultIndex(-1);
+
+    const timeoutId = setTimeout(async () => {
+      searchAbortRef.current?.abort();
+      const controller = new AbortController();
+      searchAbortRef.current = controller;
+
+      try {
+        const searchResult = await api.get("search/", {
+          params: { input: q },
+          signal: controller.signal,
+        });
+
+        if (searchResult.status === 200) {
+          const data = searchResult.data || {};
+          setSearchedData({
+            users: Array.isArray(data.users) ? data.users : [],
+            posts: Array.isArray(data.posts) ? data.posts : [],
+            videos: Array.isArray(data.videos) ? data.videos : [],
+          });
+        }
+      } catch (error) {
+        if (error?.code === "ERR_CANCELED" || error?.name === "CanceledError") {
+          return;
+        }
+        setSearchedData(emptySearchData);
+        setSearchError("Couldn't load results. Try again.");
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsSearching(false);
+        }
+      }
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      clearTimeout(timeoutId);
+    };
+  }, [trimmedQuery, isSearchOpen]);
+
+  useEffect(() => {
+    if (activeResultIndex < 0) return;
+    resultItemRefs.current[activeResultIndex]?.scrollIntoView({
+      block: "nearest",
+    });
+  }, [activeResultIndex]);
+
+  const handleSearchFocus = () => {
+    setIsSearchOpen(true);
+    if (isMobile) setMobileSearchMenu(true);
+  };
+
+  const handleSearchIconClick = () => {
+    if (isSearchOpen && isMobile) {
+      closeSearch();
+      return;
+    }
+    openSearch();
+  };
+
+  const handleBackButtonClick = () => {
+    if (trimmedQuery) {
+      setSearchQuery("");
+      setSearchedData(emptySearchData);
+      searchInputRef.current?.focus();
+      return;
+    }
+    closeSearch();
+  };
+
+  const handleClearQuery = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setSearchQuery("");
+    setSearchedData(emptySearchData);
+    setActiveResultIndex(-1);
+    searchInputRef.current?.focus();
+  };
+
+  const handleSearchKeyDown = (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      if (trimmedQuery) {
+        setSearchQuery("");
+        setSearchedData(emptySearchData);
+        setActiveResultIndex(-1);
+        return;
+      }
+      closeSearch();
+      return;
+    }
+
+    if (!keyboardItems.length) return;
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveResultIndex((prev) =>
+        prev < keyboardItems.length - 1 ? prev + 1 : 0,
+      );
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveResultIndex((prev) =>
+        prev > 0 ? prev - 1 : keyboardItems.length - 1,
+      );
+      return;
+    }
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const item =
+        activeResultIndex >= 0
+          ? keyboardItems[activeResultIndex]
+          : keyboardItems[0];
+      if (item) goToSearchItem(item);
+    }
+  };
+
+  const hasAnyLiveResults = liveResults.length > 0;
+  const showResultsPanel =
+    isSearchOpen &&
+    (showingRecents ||
+      Boolean(trimmedQuery) ||
+      isSearching ||
+      Boolean(searchError));
+
+  const renderResultItem = (item, index, { isRecent = false } = {}) => {
+    const meta = resultTypeMeta[item.type] || resultTypeMeta.user;
+    const isActive = index === activeResultIndex;
+
+    return (
+      <li
+        key={item.id || `${item.url}-${index}`}
+        id={`header-search-option-${index}`}
+        className={`search-result-item ${isActive ? "is-active" : ""}`}
+        role="option"
+        aria-selected={isActive}
+        ref={(node) => {
+          resultItemRefs.current[index] = node;
+        }}
+        onMouseEnter={() => setActiveResultIndex(index)}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => goToSearchItem(item)}
+      >
+        <div className="item-container">
+          <div className="user-profile-pic">
+            {item.profilePic ? (
+              <UserPP profilePic={item.profilePic} profile={item.profileId} />
+            ) : (
+              <div className="search-result-fallback-icon">
+                <i className={meta.icon} aria-hidden="true" />
+              </div>
+            )}
+          </div>
+          <div className="search-result-copy">
+            <div className="user-details">
+              <HighlightMatch text={item.label} query={trimmedQuery} />
+            </div>
+            <div className="search-result-sublabel">
+              <i className={meta.icon} aria-hidden="true" />
+              <span>
+                {isRecent ? `Recent · ${meta.label}` : item.sublabel}
+              </span>
+            </div>
+          </div>
+          {isRecent && (
+            <button
+              type="button"
+              className="search-recent-remove"
+              aria-label={`Remove ${item.label} from recent searches`}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={(event) => removeRecentSearch(item.id, event)}
+            >
+              <i className="fal fa-times" aria-hidden="true" />
+            </button>
+          )}
+        </div>
+      </li>
+    );
+  };
 
   // Close app menu when AI agent modal opens
   useEffect(() => {
@@ -244,7 +573,10 @@ let HeaderLeft = () => {
 
   return (
     <Fragment>
-      <div className="header-left">
+      <div
+        className={`header-left ${isSearchOpen ? "header-search-active" : ""}`}
+        ref={searchRootRef}
+      >
         <div
           className="header-logo-container"
           onMouseDown={handleLogoMouseDown}
@@ -316,172 +648,211 @@ let HeaderLeft = () => {
           onClose={() => setIsAIAgentModalOpen(false)}
         />
         <div className="header-search-back-container">
-          <i
+          <button
+            type="button"
+            className="header-search-back-icon"
             onClick={handleBackButtonClick}
-            className="fal fa-arrow-left header-search-back-icon"
-          ></i>
+            aria-label={trimmedQuery ? "Clear search" : "Close search"}
+          >
+            <i className="fal fa-arrow-left" aria-hidden="true" />
+          </button>
         </div>
+        {isMobile && isSearchOpen && (
+          <button
+            type="button"
+            className="header-search-backdrop"
+            aria-label="Close search"
+            onClick={closeSearch}
+          />
+        )}
         <div
-          className={`header-search-container ${mobileSearchMenu == true ? "active-mobile" : ""}`}
+          className={`header-search-container ${mobileSearchMenu ? "active-mobile" : ""} ${isSearchOpen ? "is-expanded" : ""}`}
         >
-          <i
-            className="fal fa-search header-search-icon"
-            onClick={headerSearchIcon.bind(this)}
-          ></i>
-          <input
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-            }}
-            onBlur={onSearchFocusOut}
-            onFocus={onSearchFocus}
-            onKeyUp={handleKeyUp.bind(this)}
-            id="header-search"
-            type="search"
-            placeholder="Search ICS"
-          ></input>
+          {isMobile && isSearchOpen && (
+            <button
+              type="button"
+              className="header-search-inline-back"
+              onClick={handleBackButtonClick}
+              aria-label={trimmedQuery ? "Clear search" : "Close search"}
+            >
+              <i className="fal fa-arrow-left" aria-hidden="true" />
+            </button>
+          )}
+          <button
+            type="button"
+            className="header-search-icon-button"
+            onClick={handleSearchIconClick}
+            aria-label={isMobile && !isSearchOpen ? "Open search" : "Search"}
+          >
+            {isSearching ? (
+              <i className="fal fa-circle-notch fa-spin header-search-icon" aria-hidden="true" />
+            ) : (
+              <i className="fal fa-search header-search-icon" aria-hidden="true" />
+            )}
+          </button>
+          <div className="header-search-input-wrap">
+            <input
+              ref={searchInputRef}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={handleSearchFocus}
+              onKeyDown={handleSearchKeyDown}
+              id="header-search"
+              type="search"
+              inputMode="search"
+              enterKeyHint="search"
+              placeholder={isMobile ? "Search" : "Search people, posts, videos"}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={showResultsPanel}
+              aria-controls="header-search-results"
+              aria-activedescendant={
+                activeResultIndex >= 0
+                  ? `header-search-option-${activeResultIndex}`
+                  : undefined
+              }
+            />
+            {trimmedQuery && (
+              <button
+                type="button"
+                className="header-search-clear"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={handleClearQuery}
+                aria-label="Clear search"
+              >
+                <i className="fal fa-times" aria-hidden="true" />
+              </button>
+            )}
+          </div>
 
-          {hasSearchResult && (
-            <>
-              <div className="header-search-results">
-                {/* Show empty state if no results */}
-                {(!searchedData.users || searchedData.users.length === 0) &&
-                  (!searchedData.videos || searchedData.videos.length === 0) &&
-                  (!searchedData.posts || searchedData.posts.length === 0) && (
-                    <div className="search-no-results">
-                      <i
-                        className="fal fa-search"
-                        style={{
-                          fontSize: "48px",
-                          opacity: 0.3,
-                          marginBottom: "12px",
-                        }}
-                      ></i>
-                      <p style={{ opacity: 0.6, margin: 0 }}>
-                        No results found
-                      </p>
-                    </div>
-                  )}
+          {showResultsPanel && (
+            <div
+              className="header-search-results"
+              id="header-search-results"
+              role="listbox"
+              onMouseDown={(event) => event.preventDefault()}
+            >
+              {showingRecents && (
+                <div className="search-results-section">
+                  <div className="search-results-heading">
+                    <h3 className="search-result-title">Recent</h3>
+                    <button
+                      type="button"
+                      className="search-results-action"
+                      onClick={clearRecentSearches}
+                    >
+                      Clear all
+                    </button>
+                  </div>
+                  <ul className="search-results-list-container">
+                    {recentSearches.map((item, index) =>
+                      renderResultItem(item, index, { isRecent: true }),
+                    )}
+                  </ul>
+                </div>
+              )}
 
-                {searchedData.users && searchedData.users.length > 0 && (
-                  <div className="search-results-user">
+              {!trimmedQuery && !showingRecents && (
+                <div className="search-empty-hint">
+                  <i className="fal fa-search" aria-hidden="true" />
+                  <p>Search for people, posts, or videos</p>
+                </div>
+              )}
+
+              {Boolean(trimmedQuery) && isSearching && !hasAnyLiveResults && (
+                <div className="search-loading-state">
+                  <i className="fal fa-circle-notch fa-spin" aria-hidden="true" />
+                  <p>Searching…</p>
+                </div>
+              )}
+
+              {Boolean(trimmedQuery) && searchError && !isSearching && (
+                <div className="search-no-results">
+                  <i className="fal fa-exclamation-circle" aria-hidden="true" />
+                  <p>{searchError}</p>
+                </div>
+              )}
+
+              {Boolean(trimmedQuery) &&
+                !isSearching &&
+                !searchError &&
+                !hasAnyLiveResults && (
+                  <div className="search-no-results">
+                    <i className="fal fa-search" aria-hidden="true" />
+                    <p>
+                      No results for <strong>{trimmedQuery}</strong>
+                    </p>
+                    <span>Try a different name or keyword</span>
+                  </div>
+                )}
+
+              {Boolean(trimmedQuery) &&
+                searchedData.users &&
+                searchedData.users.length > 0 && (
+                  <div className="search-results-section search-results-user">
                     <h3 className="search-result-title">
-                      <i
-                        className="fal fa-user"
-                        style={{ marginRight: "8px", opacity: 0.7 }}
-                      ></i>
-                      Users
+                      <i className="fal fa-user" aria-hidden="true" />
+                      People
                     </h3>
                     <ul className="search-results-list-container">
-                      {searchedData.users.map((item, index) => (
-                        <li
-                          className="search-result-item"
-                          key={index}
-                          onClick={() => {
-                            setHasSearchResult(false);
-                            setMobileSearchMenu(false);
-                          }}
-                        >
-                          <div
-                            className="item-container"
-                            data-url={`/${item._id}`}
-                            onClick={goToItem.bind(this)}
-                          >
-                            <div className="user-profile-pic">
-                              <UserPP
-                                profilePic={item.profilePic}
-                                profile={item._id}
-                              ></UserPP>
-                            </div>
-                            <div className="user-details">{item.fullName}</div>
-                          </div>
-                        </li>
-                      ))}
+                      {liveResults
+                        .filter((item) => item.type === "user")
+                        .map((item) =>
+                          renderResultItem(
+                            item,
+                            keyboardItems.findIndex((entry) => entry.id === item.id),
+                          ),
+                        )}
                     </ul>
                   </div>
                 )}
 
-                {searchedData.videos && searchedData.videos.length > 0 && (
-                  <div className="search-results-videos">
+              {Boolean(trimmedQuery) &&
+                searchedData.videos &&
+                searchedData.videos.length > 0 && (
+                  <div className="search-results-section search-results-videos">
                     <h3 className="search-result-title">
-                      <i
-                        className="fal fa-video"
-                        style={{ marginRight: "8px", opacity: 0.7 }}
-                      ></i>
+                      <i className="fal fa-video" aria-hidden="true" />
                       Videos
                     </h3>
                     <ul className="search-results-list-container">
-                      {searchedData.videos.map((item, index) => (
-                        <li
-                          className="search-result-item"
-                          key={index}
-                          onClick={() => {
-                            setHasSearchResult(false);
-                            setMobileSearchMenu(false);
-                          }}
-                        >
-                          <div
-                            className="item-container"
-                            data-url={`/watch/${item._id}`}
-                            onClick={goToItem.bind(this)}
-                          >
-                            <div className="user-profile-pic">
-                              <UserPP
-                                profilePic={item.author.profilePic}
-                                profile={item.author._id}
-                              ></UserPP>
-                            </div>
-                            <div className="user-details">
-                              {truncateToFourWords(item.caption)}
-                            </div>
-                          </div>
-                        </li>
-                      ))}
+                      {liveResults
+                        .filter((item) => item.type === "video")
+                        .map((item) =>
+                          renderResultItem(
+                            item,
+                            keyboardItems.findIndex((entry) => entry.id === item.id),
+                          ),
+                        )}
                     </ul>
                   </div>
                 )}
 
-                {searchedData.posts && searchedData.posts.length > 0 && (
-                  <div className="search-results-posts">
+              {Boolean(trimmedQuery) &&
+                searchedData.posts &&
+                searchedData.posts.length > 0 && (
+                  <div className="search-results-section search-results-posts">
                     <h3 className="search-result-title">
-                      <i
-                        className="fal fa-file-alt"
-                        style={{ marginRight: "8px", opacity: 0.7 }}
-                      ></i>
+                      <i className="fal fa-file-alt" aria-hidden="true" />
                       Posts
                     </h3>
                     <ul className="search-results-list-container">
-                      {searchedData.posts.map((item, index) => (
-                        <li
-                          className="search-result-item"
-                          key={index}
-                          onClick={() => {
-                            setHasSearchResult(false);
-                            setMobileSearchMenu(false);
-                          }}
-                        >
-                          <div
-                            className="item-container"
-                            data-url={`/post/${item._id}`}
-                            onClick={goToItem.bind(this)}
-                          >
-                            <div className="user-profile-pic">
-                              <UserPP
-                                profilePic={item.author.profilePic}
-                                profile={item.author._id}
-                              ></UserPP>
-                            </div>
-                            <div className="user-details">
-                              {truncateToFourWords(item.caption)}
-                            </div>
-                          </div>
-                        </li>
-                      ))}
+                      {liveResults
+                        .filter((item) => item.type === "post")
+                        .map((item) =>
+                          renderResultItem(
+                            item,
+                            keyboardItems.findIndex((entry) => entry.id === item.id),
+                          ),
+                        )}
                     </ul>
                   </div>
                 )}
-              </div>
-            </>
+            </div>
           )}
         </div>
       </div>

@@ -17,6 +17,7 @@ const MessageBubble = ({ message, userProfilePic }) => {
   const isFriendPicker = message.type === "friend-picker";
   const isActionResult = message.type === "action-result";
   const isVideoResults = message.type === "video-results";
+  const isSearchResults = message.type === "search-results";
 
   // Determine avatar
   const agentAvatar = (
@@ -155,6 +156,74 @@ const MessageBubble = ({ message, userProfilePic }) => {
     );
   }
 
+  if (isSearchResults) {
+    const { users, posts, videos, onPlay, onOpenUser, onOpenPost, content } =
+      message;
+    return (
+      <motion.div
+        className="ai-agent-message agent-message"
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ type: "spring", stiffness: 120 }}
+      >
+        <div
+          className="ai-agent-bubble agent-bubble"
+          style={{ maxWidth: "96%" }}
+        >
+          {agentAvatar}
+          <div
+            className="message-content"
+            style={{ maxWidth: "100%", minWidth: 0 }}
+          >
+            <p style={{ whiteSpace: "pre-wrap" }}>{content}</p>
+            {users?.length > 0 && (
+              <div className="friend-picker-cards">
+                {users.slice(0, 8).map((user) => (
+                  <FriendResultCard
+                    key={user._id}
+                    friend={user}
+                    action="VIEW_PROFILE"
+                    actionLabel="Open"
+                    onAction={onOpenUser}
+                    compact={users.length > 2}
+                  />
+                ))}
+              </div>
+            )}
+            {posts?.length > 0 && (
+              <div className="friend-picker-cards">
+                {posts.slice(0, 6).map((post) => (
+                  <button
+                    key={post._id}
+                    type="button"
+                    className="suggestion-chip"
+                    style={{ textAlign: "left", width: "100%" }}
+                    onClick={() => onOpenPost?.(post)}
+                  >
+                    {(post.caption || "Untitled post").slice(0, 90)}
+                  </button>
+                ))}
+              </div>
+            )}
+            {videos?.length > 0 && (
+              <div className="friend-picker-cards">
+                {videos.slice(0, 6).map((video) => (
+                  <VideoResultCard
+                    key={video._id}
+                    video={video}
+                    onPlay={onPlay}
+                    compact={videos.length > 2}
+                  />
+                ))}
+              </div>
+            )}
+            <span className="message-time">{timestamp}</span>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
   // ── Action result bubble ────────────────────────────────────────────────────
   if (isActionResult) {
     const successColor = message.success ? "#10b981" : "#ef4444";
@@ -187,7 +256,9 @@ const MessageBubble = ({ message, userProfilePic }) => {
               <i
                 className={`fas ${message.success ? "fa-check-circle" : "fa-exclamation-circle"}`}
               />
-              <span>{message.content}</span>
+              <span style={{ whiteSpace: "pre-wrap", fontWeight: 500 }}>
+                {message.content}
+              </span>
             </div>
 
             {/* Location map link */}

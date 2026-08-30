@@ -8,6 +8,7 @@ import UserPP from "../UserPP";
 import { Link } from "react-router-dom";
 import { Container } from "react-bootstrap";
 import ImageSkleton from "../../skletons/post/ImageSkleton";
+import SinglePostSkeleton from "../../skletons/post/SinglePostSkeleton";
 import ModalContainer from "../modal/ModalContainer";
 import useIsMobile from "../../utils/useIsMobile";
 import isValidUrl from "../../utils/isValiUrl";
@@ -26,6 +27,7 @@ import "./PostCard.css";
 import "./SharePostModal.css";
 import "./CommentStyles.css";
 import "./SinglePost.css";
+import OptionsDropdown from "./OptionsDropdown";
 const default_pp_src = config?.defaultProfile;
 
 const SinglePost = () => {
@@ -52,6 +54,7 @@ const SinglePost = () => {
   };
 
   useEffect(() => {
+    setPostData(false);
     loadData();
   }, [postId]);
 
@@ -301,6 +304,14 @@ const SinglePost = () => {
     navigate(`/post/${postId}`);
   };
 
+  const [isPostOption, setIsPostOption] = useState(false);
+  const closePostOption = useCallback(() => {
+    setIsPostOption(false);
+  }, []);
+  const postOptionClick = useCallback(() => {
+    setIsPostOption((prev) => !prev);
+  }, []);
+
   let authProfilePicture = useSelector((state) => state.profile.profilePic);
   let authProfileId = useSelector((state) => state.profile._id);
 
@@ -433,11 +444,26 @@ const SinglePost = () => {
                   </div>
                 </div>
                 <div className="right">
-                  {isAuth && (
-                    <button className="post-three-dot">
-                      <i className="far fa-ellipsis-h"></i>
-                    </button>
-                  )}
+                  <OptionsDropdown
+                    open={isPostOption}
+                    onToggle={postOptionClick}
+                    onClose={closePostOption}
+                    ariaLabel="Post options"
+                  >
+                    <ul>
+                      {isAuth && (
+                        <li
+                          onClick={() => {
+                            closePostOption();
+                            gotoEdit();
+                          }}
+                        >
+                          Edit Post
+                        </li>
+                      )}
+                      <li onClick={closePostOption}>Report This Post</li>
+                    </ul>
+                  </OptionsDropdown>
 
                   <button
                     onClick={hideThisPost.bind(this)}
@@ -779,16 +805,35 @@ const SinglePost = () => {
                   </div>
                 </div>
                 <div className="right">
-                  {isAuth && !isEditMode && (
-                    <>
-                      {/* <button className="post-three-dot"><i className="far fa-ellipsis-h"></i></button> */}
-                      <button onClick={gotoEdit} className="post-three-dot">
-                        <i className="far fs-6 fa-pen"></i>
-                      </button>
-                    </>
+                  {!isEditMode && (
+                    <OptionsDropdown
+                      open={isPostOption}
+                      onToggle={postOptionClick}
+                      onClose={closePostOption}
+                      ariaLabel="Post options"
+                    >
+                      <ul>
+                        {isAuth && (
+                          <li
+                            onClick={() => {
+                              closePostOption();
+                              gotoEdit();
+                            }}
+                          >
+                            Edit Post
+                          </li>
+                        )}
+                        <li onClick={closePostOption}>Report This Post</li>
+                      </ul>
+                    </OptionsDropdown>
                   )}
                   {isEditMode && (
-                    <button onClick={gotoBack} className="post-three-dot">
+                    <button
+                      type="button"
+                      onClick={gotoBack}
+                      className="post-three-dot"
+                      aria-label="Back to post"
+                    >
                       <i className="fas fa-arrow-left"></i>
                     </button>
                   )}
@@ -1186,10 +1231,7 @@ const SinglePost = () => {
         </div>
 
         {!postData ? (
-          <div className="sp-loading" role="status" aria-live="polite">
-            <div className="sp-loading-spinner" />
-            <span>Loading post…</span>
-          </div>
+          <SinglePostSkeleton />
         ) : (
           <div className="sp-layout">
             <div className="sp-main-col">

@@ -361,7 +361,7 @@ export const unlockAudio = () => {
 };
 
 let lastBumpPlayAt = 0;
-const BUMP_PLAY_DEDUP_MS = 500;
+const BUMP_PLAY_DEDUP_MS = 2500;
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 

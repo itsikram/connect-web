@@ -13,11 +13,14 @@ const CACHE_KEYS = {
   CACHE_VERSION: "friend_cache_version",
 };
 
-const CACHE_VERSION = "1.0";
+const CACHE_VERSION = "1.1";
 const FRIEND_CACHE_DURATION = 15 * 60 * 1000;
 
 const memoryCache = new Map();
 const inflight = new Map();
+
+const TOMBSTONE_TTL = 60 * 1000;
+const tombstones = new Map();
 
 const now = () => Date.now();
 
@@ -28,6 +31,14 @@ const emitUpdate = (profileId, list, items) => {
       detail: { profileId, list, items },
     }),
   );
+};
+
+const sameIdList = (a, b) => {
+  if (a === b) return true;
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+    return false;
+  }
+  return a.every((item, index) => item?._id === b[index]?._id);
 };
 
 class FriendCacheManager {
@@ -57,6 +68,29 @@ class FriendCacheManager {
     } catch (error) {
       console.warn("Friend cache initialization error:", error);
     }
+  }
+
+  static tombstoneKey(profileId, list) {
+    return `${list}:${profileId || "anon"}`;
+  }
+
+  static markRemoved(profileId, list, id) {
+    if (!id) return;
+    const key = this.tombstoneKey(profileId, list);
+    const bucket = tombstones.get(key) || new Map();
+    bucket.set(String(id), now());
+    tombstones.set(key, bucket);
+  }
+
+  static filterTombstones(profileId, list, items) {
+    if (!Array.isArray(items)) return [];
+    const bucket = tombstones.get(this.tombstoneKey(profileId, list));
+    if (!bucket || bucket.size === 0) return items;
+    const cutoff = now() - TOMBSTONE_TTL;
+    bucket.forEach((removedAt, id) => {
+      if (removedAt < cutoff) bucket.delete(id);
+    });
+    return items.filter((item) => !bucket.has(String(item?._id)));
   }
 
   static readList(storageKey, tsKey, memoryKey, { allowExpired = true } = {}) {
@@ -96,26 +130,36 @@ class FriendCacheManager {
   static writeList(storageKey, tsKey, memoryKey, items, profileId, list) {
     try {
       if (!Array.isArray(items)) return false;
+      const current = memoryCache.get(memoryKey)?.data;
+      const next = this.filterTombstones(profileId, list, items);
       const timestamp = now();
-      localStorage.setItem(storageKey, JSON.stringify(items));
+      localStorage.setItem(storageKey, JSON.stringify(next));
       localStorage.setItem(tsKey, String(timestamp));
-      memoryCache.set(memoryKey, { timestamp, data: items });
-      emitUpdate(profileId, list, items);
+      memoryCache.set(memoryKey, { timestamp, data: next });
+      if (!sameIdList(current, next)) {
+        emitUpdate(profileId, list, next);
+      }
       return true;
     } catch (error) {
-      console.error("Error writing friend cache:", error);
+      memoryCache.set(memoryKey, { timestamp: now(), data: items });
+      if (error?.name !== "QuotaExceededError") {
+        console.error("Error writing friend cache:", error);
+      }
       return false;
     }
   }
 
   static getCachedRequests(profileId, options) {
     if (!profileId) return null;
-    return this.readList(
+    const list = this.readList(
       this.requestsKey(profileId),
       this.requestsTsKey(profileId),
       `requests:${profileId}`,
       options,
     );
+    return Array.isArray(list)
+      ? this.filterTombstones(profileId, "requests", list)
+      : null;
   }
 
   static setCachedRequests(profileId, items) {
@@ -132,12 +176,15 @@ class FriendCacheManager {
 
   static getCachedSuggestions(profileId, options) {
     if (!profileId) return null;
-    return this.readList(
+    const list = this.readList(
       this.suggestionsKey(profileId),
       this.suggestionsTsKey(profileId),
       `suggestions:${profileId}`,
       options,
     );
+    return Array.isArray(list)
+      ? this.filterTombstones(profileId, "suggestions", list)
+      : null;
   }
 
   static setCachedSuggestions(profileId, items) {
@@ -154,6 +201,7 @@ class FriendCacheManager {
 
   static removeProfile(profileId, list, targetId) {
     if (!profileId || !targetId) return;
+    this.markRemoved(profileId, list, targetId);
     const isRequests = list === "requests";
     const current = isRequests
       ? this.getCachedRequests(profileId)

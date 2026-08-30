@@ -884,16 +884,18 @@
     flex-wrap: wrap;
     align-items: flex-end;
     gap: 8px;
-    margin: 0 auto 10px;
+    width: 100%;
+    max-width: var(--ludo-board-size, 600px);
+    margin: 0;
     padding: 10px 12px;
-    width: calc(100% - 24px);
-    max-width: 720px;
     background: var(--ludo-bg-panel);
     border: 1px dashed rgba(46, 196, 182, 0.45);
     border-radius: 12px;
     color: var(--ludo-text);
     z-index: 20;
     position: relative;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+    animation: ludo-fade-up 0.4s ease;
 }
 
 .ludo-debug-move__title {

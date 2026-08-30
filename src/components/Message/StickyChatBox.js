@@ -13,7 +13,8 @@ import UserPP from "../UserPP";
 import api from "../../api/api";
 import { fetchProfileCached } from "../../utils/requestCache";
 import socket from "../../common/socket";
-import { seenMessage } from "../../services/actions/messageActions";
+import { sendBumpToFriend } from "../../utils/sendBump";
+import { newMessage, seenMessage } from "../../services/actions/messageActions";
 import SingleMessage from "./SingleMessage";
 import ChatHeader from "./ChatHeader";
 import StickyChatFooter from "./StickyChatFooter";
@@ -22,6 +23,13 @@ import ModalContainer from "../modal/ModalContainer";
 import useIsMobile from "../../utils/useIsMobile";
 import "./StickyChatBox.css";
 import "./UserInfoModal.css";
+import {
+  emitChatMessage,
+  idOf,
+  isConversationMessage,
+  mergeHistoryWithLive,
+  upsertConfirmedMessage,
+} from "../../utils/optimisticMessage";
 
 const NEAR_BOTTOM_PX = 80;
 
@@ -81,6 +89,7 @@ const StickyChatBox = ({
   const isMinimizedRef = useRef(isMinimized);
   const isNearBottomRef = useRef(true);
   const pendingScrollRestoreRef = useRef(null);
+  const pendingFollowLatestRef = useRef(false);
   const messagesRef = useRef(messages);
   const loadingOlderRef = useRef(false);
   const typingTimeoutRef = useRef(null);
@@ -191,9 +200,10 @@ const StickyChatBox = ({
 
   // WebSocket-based message sending with optimistic UI
   const sendMessage = async (messageData) => {
-    // Create optimistic message object for immediate display
+    const tempId = `temp-${Date.now()}-${Math.random()}`;
     const optimisticMessage = {
-      _id: `temp-${Date.now()}-${Math.random()}`, // Temporary ID
+      _id: tempId,
+      tempId,
       senderId: userId,
       receiverId: friendId,
       message: messageData.message,
@@ -201,82 +211,90 @@ const StickyChatBox = ({
       parent: messageData.parent,
       messageType: messageData.messageType || "text",
       timestamp: new Date(),
-      isOptimistic: true, // Flag to identify optimistic messages
+      isOptimistic: true,
     };
 
-    console.log("StickyChatBox sending message via WebSocket:", messageData);
+    const payload = { ...messageData, tempId };
 
-    // Add optimistic message to local state immediately
     setMessages((prevMessages) => {
       const existingIds = new Set(
         prevMessages.map((m) => m?._id?.toString()).filter(Boolean),
       );
       if (!existingIds.has(optimisticMessage._id?.toString())) {
-        return [...prevMessages, optimisticMessage];
+        return [...prevMessages.filter(Boolean), optimisticMessage];
       }
       return prevMessages;
     });
 
-    // Sending a message always brings the sender to the bottom of the thread.
+    emitChatMessage(optimisticMessage);
+    dispatch(newMessage(optimisticMessage, userId));
+
     isNearBottomRef.current = true;
     setShowScrollToBottom(false);
     setUnreadWhileScrolled(0);
     scrollToLastMessage("smooth");
 
-    try {
-      // Send via WebSocket instead of HTTP
-      socket.emit("sendMessage", messageData);
+    return new Promise((resolve, reject) => {
+      let settled = false;
 
-      // Listen for the server confirmation
-      const handleMessageConfirmation = (data) => {
-        console.log("StickyChatBox message confirmed by server:", data);
+      const fallbackTimeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg && (msg._id === tempId || msg.tempId === tempId) && msg.isOptimistic
+              ? { ...msg, sendFailed: true }
+              : msg,
+          ),
+        );
+        console.warn("StickyChatBox message not confirmed by server within timeout");
+        resolve(null);
+      }, 10000);
 
-        // Replace optimistic message with real message
-        setMessages((prevMessages) => {
-          return prevMessages.map((msg) => {
-            if (msg._id === optimisticMessage._id) {
-              return data.updatedMessage || data.data; // Use the real message from server
-            }
-            return msg;
-          });
-        });
-
-        // Clean up listener
-        socket.off("newMessage", handleMessageConfirmation);
-        socket.off("newMessageToUser", handleMessageConfirmation);
+      const finish = (err, updatedMessage) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(fallbackTimeout);
+        if (err) {
+          setMessages((prev) =>
+            prev.filter(
+              (msg) => msg && msg._id !== tempId && msg.tempId !== tempId,
+            ),
+          );
+          reject(err);
+          return;
+        }
+        if (updatedMessage?._id) {
+          setMessages((prev) =>
+            upsertConfirmedMessage(prev, updatedMessage, tempId),
+          );
+          emitChatMessage(updatedMessage);
+          dispatch(newMessage(updatedMessage, userId));
+        }
+        resolve(updatedMessage);
       };
 
-      // Listen for confirmation
-      socket.on("newMessage", handleMessageConfirmation);
-      socket.on("newMessageToUser", handleMessageConfirmation);
-
-      // Fallback: If no confirmation within 5 seconds, remove optimistic message
-      const fallbackTimeout = setTimeout(() => {
-        setMessages((prevMessages) =>
-          prevMessages.filter((msg) => msg._id !== optimisticMessage._id),
+      try {
+        socket.emit("sendMessage", payload, (response) => {
+          if (!response) return;
+          if (response.ok === false || response.blocked) {
+            finish(
+              new Error(response.reason || response.error || "Message blocked"),
+            );
+            return;
+          }
+          if (response.updatedMessage) {
+            finish(null, response.updatedMessage);
+          }
+        });
+      } catch (error) {
+        console.error(
+          "StickyChatBox error sending message via WebSocket:",
+          error,
         );
-        console.warn(
-          "StickyChatBox message not confirmed by server, removed optimistic message",
-        );
-        socket.off("newMessage", handleMessageConfirmation);
-        socket.off("newMessageToUser", handleMessageConfirmation);
-      }, 5000);
-
-      // Store timeout ID for cleanup
-      optimisticMessage._fallbackTimeout = fallbackTimeout;
-    } catch (error) {
-      console.error(
-        "StickyChatBox error sending message via WebSocket:",
-        error,
-      );
-
-      // Remove optimistic message on error
-      setMessages((prevMessages) =>
-        prevMessages.filter((msg) => msg._id !== optimisticMessage._id),
-      );
-
-      throw error;
-    }
+        finish(error);
+      }
+    });
   };
 
   // Mark only the last message as seen
@@ -397,6 +415,11 @@ const StickyChatBox = ({
   // Handle chat info click
   const handleChatInfoClick = async () => {
     if (!friendId) return;
+    setShowOptionsMenu(false);
+    if (isUserInfoModalOpen) {
+      setIsUserInfoModalOpen(false);
+      return;
+    }
     setIsUserInfoModalOpen(true);
     setLoadingUserInfo(true);
     try {
@@ -586,7 +609,9 @@ const StickyChatBox = ({
         console.log("StickyChatBox: Messages response", response.data);
         if (response.data && response.data.messages) {
           const deduplicated = deduplicateMessages(response.data.messages);
-          setMessages(deduplicated);
+          setMessages((prev) =>
+            mergeHistoryWithLive(deduplicated, prev),
+          );
           setHasMoreMessages(response.data.hasMore);
           isNearBottomRef.current = true;
         } else {
@@ -610,72 +635,48 @@ const StickyChatBox = ({
     socket.emit("joinRoom", roomId);
 
     const appendIncomingMessage = (updatedMessage) => {
-      const isOwnMessage = String(updatedMessage.senderId) === String(userId);
-      // Snapshot before the state update — don't yank the user if they're reading history.
-      const shouldFollow = isOwnMessage || isNearBottomRef.current;
+      if (!updatedMessage?._id) return;
 
-      setMessages((prevMessages) => {
-        const existingIds = new Set(
-          prevMessages.map((m) => m?._id?.toString()).filter(Boolean),
-        );
+      pendingFollowLatestRef.current = true;
+      isNearBottomRef.current = true;
 
-        // Check if this is a confirmation of an optimistic message
-        const optimisticIndex = prevMessages.findIndex(
-          (msg) =>
-            msg.isOptimistic &&
-            msg.senderId === updatedMessage.senderId &&
-            msg.message === updatedMessage.message &&
-            Math.abs(
-              new Date(msg.timestamp) - new Date(updatedMessage.timestamp),
-            ) < 5000, // Within 5 seconds
-        );
+      setMessages((prevMessages) =>
+        upsertConfirmedMessage(
+          prevMessages,
+          updatedMessage,
+          updatedMessage.tempId,
+        ),
+      );
+      emitChatMessage(updatedMessage);
+      dispatch(newMessage(updatedMessage, userId));
 
-        if (optimisticIndex !== -1) {
-          // Replace optimistic message with real message
-          const newMessages = [...prevMessages];
-          newMessages[optimisticIndex] = updatedMessage;
-          return newMessages;
-        } else if (!existingIds.has(updatedMessage._id?.toString())) {
-          // Update sender's online status when receiving new messages
-          if (updatedMessage.senderId === friendId) {
-            setIsActive(true);
-          }
-
-          return [...prevMessages, updatedMessage];
-        }
-        return prevMessages;
-      });
-
-      if (shouldFollow) {
-        scrollToLastMessage("smooth");
-      } else if (!isOwnMessage) {
-        // Message arrived while the user is reading older history — surface a
-        // "jump to latest" affordance instead of forcing a scroll.
-        setUnreadWhileScrolled((count) => count + 1);
-        setShowScrollToBottom(true);
+      if (idOf(updatedMessage.senderId) === idOf(friendId)) {
+        setIsActive(true);
       }
     };
 
     const handleNewMessage = (data) => {
-      console.log("StickyChatBox received new message via socket:", data);
       if (
-        data.updatedMessage &&
-        (data.updatedMessage.senderId === friendId ||
-          data.updatedMessage.receiverId === friendId)
+        data?.updatedMessage &&
+        isConversationMessage(data.updatedMessage, userId, friendId)
       ) {
         appendIncomingMessage(data.updatedMessage);
       }
     };
 
     const handleNewMessageToUser = (data) => {
-      console.log(
-        "StickyChatBox received new message to user via socket:",
-        data,
-      );
       if (
-        data.updatedMessage &&
-        (data.updatedMessage.senderId === friendId ||
-          data.updatedMessage.receiverId === friendId)
+        data?.updatedMessage &&
+        isConversationMessage(data.updatedMessage, userId, friendId)
+      ) {
+        appendIncomingMessage(data.updatedMessage);
+      }
+    };
+
+    const handleMessageSent = (data) => {
+      if (
+        data?.updatedMessage &&
+        isConversationMessage(data.updatedMessage, userId, friendId)
       ) {
         appendIncomingMessage(data.updatedMessage);
       }
@@ -706,10 +707,15 @@ const StickyChatBox = ({
     };
 
     const handleMessageSeen = (data) => {
-      if (!data?.messageId) return;
+      const seenId = data?.messageId || data?._id;
+      if (!seenId) return;
       setMessages((prevMessages) =>
         prevMessages.map((msg) => {
-          if (String(msg._id) === String(data.messageId)) {
+          if (!msg) return msg;
+          if (idOf(msg._id) === idOf(seenId)) {
+            return { ...msg, isSeen: true };
+          }
+          if (idOf(msg.senderId) === idOf(userId) && msg.isSeen !== true) {
             return { ...msg, isSeen: true };
           }
           return msg;
@@ -719,14 +725,24 @@ const StickyChatBox = ({
 
     socket.on("newMessage", handleNewMessage);
     socket.on("newMessageToUser", handleNewMessageToUser);
+    socket.on("messageSent", handleMessageSent);
     socket.on("typing", handleTyping);
     socket.on("messageSeen", handleMessageSeen);
+    socket.on("seenMessage", handleMessageSeen);
+
+    const rejoinRoom = () => {
+      socket.emit("joinRoom", roomId);
+    };
+    socket.on("connect", rejoinRoom);
 
     return () => {
       socket.off("newMessage", handleNewMessage);
       socket.off("newMessageToUser", handleNewMessageToUser);
+      socket.off("messageSent", handleMessageSent);
       socket.off("typing", handleTyping);
       socket.off("messageSeen", handleMessageSeen);
+      socket.off("seenMessage", handleMessageSeen);
+      socket.off("connect", rejoinRoom);
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
         typingTimeoutRef.current = null;
@@ -1073,14 +1089,18 @@ const StickyChatBox = ({
       setUnreadWhileScrolled(0);
     };
 
-    // Wait a frame so newly rendered messages are measured first.
     requestAnimationFrame(() => {
       doScroll();
-      if (behavior === "auto") {
-        requestAnimationFrame(doScroll);
-      }
+      requestAnimationFrame(doScroll);
     });
   }, []);
+
+  useLayoutEffect(() => {
+    if (pendingScrollRestoreRef.current) return;
+    if (!pendingFollowLatestRef.current) return;
+    pendingFollowLatestRef.current = false;
+    scrollToLastMessage("smooth");
+  }, [messages, scrollToLastMessage]);
 
   // Scroll to bottom when chat is restored from minimized state
   useEffect(() => {
@@ -1279,9 +1299,13 @@ const StickyChatBox = ({
           <div className="sticky-chat-options-wrapper">
             <button
               ref={optionsButtonRef}
+              type="button"
               className="sticky-chat-action-btn"
-              onClick={() => setShowOptionsMenu(!showOptionsMenu)}
+              onClick={() => setShowOptionsMenu((prev) => !prev)}
               title="More options"
+              aria-label="More options"
+              aria-expanded={showOptionsMenu}
+              aria-haspopup="true"
             >
               <i className="fas fa-ellipsis-v"></i>
             </button>
@@ -1509,9 +1533,13 @@ const StickyChatBox = ({
             </button>
             <button
               className="sticky-chat-option-item"
-              onClick={() => {
-                // Bump - HTTP-based notification could be implemented here
-                console.log("Bump sent to:", friendId);
+              type="button"
+              onClick={async () => {
+                try {
+                  await sendBumpToFriend(friendId, userId);
+                } catch (error) {
+                  console.error("Error sending bump:", error);
+                }
                 setShowOptionsMenu(false);
               }}
             >

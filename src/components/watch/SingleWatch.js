@@ -23,6 +23,7 @@ import WatchSkeleton from "../../skletons/watch/WatchSkeleton";
 import WatchCacheManager, {
     WATCH_CACHE_EVENT,
 } from "../../utils/watchCacheManager";
+import OptionsDropdown from "../post/OptionsDropdown";
 const default_pp_src = config?.defaultProfile;
 
 
@@ -171,20 +172,7 @@ const SinglePost = (watch) => {
         }
 
         let cancelled = false;
-        WatchCacheManager.fetchWithCache({
-            key: `feed:${myProfileId}`,
-            setCached: (items) =>
-                WatchCacheManager.setCachedFeed(
-                    myProfileId,
-                    Array.isArray(items) ? items : [],
-                ),
-            fetcher: async () => {
-                const res = await api.get("watch/related", {
-                    params: { profile_id: myProfileId },
-                });
-                return Array.isArray(res.data) ? res.data : [];
-            },
-        })
+        WatchCacheManager.refreshFeed(myProfileId)
             .then((list) => {
                 if (!cancelled && Array.isArray(list)) {
                     setRelatedWatches(list);
@@ -220,6 +208,7 @@ const SinglePost = (watch) => {
     let [reactType, setReactType] = useState(false);
     let [isAuthor, setIsAuthor] = useState(watchData?.author?._id === myProfile?._id)
     let [isEditCaption, setIsEditCaption] = useState(false)
+    const [isWatchOption, setIsWatchOption] = useState(false)
     let [placedReacts, setPlacedReacts] = useState([]);
     const [imageExists, setImageExists] = useState(null);
     const [thumbExists, setThumbExists] = useState(null);
@@ -477,8 +466,17 @@ const SinglePost = (watch) => {
         }
     }, [captionTextarea, watchData, myProfileId])
 
-    let handleCaptionEditBtnClick = () => {
+    const closeWatchOption = useCallback(() => {
+        setIsWatchOption(false);
+    }, []);
 
+    const watchOptionClick = useCallback(() => {
+        setIsWatchOption((prev) => !prev);
+    }, []);
+
+    let handleCaptionEditBtnClick = () => {
+        setIsEditCaption(true);
+        setIsWatchOption(false);
     }
 
     let handleDownloadVideoClick = useCallback((e) => {
@@ -536,9 +534,19 @@ const SinglePost = (watch) => {
                                                 <div className="right">
                                                     <button onClick={handleDownloadVideoClick} className="watch-three-dot"><i className="fas fa-download"></i></button>
 
-                                                    {
-                                                        isAuth && <button className="post-three-dot"><i className="far fa-ellipsis-h"></i></button>
-                                                    }
+                                                    <OptionsDropdown
+                                                        open={isWatchOption}
+                                                        onToggle={watchOptionClick}
+                                                        onClose={closeWatchOption}
+                                                        ariaLabel="Video options"
+                                                    >
+                                                        <ul>
+                                                            {isAuth && (
+                                                                <li onClick={handleCaptionEditBtnClick}>Edit Video</li>
+                                                            )}
+                                                            <li onClick={closeWatchOption}>Report This Video</li>
+                                                        </ul>
+                                                    </OptionsDropdown>
 
                                                     <button onClick={hideThisPost.bind(this)} className="post-close"> <i className="far fa-times"></i></button>
                                                 </div>

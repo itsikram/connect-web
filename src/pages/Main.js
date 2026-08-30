@@ -99,6 +99,7 @@ import {
   addNotifications,
 } from "../services/actions/notificationActions.js";
 import { addMessages, newMessage } from "../services/actions/messageActions.js";
+import { emitChatMessage, idOf } from "../utils/optimisticMessage";
 import { setBodyHeight, setLoading } from "../services/actions/optionAction";
 import Settings from "./Settings";
 import { loadSettings } from "../services/actions/settingsActions.js";
@@ -1009,7 +1010,10 @@ const Main = () => {
     // Listen for new messages via socket instead of polling
     const handleNewMessageToUser = (data) => {
       console.log("Main received new message via socket:", data);
-      if (data.updatedMessage && data.updatedMessage.receiverId === profileId) {
+      if (
+        data.updatedMessage &&
+        idOf(data.updatedMessage.receiverId) === idOf(profileId)
+      ) {
         // Process the message for notifications and UI updates
         const updatedMessage = data.updatedMessage;
 
@@ -1104,6 +1108,7 @@ const Main = () => {
 
         // Dispatch message for Redux state
         dispatch(newMessage(updatedMessage, profileId));
+        emitChatMessage(updatedMessage);
       }
     };
 
@@ -1213,6 +1218,12 @@ const Main = () => {
       );
       if (senderId && senderId === String(profileId)) return;
 
+      const dedupeKey = senderId || "unknown";
+      const now = Date.now();
+      if (now - (playIncomingBump._last?.[dedupeKey] || 0) < 3000) return;
+      playIncomingBump._last = playIncomingBump._last || {};
+      playIncomingBump._last[dedupeKey] = now;
+
       playBumpSound();
 
       const senderName = sender.fullName || payload.senderName || "Someone";
@@ -1220,7 +1231,9 @@ const Main = () => {
       const chatLink = senderId ? `/message/${senderId}` : "/message";
 
       if (!document.hidden) {
-        showMessageToast("bumped you", senderName, senderPic, chatLink);
+        showMessageToast("bumped you", senderName, senderPic, chatLink, {
+          toastId: `bump-${dedupeKey}`,
+        });
       } else if (
         Notification.permission === "granted" &&
         !webNotificationService.hasActivePushSubscription?.()
@@ -1247,7 +1260,7 @@ const Main = () => {
 
     const handleSwMessage = (event) => {
       const msg = event.data || {};
-      if (msg.type === "PLAY_BUMP" || msg.data?.type === "bump") {
+      if (msg.type === "PLAY_BUMP") {
         playIncomingBump(msg.data || msg);
       }
     };

@@ -1,4 +1,9 @@
 import { parseIntent, searchFriendsByName } from "./agentIntentParser";
+import {
+  extractCaptionFromText,
+  recoverAgentActions,
+  isPlaceholderCaption,
+} from "./agentCatalog";
 
 const atikProfile = {
   _id: "67e431d61e4463f7adfa544e",
@@ -108,5 +113,46 @@ describe("direct send message parsing", () => {
       targetName: "Rahima",
       messageText: null,
     });
+  });
+});
+
+describe("create post parsing", () => {
+  test("parses create me a post with a funny caption", () => {
+    expect(parseIntent("create me a post with a funny caption")).toMatchObject({
+      action: "CREATE_POST",
+    });
+  });
+
+  test("parses create a post saying a caption", () => {
+    expect(parseIntent("create a post saying I'm on energy-saving mode")).toMatchObject({
+      action: "CREATE_POST",
+      searchQuery: "I'm on energy-saving mode",
+    });
+  });
+});
+
+describe("create post recovery", () => {
+  test("extracts a quoted caption from the assistant reply", () => {
+    expect(
+      extractCaptionFromText(
+        "Here is a funny post for you: 'I'm not lazy, I'm just on energy-saving mode.' Creating your post now!",
+      ),
+    ).toBe("I'm not lazy, I'm just on energy-saving mode.");
+  });
+
+  test("injects CREATE_POST when Gemini only replies", () => {
+    expect(isPlaceholderCaption("a funny caption")).toBe(true);
+    const recovered = recoverAgentActions({
+      actions: [],
+      reply:
+        "Here is a funny post for you: 'I'm not lazy, I'm just on energy-saving mode.' Creating your post now!",
+      userMessage: "create me a post with a funny caption",
+    });
+    expect(recovered).toEqual([
+      {
+        action: "CREATE_POST",
+        searchQuery: "I'm not lazy, I'm just on energy-saving mode.",
+      },
+    ]);
   });
 });

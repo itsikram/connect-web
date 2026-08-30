@@ -188,6 +188,15 @@ api.defaults.adapter = async (requestConfig) => {
   return requestPromise;
 };
 
+export const invalidateGetCache = (pathFragment = "") => {
+  const fragment = String(pathFragment || "");
+  Array.from(getResponseCache.keys()).forEach((key) => {
+    if (!fragment || String(key).includes(fragment)) {
+      getResponseCache.delete(key);
+    }
+  });
+};
+
 // Add request interceptor to dynamically get token from storage and handle load balancing
 api.interceptors.request.use(
   (requestConfig) => {

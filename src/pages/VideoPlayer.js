@@ -34,7 +34,12 @@ import {
   MAX_PLAY_COUNT,
   FILTER_OPTIONS,
   SORT_OPTIONS,
+  watchesToPlaylistItems,
+  getCachedSavedPlaylist,
 } from "../utils/videoPlayerLibrary";
+import WatchCacheManager, {
+  WATCH_CACHE_EVENT,
+} from "../utils/watchCacheManager";
 import useMediaSession from "../hooks/useMediaSession";
 import useBackgroundAudioHandoff from "../hooks/useBackgroundAudioHandoff";
 
@@ -54,9 +59,19 @@ const VideoPlayer = () => {
   }, []);
 
   const [customVideos, setCustomVideos] = useState(() => loadCustomPlaylist());
-  const [watchVideos, setWatchVideos] = useState([]);
-  const [savedVideos, setSavedVideos] = useState([]);
-  const [libraryLoading, setLibraryLoading] = useState(true);
+  const [watchVideos, setWatchVideos] = useState(() =>
+    watchesToPlaylistItems(
+      WatchCacheManager.getCachedFeed(myProfileId) || [],
+    ),
+  );
+  const [savedVideos, setSavedVideos] = useState(
+    () => getCachedSavedPlaylist() || [],
+  );
+  const hasHydratedLibrary =
+    watchVideos.length > 0 ||
+    savedVideos.length > 0 ||
+    customVideos.length > 0;
+  const [libraryLoading, setLibraryLoading] = useState(!hasHydratedLibrary);
   const [libraryError, setLibraryError] = useState("");
 
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
@@ -181,27 +196,46 @@ const VideoPlayer = () => {
     });
   }, [allVideos]);
 
-  const refreshLibrary = useCallback(async () => {
-    setLibraryLoading(true);
-    setLibraryError("");
-    try {
-      const [watches, saved] = await Promise.all([
-        loadWatchPlaylistItems(myProfileId),
-        loadSavedPlaylistItems(),
-      ]);
-      setWatchVideos(watches);
-      setSavedVideos(saved);
-    } catch (err) {
-      console.error(err);
-      setLibraryError("Could not refresh some video sources.");
-    } finally {
-      setLibraryLoading(false);
-    }
-  }, [myProfileId]);
+  const refreshLibrary = useCallback(
+    async ({ showSpinner = false } = {}) => {
+      if (showSpinner) setLibraryLoading(true);
+      setLibraryError("");
+      try {
+        const savedPromise = loadSavedPlaylistItems();
+        if (!myProfileId) {
+          setSavedVideos(await savedPromise);
+          return;
+        }
+        const [watches, saved] = await Promise.all([
+          loadWatchPlaylistItems(myProfileId),
+          savedPromise,
+        ]);
+        setWatchVideos(watches);
+        setSavedVideos(saved);
+      } catch (err) {
+        console.error(err);
+        setLibraryError("Could not refresh some video sources.");
+      } finally {
+        setLibraryLoading(false);
+      }
+    },
+    [myProfileId],
+  );
 
   useEffect(() => {
     refreshLibrary();
   }, [refreshLibrary]);
+
+  useEffect(() => {
+    const onWatchCache = (event) => {
+      if (event.detail?.profileId !== myProfileId || event.detail?.list !== "feed") {
+        return;
+      }
+      setWatchVideos(watchesToPlaylistItems(event.detail.items));
+    };
+    window.addEventListener(WATCH_CACHE_EVENT, onWatchCache);
+    return () => window.removeEventListener(WATCH_CACHE_EVENT, onWatchCache);
+  }, [myProfileId]);
 
   useEffect(() => {
     saveCustomPlaylist(customVideos);
@@ -1116,7 +1150,7 @@ const VideoPlayer = () => {
             <button
               type="button"
               className="btn btn-sm btn-secondary"
-              onClick={refreshLibrary}
+              onClick={() => refreshLibrary({ showSpinner: true })}
               disabled={libraryLoading}
             >
               {libraryLoading ? "Refreshing…" : "Refresh library"}

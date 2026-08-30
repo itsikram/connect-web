@@ -118,7 +118,9 @@ const WatchPipPlayer = () => {
         if (initialPlayback?.playing !== false) {
           video.play().catch(() => {
             if (document.hidden) {
-              backgroundAudio.playBackgroundAudio();
+              if (!backgroundAudio.isAudioPlaying()) {
+                backgroundAudio.playBackgroundAudio({ unmuted: true });
+              }
               return;
             }
             setPaused(true);
@@ -158,8 +160,10 @@ const WatchPipPlayer = () => {
 
     if (pip.playing && video.paused && video.readyState >= 2) {
       if (document.hidden) {
-        backgroundAudio.playBackgroundAudio();
-      } else {
+        if (!backgroundAudio.isAudioPlaying()) {
+          backgroundAudio.playBackgroundAudio({ unmuted: true });
+        }
+      } else if (!backgroundAudio.handingOffRef.current) {
         video.play().catch(() => setPaused(true));
       }
     } else if (

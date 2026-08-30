@@ -15,12 +15,19 @@ import { fetchProfileCached } from "../utils/requestCache";
 import moment from "moment";
 import SingleMessage from "../components/Message/SingleMessage";
 import $ from "jquery";
-import { seenMessage } from "../services/actions/messageActions";
+import { newMessage, seenMessage } from "../services/actions/messageActions";
 import ChatHeader from "../components/Message/ChatHeader";
 import ChatFooter from "../components/Message/ChatFooter";
 import SingleMsgSkleton from "../skletons/message/SingleMsgSkleton";
 import defaultChatBackground from "../assets/images/default-chat-bg.svg";
 import MessageCacheManager from "../utils/messageCacheManager";
+import {
+  emitChatMessage,
+  idOf,
+  isConversationMessage,
+  mergeHistoryWithLive,
+  upsertConfirmedMessage,
+} from "../utils/optimisticMessage";
 
 const NEAR_BOTTOM_PX = 100;
 
@@ -102,6 +109,7 @@ const Chat = () => {
   const chatFooter = useRef(null);
   const isNearBottomRef = useRef(true);
   const pendingScrollRestoreRef = useRef(null);
+  const pendingFollowLatestRef = useRef(false);
   const hasInitialScrolledRef = useRef(false);
   const hasLoadedFreshMessagesRef = useRef(false);
   const isMsgLoadingRef = useRef(false);
@@ -144,12 +152,10 @@ const Chat = () => {
       setScrollPercent(100);
     };
 
-    // Wait a frame so newly rendered messages are measured.
+    // Wait until the new bubble is laid out before scrolling.
     requestAnimationFrame(() => {
       doScroll();
-      if (behavior === "auto") {
-        requestAnimationFrame(doScroll);
-      }
+      requestAnimationFrame(doScroll);
     });
   }, []);
 
@@ -182,7 +188,11 @@ const Chat = () => {
   // Persist conversation changes after fresh data has been loaded once.
   useEffect(() => {
     if (!hasLoadedFreshMessagesRef.current || !userId || !friendId) return;
-    MessageCacheManager.setCachedMessages(userId, friendId, messages);
+    MessageCacheManager.setCachedMessages(
+      userId,
+      friendId,
+      messages.filter((m) => m && m._id && !m.isOptimistic),
+    );
   }, [messages, userId, friendId]);
 
   const fetchChatHistory = useCallback(
@@ -319,6 +329,14 @@ const Chat = () => {
     isNearBottomRef.current = checkIsNearBottom(el);
   }, [messages, checkIsNearBottom]);
 
+  // After a realtime message is painted, jump to it.
+  useLayoutEffect(() => {
+    if (pendingScrollRestoreRef.current) return;
+    if (!pendingFollowLatestRef.current) return;
+    pendingFollowLatestRef.current = false;
+    scrollToLastMessage("smooth");
+  }, [messages, scrollToLastMessage]);
+
   useEffect(() => {
     if (!friendId || !userId || !hasMoreMessages) return;
     if (scrollPercent >= 30 || !Number.isFinite(scrollPercent)) return;
@@ -371,9 +389,10 @@ const Chat = () => {
 
   // WebSocket-based message sending with optimistic UI
   const sendMessage = async (messageData) => {
-    // Create optimistic message object for immediate display
+    const tempId = `temp-${Date.now()}-${Math.random()}`;
     const optimisticMessage = {
-      _id: `temp-${Date.now()}-${Math.random()}`, // Temporary ID
+      _id: tempId,
+      tempId,
       senderId: userId,
       receiverId: friendId,
       message: messageData.message,
@@ -381,73 +400,77 @@ const Chat = () => {
       parent: messageData.parent,
       messageType: messageData.messageType || "text",
       timestamp: new Date(),
-      isOptimistic: true, // Flag to identify optimistic messages
+      isOptimistic: true,
     };
 
-    console.log("Sending message via WebSocket:", messageData);
+    const payload = { ...messageData, tempId };
 
-    // Add optimistic message to local state immediately
-    setMessages((prev) => {
-      console.log("Adding optimistic message, previous count:", prev.length);
-      const newMessages = [...prev, optimisticMessage];
-      console.log("New messages count with optimistic:", newMessages.length);
-      return newMessages;
-    });
-
-    // Always follow own outgoing messages.
+    setMessages((prev) => [...prev.filter(Boolean), optimisticMessage]);
+    emitChatMessage(optimisticMessage);
+    dispatch(newMessage(optimisticMessage, userId));
     scrollToLastMessage("smooth");
 
-    try {
-      // Send via WebSocket instead of HTTP
-      socket.emit("sendMessage", messageData);
+    const applyConfirmed = (updatedMessage) => {
+      if (!updatedMessage?._id) return;
+      setMessages((prev) =>
+        upsertConfirmedMessage(prev, updatedMessage, tempId),
+      );
+      emitChatMessage(updatedMessage);
+      dispatch(newMessage(updatedMessage, userId));
+    };
 
-      // Listen for the server confirmation
-      const handleMessageConfirmation = (data) => {
-        console.log("Message confirmed by server:", data);
+    return new Promise((resolve, reject) => {
+      let settled = false;
 
-        // Replace optimistic message with real message
-        setMessages((prev) => {
-          return prev.map((msg) => {
-            if (msg._id === optimisticMessage._id) {
-              return data.updatedMessage || data.data; // Use the real message from server
-            }
-            return msg;
-          });
-        });
+      const fallbackTimeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg && (msg._id === tempId || msg.tempId === tempId) && msg.isOptimistic
+              ? { ...msg, sendFailed: true }
+              : msg,
+          ),
+        );
+        console.warn("Message not confirmed by server within timeout");
+        resolve(null);
+      }, 10000);
 
-        // Clean up listener
-        socket.off("newMessage", handleMessageConfirmation);
-        socket.off("newMessageToUser", handleMessageConfirmation);
+      const finish = (err, updatedMessage) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(fallbackTimeout);
+        if (err) {
+          setMessages((prev) =>
+            prev.filter(
+              (msg) => msg && msg._id !== tempId && msg.tempId !== tempId,
+            ),
+          );
+          reject(err);
+          return;
+        }
+        applyConfirmed(updatedMessage);
+        resolve(updatedMessage);
       };
 
-      // Listen for confirmation
-      socket.on("newMessage", handleMessageConfirmation);
-      socket.on("newMessageToUser", handleMessageConfirmation);
-
-      // Fallback: If no confirmation within 5 seconds, remove optimistic message
-      const fallbackTimeout = setTimeout(() => {
-        setMessages((prev) =>
-          prev.filter((msg) => msg._id !== optimisticMessage._id),
-        );
-        console.warn(
-          "Message not confirmed by server, removed optimistic message",
-        );
-        socket.off("newMessage", handleMessageConfirmation);
-        socket.off("newMessageToUser", handleMessageConfirmation);
-      }, 5000);
-
-      // Store timeout ID for cleanup
-      optimisticMessage._fallbackTimeout = fallbackTimeout;
-    } catch (error) {
-      console.error("Error sending message via WebSocket:", error);
-
-      // Remove optimistic message on error
-      setMessages((prev) =>
-        prev.filter((msg) => msg._id !== optimisticMessage._id),
-      );
-
-      throw error;
-    }
+      try {
+        socket.emit("sendMessage", payload, (response) => {
+          if (!response) return;
+          if (response.ok === false || response.blocked) {
+            finish(
+              new Error(response.reason || response.error || "Message blocked"),
+            );
+            return;
+          }
+          if (response.updatedMessage) {
+            finish(null, response.updatedMessage);
+          }
+        });
+      } catch (error) {
+        console.error("Error sending message via WebSocket:", error);
+        finish(error);
+      }
+    });
   };
 
   // Mark all unseen messages from friend as seen
@@ -458,7 +481,8 @@ const Chat = () => {
       // Get all unseen messages from the friend in this conversation
       const unseenMessageIds = messages
         .filter(
-          (msg) => String(msg.senderId) === String(friendId) && !msg.isSeen,
+          (msg) =>
+            msg && String(msg.senderId) === String(friendId) && !msg.isSeen,
         )
         .map((msg) => msg?._id)
         .filter(Boolean);
@@ -489,61 +513,41 @@ const Chat = () => {
     socket.emit("joinRoom", roomId);
 
     const appendIncomingMessage = (updatedMessage) => {
-      const isOwnMessage = String(updatedMessage.senderId) === String(userId);
-      // Capture before state update — don't yank the user if they're reading history.
-      const shouldFollow = isOwnMessage || isNearBottomRef.current;
+      if (!updatedMessage?._id) return;
 
-      setMessages((prev) => {
-        const existingIds = new Set(
-          prev.map((m) => m._id?.toString()).filter(Boolean),
-        );
+      pendingFollowLatestRef.current = true;
+      isNearBottomRef.current = true;
 
-        const optimisticIndex = prev.findIndex(
-          (msg) =>
-            msg.isOptimistic &&
-            msg.senderId === updatedMessage.senderId &&
-            msg.message === updatedMessage.message &&
-            Math.abs(
-              new Date(msg.timestamp) - new Date(updatedMessage.timestamp),
-            ) < 5000,
-        );
-
-        if (optimisticIndex !== -1) {
-          const newMessages = [...prev];
-          newMessages[optimisticIndex] = updatedMessage;
-          return newMessages;
-        }
-
-        if (!existingIds.has(updatedMessage._id?.toString())) {
-          return [...prev, updatedMessage];
-        }
-        return prev;
-      });
-
-      if (shouldFollow) {
-        scrollToLastMessage("smooth");
-      }
+      setMessages((prev) =>
+        upsertConfirmedMessage(prev, updatedMessage, updatedMessage.tempId),
+      );
+      emitChatMessage(updatedMessage);
+      dispatch(newMessage(updatedMessage, userId));
     };
 
     // Listen for new messages in this room
     const handleNewMessage = (data) => {
-      console.log("Received new message via socket:", data);
       if (
-        data.updatedMessage &&
-        (data.updatedMessage.senderId === friendId ||
-          data.updatedMessage.receiverId === friendId)
+        data?.updatedMessage &&
+        isConversationMessage(data.updatedMessage, userId, friendId)
       ) {
         appendIncomingMessage(data.updatedMessage);
       }
     };
 
-    // Listen for messages sent to this user specifically
     const handleNewMessageToUser = (data) => {
-      console.log("Received new message to user via socket:", data);
       if (
-        data.updatedMessage &&
-        (data.updatedMessage.senderId === friendId ||
-          data.updatedMessage.receiverId === friendId)
+        data?.updatedMessage &&
+        isConversationMessage(data.updatedMessage, userId, friendId)
+      ) {
+        appendIncomingMessage(data.updatedMessage);
+      }
+    };
+
+    const handleMessageSent = (data) => {
+      if (
+        data?.updatedMessage &&
+        isConversationMessage(data.updatedMessage, userId, friendId)
       ) {
         appendIncomingMessage(data.updatedMessage);
       }
@@ -574,15 +578,15 @@ const Chat = () => {
     };
 
     const handleMessageSeen = (data) => {
-      if (!data?.messageId) return;
+      const seenId = data?.messageId || data?._id;
+      if (!seenId) return;
       setMessages((prev) =>
         prev.map((msg) => {
-          // Mark the specific message as seen, OR mark all unseen messages sent by current user as seen
-          if (String(msg._id) === String(data.messageId)) {
+          if (!msg) return msg;
+          if (idOf(msg._id) === idOf(seenId)) {
             return { ...msg, isSeen: true };
           }
-          // Also mark all other unseen messages from current user as seen (since friend has viewed conversation)
-          if (msg.senderId === userId && msg.isSeen !== true) {
+          if (idOf(msg.senderId) === idOf(userId) && msg.isSeen !== true) {
             return { ...msg, isSeen: true };
           }
           return msg;
@@ -598,23 +602,33 @@ const Chat = () => {
 
     socket.on("newMessage", handleNewMessage);
     socket.on("newMessageToUser", handleNewMessageToUser);
+    socket.on("messageSent", handleMessageSent);
     socket.on("typing", handleTyping);
     socket.on("messageSeen", handleMessageSeen);
+    socket.on("seenMessage", handleMessageSeen);
     socket.on("deleteMessage", handleDeleteMessage);
+
+    const rejoinRoom = () => {
+      socket.emit("joinRoom", roomId);
+    };
+    socket.on("connect", rejoinRoom);
 
     return () => {
       socket.off("newMessage", handleNewMessage);
       socket.off("newMessageToUser", handleNewMessageToUser);
+      socket.off("messageSent", handleMessageSent);
       socket.off("typing", handleTyping);
       socket.off("messageSeen", handleMessageSeen);
+      socket.off("seenMessage", handleMessageSeen);
       socket.off("deleteMessage", handleDeleteMessage);
+      socket.off("connect", rejoinRoom);
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
         typingTimeoutRef.current = null;
       }
       socket.emit("leaveRoom", roomId);
     };
-  }, [friendId, userId, scrollToLastMessage]);
+  }, [friendId, userId, scrollToLastMessage, dispatch]);
 
   // Get online status from contacts data (no separate API calls)
   const getOnlineStatusFromContacts = useCallback(
@@ -772,7 +786,9 @@ const Chat = () => {
           const response = await fetchChatHistory(userId, friendId, 20);
 
           if (response.messages) {
-            setMessages(response.messages);
+            setMessages((prev) =>
+              mergeHistoryWithLive(response.messages, prev),
+            );
             setHasMoreMessages(response.hasMore ?? false);
             hasLoadedFreshMessagesRef.current = true;
           } else {
@@ -985,7 +1001,7 @@ const Chat = () => {
             )}
 
             {messages.length > 0 ? (
-              messages.map((msg, index) => {
+              messages.filter(Boolean).map((msg, index) => {
                 return (
                   <SingleMessage
                     key={msg._id || `msg-${index}`}

@@ -508,13 +508,16 @@ const NotificationMenu = ({
         <div className="notification-sidebar-header-menu" ref={optionsRef}>
           <div
             className="header-menu-icons"
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               setOptionsOpen((v) => !v);
               setItemMenuId(null);
             }}
             role="button"
             tabIndex={0}
             aria-label="Notification options"
+            aria-expanded={optionsOpen}
+            aria-haspopup="true"
           >
             <i className="far fa-ellipsis-h" />
           </div>

@@ -389,12 +389,21 @@ self.addEventListener("push", (event) => {
             type: "window",
             includeUncontrolled: true,
           });
-          clientList.forEach((client) => {
-            client.postMessage({
+          const visibleClients = clientList.filter(
+            (client) => client.visibilityState === "visible",
+          );
+          // Visible tab already handles bumpUser over the socket — don't
+          // also PLAY_BUMP + show a second OS notification.
+          if (visibleClients.length > 0) {
+            return;
+          }
+          const target = clientList[0];
+          if (target) {
+            target.postMessage({
               type: "PLAY_BUMP",
               data: payloadData,
             });
-          });
+          }
         } catch (_) {}
       }
 

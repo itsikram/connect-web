@@ -31,6 +31,22 @@ let CreatePost = ({ setPosts = null }) => {
         setShowAudienceMenu(false)
     }
 
+    useEffect(() => {
+        const openComposer = (event) => {
+            setPostModal(true);
+            const caption = event?.detail?.caption;
+            if (caption) {
+                setPostData((prev) => ({
+                    ...prev,
+                    caption,
+                }));
+                setAttachmentType("caption");
+            }
+        };
+        window.addEventListener("openCreatePost", openComposer);
+        return () => window.removeEventListener("openCreatePost", openComposer);
+    }, []);
+
     const getAudienceLabel = (audience) => {
         switch(audience) {
             case 1: return 'Public'
@@ -409,7 +425,9 @@ let CreatePost = ({ setPosts = null }) => {
                                     <button 
                                         type="button"
                                         className="cpm-audience-button"
-                                        onClick={() => setShowAudienceMenu(!showAudienceMenu)}
+                                        onClick={() => setShowAudienceMenu((prev) => !prev)}
+                                        aria-expanded={showAudienceMenu}
+                                        aria-haspopup="true"
                                     >
                                         <i className={getAudienceIcon(postData.audience || 3)}></i>
                                         <span>{getAudienceLabel(postData.audience || 3)}</span>

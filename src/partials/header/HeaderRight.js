@@ -33,6 +33,7 @@ let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [] }) => {
 
   const [messageOption, setMessageOption] = useState(false);
   const messageOptionMenuRef = useRef(null);
+  const headerMenusRef = useRef(null);
 
   let notificationMenuHeight =
     optionData.bodyHeight - optionData.headerHeight - 100;
@@ -86,25 +87,47 @@ let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [] }) => {
   }, [messageData, profileData._id]);
 
   let showMsgList = () => {
-    setIsMsgMenu(!isMsgMenu);
+    setIsMsgMenu((prev) => !prev);
     setIsProfileMenu(false);
     setIsNotificationMenu(false);
+    setMessageOption(false);
   };
 
   let clickProfileBtn = () => {
-    setIsProfileMenu(!isProfileMenu);
+    setIsProfileMenu((prev) => !prev);
     setIsMsgMenu(false);
     setIsNotificationMenu(false);
+    setMessageOption(false);
   };
 
   let showNotificationList = () => {
-    setIsNotificationMenu(!isNotificationMenu);
+    setIsNotificationMenu((prev) => !prev);
     setIsProfileMenu(false);
     setIsMsgMenu(false);
+    setMessageOption(false);
   };
 
   useEffect(() => {
+    const openMenu = () => {
+      setIsNotificationMenu(true);
+      setIsProfileMenu(false);
+      setIsMsgMenu(false);
+    };
+    window.addEventListener("openNotificationMenu", openMenu);
+    return () => window.removeEventListener("openNotificationMenu", openMenu);
+  }, []);
+
+  useEffect(() => {
     const handleClickOutside = (event) => {
+      if (
+        headerMenusRef.current &&
+        !headerMenusRef.current.contains(event.target)
+      ) {
+        setIsMsgMenu(false);
+        setIsProfileMenu(false);
+        setIsNotificationMenu(false);
+        setMessageOption(false);
+      }
       if (
         messageOptionMenuRef.current &&
         !messageOptionMenuRef.current.contains(event.target)
@@ -126,7 +149,6 @@ let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [] }) => {
     <div
       className="header-message-option-menu"
       style={{ position: "relative", display: "inline-block" }}
-      ref={messageOptionMenuRef}
     >
       {messageOption && (
         <div
@@ -179,12 +201,14 @@ let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [] }) => {
 
   return (
     <Fragment>
-      <div className="header-quick-menu-container">
+      <div className="header-quick-menu-container" ref={headerMenusRef}>
         <ul className="header-quick-menu">
           <li
             onClick={showMsgList}
             className={`header-quick-menu-item ${isMsgMenu ? "active" : ""}`}
             title="Message"
+            aria-expanded={isMsgMenu}
+            aria-haspopup="true"
           >
             <div className="header-quick-menu-icon">
               <i className="far fa-comment-alt-lines"></i>
@@ -216,13 +240,33 @@ let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [] }) => {
                   <div className="notification-leftside-header">
                     <h2 className="notification-leftside-title">Messages</h2>
                     <div className="notification-sidebar-header-menu">
+                    <div
+                      className="header-menu-icons"
+                      style={{ position: "relative" }}
+                      ref={messageOptionMenuRef}
+                    >
                       <div
-                        onClick={handleMessageToggleClick}
-                        className="header-menu-icons"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleMessageToggleClick();
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleMessageToggleClick();
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        aria-label="Message options"
+                        aria-expanded={messageOption}
+                        aria-haspopup="true"
                       >
                         <i className="far fa-ellipsis-h"></i>
-                        {messageOption && <MessageOptionMenu />}
                       </div>
+                      {messageOption && <MessageOptionMenu />}
+                    </div>
                     </div>
                   </div>
                   <MessageList
@@ -238,6 +282,8 @@ let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [] }) => {
             onClick={showNotificationList}
             className={`header-quick-menu-item ${isNotificationMenu ? "active" : ""}`}
             title="Notifications"
+            aria-expanded={isNotificationMenu}
+            aria-haspopup="true"
           >
             <div className="header-quick-menu-icon">
               <i className="far fa-bell"></i>
@@ -280,6 +326,8 @@ let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [] }) => {
             onClick={clickProfileBtn}
             className="header-quick-menu-item item-profile"
             title=""
+            aria-expanded={isProfileMenu}
+            aria-haspopup="true"
           >
             <div className="profile-pic">
               <img src={ppUrl} alt="" />

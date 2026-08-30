@@ -610,7 +610,9 @@ const StickyChatFooter = ({
               <button
                 ref={emojiButtonRef}
                 className="sticky-chat-action-btn emoji"
-                onClick={() => setIsEmojiContainer(!isEmojiContainer)}
+                onClick={() => setIsEmojiContainer((prev) => !prev)}
+                aria-expanded={isEmojiContainer}
+                aria-haspopup="true"
                 aria-label="Add emoji"
               >
                 <i className="fas fa-smile"></i>

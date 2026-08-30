@@ -39,6 +39,11 @@ const SUGGESTIONS = [
   "Block [name]",
   "Unblock [name]",
   "What can you help with?",
+  "Create a post with a funny caption",
+  "What are my notes?",
+  "Who are my friends?",
+  "Search posts about music",
+  "Call [friend name]",
 ];
 
 const AUDIO_TIMESLICE_MS = 80;

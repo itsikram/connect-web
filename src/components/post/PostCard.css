@@ -23,8 +23,16 @@
   margin-bottom: 14px !important;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.22) !important;
   backdrop-filter: blur(16px);
-  overflow: hidden;
+  overflow: visible;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.single-post-container .nf-post {
+  margin-bottom: 0 !important;
+
+  .caption {
+    padding-bottom: 0 !important;
+  }
 }
 
 #nf-post-container .nf-post:hover,
@@ -37,6 +45,9 @@
 /* Header */
 .nf-post .header {
   padding: 14px var(--post-pad-x) 10px !important;
+  overflow: visible !important;
+  position: relative;
+  z-index: 4;
 }
 
 .nf-post .header .reason {
@@ -179,13 +190,32 @@
   color: var(--post-text);
 }
 
+.nf-post .header .right {
+  overflow: visible;
+}
+
+.nf-post .header .options-dropdown,
+.nf-watch .header .options-dropdown {
+  position: relative;
+  z-index: 30;
+}
+
+.nf-post .header .options-dropdown.is-open,
+.nf-watch .header .options-dropdown.is-open {
+  z-index: 40;
+}
+
 .nf-post .header .post-option-menu {
   background: #1a1d22 !important;
   border: 1px solid var(--post-border);
   border-radius: 12px !important;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
   overflow: hidden;
-  z-index: 20;
+  z-index: 40;
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 180px;
 }
 
 .nf-post .header .post-option-menu li {

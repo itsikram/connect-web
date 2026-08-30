@@ -216,6 +216,7 @@ const ChatFooter = ({
       replyData,
       isAi,
       removeTyping,
+      sendMessage,
     ],
   );
 
@@ -597,13 +598,17 @@ const ChatFooter = ({
     };
   }, [removeTyping]);
 
-  const handleEmojiBtnClick = useCallback(() => {
-    setIsEmojiContainer(true);
-  }, [isImojiContainer]);
+  const handleEmojiBtnClick = useCallback((event) => {
+    if (event?.target?.closest?.(".emoji-container")) return;
+    setIsEmojiChangeContainer(false);
+    setIsEmojiContainer((prev) => !prev);
+  }, []);
 
-  const emojiChangeClick = useCallback(() => {
-    setIsEmojiChangeContainer(true);
-  }, [isImojiChangeContainer]);
+  const emojiChangeClick = useCallback((event) => {
+    if (event?.target?.closest?.(".emoji-container")) return;
+    setIsEmojiContainer(false);
+    setIsEmojiChangeContainer((prev) => !prev);
+  }, []);
 
   const handleEmojiClick = useCallback(
     (emojiObj) => {
@@ -870,21 +875,24 @@ const ChatFooter = ({
                 autoCorrect="on"
               />
               <div
-                onClick={handleEmojiBtnClick.bind(this)}
+                ref={emogiListContainer}
+                onClick={handleEmojiBtnClick}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    handleEmojiBtnClick();
+                    handleEmojiBtnClick(e);
                   }
                 }}
                 role="button"
                 tabIndex={0}
                 className="composer-emoji-btn message-action-emoji-container"
                 aria-label="Emoji"
+                aria-expanded={isImojiContainer}
+                aria-haspopup="true"
               >
                 <i className="far fa-smile"></i>
                 {isImojiContainer && (
-                  <div ref={emogiListContainer} className="emoji-container">
+                  <div className="emoji-container">
                     <EmojiPicker theme="dark" onEmojiClick={handleEmojiClick} />
                   </div>
                 )}
@@ -1145,24 +1153,27 @@ const ChatFooter = ({
               </div>
 
               <div
+                ref={emogiChangeContainer}
                 className="composer-attach-item message-action-emoji-container"
-                onClick={emojiChangeClick.bind(this)}
+                onClick={emojiChangeClick}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    emojiChangeClick();
+                    emojiChangeClick(e);
                   }
                 }}
                 role="button"
                 tabIndex={0}
                 aria-label="Change quick reaction"
+                aria-expanded={isImojiChangeContainer}
+                aria-haspopup="true"
               >
                 <span className="composer-attach-icon react-edit">
                   <i className="fas fa-pen"></i>
                 </span>
                 <span className="composer-attach-label">Edit</span>
                 {isImojiChangeContainer && (
-                  <div ref={emogiChangeContainer} className="emoji-container">
+                  <div className="emoji-container">
                     <EmojiPicker
                       theme="dark"
                       onEmojiClick={handleEmojiChangeClick}

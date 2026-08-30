@@ -1825,7 +1825,7 @@
 .message-seen-check {
     margin-left: 6px;
     color: rgba(255, 255, 255, 0.85);
-    font-size: 0.7rem;
+    font-size: 0.75rem;
     line-height: 1;
     display: inline-flex;
     align-items: center;
@@ -1833,6 +1833,18 @@
 
 .message-sent .message-seen-check {
     color: rgba(255, 255, 255, 0.9);
+}
+
+.message-sent .message-seen-check.sent {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.message-sent .message-seen-check.seen {
+    color: #7dd3fc;
+}
+
+.message-sent .message-seen-check.failed {
+    color: #fca5a5;
 }
 
 .chat-message-profilePic {
@@ -4333,7 +4345,11 @@
 
 /* Message seen status for dark backgrounds */
 .chat-body.dark-background .message-seen-check {
-    opacity: 0.9;
+    opacity: 0.95;
+}
+
+.chat-body.dark-background .message-seen-check.seen {
+    color: #7dd3fc;
 }
 
 /* Emoji reactions for dark backgrounds */

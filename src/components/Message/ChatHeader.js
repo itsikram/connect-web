@@ -86,6 +86,7 @@ const ChatHeader = ({
   const remoteUserCheckInterval = useRef(null);
   const emotionIntervalRef = useRef(null);
   const actionLockRef = useRef({ label: null, until: 0 });
+  const bumpInFlightRef = useRef(false);
   // Keep minimized bar duration in sync while minimized
   const minimizedDurationInterval = useRef(null);
   // Majority emotion tracking (rolling window)
@@ -1714,15 +1715,23 @@ const ChatHeader = ({
     initializeEmotionServerSocket,
   ]);
 
-  const handleBumpBtnClick = useCallback(async () => {
+  const handleBumpBtnClick = useCallback(async (e) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    if (bumpInFlightRef.current) return;
     const targetFriendId = friendProfile?._id || friendId;
     const myId = profile?._id;
     if (!targetFriendId || !myId) return;
+    bumpInFlightRef.current = true;
     try {
       await sendBumpToFriend(targetFriendId, myId);
       setIsChatOptionMenu(false);
     } catch (error) {
       console.error("Error sending bump:", error);
+    } finally {
+      setTimeout(() => {
+        bumpInFlightRef.current = false;
+      }, 800);
     }
   }, [friendProfile, friendId, profile]);
 
@@ -2053,14 +2062,11 @@ const ChatHeader = ({
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const chatOptionMenu = useRef(null);
+  const chatOptionRef = useRef(null);
   const callDropdownRef = useRef(null);
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (
-        chatOptionMenu.current &&
-        !chatOptionMenu.current.contains(e.target)
-      ) {
+      if (chatOptionRef.current && !chatOptionRef.current.contains(e.target)) {
         setIsChatOptionMenu(false);
       }
       if (
@@ -2074,37 +2080,21 @@ const ChatHeader = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleChatOptionClick = useCallback(
-    () => setIsChatOptionMenu((prev) => !prev),
-    [],
-  );
+  const handleCallDropdownToggle = useCallback(() => {
+    setIsChatOptionMenu(false);
+    setIsCallDropdownOpen((prev) => !prev);
+  }, []);
+
+  const handleChatOptionClick = useCallback(() => {
+    setIsCallDropdownOpen(false);
+    setIsChatOptionMenu((prev) => !prev);
+  }, []);
+
   const handleChatInfoClick = useCallback(() => {
-    setIsUserInfoModalOpen(true);
-    setLoadingUserInfo(true);
-    // Fetch user info
-    fetchProfileCached(friendId, { ttlMs: 60000, storageTtlMs: 300000 })
-      .then((profileData) => {
-        if (profileData) {
-          setUserInfoData(profileData);
-          if (
-            profileData?.lastLocation?.latitude &&
-            profileData?.lastLocation?.longitude
-          ) {
-            setFriendLocation({
-              latitude: profileData.lastLocation.latitude,
-              longitude: profileData.lastLocation.longitude,
-              timestamp: profileData.lastLocation.timestamp || Date.now(),
-            });
-          }
-        }
-      })
-      .catch((err) => {
-        console.error("Error fetching user info:", err);
-      })
-      .finally(() => {
-        setLoadingUserInfo(false);
-      });
-  }, [friendId]);
+    setIsChatOptionMenu(false);
+    setIsCallDropdownOpen(false);
+    setIsUserInfoModalOpen((prev) => !prev);
+  }, []);
 
   const handleOpenStickyChat = useCallback(() => {
     // Dispatch event to open sticky chat box
@@ -2130,7 +2120,38 @@ const ChatHeader = ({
 
   // Removed Google Maps initialization - using Leaflet map component instead
 
-  // Initialize map when modal opens
+  useEffect(() => {
+    if (!isUserInfoModalOpen || !friendId) return undefined;
+
+    let cancelled = false;
+    setLoadingUserInfo(true);
+    fetchProfileCached(friendId, { ttlMs: 60000, storageTtlMs: 300000 })
+      .then((profileData) => {
+        if (cancelled || !profileData) return;
+        setUserInfoData(profileData);
+        if (
+          profileData?.lastLocation?.latitude &&
+          profileData?.lastLocation?.longitude
+        ) {
+          setFriendLocation({
+            latitude: profileData.lastLocation.latitude,
+            longitude: profileData.lastLocation.longitude,
+            timestamp: profileData.lastLocation.timestamp || Date.now(),
+          });
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) console.error("Error fetching user info:", err);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingUserInfo(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isUserInfoModalOpen, friendId]);
+
   // Handle map loading state when modal opens
   useEffect(() => {
     if (!isUserInfoModalOpen) {
@@ -2366,11 +2387,11 @@ const ChatHeader = ({
             )}
             <div style={{ position: "relative" }} ref={callDropdownRef}>
               <div
-                onClick={() => setIsCallDropdownOpen(!isCallDropdownOpen)}
+                onClick={handleCallDropdownToggle}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    setIsCallDropdownOpen(!isCallDropdownOpen);
+                    handleCallDropdownToggle();
                   }
                 }}
                 role="button"
@@ -2380,6 +2401,7 @@ const ChatHeader = ({
                 title="Audio call"
                 aria-label="Audio call"
                 aria-expanded={isCallDropdownOpen}
+                aria-haspopup="true"
               >
                 <i className="fas fa-phone-alt"></i>
               </div>
@@ -2464,25 +2486,119 @@ const ChatHeader = ({
                 </div>
               )}
             </div>
-            <div
-              onClick={handleChatOptionClick.bind(this)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  handleChatOptionClick();
-                }
-              }}
-              role="button"
-              tabIndex={0}
-              className="more-button action-button"
-              title="More options"
-              aria-label="More options"
-              aria-expanded={isChatOptionMenu}
-            >
-              <i className="fas fa-ellipsis-v"></i>
+            <div style={{ position: "relative" }} ref={chatOptionRef}>
+              <div
+                onClick={handleChatOptionClick}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleChatOptionClick();
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+                className="more-button action-button"
+                title="More options"
+                aria-label="More options"
+                aria-expanded={isChatOptionMenu}
+                aria-haspopup="true"
+              >
+                <i className="fas fa-ellipsis-v"></i>
+              </div>
+              {isChatOptionMenu && (
+                <div className="chat-option-menu">
+                  <ul>
+                    <li
+                      onClick={handleViewProfile}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleViewProfile();
+                        }
+                      }}
+                      tabIndex={0}
+                    >
+                      View Profile
+                    </li>
+                    {isMobile && (
+                      <li
+                        onClick={handleBumpBtnClick}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handleBumpBtnClick();
+                          }
+                        }}
+                        tabIndex={0}
+                      >
+                        <i
+                          className="fas fa-record-vinyl"
+                          style={{ marginRight: "8px" }}
+                        ></i>
+                        Bump
+                      </li>
+                    )}
+                    {isMobile && (
+                      <li
+                        onClick={handleOpenStickyChat}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handleOpenStickyChat();
+                          }
+                        }}
+                        tabIndex={0}
+                      >
+                        <i
+                          className="fas fa-comment-dots"
+                          style={{ marginRight: "8px" }}
+                        ></i>
+                        Sticky Chat
+                      </li>
+                    )}
+                    {profile?.blockedUsers.includes(friendId) ? (
+                      <li
+                        onClick={handleUnBlockUser}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handleUnBlockUser();
+                          }
+                        }}
+                        tabIndex={0}
+                      >
+                        Unblock {friendProfile.user.firstName}
+                      </li>
+                    ) : (
+                      <li
+                        onClick={handleBlockUser}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handleBlockUser();
+                          }
+                        }}
+                        tabIndex={0}
+                      >
+                        Block {friendProfile.user.firstName}
+                      </li>
+                    )}
+                    <li
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                        }
+                      }}
+                      tabIndex={0}
+                    >
+                      Report {friendProfile.user.firstName}
+                    </li>
+                  </ul>
+                </div>
+              )}
             </div>
             <div
-              onClick={handleChatInfoClick.bind(this)}
+              onClick={handleChatInfoClick}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
@@ -2494,6 +2610,7 @@ const ChatHeader = ({
               className="info-button action-button"
               title="User Info"
               aria-label="User info"
+              aria-expanded={isUserInfoModalOpen}
             >
               <i className="fas fa-info-circle"></i>
             </div>
@@ -2513,98 +2630,6 @@ const ChatHeader = ({
                 aria-label="Open sticky chat"
               >
                 <i className="fas fa-comment-dots"></i>
-              </div>
-            )}
-
-            {isChatOptionMenu && (
-              <div className="chat-option-menu" ref={chatOptionMenu}>
-                <ul>
-                  <li
-                    onClick={handleViewProfile.bind(this)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        handleViewProfile();
-                      }
-                    }}
-                    tabIndex={0}
-                  >
-                    View Profile
-                  </li>
-                  {isMobile && (
-                    <li
-                      onClick={handleBumpBtnClick}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          handleBumpBtnClick();
-                        }
-                      }}
-                      tabIndex={0}
-                    >
-                      <i
-                        className="fas fa-record-vinyl"
-                        style={{ marginRight: "8px" }}
-                      ></i>
-                      Bump
-                    </li>
-                  )}
-                  {isMobile && (
-                    <li
-                      onClick={handleOpenStickyChat}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          handleOpenStickyChat();
-                        }
-                      }}
-                      tabIndex={0}
-                    >
-                      <i
-                        className="fas fa-comment-dots"
-                        style={{ marginRight: "8px" }}
-                      ></i>
-                      Sticky Chat
-                    </li>
-                  )}
-                  {profile?.blockedUsers.includes(friendId) ? (
-                    <li
-                      onClick={handleUnBlockUser.bind(this)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          handleUnBlockUser();
-                        }
-                      }}
-                      tabIndex={0}
-                    >
-                      Unblock {friendProfile.user.firstName}
-                    </li>
-                  ) : (
-                    <li
-                      onClick={handleBlockUser.bind(this)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          handleBlockUser();
-                        }
-                      }}
-                      tabIndex={0}
-                    >
-                      Block {friendProfile.user.firstName}
-                    </li>
-                  )}
-                  <li
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                      }
-                    }}
-                    tabIndex={0}
-                  >
-                    Report {friendProfile.user.firstName}
-                  </li>
-                </ul>
               </div>
             )}
           </div>

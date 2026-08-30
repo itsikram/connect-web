@@ -3,6 +3,8 @@
  * Stale-while-revalidate: show last snapshot immediately, refresh in the background.
  */
 
+import api from "../api/api";
+
 export const WATCH_CACHE_EVENT = "watch-cache-updated";
 
 const CACHE_KEYS = {
@@ -13,17 +15,33 @@ const CACHE_KEYS = {
   CACHE_VERSION: "watch_cache_version",
 };
 
-const CACHE_VERSION = "1.0";
+const CACHE_VERSION = "1.1";
 const WATCH_CACHE_DURATION = 15 * 60 * 1000;
+const TOMBSTONE_TTL = 60 * 1000;
 
 const memoryCache = new Map();
 const inflight = new Map();
+const tombstones = new Map();
 
 const now = () => Date.now();
 
 const emitUpdate = (detail) => {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(WATCH_CACHE_EVENT, { detail }));
+};
+
+const sameWatchList = (a, b) => {
+  if (a === b) return true;
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+    return false;
+  }
+  return a.every(
+    (item, index) =>
+      item?._id === b[index]?._id &&
+      item?.caption === b[index]?.caption &&
+      item?.audience === b[index]?.audience &&
+      item?.videoUrl === b[index]?.videoUrl,
+  );
 };
 
 class WatchCacheManager {
@@ -43,6 +61,10 @@ class WatchCacheManager {
     return `${CACHE_KEYS.ITEM_TS_PREFIX}${watchId}`;
   }
 
+  static tombstoneKey(profileId, list) {
+    return `${list}:${profileId || "anon"}`;
+  }
+
   static initialize() {
     try {
       const cachedVersion = localStorage.getItem(CACHE_KEYS.CACHE_VERSION);
@@ -53,6 +75,34 @@ class WatchCacheManager {
     } catch (error) {
       console.warn("Watch cache initialization error:", error);
     }
+  }
+
+  static markRemoved(profileId, id, list = "feed") {
+    if (!id) return;
+    const key = this.tombstoneKey(profileId, list);
+    const bucket = tombstones.get(key) || new Map();
+    bucket.set(String(id), now());
+    tombstones.set(key, bucket);
+  }
+
+  static clearRemoved(profileId, id, list = "feed") {
+    if (!id) return;
+    const bucket = tombstones.get(this.tombstoneKey(profileId, list));
+    bucket?.delete(String(id));
+  }
+
+  static filterTombstones(profileId, items, list = "feed") {
+    if (!Array.isArray(items)) return [];
+    const key = this.tombstoneKey(profileId, list);
+    const bucket = tombstones.get(key);
+    if (!bucket || bucket.size === 0) return items;
+
+    const cutoff = now() - TOMBSTONE_TTL;
+    bucket.forEach((removedAt, id) => {
+      if (removedAt < cutoff) bucket.delete(id);
+    });
+
+    return items.filter((item) => !bucket.has(String(item?._id)));
   }
 
   static readValue(storageKey, tsKey, memoryKey, { allowExpired = true } = {}) {
@@ -96,13 +146,15 @@ class WatchCacheManager {
       memoryCache.set(memoryKey, { timestamp, data });
       return true;
     } catch (error) {
+      memoryCache.set(memoryKey, { timestamp: now(), data });
       if (error?.name === "QuotaExceededError") {
         try {
           localStorage.removeItem(storageKey);
           localStorage.removeItem(tsKey);
         } catch (_) {}
+      } else {
+        console.error("Error writing watch cache:", error);
       }
-      console.error("Error writing watch cache:", error);
       return false;
     }
   }
@@ -115,22 +167,31 @@ class WatchCacheManager {
       `feed:${profileId}`,
       options,
     );
-    return Array.isArray(feed) ? feed : null;
+    return Array.isArray(feed) ? this.filterTombstones(profileId, feed) : null;
   }
 
-  static setCachedFeed(profileId, items) {
+  static setCachedFeed(profileId, items, { emit = true } = {}) {
     if (!profileId || !Array.isArray(items)) return false;
+    const memoryKey = `feed:${profileId}`;
+    const current = memoryCache.get(memoryKey)?.data;
+    const next = this.filterTombstones(profileId, items);
     const wrote = this.writeValue(
       this.feedKey(profileId),
       this.feedTsKey(profileId),
-      `feed:${profileId}`,
-      items,
+      memoryKey,
+      next,
     );
-    items.forEach((item) => {
-      if (item?._id) this.setCachedWatch(item, { emit: false });
+
+    next.forEach((item) => {
+      if (!item?._id) return;
+      memoryCache.set(`item:${item._id}`, {
+        timestamp: now(),
+        data: item,
+      });
     });
-    if (wrote) {
-      emitUpdate({ profileId, list: "feed", items });
+
+    if (emit && !sameWatchList(current, next)) {
+      emitUpdate({ profileId, list: "feed", items: next });
     }
     return wrote;
   }
@@ -154,14 +215,20 @@ class WatchCacheManager {
     return feed.find((item) => item?._id === watchId) || null;
   }
 
-  static setCachedWatch(watch, { emit = true } = {}) {
+  static setCachedWatch(watch, { emit = true, persist = true } = {}) {
     if (!watch?._id) return false;
-    const wrote = this.writeValue(
-      this.itemKey(watch._id),
-      this.itemTsKey(watch._id),
-      `item:${watch._id}`,
-      watch,
-    );
+    memoryCache.set(`item:${watch._id}`, {
+      timestamp: now(),
+      data: watch,
+    });
+    const wrote = persist
+      ? this.writeValue(
+          this.itemKey(watch._id),
+          this.itemTsKey(watch._id),
+          `item:${watch._id}`,
+          watch,
+        )
+      : true;
     if (wrote && emit) {
       emitUpdate({ watchId: watch._id, list: "item", item: watch });
     }
@@ -170,7 +237,8 @@ class WatchCacheManager {
 
   static prependWatch(profileId, watch) {
     if (!watch?._id) return false;
-    this.setCachedWatch(watch, { emit: false });
+    this.clearRemoved(profileId, watch._id);
+    this.setCachedWatch(watch, { emit: false, persist: false });
     if (!profileId) return true;
     const feed = this.getCachedFeed(profileId) || [];
     const next = [watch, ...feed.filter((item) => item?._id !== watch._id)];
@@ -179,6 +247,7 @@ class WatchCacheManager {
 
   static removeWatch(profileId, watchId) {
     if (!watchId) return false;
+    this.markRemoved(profileId, watchId);
     try {
       localStorage.removeItem(this.itemKey(watchId));
       localStorage.removeItem(this.itemTsKey(watchId));
@@ -198,7 +267,7 @@ class WatchCacheManager {
     const current = this.findWatch(profileId, watchId);
     const nextItem = current ? { ...current, ...updates } : null;
 
-    if (nextItem) this.setCachedWatch(nextItem, { emit: true });
+    if (nextItem) this.setCachedWatch(nextItem, { emit: true, persist: true });
 
     if (!profileId) return Boolean(nextItem);
     const feed = this.getCachedFeed(profileId);
@@ -234,12 +303,32 @@ class WatchCacheManager {
     }
   }
 
+  static async refreshFeed(profileId, { forceRefresh = false } = {}) {
+    if (!profileId) return [];
+
+    const list = await this.fetchWithCache({
+      key: `feed:${profileId}`,
+      forceRefresh,
+      setCached: (items) =>
+        this.setCachedFeed(profileId, Array.isArray(items) ? items : []),
+      fetcher: async () => {
+        const response = await api.get("watch/related", {
+          params: { profile_id: profileId },
+        });
+        return Array.isArray(response.data) ? response.data : [];
+      },
+    });
+
+    return this.getCachedFeed(profileId) || (Array.isArray(list) ? list : []);
+  }
+
   static clearCache(profileId = null) {
     try {
       if (profileId) {
         localStorage.removeItem(this.feedKey(profileId));
         localStorage.removeItem(this.feedTsKey(profileId));
         memoryCache.delete(`feed:${profileId}`);
+        tombstones.delete(this.tombstoneKey(profileId, "feed"));
         return;
       }
 
@@ -254,6 +343,7 @@ class WatchCacheManager {
         }
       });
       memoryCache.clear();
+      tombstones.clear();
     } catch (error) {
       console.error("Error clearing watch cache:", error);
     }

@@ -1,9 +1,11 @@
-import api from '../api/api';
 import { getAllSavedVideos } from './useSavedVideos';
+import WatchCacheManager from './watchCacheManager';
 
 const PLAYLIST_STORAGE_KEY = 'videoPlayerCustomPlaylist';
 const PLAYLIST_ORDER_KEY = 'videoPlayerPlaylistOrder';
 const PLAY_QUEUE_KEY = 'videoPlayerPlayQueue';
+const SAVED_PLAYLIST_CACHE_KEY = 'cached_video_player_saved';
+const SAVED_PLAYLIST_CACHE_TS = 'cached_video_player_saved_ts';
 
 export const MIN_PLAY_COUNT = 1;
 export const MAX_PLAY_COUNT = 99;
@@ -133,29 +135,56 @@ export const syncPlaylistOrder = (orderIds, items) => {
     return [...kept, ...missing];
 };
 
-export const loadWatchPlaylistItems = async (profileId) => {
+export const watchesToPlaylistItems = (watches) => {
+    if (!Array.isArray(watches)) return [];
+    return watches
+        .filter((w) => w?.videoUrl)
+        .map((w) =>
+            normalizePlaylistItem({
+                id: `watch-${w._id}`,
+                url: w.videoUrl,
+                title: w.caption || `${w.author?.user?.firstName || 'Watch'} video`,
+                type: 'watch',
+                thumbnail: w.thumbnail || '',
+                sourceId: w._id,
+                online: true,
+            })
+        )
+        .filter(Boolean);
+};
+
+export const getCachedSavedPlaylist = () => {
+    try {
+        const raw = localStorage.getItem(SAVED_PLAYLIST_CACHE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed)
+            ? parsed.map(normalizePlaylistItem).filter(Boolean)
+            : null;
+    } catch (_) {
+        return null;
+    }
+};
+
+export const setCachedSavedPlaylist = (items) => {
+    try {
+        if (!Array.isArray(items)) return;
+        localStorage.setItem(
+            SAVED_PLAYLIST_CACHE_KEY,
+            JSON.stringify(items.map(normalizePlaylistItem).filter(Boolean)),
+        );
+        localStorage.setItem(SAVED_PLAYLIST_CACHE_TS, String(Date.now()));
+    } catch (_) {}
+};
+
+export const loadWatchPlaylistItems = async (profileId, { forceRefresh = false } = {}) => {
     if (!profileId) return [];
     try {
-        const res = await api.get('watch/related', { params: { profile_id: profileId } });
-        if (res.status !== 200 || !Array.isArray(res.data)) return [];
-
-        return res.data
-            .filter((w) => w?.videoUrl)
-            .map((w) =>
-                normalizePlaylistItem({
-                    id: `watch-${w._id}`,
-                    url: w.videoUrl,
-                    title: w.caption || `${w.author?.user?.firstName || 'Watch'} video`,
-                    type: 'watch',
-                    thumbnail: w.thumbnail || '',
-                    sourceId: w._id,
-                    online: true,
-                })
-            )
-            .filter(Boolean);
+        const list = await WatchCacheManager.refreshFeed(profileId, { forceRefresh });
+        return watchesToPlaylistItems(list);
     } catch (err) {
         console.error('Failed to load watches for video player:', err);
-        return [];
+        return watchesToPlaylistItems(WatchCacheManager.getCachedFeed(profileId) || []);
     }
 };
 
@@ -175,6 +204,7 @@ export const loadSavedPlaylistItems = () =>
                     })
                 )
                 .filter(Boolean);
+            setCachedSavedPlaylist(items);
             resolve(items);
         });
     });

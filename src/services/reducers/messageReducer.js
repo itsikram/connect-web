@@ -39,32 +39,31 @@ const messageReducer = (state = initialState, action) => {
 
         case NEW_MESSAGE: {
             const newMsg = action.payload
-            const myProfileId = action.myProfileId // Optional: current user's profile ID
+            const myProfileId = action.myProfileId
             
-            // Validate the message payload
             if (!newMsg || (!newMsg.senderId && !newMsg.receiverId)) {
                 console.warn('NEW_MESSAGE: Invalid message payload', newMsg);
                 return state;
             }
 
-            // Determine contact ID: if I'm the sender, use receiverId; if I'm the receiver, use senderId
+            const me = String(myProfileId || "");
+            const sender = String(newMsg.senderId || "");
+            const receiver = String(newMsg.receiverId || "");
+
             let contactId;
-            if (myProfileId && newMsg.senderId === myProfileId) {
-                contactId = newMsg.receiverId;
-            } else if (newMsg.senderId) {
-                contactId = newMsg.senderId;
-            } else if (newMsg.receiverId && newMsg.receiverId !== myProfileId) {
-                // Fallback: if we're receiving and senderId is missing, but receiverId is not us
-                // This can happen in edge cases where senderId is not populated
-                contactId = newMsg.receiverId;
+            if (me && sender === me) {
+                contactId = receiver;
+            } else if (sender) {
+                contactId = sender;
+            } else if (receiver && receiver !== me) {
+                contactId = receiver;
             } else {
-                // Last resort: if both senderId is missing and we can't determine from receiverId
                 console.warn('NEW_MESSAGE: Could not determine contactId, message', newMsg);
                 return state;
             }
 
-            const otherContacts = state.filter(state => state?.person?._id !== contactId)
-            const updatedContact = state.filter(state => state?.person?._id === contactId)
+            const otherContacts = state.filter(c => String(c?.person?._id) !== String(contactId))
+            const updatedContact = state.filter(c => String(c?.person?._id) === String(contactId))
 
             // Check if the contact exists before trying to access its messages
             if (updatedContact.length > 0 && updatedContact[0]) {

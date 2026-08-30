@@ -9692,7 +9692,7 @@ const LudoGame = () => {
   };
 
   const debugTeleportPiece = () => {
-    if (!isDebug || !gameStarted) return;
+    if (!controlMode || !gameStarted) return;
     const playerIndex = Number(debugPlayerIndex);
     const pieceIndex = Number(debugPieceIndex);
     const homeColumnStart = maxSteps - (HOME_COLUMN_LENGTH - 1);
@@ -9746,6 +9746,14 @@ const LudoGame = () => {
     setDiceValueImmediate(0);
     if (!onlineMode) {
       setCanRollDice(true);
+    } else if (myPlayerIndexRef.current === 0 && gameId) {
+      setTimeout(() => {
+        persistAndBroadcastGameState("debug_teleport", {
+          playerIndex,
+          pieceIndex,
+          steps: targetSteps,
+        });
+      }, 50);
     }
     console.log("[DEBUG] Teleported piece", {
       playerIndex,
@@ -11058,69 +11066,6 @@ const LudoGame = () => {
         onPlaySound={playSound}
       />
 
-      {controlMode && gameStarted && (
-        <div className="ludo-debug-move">
-          <div className="ludo-debug-move__title">
-            Localhost move
-            <span>
-              Home column {maxSteps - (HOME_COLUMN_LENGTH - 1)}–{maxSteps}
-            </span>
-          </div>
-          <label>
-            Player
-            <select
-              value={debugPlayerIndex}
-              onChange={(e) => setDebugPlayerIndex(Number(e.target.value))}
-            >
-              {Array.from({ length: selectedPlayerCount }).map((_, idx) => (
-                <option key={idx} value={idx}>
-                  {players[idx]?.name || `P${idx + 1}`} ({idx})
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Piece
-            <select
-              value={debugPieceIndex}
-              onChange={(e) => setDebugPieceIndex(Number(e.target.value))}
-            >
-              {[0, 1, 2, 3].map((idx) => {
-                const steps = getPieceSteps(
-                  players[debugPlayerIndex]?.pieces?.[idx],
-                );
-                return (
-                  <option key={idx} value={idx}>
-                    {idx + 1} (steps {steps})
-                  </option>
-                );
-              })}
-            </select>
-          </label>
-          <label>
-            Steps
-            <input
-              type="number"
-              min={0}
-              max={maxSteps}
-              placeholder={`${maxSteps - (HOME_COLUMN_LENGTH - 1)}`}
-              value={debugSteps}
-              onChange={(e) => setDebugSteps(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") debugTeleportPiece();
-              }}
-            />
-          </label>
-          <button
-            type="button"
-            className="ludo-btn ludo-btn--sm ludo-btn--primary"
-            onClick={debugTeleportPiece}
-          >
-            Move
-          </button>
-        </div>
-      )}
-
       {showDiceValueModal && (
         <div
           className="ludo-modal-backdrop"
@@ -11636,6 +11581,72 @@ const LudoGame = () => {
               )}
             </div>
           </div>
+
+          {controlMode && gameStarted && (
+            <div
+              className="ludo-debug-move"
+              style={{ maxWidth: BOARD_SIZE }}
+            >
+              <div className="ludo-debug-move__title">
+                Localhost move
+                <span>
+                  Home column {maxSteps - (HOME_COLUMN_LENGTH - 1)}–{maxSteps}
+                </span>
+              </div>
+              <label>
+                Player
+                <select
+                  value={debugPlayerIndex}
+                  onChange={(e) => setDebugPlayerIndex(Number(e.target.value))}
+                >
+                  {Array.from({ length: selectedPlayerCount }).map((_, idx) => (
+                    <option key={idx} value={idx}>
+                      {players[idx]?.name || `P${idx + 1}`} ({idx})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Piece
+                <select
+                  value={debugPieceIndex}
+                  onChange={(e) => setDebugPieceIndex(Number(e.target.value))}
+                >
+                  {[0, 1, 2, 3].map((idx) => {
+                    const steps = getPieceSteps(
+                      players[debugPlayerIndex]?.pieces?.[idx],
+                    );
+                    return (
+                      <option key={idx} value={idx}>
+                        {idx + 1} (steps {steps})
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+              <label>
+                Steps
+                <input
+                  type="number"
+                  min={0}
+                  max={maxSteps}
+                  placeholder={`${maxSteps - (HOME_COLUMN_LENGTH - 1)}`}
+                  value={debugSteps}
+                  onChange={(e) => setDebugSteps(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") debugTeleportPiece();
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                className="ludo-btn ludo-btn--sm ludo-btn--primary"
+                onClick={debugTeleportPiece}
+              >
+                Move
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="ludo-idle">

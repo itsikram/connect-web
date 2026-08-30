@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 const setPlaybackSession = () => {
   try {
@@ -12,15 +12,20 @@ const isPageHidden = () =>
   typeof document !== "undefined" &&
   (document.visibilityState === "hidden" || document.hidden);
 
+const nearTime = (a, b, slack = 0.4) =>
+  Math.abs((Number(a) || 0) - (Number(b) || 0)) <= slack;
+
 /**
- * iOS locks and Home Screen PWAs pause <video>. Keep a hidden <audio>
- * element playing (muted in the foreground) so lock-screen audio is already
- * in a playing session and does not need a new gesture.
+ * iOS PWAs pause <video> when the app is sent away. A hidden <audio> element
+ * continues the same file. Never seek that audio back to a frozen video clock
+ * or it will replay the last buffered couple of seconds on a loop.
  */
 const useBackgroundAudioHandoff = (videoRef, { src, enabled = true } = {}) => {
   const audioRef = useRef(null);
   const wantPlayingRef = useRef(false);
   const handingOffRef = useRef(false);
+  const backgroundActiveRef = useRef(false);
+  const dualPlayUnsafeRef = useRef(false);
 
   useEffect(() => {
     if (typeof document === "undefined") return undefined;
@@ -46,45 +51,59 @@ const useBackgroundAudioHandoff = (videoRef, { src, enabled = true } = {}) => {
     };
   }, []);
 
-  const syncAudioFromVideo = useCallback(() => {
-    const video = videoRef.current;
+  const ensureSrc = useCallback(() => {
     const audio = audioRef.current;
-    if (!audio || !src) return;
-
+    if (!audio || !src) return false;
+    audio.loop = false;
     if (audio.getAttribute("src") !== src) {
       audio.src = src;
       audio.load();
     }
-
-    if (video) {
-      try {
-        audio.loop = !!video.loop;
-      } catch (_) {}
-      try {
-        const videoTime = Number(video.currentTime) || 0;
-        if (Math.abs((Number(audio.currentTime) || 0) - videoTime) > 0.35) {
-          audio.currentTime = videoTime;
-        }
-      } catch (_) {}
-    }
-  }, [src, videoRef]);
+    return true;
+  }, [src]);
 
   const playBackgroundAudio = useCallback(
     ({ unmuted = isPageHidden() } = {}) => {
       const audio = audioRef.current;
+      const video = videoRef.current;
       if (!audio || !src) return Promise.resolve();
 
       handingOffRef.current = true;
-      syncAudioFromVideo();
+      ensureSrc();
       setPlaybackSession();
+      audio.loop = false;
       audio.muted = !unmuted;
 
+      // If audio is already rolling, do not seek — that is what caused the
+      // 2-second loop when the PWA was closed (video clock is frozen).
+      if (!audio.paused) {
+        backgroundActiveRef.current = unmuted;
+        window.setTimeout(() => {
+          handingOffRef.current = false;
+        }, 300);
+        return Promise.resolve();
+      }
+
+      if (
+        video &&
+        audio.paused &&
+        !nearTime(audio.currentTime, video.currentTime)
+      ) {
+        try {
+          audio.currentTime = Number(video.currentTime) || 0;
+        } catch (_) {}
+      }
+
       const start = () =>
-        audio.play().catch(() => {}).finally(() => {
-          window.setTimeout(() => {
-            handingOffRef.current = false;
-          }, 400);
-        });
+        audio
+          .play()
+          .catch(() => {})
+          .finally(() => {
+            backgroundActiveRef.current = unmuted && !audio.paused;
+            window.setTimeout(() => {
+              handingOffRef.current = false;
+            }, 300);
+          });
 
       if (audio.readyState >= 2) return start();
 
@@ -95,10 +114,11 @@ const useBackgroundAudioHandoff = (videoRef, { src, enabled = true } = {}) => {
         audio.addEventListener("canplay", onReady, { once: true });
       });
     },
-    [src, syncAudioFromVideo],
+    [src, ensureSrc, videoRef],
   );
 
   const pauseBackgroundAudio = useCallback(() => {
+    backgroundActiveRef.current = false;
     try {
       audioRef.current?.pause();
     } catch (_) {}
@@ -115,31 +135,58 @@ const useBackgroundAudioHandoff = (videoRef, { src, enabled = true } = {}) => {
     const audio = audioRef.current;
     if (!video) return undefined;
 
+    const markHandoff = (ms = 300) => {
+      handingOffRef.current = true;
+      window.setTimeout(() => {
+        handingOffRef.current = false;
+      }, ms);
+    };
+
     const onPlay = () => {
       wantPlayingRef.current = true;
       setPlaybackSession();
-      syncAudioFromVideo();
+      ensureSrc();
 
       if (isPageHidden()) {
         playBackgroundAudio({ unmuted: true });
         return;
       }
 
-      // Unlock <audio> in the same user-gesture window as <video>, then
-      // pause it so iOS does not stop the visible video. Later lock/hide
-      // can call play() on this already-unlocked element.
+      if (dualPlayUnsafeRef.current) return;
+
       const currentAudio = audioRef.current;
       if (!currentAudio) return;
+      currentAudio.loop = false;
       currentAudio.muted = true;
-      currentAudio.play()
+      if (
+        currentAudio.paused &&
+        !nearTime(currentAudio.currentTime, video.currentTime)
+      ) {
+        try {
+          currentAudio.currentTime = Number(video.currentTime) || 0;
+        } catch (_) {}
+      }
+
+      markHandoff(250);
+      currentAudio
+        .play()
         .then(() => {
-          if (!isPageHidden()) {
-            try {
-              currentAudio.pause();
-            } catch (_) {}
-          } else {
+          if (isPageHidden()) {
             currentAudio.muted = false;
+            backgroundActiveRef.current = true;
+            return;
           }
+          // Keep muted audio playing so the buffer fills before the PWA is
+          // closed. If iOS pauses the video because of this, fall back.
+          window.setTimeout(() => {
+            if (video.paused && wantPlayingRef.current && !isPageHidden()) {
+              dualPlayUnsafeRef.current = true;
+              try {
+                currentAudio.pause();
+              } catch (_) {}
+              video.play().catch(() => {});
+            }
+          }, 80);
         })
         .catch(() => {});
     };
@@ -152,39 +199,52 @@ const useBackgroundAudioHandoff = (videoRef, { src, enabled = true } = {}) => {
       }
       if (!isPageHidden()) {
         wantPlayingRef.current = false;
+        backgroundActiveRef.current = false;
         pauseBackgroundAudio();
       }
     };
 
     const onTimeUpdate = () => {
-      if (isPageHidden()) return;
-      if (!audio || audio.paused) return;
-      try {
-        const vt = Number(video.currentTime) || 0;
-        if (Math.abs((Number(audio.currentTime) || 0) - vt) > 0.45) {
-          audio.currentTime = vt;
-        }
-      } catch (_) {}
+      if (isPageHidden() || backgroundActiveRef.current) return;
+      const currentAudio = audioRef.current;
+      if (!currentAudio || currentAudio.paused || dualPlayUnsafeRef.current) {
+        return;
+      }
+      const vt = Number(video.currentTime) || 0;
+      const at = Number(currentAudio.currentTime) || 0;
+      // Only catch audio up if it drifted behind. Never rewind it.
+      if (vt - at > 0.8) {
+        try {
+          currentAudio.currentTime = vt;
+        } catch (_) {}
+      }
     };
 
     const goBackground = () => {
       if (video && !video.paused) wantPlayingRef.current = true;
       if (!wantPlayingRef.current) return;
+      if (backgroundActiveRef.current && audio && !audio.paused) {
+        audio.muted = false;
+        markHandoff();
+        try {
+          video.muted = true;
+          video.pause();
+        } catch (_) {}
+        return;
+      }
       setPlaybackSession();
       playBackgroundAudio({ unmuted: true });
-      handingOffRef.current = true;
+      markHandoff();
       try {
         video.muted = true;
         video.pause();
       } catch (_) {}
-      window.setTimeout(() => {
-        handingOffRef.current = false;
-      }, 400);
     };
 
     const goForeground = () => {
+      backgroundActiveRef.current = false;
       const currentAudio = audioRef.current;
-      handingOffRef.current = true;
+      markHandoff();
       try {
         video.muted = false;
       } catch (_) {}
@@ -194,6 +254,9 @@ const useBackgroundAudioHandoff = (videoRef, { src, enabled = true } = {}) => {
           video.currentTime = currentAudio.currentTime;
         } catch (_) {}
         currentAudio.muted = true;
+        if (dualPlayUnsafeRef.current) {
+          pauseBackgroundAudio();
+        }
       }
 
       if (wantPlayingRef.current) {
@@ -203,10 +266,6 @@ const useBackgroundAudioHandoff = (videoRef, { src, enabled = true } = {}) => {
       } else {
         pauseBackgroundAudio();
       }
-
-      window.setTimeout(() => {
-        handingOffRef.current = false;
-      }, 400);
     };
 
     const onVisibility = () => {
@@ -216,6 +275,29 @@ const useBackgroundAudioHandoff = (videoRef, { src, enabled = true } = {}) => {
 
     const onAudioEnded = () => {
       if (!wantPlayingRef.current) return;
+      const currentAudio = audioRef.current;
+      const vDur = Number(video.duration);
+      const aTime = Number(currentAudio?.currentTime) || 0;
+      const aDur = Number(currentAudio?.duration);
+
+      const videoNotFinished =
+        Number.isFinite(vDur) && vDur > 2 && aTime < vDur - 1.25;
+      const audioDurationLooksShort =
+        Number.isFinite(aDur) &&
+        Number.isFinite(vDur) &&
+        aDur > 0 &&
+        vDur - aDur > 1.5;
+
+      if (videoNotFinished || audioDurationLooksShort) {
+        try {
+          if (Number.isFinite(aTime)) {
+            currentAudio.currentTime = aTime;
+          }
+        } catch (_) {}
+        currentAudio?.play().catch(() => {});
+        return;
+      }
+
       try {
         video.dispatchEvent(new Event("ended"));
       } catch (_) {}
@@ -246,17 +328,20 @@ const useBackgroundAudioHandoff = (videoRef, { src, enabled = true } = {}) => {
     videoRef,
     playBackgroundAudio,
     pauseBackgroundAudio,
-    syncAudioFromVideo,
+    ensureSrc,
   ]);
 
-  return {
-    audioRef,
-    wantPlayingRef,
-    handingOffRef,
-    playBackgroundAudio,
-    pauseBackgroundAudio,
-    isAudioPlaying,
-  };
+  return useMemo(
+    () => ({
+      audioRef,
+      wantPlayingRef,
+      handingOffRef,
+      playBackgroundAudio,
+      pauseBackgroundAudio,
+      isAudioPlaying,
+    }),
+    [playBackgroundAudio, pauseBackgroundAudio, isAudioPlaying],
+  );
 };
 
 export default useBackgroundAudioHandoff;

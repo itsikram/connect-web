@@ -230,7 +230,7 @@ const Message = (props) => {
   }, [isMobile]);
 
   const handleMobileNavToggle = () => {
-    setShowMobileNav(!showMobileNav);
+    setShowMobileNav((prev) => !prev);
   };
 
   return (

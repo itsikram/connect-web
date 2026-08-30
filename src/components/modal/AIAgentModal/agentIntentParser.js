@@ -1,45 +1,9 @@
-/**
- * AI Agent Intent Parser
- * Client-side regex/keyword parsing to detect user intents before sending to Gemini.
- */
+import {
+  FRIEND_REQUIRED_ACTIONS,
+  NO_FRIEND_ACTIONS,
+} from "./agentCatalog";
 
-// ── Action sets ───────────────────────────────────────────────────────────────
-
-/** Actions that need a friend's profile resolved from the friends list */
-export const FRIEND_REQUIRED_ACTIONS = new Set([
-  "VIDEO_CALL",
-  "AUDIO_CALL",
-  "SEND_MESSAGE",
-  "BUMP",
-  "INVITE_LUDO",
-  "BLOCK",
-  "UNBLOCK",
-  "VIEW_PROFILE",
-  "GET_LOCATION",
-  "GET_BIO", // get and display a friend's bio/vio
-  "ADD_FRIEND",
-  "UNFRIEND",
-  "NAVIGATE_PROFILE", // go to a friend's profile / sub-page
-  "SEND_MESSAGE_TO_USER", // send a message to a specific user
-]);
-
-/** Actions that do NOT need a friend target */
-export const NO_FRIEND_ACTIONS = new Set([
-  "CREATE_LUDO",
-  "LIST_FRIENDS",
-  "OPEN_MESSAGES",
-  "OPEN_FRIENDS",
-  "NAVIGATE", // navigate to a static/my-profile route
-  "SEARCH_VIDEO", // search for a video to play
-  "CREATE_NOTE", // create a new note
-  "EDIT_NOTE", // edit an existing note
-  "DELETE_NOTE", // delete a note
-  "CREATE_TASK", // create a new task
-  "EDIT_TASK", // edit an existing task
-  "DELETE_TASK", // delete a task
-  "ADD_RECOVERY_DATA", // add recovery/backup data
-  "UPDATE_LANGUAGE_SETTINGS", // update language/language prompt settings
-]);
+export { FRIEND_REQUIRED_ACTIONS, NO_FRIEND_ACTIONS };
 
 /**
  * How the agent should respond when it confidently understands the user's intent.
@@ -50,12 +14,26 @@ export const NO_FRIEND_ACTIONS = new Set([
 export const ACTION_RESPONSE_MODE = {
   GET_BIO: "reply",
   GET_LOCATION: "reply",
+  GET_MY_DETAILS: "reply",
+  QUERY_CONTENT: "reply",
+  SEARCH_APP: "reply",
+  SEARCH_USERS: "reply",
+  SEARCH_POSTS: "reply",
+  SEARCH_VIDEO: "reply",
+  LIST_NOTES: "reply",
+  LIST_TASKS: "reply",
+  LIST_NOTIFICATIONS: "reply",
+  LIST_HABITS: "reply",
+  LIST_EVENTS: "reply",
+  LIST_FRIENDS_INFO: "reply",
   VIEW_PROFILE: "navigate",
   NAVIGATE_PROFILE: "navigate",
   NAVIGATE: "navigate",
   OPEN_MESSAGES: "navigate",
   OPEN_FRIENDS: "navigate",
   LIST_FRIENDS: "navigate",
+  CREATE_POST: "navigate",
+  CREATE_STORY: "navigate",
   SEND_MESSAGE_TO_USER: "confirm",
   SEND_MESSAGE: "confirm",
   VIDEO_CALL: "confirm",
@@ -600,6 +578,19 @@ const parseDirectSendMessageIntent = (message) => {
 // ── Primary intent patterns ───────────────────────────────────────────────────
 
 const INTENT_PATTERNS = [
+  // ── Create Post ───────────────────────────────────────────────────────────
+  {
+    action: "CREATE_POST",
+    searchCapture: true,
+    patterns: [
+      /(?:create|make|write|publish)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:new\s+)?post(?:\s+with\s+(?:a\s+|an\s+)?(?:funny|witty|random|good|nice)\s+caption)?(?:\s*(?:that says|saying|caption(?:ed)?|:)\s+(.+))?(?:\s+(?:please|now|for me))?[.!?]*$/i,
+      /(?:create|make|write|publish)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:funny|witty)\s+post(?:\s+(?:about|saying|:)\s*(.+))?$/i,
+      /post\s+(?:this|that)\s*(?:to\s+(?:my\s+)?(?:feed|timeline))?\s*[:\-]\s*(.+)/i,
+      /(?:new\s+)?post\s*[:\-]\s*(.+)/i,
+      /(?:একটা|একটি)?\s*পোস্ট\s+(?:করো|করুন|তৈরি(?:\s+করো)?)(?:\s+(.+))?/,
+    ],
+  },
+
   // ── Create Note ───────────────────────────────────────────────────────────
   {
     action: "CREATE_NOTE",
@@ -893,7 +884,7 @@ const INTENT_PATTERNS = [
  * @param {string} query – lowercased destination string from user message
  * @returns {{ route: string, label: string }|null}
  */
-const findStaticRoute = (query) => {
+export const findStaticRoute = (query) => {
   const q = query.toLowerCase().trim().replace(/\s+/g, " ");
   // Try exact match first, then prefix match (longest key wins)
   let bestMatch = null;

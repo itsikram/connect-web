@@ -14,6 +14,13 @@ import moment from "moment";
 import { fetchProfileCached } from "../../utils/requestCache";
 import MsgListSkleton from "../../skletons/message/MsgListSkleton";
 import ContactCacheManager from "../../utils/contactCacheManager";
+import socket from "../../common/socket";
+import {
+  applyLastMessageToContacts,
+  CHAT_MESSAGE_EVENT,
+  idOf,
+  mergeContactsPreferNewer,
+} from "../../utils/optimisticMessage";
 // const isProfileActive = (id) => {
 //     return true
 //     socket.emit('is_active', { profileId: id, myId: profileId })
@@ -161,7 +168,18 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
             : Array.isArray(body?.data)
               ? body.data
               : [];
-        setContacts(contactsData);
+        setContacts((prev) => {
+          const merged = mergeContactsPreferNewer(contactsData, prev);
+          try {
+            ContactCacheManager.setCachedContacts(effectiveProfileId, merged);
+            const cacheKey = `contactsData_${effectiveProfileId}`;
+            localStorage.setItem("contactsData", JSON.stringify(merged));
+            localStorage.setItem(cacheKey, JSON.stringify(merged));
+          } catch (_e) {
+            /* ignore */
+          }
+          return merged;
+        });
 
         // Extract online friends from the response (no separate API calls needed)
         const onlineFriends = contactsData
@@ -169,15 +187,7 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
           .map((contact) => contact.person._id);
         setActiveFriends(onlineFriends);
 
-        // Cache contacts using ContactCacheManager
-        ContactCacheManager.setCachedContacts(effectiveProfileId, contactsData);
         ContactCacheManager.setCachedActiveFriends(effectiveProfileId, onlineFriends);
-        console.log('📦 Updated contact cache with fresh data');
-
-        // Store contacts data in localStorage for Chat.js and cache (skeleton only on first load)
-        const cacheKey = `contactsData_${effectiveProfileId}`;
-        localStorage.setItem("contactsData", JSON.stringify(contactsData));
-        localStorage.setItem(cacheKey, JSON.stringify(contactsData));
       } catch (error) {
         console.error("Error fetching contacts:", error);
         // IMPORTANT: don't clear the existing list on transient failures.
@@ -236,6 +246,92 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
     const interval = setInterval(() => fetchContacts(false), 120000);
     return () => clearInterval(interval);
   }, [effectiveProfileId, cachedContacts.length, fetchContacts]);
+
+  const writeContactCache = useCallback(
+    (nextContacts) => {
+      if (!effectiveProfileId || !Array.isArray(nextContacts)) return;
+      try {
+        const cacheKey = `contactsData_${effectiveProfileId}`;
+        localStorage.setItem("contactsData", JSON.stringify(nextContacts));
+        localStorage.setItem(cacheKey, JSON.stringify(nextContacts));
+        ContactCacheManager.setCachedContacts(effectiveProfileId, nextContacts);
+      } catch (_e) {
+        /* ignore quota / serialization errors */
+      }
+    },
+    [effectiveProfileId],
+  );
+
+  useEffect(() => {
+    if (!myId) return;
+
+    const applyIncoming = (updatedMessage) => {
+      if (!updatedMessage) return;
+      let missingContact = false;
+      setContacts((prev) => {
+        const { contacts: next, found } = applyLastMessageToContacts(
+          prev,
+          updatedMessage,
+          myId,
+        );
+        if (!found) {
+          missingContact = true;
+          return prev;
+        }
+        writeContactCache(next);
+        return next;
+      });
+      if (missingContact) {
+        fetchContacts(false);
+      }
+    };
+
+    const onSocketMessage = (data) => {
+      if (data?.updatedMessage) applyIncoming(data.updatedMessage);
+    };
+
+    const onLocalMessage = (event) => {
+      applyIncoming(event?.detail?.updatedMessage);
+    };
+
+    const onMessageSeen = (data) => {
+      const seenId = data?.messageId || data?._id;
+      if (!seenId) return;
+      setContacts((prev) => {
+        let didChange = false;
+        const next = prev.map((contact) => {
+          let contactChanged = false;
+          const messages = (contact.messages || []).map((m) => {
+            if (m && idOf(m._id) === idOf(seenId) && m.isSeen !== true) {
+              contactChanged = true;
+              didChange = true;
+              return { ...m, isSeen: true };
+            }
+            return m;
+          });
+          return contactChanged ? { ...contact, messages } : contact;
+        });
+        if (didChange) writeContactCache(next);
+        return didChange ? next : prev;
+      });
+    };
+
+    socket.on("newMessage", onSocketMessage);
+    socket.on("newMessageToUser", onSocketMessage);
+    socket.on("messageSent", onSocketMessage);
+    socket.on("messageSeen", onMessageSeen);
+    socket.on("seenMessage", onMessageSeen);
+    window.addEventListener(CHAT_MESSAGE_EVENT, onLocalMessage);
+
+    return () => {
+      socket.off("newMessage", onSocketMessage);
+      socket.off("newMessageToUser", onSocketMessage);
+      socket.off("messageSent", onSocketMessage);
+      socket.off("messageSeen", onMessageSeen);
+      socket.off("seenMessage", onMessageSeen);
+      window.removeEventListener(CHAT_MESSAGE_EVENT, onLocalMessage);
+    };
+  }, [myId, fetchContacts, writeContactCache]);
 
   const refreshProfileStatuses = useCallback(async () => {
     const contactPeople = (contacts || [])
@@ -387,7 +483,6 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
       <div
         className="header-message-option-menu"
         style={{ position: "relative", display: "inline-block" }}
-        ref={messageMenuRef}
       >
         {messageOption && (
           <div
@@ -509,11 +604,11 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
                     : "Unknown User");
                 const isMsgSeen = contactMessages[0]
                   ? contactMessages[0].isSeen &&
-                    contactMessages[0].receiverId === myId
+                    idOf(contactMessages[0].receiverId) === idOf(myId)
                     ? true
                     : contactMessages[0].isSeen
                   : true;
-                const isActive = contactPerson._id === params.profile;
+                const isActive = idOf(contactPerson._id) === idOf(params.profile);
                 const profileIsActive = friendProfileStatusMap[contactPerson._id];
                 const isOnline =
                   profileIsActive !== undefined
@@ -523,13 +618,17 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
                 const unreadCount = (contactMessages || []).reduce(
                   (count, m) => {
                     return (
-                      count + (m && m.receiverId === myId && !m.isSeen ? 1 : 0)
+                      count +
+                      (m && idOf(m.receiverId) === idOf(myId) && !m.isSeen
+                        ? 1
+                        : 0)
                     );
                   },
                   0,
                 );
                 const lastMessage = contactMessages[0] || {};
-                const isOutgoing = lastMessage && lastMessage.senderId === myId;
+                const isOutgoing =
+                  lastMessage && idOf(lastMessage.senderId) === idOf(myId);
                 const statusTitle = isOutgoing
                   ? lastMessage.isSeen
                     ? "Seen"
@@ -655,8 +754,9 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
                 </span>
               </div>
             </div>
-            <div className="header-actions">
+            <div className="header-actions" ref={messageMenuRef}>
               <button
+                type="button"
                 onClick={handleMsgOptionClick}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
@@ -666,6 +766,8 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
                 }}
                 className="action-button"
                 aria-label="Message options"
+                aria-expanded={messageOption}
+                aria-haspopup="true"
               >
                 <i className="fas fa-ellipsis-h"></i>
               </button>
@@ -774,11 +876,12 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
                       : "Unknown User");
                   const isMsgSeen = contactMessages[0]
                     ? contactMessages[0].isSeen &&
-                      contactMessages[0].receiverId === myId
+                      idOf(contactMessages[0].receiverId) === idOf(myId)
                       ? true
                       : contactMessages[0].isSeen
                     : true;
-                  const isActive = contactPerson._id === params.profile;
+                  const isActive =
+                    idOf(contactPerson._id) === idOf(params.profile);
                   const profileIsActive = friendProfileStatusMap[contactPerson._id];
                   const isOnline =
                     profileIsActive !== undefined
@@ -789,14 +892,16 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
                     (count, m) => {
                       return (
                         count +
-                        (m && m.receiverId === myId && !m.isSeen ? 1 : 0)
+                        (m && idOf(m.receiverId) === idOf(myId) && !m.isSeen
+                          ? 1
+                          : 0)
                       );
                     },
                     0,
                   );
                   const lastMessage = contactMessages[0] || {};
                   const isOutgoing =
-                    lastMessage && lastMessage.senderId === myId;
+                    lastMessage && idOf(lastMessage.senderId) === idOf(myId);
                   const statusTitle = isOutgoing
                     ? lastMessage.isSeen
                       ? "Seen"

@@ -305,7 +305,9 @@ const CreateWatch = ({ setWatches = null }) => {
                                     <button
                                         type="button"
                                         className="cpm-audience-button"
-                                        onClick={() => setShowAudienceMenu(!showAudienceMenu)}
+                                        onClick={() => setShowAudienceMenu((prev) => !prev)}
+                                        aria-expanded={showAudienceMenu}
+                                        aria-haspopup="true"
                                     >
                                         <i className={getAudienceIcon(watchData.audience || 1)}></i>
                                         <span>{getAudienceLabel(watchData.audience || 1)}</span>

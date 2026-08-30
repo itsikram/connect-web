@@ -121,7 +121,7 @@ export const showInfoToast = (message, options = {}) => {
 
 // Message toast (for notifications with user avatar)
 export const showMessageToast = (message, senderName, senderAvatar, link, options = {}) => {
-  const { autoClose = 5000 } = options;
+  const { autoClose = 5000, toastId } = options;
 
   const id = toast.info(
     ({ closeToast, ...toastProps }) => (
@@ -140,6 +140,7 @@ export const showMessageToast = (message, senderName, senderAvatar, link, option
     { 
       ...toastConfig, 
       autoClose,
+      toastId,
       className: 'custom-toast-message'
     }
   );

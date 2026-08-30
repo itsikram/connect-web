@@ -28,6 +28,7 @@ import {
   updateProfilePostCache,
 } from "../../utils/requestCache";
 import config from "../../config/config.json";
+import OptionsDropdown from "./OptionsDropdown";
 import "./CommentStyles.css";
 import "./PostCard.css";
 import "./SharePostModal.css";
@@ -415,23 +416,11 @@ const Post = React.memo(
 
     let postAuthorPP = `${post.author.profilePic}`;
 
-    let postOptionMenu = useRef(null);
-    useEffect(() => {
-      const handleClickOutside = (event) => {
-        if (
-          postOptionMenu.current &&
-          !postOptionMenu.current.contains(event.target)
-        ) {
-          setIsPostOption(false);
-        }
-      };
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => {
-        document.removeEventListener("mousedown", handleClickOutside);
-      };
+    const closePostOption = useCallback(() => {
+      setIsPostOption(false);
     }, []);
 
-    let postOptionClick = useCallback((e) => {
+    const postOptionClick = useCallback(() => {
       setIsPostOption((prev) => !prev);
     }, []);
 
@@ -573,27 +562,24 @@ const Post = React.memo(
                   </div>
                   <div className="right">
                     <>
-                      <button
-                        onClick={postOptionClick}
-                        className="post-three-dot"
+                      <OptionsDropdown
+                        open={isPostOption}
+                        onToggle={postOptionClick}
+                        onClose={closePostOption}
+                        ariaLabel="Post options"
                       >
-                        <i className="far fa-ellipsis-h"></i>
-                      </button>
-                      {isPostOption && (
-                        <div className="post-option-menu" ref={postOptionMenu}>
-                          <ul>
-                            {isAuth && (
-                              <>
-                                <li onClick={gotoEdit}>Edit Post</li>
-                                <li onClick={editAudienceClick}>
-                                  Edit Audience
-                                </li>
-                              </>
-                            )}
-                            <li>Report This Post</li>
-                          </ul>
-                        </div>
-                      )}
+                        <ul>
+                          {isAuth && (
+                            <>
+                              <li onClick={gotoEdit}>Edit Post</li>
+                              <li onClick={editAudienceClick}>
+                                Edit Audience
+                              </li>
+                            </>
+                          )}
+                          <li onClick={closePostOption}>Report This Post</li>
+                        </ul>
+                      </OptionsDropdown>
                     </>
 
                     <button onClick={hideThisPost} className="post-close">
@@ -990,27 +976,22 @@ const Post = React.memo(
                     </div>
                   </div>
                   <div className="right">
-                    <button
-                      type="button"
-                      onClick={postOptionClick}
-                      className="post-three-dot"
-                      aria-label="Post options"
+                    <OptionsDropdown
+                      open={isPostOption}
+                      onToggle={postOptionClick}
+                      onClose={closePostOption}
+                      ariaLabel="Post options"
                     >
-                      <i className="far fa-ellipsis-h"></i>
-                    </button>
-                    {isPostOption && (
-                      <div className="post-option-menu" ref={postOptionMenu}>
-                        <ul>
-                          {isAuth && (
-                            <>
-                              <li onClick={gotoEdit}>Edit Post</li>
-                              <li onClick={editAudienceClick}>Edit Audience</li>
-                            </>
-                          )}
-                          <li>Report This Post</li>
-                        </ul>
-                      </div>
-                    )}
+                      <ul>
+                        {isAuth && (
+                          <>
+                            <li onClick={gotoEdit}>Edit Post</li>
+                            <li onClick={editAudienceClick}>Edit Audience</li>
+                          </>
+                        )}
+                        <li onClick={closePostOption}>Report This Post</li>
+                      </ul>
+                    </OptionsDropdown>
 
                     <button
                       type="button"
@@ -1291,6 +1272,7 @@ const Post = React.memo(
       isAuth,
       hideThisPost,
       postOptionClick,
+      closePostOption,
       gotoEdit,
       displayedPost,
       likeBtnOnClick,

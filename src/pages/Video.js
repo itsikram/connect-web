@@ -2,7 +2,6 @@ import React, { Fragment, useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import Watch from "../components/watch/Watch";
 import CreateWatch from "../components/watch/CreateWatch";
-import api from "../api/api";
 import { useSelector } from "react-redux";
 import WatchSkeleton from "../skletons/watch/WatchSkeleton";
 import Ls from "../partials/sidebar/Ls";
@@ -61,20 +60,7 @@ const Video = () => {
     }
 
     try {
-      const list = await WatchCacheManager.fetchWithCache({
-        key: `feed:${myId}`,
-        setCached: (items) =>
-          WatchCacheManager.setCachedFeed(
-            myId,
-            Array.isArray(items) ? items : [],
-          ),
-        fetcher: async () => {
-          const response = await api.get("watch/related", {
-            params: { profile_id: myId },
-          });
-          return Array.isArray(response.data) ? response.data : [];
-        },
-      });
+      const list = await WatchCacheManager.refreshFeed(myId);
       setWatches(Array.isArray(list) ? list : []);
     } catch (error) {
       console.error("Error loading watch feed:", error);

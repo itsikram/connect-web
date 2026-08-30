@@ -208,8 +208,18 @@
 }
 
 .footer .comments .comment-container .comment-box:hover .options-icon,
-.nf-post .footer .comments .comment-container .comment-box:hover .options-icon {
+.nf-post .footer .comments .comment-container .comment-box:hover .options-icon,
+.comment-container .comment-options.is-open,
+.reply-container .comment-options.is-open,
+.footer .comments .comment-container .comment-options.is-open,
+.nf-post .footer .comments .comment-container .comment-options.is-open {
     opacity: 1 !important;
+}
+
+.comment-container .options-icon,
+.comment-container .comment-options,
+.reply-container .comment-options {
+    overflow: visible !important;
 }
 
 .comment-container .options-icon:hover {
