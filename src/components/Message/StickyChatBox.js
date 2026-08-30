@@ -67,6 +67,11 @@ const StickyChatBox = ({
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [unreadWhileScrolled, setUnreadWhileScrolled] = useState(0);
   const [isInitialMsgLoading, setIsInitialMsgLoading] = useState(true);
+  const [isWindowFocused, setIsWindowFocused] = useState(() => {
+    if (typeof document === "undefined") return true;
+    return document.visibilityState === "visible" && document.hasFocus();
+  });
+  const [isChatFocused, setIsChatFocused] = useState(false);
 
   const isMobile = useIsMobile();
   const msgListRef = useRef(null);
@@ -82,13 +87,68 @@ const StickyChatBox = ({
   const pendingScrollRestoreRef = useRef(null);
   const messagesRef = useRef(messages);
   const loadingOlderRef = useRef(false);
+  const typingTimeoutRef = useRef(null);
   const liveVoiceClientRef = useRef(null);
   const liveVoiceDurationTimerRef = useRef(null);
   const liveVoiceLocalTrackRef = useRef(null);
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
+  const stickyRootRef = useRef(null);
   const [map, setMap] = useState(null);
   const [mapLoading, setMapLoading] = useState(false);
+
+  const canMarkAsSeen = !isMinimized && isChatFocused && isWindowFocused;
+
+  // Track browser window/tab focus so read receipts only fire when the user can
+  // actually view the conversation.
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+
+    const syncWindowFocus = () => {
+      setIsWindowFocused(
+        document.visibilityState === "visible" && document.hasFocus(),
+      );
+    };
+
+    syncWindowFocus();
+    window.addEventListener("focus", syncWindowFocus);
+    window.addEventListener("blur", syncWindowFocus);
+    document.addEventListener("visibilitychange", syncWindowFocus);
+
+    return () => {
+      window.removeEventListener("focus", syncWindowFocus);
+      window.removeEventListener("blur", syncWindowFocus);
+      document.removeEventListener("visibilitychange", syncWindowFocus);
+    };
+  }, []);
+
+  // Sticky chat becomes "focused" only after an explicit click/tap on the box.
+  useEffect(() => {
+    if (isMinimized) {
+      setIsChatFocused(false);
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      const root = stickyRootRef.current;
+      if (!root) return;
+      const clickedInsideRoot = root.contains(event.target);
+      const clickedInsideMenu = !!optionsMenuRef.current?.contains(
+        event.target,
+      );
+      setIsChatFocused(clickedInsideRoot || clickedInsideMenu);
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown, {
+      passive: true,
+    });
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+    };
+  }, [isMinimized]);
 
   // HTTP-based helper functions
   const fetchMessages = async () => {
@@ -229,15 +289,23 @@ const StickyChatBox = ({
   const markMessageAsSeen = async (message) => {
     try {
       if (!message || !message._id) {
-        console.warn('Cannot mark message as seen - message or _id is missing:', message);
+        console.warn(
+          "Cannot mark message as seen - message or _id is missing:",
+          message,
+        );
         return;
       }
-      
-      console.log('📤 Marking message as seen:', { messageId: message._id });
-      const response = await api.post("/message/seen", { messageId: message._id });
-      console.log('✅ Message marked as seen:', response.data);
+
+      console.log("📤 Marking message as seen:", { messageId: message._id });
+      const response = await api.post("/message/seen", {
+        messageId: message._id,
+      });
+      console.log("✅ Message marked as seen:", response.data);
     } catch (error) {
-      console.error("Error marking message as seen:", error?.response?.data || error?.message || error);
+      console.error(
+        "Error marking message as seen:",
+        error?.response?.data || error?.message || error,
+      );
     }
   };
 
@@ -671,6 +739,30 @@ const StickyChatBox = ({
       }
     };
 
+    const handleTyping = (data = {}) => {
+      if (String(data?.receiverId) !== String(userId)) return;
+
+      if (data?.isTyping) {
+        setIsTyping(true);
+        setTypeMessage(typeof data?.type === "string" ? data.type : "");
+
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
+        }
+        typingTimeoutRef.current = setTimeout(() => {
+          setIsTyping(false);
+          setTypeMessage("");
+        }, 1800);
+      } else {
+        setIsTyping(false);
+        setTypeMessage("");
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = null;
+        }
+      }
+    };
+
     const handleMessageSeen = (data) => {
       if (!data?.messageId) return;
       setMessages((prevMessages) =>
@@ -685,12 +777,18 @@ const StickyChatBox = ({
 
     socket.on("newMessage", handleNewMessage);
     socket.on("newMessageToUser", handleNewMessageToUser);
+    socket.on("typing", handleTyping);
     socket.on("messageSeen", handleMessageSeen);
 
     return () => {
       socket.off("newMessage", handleNewMessage);
       socket.off("newMessageToUser", handleNewMessageToUser);
+      socket.off("typing", handleTyping);
       socket.off("messageSeen", handleMessageSeen);
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
       socket.emit("leaveRoom", roomId);
     };
   }, [friendId, userId, isLoading]);
@@ -900,38 +998,41 @@ const StickyChatBox = ({
   // not minimized), so the header unread badge updates in real time — mirrors
   // the behavior of the main chat page.
   useEffect(() => {
-    if (isMinimized || isLoading || !friendId) return;
+    if (!canMarkAsSeen || isLoading || !friendId) return;
     dispatch(seenMessage(friendId));
-  }, [friendId, isMinimized, isLoading, dispatch]);
+  }, [friendId, canMarkAsSeen, isLoading, dispatch]);
 
   // Mark messages as seen - HTTP-based. Only runs while the chat is actually
   // visible (not minimized), so we never mark a message as read before the
   // user has had a chance to see it.
   useEffect(() => {
-    if (isMinimized) return;
+    if (!canMarkAsSeen) return;
     if (messages.length > 0 && friendId && friendProfile?._id) {
       const timeoutId = setTimeout(() => {
         const lastMessage = messages[messages.length - 1];
         if (
           lastMessage &&
-          lastMessage.senderId !== userId &&
-          lastMessage.senderId === friendId &&
+          String(lastMessage.senderId) !== String(userId) &&
+          String(lastMessage.senderId) === String(friendId) &&
           !lastMessage.isSeen
         ) {
-          console.log('⏱️ Auto-marking last message as seen:', { lastMessage: lastMessage._id, sender: lastMessage.senderId });
+          console.log("⏱️ Auto-marking last message as seen:", {
+            lastMessage: lastMessage._id,
+            sender: lastMessage.senderId,
+          });
           markMessageAsSeen(lastMessage);
           dispatch(seenMessage(friendId));
         } else if (lastMessage) {
-          console.log('⏭️ Skipping mark as seen:', {
+          console.log("⏭️ Skipping mark as seen:", {
             hasSender: !!lastMessage.senderId,
-            senderIsUser: lastMessage.senderId === userId,
-            isSeen: lastMessage.isSeen
+            senderIsUser: String(lastMessage.senderId) === String(userId),
+            isSeen: lastMessage.isSeen,
           });
         }
-      }, 2000);
+      }, 300);
       return () => clearTimeout(timeoutId);
     }
-  }, [messages, friendId, friendProfile, userId, isMinimized, dispatch]);
+  }, [messages, friendId, friendProfile, userId, canMarkAsSeen, dispatch]);
 
   // Keep a live ref of messages so scroll/pagination logic never closes over stale state.
   useEffect(() => {
@@ -1101,6 +1202,12 @@ const StickyChatBox = ({
     scrollToLastMessage,
   ]);
 
+  // Keep typing indicator visible while friend is typing.
+  useEffect(() => {
+    if (isMinimized || isLoading || !isTyping) return;
+    scrollToLastMessage("smooth");
+  }, [isTyping, typeMessage, isMinimized, isLoading, scrollToLastMessage]);
+
   const footerProps = {
     room,
     friendId,
@@ -1118,7 +1225,13 @@ const StickyChatBox = ({
   if (isMinimized) {
     return (
       <div className="sticky-chat-box minimized" style={{ zIndex }}>
-        <div className="sticky-chat-minimized-header" onClick={onMinimize}>
+        <div
+          className="sticky-chat-minimized-header"
+          onClick={() => {
+            setIsChatFocused(true);
+            onMinimize();
+          }}
+        >
           <div className="sticky-chat-minimized-avatar">
             {isLoading ? (
               <div className="sticky-chat-skeleton-avatar"></div>
@@ -1163,6 +1276,7 @@ const StickyChatBox = ({
               className="sticky-chat-action-btn"
               onClick={(e) => {
                 e.stopPropagation();
+                setIsChatFocused(true);
                 onMinimize();
               }}
             >
@@ -1184,7 +1298,7 @@ const StickyChatBox = ({
   }
 
   return (
-    <div className="sticky-chat-box" style={{ zIndex }}>
+    <div ref={stickyRootRef} className="sticky-chat-box" style={{ zIndex }}>
       <div className="sticky-chat-header" ref={chatHeader}>
         <div className="sticky-chat-header-info">
           <div className="sticky-chat-header-avatar">
@@ -1286,8 +1400,8 @@ const StickyChatBox = ({
                 <UserPP
                   profilePic={friendProfile.profilePic}
                   profile={friendId}
-                      active={isActive}
-                      size="full"
+                  active={isActive}
+                  size="full"
                 />
               </div>
               <h4 className="sticky-chat-empty-name">

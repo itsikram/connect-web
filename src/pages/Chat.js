@@ -89,6 +89,10 @@ const Chat = () => {
   const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false);
   const [typeMessage, setTypeMessage] = useState("");
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [isWindowFocused, setIsWindowFocused] = useState(() => {
+    if (typeof document === "undefined") return true;
+    return document.visibilityState === "visible" && document.hasFocus();
+  });
   // Default as "at bottom" so load-older logic does not run until the user scrolls (real % from handler).
   const [scrollPercent, setScrollPercent] = useState(100);
   const [replyData, setReplyData] = useState({ messageId: null, body: null });
@@ -101,6 +105,7 @@ const Chat = () => {
   const hasInitialScrolledRef = useRef(false);
   const hasLoadedFreshMessagesRef = useRef(false);
   const isMsgLoadingRef = useRef(false);
+  const typingTimeoutRef = useRef(null);
 
   const chatNewAttachment = useRef(null);
   const messageActionButtonContainer = useRef(null);
@@ -120,6 +125,9 @@ const Chat = () => {
 
   const params = useParams();
   const friendId = params.profile;
+  const canMarkAsSeen =
+    isWindowFocused &&
+    (typeof document === "undefined" || document.visibilityState === "visible");
 
   const scrollToLastMessage = useCallback((behavior = "smooth") => {
     const el = msgListRef.current;
@@ -149,6 +157,28 @@ const Chat = () => {
     isMsgLoadingRef.current = isMsgLoading;
   }, [isMsgLoading]);
 
+  // Keep chat read receipts tied to actual window focus/visibility.
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+
+    const syncWindowFocus = () => {
+      setIsWindowFocused(
+        document.visibilityState === "visible" && document.hasFocus(),
+      );
+    };
+
+    syncWindowFocus();
+    window.addEventListener("focus", syncWindowFocus);
+    window.addEventListener("blur", syncWindowFocus);
+    document.addEventListener("visibilitychange", syncWindowFocus);
+
+    return () => {
+      window.removeEventListener("focus", syncWindowFocus);
+      window.removeEventListener("blur", syncWindowFocus);
+      document.removeEventListener("visibilitychange", syncWindowFocus);
+    };
+  }, []);
+
   // Persist conversation changes after fresh data has been loaded once.
   useEffect(() => {
     if (!hasLoadedFreshMessagesRef.current || !userId || !friendId) return;
@@ -176,7 +206,11 @@ const Chat = () => {
 
         // Cache the fetched messages
         if (messages.length > 0) {
-          MessageCacheManager.setCachedMessages(profileId, friendIdArg, messages);
+          MessageCacheManager.setCachedMessages(
+            profileId,
+            friendIdArg,
+            messages,
+          );
           console.log("📦 Updated message cache for conversation");
         }
 
@@ -224,18 +258,22 @@ const Chat = () => {
   // Load cached messages on chat open if available
   useEffect(() => {
     if (userId && friendId) {
-      const cachedMessages = MessageCacheManager.getCachedMessages(userId, friendId);
+      const cachedMessages = MessageCacheManager.getCachedMessages(
+        userId,
+        friendId,
+      );
       if (cachedMessages && cachedMessages.length > 0) {
         setMessages(cachedMessages);
-        console.log('📦 Loaded messages from cache:', cachedMessages.length);
+        console.log("📦 Loaded messages from cache:", cachedMessages.length);
         setIsMsgLoading(false);
       }
     }
   }, [userId, friendId]);
 
   useEffect(() => {
-    if (friendId) dispatch(seenMessage(friendId));
-  }, [friendId, dispatch]);
+    if (!friendId || !canMarkAsSeen) return;
+    dispatch(seenMessage(friendId));
+  }, [friendId, canMarkAsSeen, dispatch]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -280,7 +318,6 @@ const Chat = () => {
     pendingScrollRestoreRef.current = null;
     isNearBottomRef.current = checkIsNearBottom(el);
   }, [messages, checkIsNearBottom]);
-
 
   useEffect(() => {
     if (!friendId || !userId || !hasMoreMessages) return;
@@ -416,26 +453,32 @@ const Chat = () => {
   // Mark all unseen messages from friend as seen
   const markMessageAsSeen = useCallback(async () => {
     try {
+      if (!canMarkAsSeen) return;
+
       // Get all unseen messages from the friend in this conversation
       const unseenMessageIds = messages
-        .filter(msg => msg.senderId === friendId && !msg.isSeen)
-        .map(msg => msg._id);
-      
+        .filter(
+          (msg) => String(msg.senderId) === String(friendId) && !msg.isSeen,
+        )
+        .map((msg) => msg?._id)
+        .filter(Boolean);
+
       if (unseenMessageIds.length === 0) return;
-      
+
       // Mark all unseen messages as seen
       await api.post("/message/seen", { messageIds: unseenMessageIds });
-      
+
       // Update local state to mark them as seen
-      setMessages(prevMessages =>
-        prevMessages.map(msg =>
-          unseenMessageIds.includes(msg._id) ? { ...msg, isSeen: true } : msg
-        )
+      const unseenIdSet = new Set(unseenMessageIds.map((id) => String(id)));
+      setMessages((prevMessages) =>
+        prevMessages.map((msg) =>
+          unseenIdSet.has(String(msg?._id)) ? { ...msg, isSeen: true } : msg,
+        ),
       );
     } catch (error) {
       console.error("Error marking messages as seen:", error);
     }
-  }, [messages, friendId]);
+  }, [messages, friendId, canMarkAsSeen]);
 
   // Real-time socket listeners for new messages
   useEffect(() => {
@@ -506,6 +549,30 @@ const Chat = () => {
       }
     };
 
+    const handleTyping = (data = {}) => {
+      if (String(data?.receiverId) !== String(userId)) return;
+
+      if (data?.isTyping) {
+        setIsTyping(true);
+        setTypeMessage(typeof data?.type === "string" ? data.type : "");
+
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
+        }
+        typingTimeoutRef.current = setTimeout(() => {
+          setIsTyping(false);
+          setTypeMessage("");
+        }, 1800);
+      } else {
+        setIsTyping(false);
+        setTypeMessage("");
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = null;
+        }
+      }
+    };
+
     const handleMessageSeen = (data) => {
       if (!data?.messageId) return;
       setMessages((prev) =>
@@ -531,133 +598,160 @@ const Chat = () => {
 
     socket.on("newMessage", handleNewMessage);
     socket.on("newMessageToUser", handleNewMessageToUser);
+    socket.on("typing", handleTyping);
     socket.on("messageSeen", handleMessageSeen);
     socket.on("deleteMessage", handleDeleteMessage);
 
     return () => {
       socket.off("newMessage", handleNewMessage);
       socket.off("newMessageToUser", handleNewMessageToUser);
+      socket.off("typing", handleTyping);
       socket.off("messageSeen", handleMessageSeen);
       socket.off("deleteMessage", handleDeleteMessage);
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
       socket.emit("leaveRoom", roomId);
     };
   }, [friendId, userId, scrollToLastMessage]);
 
   // Get online status from contacts data (no separate API calls)
-  const getOnlineStatusFromContacts = useCallback(function() {
-    // Try to get online status from localStorage or Redux store if available
-    try {
-      const scopedContactsKey = userId ? `contactsData_${userId}` : null;
-      const contactsData =
-        (scopedContactsKey && localStorage.getItem(scopedContactsKey)) ||
-        localStorage.getItem("contactsData");
-
-      if (contactsData) {
-        const contacts = JSON.parse(contactsData);
-        const friendContact = contacts.find((c) => c.person?._id === friendId);
-        if (friendContact) {
-          return {
-            isActive: friendContact.isOnline || false,
-            lastSeen: friendContact.lastSeen || null,
-          };
-        }
-      }
-    } catch (error) {
-      console.error("Error getting online status from contacts:", error);
-    }
-    return { isActive: false, lastSeen: null };
-  }, [friendId, userId]);
-
-  useEffect(function() {
-    if (!friendId || !userId) return;
-
-    const setOnlineStatus = function() {
-      const statusData = getOnlineStatusFromContacts();
-      setIsActive(statusData.isActive);
-
-      if (statusData.lastSeen) {
-        const lastSeenTimeStamp = moment(statusData.lastSeen);
-        const currentTimeStamp = moment(Date.now());
-        const diffDays = currentTimeStamp.diff(lastSeenTimeStamp, "days");
-
-        let formattedTime;
-        if (diffDays === 0) {
-          formattedTime = lastSeenTimeStamp.format("hh:mm A");
-        } else if (diffDays > 365) {
-          formattedTime = lastSeenTimeStamp.format("MM/YY hh:mm A");
-        } else {
-          formattedTime = lastSeenTimeStamp.format("DD/MM hh:mm A");
-        }
-
-        setLastSeen(formattedTime);
-      }
-    };
-
-    setOnlineStatus();
-
-    // Refresh online status every 2 minutes (aligned with contacts refresh)
-    const statusInterval = setInterval(setOnlineStatus, 120000);
-
-    return function() { clearInterval(statusInterval); };
-  }, [friendId, userId, getOnlineStatusFromContacts]);
-
-  useEffect(function() {
-    if (!friendId) return;
-    fetchProfileCached(friendId, { ttlMs: 60000, storageTtlMs: 300000 })
-      .then(function(profileData) {
-        setFriendProfile(profileData);
-        dispatch(setLoading(false));
-      })
-      .catch(function(e) { console.log(e); });
-  }, [friendId, dispatch]);
-
-  useEffect(function() {
-    if (friendProfile && profile._id) {
-      setIsBlockedMe(
-        friendProfile.blockedUsers
-          ? friendProfile.blockedUsers.includes(profile._id)
-          : false,
-      );
-    }
-  }, [friendProfile, profile._id]);
-
-  useEffect(function() {
-    if (!friendId || !userId) return;
-    setRoom([userId, friendId].sort().join("_"));
-    hasLoadedFreshMessagesRef.current = false;
-    setMessages([]);
-    setHasMoreMessages(true);
-    setScrollPercent(100);
-    loadingOlderRef.current = false;
-    hasInitialScrolledRef.current = false;
-    pendingScrollRestoreRef.current = null;
-    isNearBottomRef.current = true;
-
-    const fetchInitialMessages = async function() {
-      setIsMsgLoading(true);
+  const getOnlineStatusFromContacts = useCallback(
+    function () {
+      // Try to get online status from localStorage or Redux store if available
       try {
-        const response = await fetchChatHistory(userId, friendId, 20);
+        const scopedContactsKey = userId ? `contactsData_${userId}` : null;
+        const contactsData =
+          (scopedContactsKey && localStorage.getItem(scopedContactsKey)) ||
+          localStorage.getItem("contactsData");
 
-        if (response.messages) {
-          setMessages(response.messages);
-          setHasMoreMessages(response.hasMore ?? false);
-          hasLoadedFreshMessagesRef.current = true;
-        } else {
-          setMessages([]);
-          setHasMoreMessages(false);
+        if (contactsData) {
+          const contacts = JSON.parse(contactsData);
+          const friendContact = contacts.find(
+            (c) => c.person?._id === friendId,
+          );
+          if (friendContact) {
+            return {
+              isActive: friendContact.isOnline || false,
+              lastSeen: friendContact.lastSeen || null,
+            };
+          }
         }
       } catch (error) {
-        console.error("Error fetching initial messages:", error);
-        setMessages([]);
-        setHasMoreMessages(false);
-        hasLoadedFreshMessagesRef.current = true;
-      } finally {
-        setIsMsgLoading(false);
+        console.error("Error getting online status from contacts:", error);
       }
-    };
+      return { isActive: false, lastSeen: null };
+    },
+    [friendId, userId],
+  );
 
-    fetchInitialMessages();
-  }, [friendId, userId, fetchChatHistory]);
+  useEffect(
+    function () {
+      if (!friendId || !userId) return;
+
+      const setOnlineStatus = function () {
+        const statusData = getOnlineStatusFromContacts();
+        setIsActive(statusData.isActive);
+
+        if (statusData.lastSeen) {
+          const lastSeenTimeStamp = moment(statusData.lastSeen);
+          const currentTimeStamp = moment(Date.now());
+          const diffDays = currentTimeStamp.diff(lastSeenTimeStamp, "days");
+
+          let formattedTime;
+          if (diffDays === 0) {
+            formattedTime = lastSeenTimeStamp.format("hh:mm A");
+          } else if (diffDays > 365) {
+            formattedTime = lastSeenTimeStamp.format("MM/YY hh:mm A");
+          } else {
+            formattedTime = lastSeenTimeStamp.format("DD/MM hh:mm A");
+          }
+
+          setLastSeen(formattedTime);
+        }
+      };
+
+      setOnlineStatus();
+
+      // Refresh online status every 2 minutes (aligned with contacts refresh)
+      const statusInterval = setInterval(setOnlineStatus, 120000);
+
+      return function () {
+        clearInterval(statusInterval);
+      };
+    },
+    [friendId, userId, getOnlineStatusFromContacts],
+  );
+
+  useEffect(
+    function () {
+      if (!friendId) return;
+      fetchProfileCached(friendId, { ttlMs: 60000, storageTtlMs: 300000 })
+        .then(function (profileData) {
+          setFriendProfile(profileData);
+          dispatch(setLoading(false));
+        })
+        .catch(function (e) {
+          console.log(e);
+        });
+    },
+    [friendId, dispatch],
+  );
+
+  useEffect(
+    function () {
+      if (friendProfile && profile._id) {
+        setIsBlockedMe(
+          friendProfile.blockedUsers
+            ? friendProfile.blockedUsers.includes(profile._id)
+            : false,
+        );
+      }
+    },
+    [friendProfile, profile._id],
+  );
+
+  useEffect(
+    function () {
+      if (!friendId || !userId) return;
+      setRoom([userId, friendId].sort().join("_"));
+      hasLoadedFreshMessagesRef.current = false;
+      setMessages([]);
+      setHasMoreMessages(true);
+      setScrollPercent(100);
+      loadingOlderRef.current = false;
+      hasInitialScrolledRef.current = false;
+      pendingScrollRestoreRef.current = null;
+      isNearBottomRef.current = true;
+
+      const fetchInitialMessages = async function () {
+        setIsMsgLoading(true);
+        try {
+          const response = await fetchChatHistory(userId, friendId, 20);
+
+          if (response.messages) {
+            setMessages(response.messages);
+            setHasMoreMessages(response.hasMore ?? false);
+            hasLoadedFreshMessagesRef.current = true;
+          } else {
+            setMessages([]);
+            setHasMoreMessages(false);
+          }
+        } catch (error) {
+          console.error("Error fetching initial messages:", error);
+          setMessages([]);
+          setHasMoreMessages(false);
+          hasLoadedFreshMessagesRef.current = true;
+        } finally {
+          setIsMsgLoading(false);
+        }
+      };
+
+      fetchInitialMessages();
+    },
+    [friendId, userId, fetchChatHistory],
+  );
 
   // Scroll once after the first batch of messages for a chat is rendered.
   useLayoutEffect(() => {
@@ -667,14 +761,21 @@ const Chat = () => {
     scrollToLastMessage("auto");
   }, [friendId, messages.length, isMsgLoading, scrollToLastMessage]);
 
+  // Keep typing indicator visible while the other person is typing.
   useEffect(() => {
+    if (!isTyping) return;
+    scrollToLastMessage("smooth");
+  }, [isTyping, typeMessage, scrollToLastMessage]);
+
+  useEffect(() => {
+    if (!canMarkAsSeen) return;
     if (messages.length > 0 && friendId && friendProfile?._id) {
       const t = setTimeout(() => {
         // Check if there are any unseen messages from the friend
         const hasUnseenFromFriend = messages.some(
-          msg => msg.senderId === friendId && !msg.isSeen
+          (msg) => String(msg.senderId) === String(friendId) && !msg.isSeen,
         );
-        
+
         if (hasUnseenFromFriend) {
           markMessageAsSeen();
           dispatch(seenMessage(friendId));
@@ -683,11 +784,11 @@ const Chat = () => {
           $(
             "#chatMessageList .message-sent.chat-message-container .chat-message-seen-status",
           ).css("visibility", "hidden");
-          
+
           // Show seen status for the last sent message
           const lastSentMessage = [...messages]
             .reverse()
-            .find(msg => msg.senderId === userId);
+            .find((msg) => String(msg.senderId) === String(userId));
           if (lastSentMessage) {
             $(
               "#chatMessageList .message-sent.chat-message-container.message-id-" +
@@ -696,10 +797,18 @@ const Chat = () => {
             ).css("visibility", "visible");
           }
         }
-      }, 2000);
+      }, 300);
       return () => clearTimeout(t);
     }
-  }, [messages, friendId, friendProfile?._id, userId, dispatch, markMessageAsSeen]);
+  }, [
+    messages,
+    friendId,
+    friendProfile?._id,
+    userId,
+    dispatch,
+    markMessageAsSeen,
+    canMarkAsSeen,
+  ]);
 
   const footerProps = {
     chatFooter,
@@ -814,7 +923,6 @@ const Chat = () => {
             backgroundAttachment: "fixed",
           }}
         >
-
           <div
             className="chat-message-list"
             id="chatMessageList"
@@ -826,7 +934,11 @@ const Chat = () => {
                 aria-live="polite"
                 aria-label="Loading previous messages"
               >
-                <div className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+                <div
+                  className="spinner-border spinner-border-sm"
+                  role="status"
+                  aria-hidden="true"
+                ></div>
               </div>
             )}
 

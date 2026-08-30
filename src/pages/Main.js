@@ -194,11 +194,25 @@ const speakText = (textOrMsg) => {
   if (!text || !text.trim()) return;
 
   const speech = new SpeechSynthesisUtterance(text.trim());
-  speech.lang = "en-US"; // Change language if needed
-  speech.rate = 1; // Speed (0.5 - 2)
-  speech.pitch = 1; // Pitch (0 - 2)
+  speech.lang = "en-US";
+  speech.rate = 1;
+  speech.pitch = 1;
 
   window.speechSynthesis.speak(speech);
+};
+
+const isAudioAttachmentUrl = (url) => {
+  if (!url || typeof url !== "string") return false;
+  const lower = url.toLowerCase();
+  return (
+    lower.includes(".mp3") ||
+    lower.includes(".wav") ||
+    lower.includes(".ogg") ||
+    lower.includes(".webm") ||
+    lower.includes(".m4a") ||
+    lower.includes("/audio/") ||
+    lower.includes("voice-")
+  );
 };
 
 // Track message notifications to prevent duplicate toasts across page reloads
@@ -298,6 +312,8 @@ const Main = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const audioElement = useRef(null);
+  const speakAudioElement = useRef(null);
+  const pendingSpeakPayloadRef = useRef(null);
   const [audioReady, setAudioReady] = useState(false);
 
   const seoPages = [
@@ -372,6 +388,57 @@ const Main = () => {
     }
     return audioElement.current;
   };
+
+  const getOrCreateSpeakAudioElement = () => {
+    if (!speakAudioElement.current) {
+      const audio = document.createElement("audio");
+      audio.preload = "auto";
+      audio.muted = false;
+      audio.volume = 1;
+      audio.style.display = "none";
+      audio.setAttribute("playsinline", "true");
+      audio.setAttribute("webkit-playsinline", "true");
+      audio.crossOrigin = "anonymous";
+      document.body.appendChild(audio);
+      speakAudioElement.current = audio;
+    }
+    return speakAudioElement.current;
+  };
+
+  const playSpokenVoiceMessage = useCallback(async (payload = {}) => {
+    const audioUrl = payload?.attachment;
+    if (!audioUrl || !isAudioAttachmentUrl(audioUrl)) return false;
+
+    try {
+      const el = getOrCreateSpeakAudioElement();
+      if (!el) return false;
+
+      // Restart with latest requested voice message.
+      try {
+        el.pause();
+      } catch (_e) {}
+
+      if (el.src !== audioUrl) {
+        el.src = audioUrl;
+        el.load();
+      }
+
+      el.currentTime = 0;
+      el.muted = false;
+      el.volume = 1;
+
+      await el.play();
+      pendingSpeakPayloadRef.current = null;
+      return true;
+    } catch (error) {
+      pendingSpeakPayloadRef.current = payload;
+      console.warn(
+        "Background voice playback blocked by browser policy:",
+        error,
+      );
+      return false;
+    }
+  }, []);
 
   const [isTabActive, setIsTabActive] = useState(!document.hidden);
   const notificationIntervalRef = useRef(null);
@@ -650,6 +717,32 @@ const Main = () => {
       window.removeEventListener("touchstart", unlock);
     };
   }, []);
+
+  // Retry pending voice speak-message playback when media becomes unlocked or
+  // when the app regains foreground.
+  useEffect(() => {
+    const retryPendingSpeak = () => {
+      const payload = pendingSpeakPayloadRef.current;
+      if (!payload) return;
+      playSpokenVoiceMessage(payload);
+    };
+
+    if (audioReady) {
+      retryPendingSpeak();
+    }
+
+    window.addEventListener("focus", retryPendingSpeak);
+    document.addEventListener("click", retryPendingSpeak);
+    document.addEventListener("touchstart", retryPendingSpeak, {
+      passive: true,
+    });
+
+    return () => {
+      window.removeEventListener("focus", retryPendingSpeak);
+      document.removeEventListener("click", retryPendingSpeak);
+      document.removeEventListener("touchstart", retryPendingSpeak);
+    };
+  }, [audioReady, playSpokenVoiceMessage]);
 
   // HTTP-based notification polling - memoized to prevent recreation on every render
   const fetchNotifications = useCallback(async () => {
@@ -1020,8 +1113,18 @@ const Main = () => {
       }
     };
 
-    const handleSpeakMessage = (msg) => {
-      speakText(msg);
+    const handleSpeakMessage = async (payload = {}) => {
+      const isAudioSpeakRequest =
+        payload?.messageType === "audio" ||
+        isAudioAttachmentUrl(payload?.attachment);
+
+      if (isAudioSpeakRequest) {
+        const played = await playSpokenVoiceMessage(payload);
+        if (played) return;
+      }
+
+      // Fallback to TTS for text, or if audio playback is blocked by policy.
+      speakText(payload);
     };
 
     socket.on("notification", handleNotification);
@@ -1031,7 +1134,7 @@ const Main = () => {
       socket.off("notification", handleNotification);
       socket.off("speak_message", handleSpeakMessage);
     };
-  }, [socket, isTabActive, dispatch]);
+  }, [socket, isTabActive, dispatch, playSpokenVoiceMessage]);
 
   // Realtime in-app notification feed (bell menu)
   useEffect(() => {
@@ -1686,7 +1789,7 @@ const Main = () => {
   // AI Agent Modal State
   const [isAIAgentModalOpen, setIsAIAgentModalOpen] = useState(false);
 
-  // Cleanup audio element on unmount
+  // Cleanup audio elements on unmount
   useEffect(() => {
     return () => {
       if (audioElement.current) {
@@ -1696,6 +1799,16 @@ const Main = () => {
         }
         audioElement.current = null;
       }
+      if (speakAudioElement.current) {
+        speakAudioElement.current.pause();
+        if (speakAudioElement.current.parentNode) {
+          speakAudioElement.current.parentNode.removeChild(
+            speakAudioElement.current,
+          );
+        }
+        speakAudioElement.current = null;
+      }
+      pendingSpeakPayloadRef.current = null;
     };
   }, []);
 
