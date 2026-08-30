@@ -410,3 +410,221 @@ export const toAgentIntent = (raw = {}) => {
   };
 };
 
+const CONTENT_SLOT_ACTIONS = new Set([
+  AGENT_ACTIONS.CREATE_NOTE,
+  AGENT_ACTIONS.EDIT_NOTE,
+  AGENT_ACTIONS.CREATE_TASK,
+  AGENT_ACTIONS.EDIT_TASK,
+  AGENT_ACTIONS.CREATE_EVENT,
+  AGENT_ACTIONS.CREATE_HABIT,
+  AGENT_ACTIONS.SEARCH_VIDEO,
+  AGENT_ACTIONS.SEARCH_USERS,
+  AGENT_ACTIONS.SEARCH_POSTS,
+  AGENT_ACTIONS.SEARCH_APP,
+  AGENT_ACTIONS.ADD_RECOVERY_DATA,
+  AGENT_ACTIONS.UPDATE_LANGUAGE_SETTINGS,
+]);
+
+const ASK_FIELD_ALIASES = {
+  name: "targetName",
+  person: "targetName",
+  friend: "targetName",
+  target: "targetName",
+  targetname: "targetName",
+  who: "targetName",
+  message: "messageText",
+  messagetext: "messageText",
+  text: "messageText",
+  body: "messageText",
+  caption: "searchQuery",
+  content: "searchQuery",
+  query: "searchQuery",
+  search: "searchQuery",
+  searchquery: "searchQuery",
+  detail: "searchQuery",
+  page: "targetRoute",
+  route: "targetRoute",
+  destination: "targetRoute",
+  targetroute: "targetRoute",
+};
+
+export const normalizeAskField = (field) => {
+  const raw = String(field || "").trim();
+  if (["targetName", "messageText", "searchQuery", "targetRoute"].includes(raw)) {
+    return raw;
+  }
+  const key = raw.toLowerCase().replace(/[\s-]+/g, "");
+  return ASK_FIELD_ALIASES[key] || null;
+};
+
+export const isCancelFollowUp = (text = "") =>
+  /^(cancel|never mind|nevermind|forget it|stop|no|nope|no thanks|don't|dont|not now|থাক|না|বাতিল)(?:\s+[.!?]*)?$/i.test(
+    String(text || "").trim(),
+  );
+
+export const isAffirmativeFollowUp = (text = "") =>
+  /^(yes|yep|yeah|ok|okay|sure|do it|go ahead|please|confirm|হ্যাঁ|হা|ঠিক আছে|করো)(?:\s*[.!?]*)?$/i.test(
+    String(text || "").trim(),
+  );
+
+export const looksLikeQuestion = (text = "") => {
+  const value = String(text || "").trim();
+  if (!value) return false;
+  return (
+    /\?/.test(value) ||
+    /^(who|which|what|whom|whose|where|কাকে|কার|কি|কোন)\b/i.test(value) ||
+    /\b(who|which|what)\b.+\??$/i.test(value)
+  );
+};
+
+const hasValue = (value) => {
+  const text = String(value ?? "").trim();
+  return Boolean(text) && !isPlaceholderCaption(text);
+};
+
+export const getMissingIntentSlots = (intent) => {
+  if (!intent?.action) return [];
+  const missing = [];
+  const action = intent.action;
+
+  if (
+    (FRIEND_REQUIRED_ACTIONS.has(action) ||
+      (action === AGENT_ACTIONS.QUERY_CONTENT &&
+        String(intent.queryType || "").toLowerCase() === "user")) &&
+    !hasValue(intent.targetName)
+  ) {
+    missing.push("targetName");
+  }
+
+  if (action === AGENT_ACTIONS.SEND_MESSAGE_TO_USER && !hasValue(intent.messageText)) {
+    missing.push("messageText");
+  }
+
+  if (action === AGENT_ACTIONS.NAVIGATE && !hasValue(intent.targetRoute)) {
+    missing.push("targetRoute");
+  }
+
+  if (
+    CONTENT_SLOT_ACTIONS.has(action) &&
+    !hasValue(intent.searchQuery) &&
+    !hasValue(intent.label) &&
+    !hasValue(intent.messageText)
+  ) {
+    missing.push("searchQuery");
+  }
+
+  return missing;
+};
+
+export const getSlotQuestion = (intent, slots = []) => {
+  const slot = slots[0];
+  const action = intent?.action || "";
+  if (slot === "targetName") {
+    if (action === "AUDIO_CALL") return "Who should I call?";
+    if (action === "VIDEO_CALL") return "Who should I video call?";
+    if (action === "SEND_MESSAGE" || action === "SEND_MESSAGE_TO_USER") {
+      return "Who should I message?";
+    }
+    if (action === "BUMP") return "Who should I bump?";
+    if (action === "GET_LOCATION") return "Whose location do you want?";
+    if (action === "GET_BIO") return "Whose bio should I look up?";
+    if (action === "VIEW_PROFILE" || action === "NAVIGATE_PROFILE") {
+      return "Whose profile should I open?";
+    }
+    return "Who should I do that with? Type their name.";
+  }
+  if (slot === "messageText") return "What should the message say?";
+  if (slot === "targetRoute") return "Which page should I open?";
+  if (slot === "searchQuery") {
+    if (action === "CREATE_NOTE") return "What should the note say?";
+    if (action === "EDIT_NOTE") return "What should I change the note to?";
+    if (action === "CREATE_TASK") return "What task should I add?";
+    if (action === "EDIT_TASK") return "What should the task say?";
+    if (action === "CREATE_EVENT") return "What event should I add?";
+    if (action === "CREATE_HABIT") return "What habit should I add?";
+    if (action === "SEARCH_VIDEO") return "Which video should I search for?";
+    if (action === "SEARCH_USERS") return "Who are you looking for?";
+    if (action === "SEARCH_POSTS" || action === "SEARCH_APP") {
+      return "What should I search for?";
+    }
+    return "Could you give me a bit more detail?";
+  }
+  return "I need a little more information to do that. Could you clarify?";
+};
+
+const cleanFollowUpValue = (text = "") =>
+  String(text || "")
+    .trim()
+    .replace(/^(it'?s|he is|she is|they are|call|message|text|to|with)\s+/i, "")
+    .replace(/\s+(please|now|for me)$/i, "")
+    .replace(/[.!?]+$/g, "")
+    .trim();
+
+const pickFilled = (...values) => {
+  for (let i = 0; i < values.length; i += 1) {
+    if (hasValue(values[i])) return values[i];
+  }
+  return null;
+};
+
+export const mergeFollowUpIntent = ({
+  pending,
+  followUpText = "",
+  geminiIntents = [],
+} = {}) => {
+  if (!pending?.intent?.action) return null;
+
+  const geminiIntent = Array.isArray(geminiIntents) ? geminiIntents[0] : null;
+  const geminiComplete =
+    geminiIntent?.action && getMissingIntentSlots(geminiIntent).length === 0;
+
+  if (
+    geminiComplete &&
+    geminiIntent.action !== pending.intent.action &&
+    !isAffirmativeFollowUp(followUpText)
+  ) {
+    return geminiIntent;
+  }
+
+  const source = geminiIntent?.action === pending.intent.action ? geminiIntent : null;
+  const merged = {
+    ...pending.intent,
+    ...(source || {}),
+    action: pending.intent.action,
+  };
+
+  merged.targetName = pickFilled(source?.targetName, pending.intent.targetName);
+  merged.messageText = pickFilled(source?.messageText, pending.intent.messageText);
+  merged.searchQuery = pickFilled(source?.searchQuery, pending.intent.searchQuery);
+  merged.targetRoute = pickFilled(source?.targetRoute, pending.intent.targetRoute);
+  merged.subPath = source?.subPath || pending.intent.subPath || "";
+  merged.label = pickFilled(source?.label, pending.intent.label);
+  merged.queryType = source?.queryType || pending.intent.queryType || null;
+
+  const stillMissing = getMissingIntentSlots(merged);
+  const followUp = cleanFollowUpValue(followUpText);
+  const slotsToFill = new Set(stillMissing);
+  if (
+    followUp &&
+    !isAffirmativeFollowUp(followUpText) &&
+    !isCancelFollowUp(followUpText)
+  ) {
+    (pending.missing || []).forEach((slot) => slotsToFill.add(slot));
+  }
+
+  if (followUp && slotsToFill.size > 0) {
+    slotsToFill.forEach((slot) => {
+      if (slot === "targetName") merged.targetName = followUp;
+      if (slot === "messageText") merged.messageText = String(followUpText).trim();
+      if (slot === "searchQuery") merged.searchQuery = String(followUpText).trim();
+      if (slot === "targetRoute") {
+        const found = resolveCatalogRoute(followUp);
+        merged.targetRoute = found?.route || followUp;
+        merged.label = found?.label || merged.label || followUp;
+      }
+    });
+  }
+
+  return merged;
+};
+

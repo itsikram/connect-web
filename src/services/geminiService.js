@@ -7,6 +7,7 @@ import {
   ALLOWED_ACTIONS,
   CONNECT_ROUTES,
   QUERY_TYPES,
+  normalizeAskField,
 } from "../components/modal/AIAgentModal/agentCatalog";
 
 export const parseGeminiApiKeys = (value = "") => [
@@ -214,21 +215,28 @@ Read the user's message (Bangla or English) and return ONLY JSON:
       "messageText": "message body if sending a chat message",
       "queryType": "search|friends|posts|videos|notes|tasks|notifications|profile|feed|habits|calendar|user|requests|suggestions|watch|null"
     }
-  ]
+  ],
+  "ask": {
+    "field": "targetName|messageText|searchQuery|targetRoute|null",
+    "question": "one short clarifying question or null"
+  }
 }
 
 Rules:
 - actions may be empty for pure conversation.
+- If you cannot complete an action because a required field is missing, STILL emit the action with nulls and set ask.field + ask.question. Put that question in reply too. Never guess a person's name.
+- If pendingAction is in context, the user is answering you. Fill the missing fields and return the completed action. Do not ask again unless it is still unclear. Only switch to a different action if they clearly asked for something else.
 - Use QUERY_CONTENT when the user asks for details, lists, summaries, "what is", "show my", "how many", or any app content.
 - Use NAVIGATE (with targetRoute from the route list) to open a page.
 - Use friend actions only when a person is involved. Put their name in targetName.
 - For "send X to Y" use SEND_MESSAGE_TO_USER with messageText and targetName.
-- For posting text use CREATE_POST. Put the EXACT caption to publish in searchQuery. Reply is confirmation only — the client publishes the action.
+- For posting text use CREATE_POST. Put the EXACT caption in searchQuery. The client opens a draft — the user must tap Post. Never claim it is already published.
 - If they ask for a funny/witty/random caption, invent one and put that caption in searchQuery. Never claim you posted without including CREATE_POST.
 - Only omit searchQuery when they asked to open the composer and write it themselves.
 - Never invent private data. If you need live app data, emit QUERY_CONTENT / SEARCH_* / LIST_* and put a brief reply.
 - Prefer one clear action. Use multiple only when the user asked for more than one thing.
-- Match Bangla commands to the same action names.`;
+- Match Bangla commands to the same action names.
+- Never claim you already did something that still needs a clarifying answer.`;
 
 export const interpretAgentCommand = async ({
   message,
@@ -248,6 +256,7 @@ export const interpretAgentCommand = async ({
     {
       currentUser: appContext.user || null,
       friends: appContext.friends || [],
+      pendingAction: appContext.pendingIntent || null,
       availableActions: Array.from(ALLOWED_ACTIONS),
       routes: CONNECT_ROUTES,
       queryTypes: QUERY_TYPES,
@@ -303,12 +312,99 @@ export const interpretAgentCommand = async ({
     }
   }
 
+  const askRaw = parsed?.ask;
+  const ask =
+    askRaw && typeof askRaw === "object"
+      ? {
+          field: normalizeAskField(askRaw.field || askRaw.slot),
+          question: String(askRaw.question || askRaw.prompt || "").trim(),
+        }
+      : null;
+
   return {
     reply,
     actions: rawActions,
+    ask: ask?.field || ask?.question ? ask : null,
     success: Boolean(parsed),
     raw: parsed,
   };
+};
+
+export const generateSmartReplies = async ({
+  postCaption = "",
+  lastComment = "",
+} = {}) => {
+  const fallback = ["Love this", "So true", "Tell me more"];
+  if (GEMINI_API_KEYS.length === 0) return fallback;
+
+  try {
+    const geminiData = await requestGemini(
+      {
+        systemInstruction: {
+          parts: [
+            {
+              text: `Write 3 short social comment replies (max 6 words each). Match the post's language (Bangla or English). Be warm, specific, not generic spam. Return ONLY a JSON array of 3 strings.`,
+            },
+          ],
+        },
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                text: `Post: ${String(postCaption || "").slice(0, 280)}\nLatest comment: ${String(lastComment || "").slice(0, 160)}`,
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 120,
+        },
+      },
+      "Smart replies",
+    );
+    const raw = extractGeminiText(geminiData);
+    const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+    if (!Array.isArray(parsed)) return fallback;
+    return parsed
+      .map((item) => String(item || "").trim())
+      .filter(Boolean)
+      .slice(0, 3);
+  } catch (_) {
+    return fallback;
+  }
+};
+
+export const generateCaptionRoast = async (caption = "") => {
+  if (GEMINI_API_KEYS.length === 0) {
+    return "This caption is doing the most and I respect the confidence.";
+  }
+  const geminiData = await requestGemini(
+    {
+      systemInstruction: {
+        parts: [
+          {
+            text: `Write one playful roast of this social caption. Keep it kind, never cruel, never about appearance. Max 140 characters. Return ONLY the roast.`,
+          },
+        ],
+      },
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: String(caption || "this post").slice(0, 400) }],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.9,
+        maxOutputTokens: 80,
+      },
+    },
+    "Caption roast",
+  );
+  let roast = extractGeminiText(geminiData).trim();
+  roast = roast.replace(/^['"‘’“”]+/, "").replace(/['"‘’“”]+$/, "").trim();
+  return roast.slice(0, 280);
 };
 
 export const generatePostCaption = async (userRequest = "") => {
@@ -552,6 +648,8 @@ const geminiService = {
   translateBanglaToEnglish,
   interpretAgentCommand,
   generatePostCaption,
+  generateSmartReplies,
+  generateCaptionRoast,
   answerFromAppData,
   getAICapabilities,
   getModelInfo,

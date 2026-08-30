@@ -14,6 +14,7 @@ import StoryListSkleton from "../skletons/story/StoryListSkleton";
 import { loadPosts } from "../services/actions/postActions"
 import { getCachedProfile, getProfileSuccess } from "../services/actions/profileActions"
 import CacheManager from "../utils/cacheManager"
+import FeedBoostCards from "../components/feed/FeedBoostCards"
 
 const Home = () => {
 
@@ -333,6 +334,13 @@ const Home = () => {
 
                                 <div id="nf-post-container" ref={postContainer}>
 
+                                    {feedLoaded && (
+                                        <FeedBoostCards
+                                            postCount={uniqueNewsFeedPosts.length}
+                                            feedLoaded={feedLoaded}
+                                        />
+                                    )}
+
                                     {
                                         uniqueNewsFeedPosts.length > 0 ?
                                             uniqueNewsFeedPosts.map((newsFeed, index) => {
@@ -340,8 +348,8 @@ const Home = () => {
                                             })
                                         : feedLoaded ? (
                                             <div className="no-posts-message text-center py-4">
-                                                <h4>No posts yet</h4>
-                                                <p>There are no more posts to show right now.</p>
+                                                <h4>Your feed is waiting</h4>
+                                                <p>Post something, add a friend, or answer today's question above.</p>
                                             </div>
                                         ) : (
                                             <PostSkeleton count={3} />

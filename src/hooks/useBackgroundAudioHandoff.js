@@ -12,20 +12,58 @@ const isPageHidden = () =>
   typeof document !== "undefined" &&
   (document.visibilityState === "hidden" || document.hidden);
 
-const nearTime = (a, b, slack = 0.4) =>
-  Math.abs((Number(a) || 0) - (Number(b) || 0)) <= slack;
+const mediaSrc = (el) => {
+  if (!el) return "";
+  return el.currentSrc || el.getAttribute("src") || "";
+};
+
+const isTrueTrackEnd = (audio, video) => {
+  if (!audio) return false;
+  const aTime = Number(audio.currentTime) || 0;
+  const aDur = Number(audio.duration);
+  const vDur = Number(video?.duration);
+
+  if (Number.isFinite(aDur) && aDur > 1 && aTime >= aDur - 0.75) {
+    if (Number.isFinite(vDur) && vDur > 1 && aDur + 1.5 < vDur) {
+      return false;
+    }
+    return true;
+  }
+
+  if (Number.isFinite(vDur) && vDur > 1 && aTime >= vDur - 0.75) {
+    return true;
+  }
+
+  return !!audio.ended && !(Number.isFinite(vDur) && vDur > 2 && aTime < vDur - 1.5);
+};
 
 /**
- * iOS PWAs pause <video> when the app is sent away. A hidden <audio> element
- * continues the same file. Never seek that audio back to a frozen video clock
- * or it will replay the last buffered couple of seconds on a loop.
+ * iOS PWAs pause <video> in the background. A hidden <audio> element keeps
+ * the same file playing, then follows the player's next / loop rules.
  */
-const useBackgroundAudioHandoff = (videoRef, { src, enabled = true } = {}) => {
+const useBackgroundAudioHandoff = (
+  videoRef,
+  { src, enabled = true, loop = false, onEndedRef } = {},
+) => {
   const audioRef = useRef(null);
   const wantPlayingRef = useRef(false);
   const handingOffRef = useRef(false);
   const backgroundActiveRef = useRef(false);
   const dualPlayUnsafeRef = useRef(false);
+  const srcRef = useRef(src);
+  srcRef.current = src;
+
+  const applyLoop = useCallback(() => {
+    const audio = audioRef.current;
+    if (audio) audio.loop = !!loop;
+  }, [loop]);
+
+  const markHandoff = useCallback((ms = 350) => {
+    handingOffRef.current = true;
+    window.setTimeout(() => {
+      handingOffRef.current = false;
+    }, ms);
+  }, []);
 
   useEffect(() => {
     if (typeof document === "undefined") return undefined;
@@ -51,44 +89,41 @@ const useBackgroundAudioHandoff = (videoRef, { src, enabled = true } = {}) => {
     };
   }, []);
 
-  const ensureSrc = useCallback(() => {
+  const ensureSrc = useCallback((nextSrc = srcRef.current, { forceLoad = false } = {}) => {
     const audio = audioRef.current;
-    if (!audio || !src) return false;
-    audio.loop = false;
-    if (audio.getAttribute("src") !== src) {
-      audio.src = src;
+    if (!audio || !nextSrc) return false;
+    applyLoop();
+    if (forceLoad || mediaSrc(audio) !== nextSrc) {
+      audio.src = nextSrc;
       audio.load();
     }
     return true;
-  }, [src]);
+  }, [applyLoop]);
 
   const playBackgroundAudio = useCallback(
-    ({ unmuted = isPageHidden() } = {}) => {
+    ({ unmuted = isPageHidden(), fromStart = false } = {}) => {
       const audio = audioRef.current;
       const video = videoRef.current;
-      if (!audio || !src) return Promise.resolve();
+      const nextSrc = srcRef.current;
+      if (!audio || !nextSrc) return Promise.resolve();
 
-      handingOffRef.current = true;
-      ensureSrc();
+      markHandoff();
+      const srcChanged = mediaSrc(audio) !== nextSrc;
+      ensureSrc(nextSrc, { forceLoad: srcChanged });
       setPlaybackSession();
-      audio.loop = false;
+      applyLoop();
       audio.muted = !unmuted;
 
-      // If audio is already rolling, do not seek — that is what caused the
-      // 2-second loop when the PWA was closed (video clock is frozen).
-      if (!audio.paused) {
+      if (!audio.paused && !fromStart && !srcChanged) {
         backgroundActiveRef.current = unmuted;
-        window.setTimeout(() => {
-          handingOffRef.current = false;
-        }, 300);
         return Promise.resolve();
       }
 
-      if (
-        video &&
-        audio.paused &&
-        !nearTime(audio.currentTime, video.currentTime)
-      ) {
+      if (fromStart || srcChanged) {
+        try {
+          audio.currentTime = 0;
+        } catch (_) {}
+      } else if (video && !video.paused && mediaSrc(video) === nextSrc) {
         try {
           audio.currentTime = Number(video.currentTime) || 0;
         } catch (_) {}
@@ -100,9 +135,6 @@ const useBackgroundAudioHandoff = (videoRef, { src, enabled = true } = {}) => {
           .catch(() => {})
           .finally(() => {
             backgroundActiveRef.current = unmuted && !audio.paused;
-            window.setTimeout(() => {
-              handingOffRef.current = false;
-            }, 300);
           });
 
       if (audio.readyState >= 2) return start();
@@ -114,7 +146,7 @@ const useBackgroundAudioHandoff = (videoRef, { src, enabled = true } = {}) => {
         audio.addEventListener("canplay", onReady, { once: true });
       });
     },
-    [src, ensureSrc, videoRef],
+    [applyLoop, ensureSrc, markHandoff, videoRef],
   );
 
   const pauseBackgroundAudio = useCallback(() => {
@@ -124,10 +156,63 @@ const useBackgroundAudioHandoff = (videoRef, { src, enabled = true } = {}) => {
     } catch (_) {}
   }, []);
 
+  const restartBackgroundAudio = useCallback(() => {
+    const audio = audioRef.current;
+    const video = videoRef.current;
+    wantPlayingRef.current = true;
+    applyLoop();
+    try {
+      if (video) video.currentTime = 0;
+    } catch (_) {}
+    if (!audio) return Promise.resolve();
+    markHandoff();
+    try {
+      audio.currentTime = 0;
+    } catch (_) {}
+    audio.muted = !isPageHidden() && !backgroundActiveRef.current;
+    if (isPageHidden() || backgroundActiveRef.current) {
+      audio.muted = false;
+      backgroundActiveRef.current = true;
+    }
+    return audio.play().catch(() => {});
+  }, [applyLoop, markHandoff]);
+
   const isAudioPlaying = useCallback(
     () => !!(audioRef.current && !audioRef.current.paused),
     [],
   );
+
+  useEffect(() => {
+    applyLoop();
+  }, [applyLoop]);
+
+  useEffect(() => {
+    if (!enabled || !src) return undefined;
+    if (!wantPlayingRef.current) {
+      ensureSrc(src);
+      return undefined;
+    }
+    const audio = audioRef.current;
+    if (!audio) return undefined;
+    if (mediaSrc(audio) === src) return undefined;
+
+    markHandoff();
+    ensureSrc(src, { forceLoad: true });
+    try {
+      audio.currentTime = 0;
+    } catch (_) {}
+    applyLoop();
+
+    if (isPageHidden() || backgroundActiveRef.current) {
+      audio.muted = false;
+      backgroundActiveRef.current = true;
+      audio.play().catch(() => {});
+    } else if (!dualPlayUnsafeRef.current) {
+      audio.muted = true;
+      audio.play().catch(() => {});
+    }
+    return undefined;
+  }, [src, enabled, applyLoop, ensureSrc, markHandoff]);
 
   useEffect(() => {
     if (!enabled || !src) return undefined;
@@ -135,17 +220,11 @@ const useBackgroundAudioHandoff = (videoRef, { src, enabled = true } = {}) => {
     const audio = audioRef.current;
     if (!video) return undefined;
 
-    const markHandoff = (ms = 300) => {
-      handingOffRef.current = true;
-      window.setTimeout(() => {
-        handingOffRef.current = false;
-      }, ms);
-    };
-
     const onPlay = () => {
       wantPlayingRef.current = true;
       setPlaybackSession();
       ensureSrc();
+      applyLoop();
 
       if (isPageHidden()) {
         playBackgroundAudio({ unmuted: true });
@@ -156,12 +235,8 @@ const useBackgroundAudioHandoff = (videoRef, { src, enabled = true } = {}) => {
 
       const currentAudio = audioRef.current;
       if (!currentAudio) return;
-      currentAudio.loop = false;
       currentAudio.muted = true;
-      if (
-        currentAudio.paused &&
-        !nearTime(currentAudio.currentTime, video.currentTime)
-      ) {
+      if (currentAudio.paused && mediaSrc(video) === mediaSrc(currentAudio)) {
         try {
           currentAudio.currentTime = Number(video.currentTime) || 0;
         } catch (_) {}
@@ -176,8 +251,6 @@ const useBackgroundAudioHandoff = (videoRef, { src, enabled = true } = {}) => {
             backgroundActiveRef.current = true;
             return;
           }
-          // Keep muted audio playing so the buffer fills before the PWA is
-          // closed. If iOS pauses the video because of this, fall back.
           window.setTimeout(() => {
             if (video.paused && wantPlayingRef.current && !isPageHidden()) {
               dualPlayUnsafeRef.current = true;
@@ -210,9 +283,9 @@ const useBackgroundAudioHandoff = (videoRef, { src, enabled = true } = {}) => {
       if (!currentAudio || currentAudio.paused || dualPlayUnsafeRef.current) {
         return;
       }
+      if (mediaSrc(video) !== mediaSrc(currentAudio)) return;
       const vt = Number(video.currentTime) || 0;
       const at = Number(currentAudio.currentTime) || 0;
-      // Only catch audio up if it drifted behind. Never rewind it.
       if (vt - at > 0.8) {
         try {
           currentAudio.currentTime = vt;
@@ -223,8 +296,10 @@ const useBackgroundAudioHandoff = (videoRef, { src, enabled = true } = {}) => {
     const goBackground = () => {
       if (video && !video.paused) wantPlayingRef.current = true;
       if (!wantPlayingRef.current) return;
-      if (backgroundActiveRef.current && audio && !audio.paused) {
+      applyLoop();
+      if (audio && !audio.paused) {
         audio.muted = false;
+        backgroundActiveRef.current = true;
         markHandoff();
         try {
           video.muted = true;
@@ -273,34 +348,27 @@ const useBackgroundAudioHandoff = (videoRef, { src, enabled = true } = {}) => {
       else goForeground();
     };
 
+    const finishTrack = () => {
+      const handler = onEndedRef?.current;
+      if (typeof handler === "function") handler();
+    };
+
     const onAudioEnded = () => {
       if (!wantPlayingRef.current) return;
+      applyLoop();
       const currentAudio = audioRef.current;
-      const vDur = Number(video.duration);
-      const aTime = Number(currentAudio?.currentTime) || 0;
-      const aDur = Number(currentAudio?.duration);
+      if (loop) {
+        if (currentAudio?.paused) restartBackgroundAudio();
+        return;
+      }
 
-      const videoNotFinished =
-        Number.isFinite(vDur) && vDur > 2 && aTime < vDur - 1.25;
-      const audioDurationLooksShort =
-        Number.isFinite(aDur) &&
-        Number.isFinite(vDur) &&
-        aDur > 0 &&
-        vDur - aDur > 1.5;
-
-      if (videoNotFinished || audioDurationLooksShort) {
-        try {
-          if (Number.isFinite(aTime)) {
-            currentAudio.currentTime = aTime;
-          }
-        } catch (_) {}
+      if (!isTrueTrackEnd(currentAudio, video)) {
         currentAudio?.play().catch(() => {});
         return;
       }
 
-      try {
-        video.dispatchEvent(new Event("ended"));
-      } catch (_) {}
+      if (!isPageHidden() && !backgroundActiveRef.current) return;
+      finishTrack();
     };
 
     video.addEventListener("play", onPlay);
@@ -326,9 +394,14 @@ const useBackgroundAudioHandoff = (videoRef, { src, enabled = true } = {}) => {
     enabled,
     src,
     videoRef,
+    loop,
+    onEndedRef,
     playBackgroundAudio,
     pauseBackgroundAudio,
+    restartBackgroundAudio,
     ensureSrc,
+    applyLoop,
+    markHandoff,
   ]);
 
   return useMemo(
@@ -338,9 +411,15 @@ const useBackgroundAudioHandoff = (videoRef, { src, enabled = true } = {}) => {
       handingOffRef,
       playBackgroundAudio,
       pauseBackgroundAudio,
+      restartBackgroundAudio,
       isAudioPlaying,
     }),
-    [playBackgroundAudio, pauseBackgroundAudio, isAudioPlaying],
+    [
+      playBackgroundAudio,
+      pauseBackgroundAudio,
+      restartBackgroundAudio,
+      isAudioPlaying,
+    ],
   );
 };
 

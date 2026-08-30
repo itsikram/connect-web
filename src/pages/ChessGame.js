@@ -4,6 +4,7 @@ import { Chess } from 'chess.js';
 import { useSelector } from 'react-redux';
 import socket from '../common/socket';
 import { pickComputerMove } from '../utils/chessComputer';
+import { openCreatePost } from '../utils/openComposer';
 
 const BOARD_SIZE = 8;
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
@@ -964,6 +965,22 @@ const ChessGame = () => {
                   onMouseLeave={(e) => Object.assign(e.currentTarget.style, winnerButtonStyle)}
                 >
                   Back to Menu
+                </button>
+                <button
+                  style={winnerButtonStyle}
+                  onClick={() =>
+                    openCreatePost({
+                      caption: getWinnerMessage()?.isDraw
+                        ? 'Chess on Connect ended in a draw.'
+                        : `${getWinnerMessage()?.message || 'Chess match finished'} — played on Connect.`,
+                      audience: 1,
+                      navigate,
+                    })
+                  }
+                  onMouseEnter={(e) => Object.assign(e.currentTarget.style, buttonHoverStyle)}
+                  onMouseLeave={(e) => Object.assign(e.currentTarget.style, winnerButtonStyle)}
+                >
+                  Share recap
                 </button>
               </div>
             </div>

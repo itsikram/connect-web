@@ -1,7 +1,10 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { WinnerConfetti } from './WinnerConfetti';
+import { openCreatePost } from '../../../utils/openComposer';
 
 export const WinnerModal = ({ winner, gameEnded, onContinueGame, onEndGame }) => {
+    const navigate = useNavigate();
     if (!winner) return null;
 
     return (
@@ -33,6 +36,19 @@ export const WinnerModal = ({ winner, gameEnded, onContinueGame, onEndGame }) =>
                         )}
                         <button type="button" className="ludo-btn ludo-btn--danger" onClick={onEndGame}>
                             End Game
+                        </button>
+                        <button
+                            type="button"
+                            className="ludo-btn ludo-btn--primary"
+                            onClick={() =>
+                                openCreatePost({
+                                    caption: `${winner?.name || 'I'} just won a Ludo match on Connect!`,
+                                    audience: 1,
+                                    navigate,
+                                })
+                            }
+                        >
+                            Share win
                         </button>
                     </div>
                 </div>

@@ -14,6 +14,7 @@ import useIsMobile from "../../utils/useIsMobile";
 import isValidUrl from "../../utils/isValiUrl";
 import Momemt from "react-moment";
 import PostComment from "./PostComment";
+import { AuthorDisplayName } from "../feed/OfficialBadge";
 import SingleReactor from "./SingleReactor";
 import { confirmAlert } from "react-confirm-alert";
 import "react-confirm-alert/src/react-confirm-alert.css";
@@ -412,7 +413,7 @@ const SinglePost = () => {
                   <div className="post-nd-container">
                     <Link to={"/" + postData.author._id}>
                       <h4 className="author-name">
-                        {postData.author.fullName}
+                        <AuthorDisplayName author={postData.author} />
                       </h4>
 
                       {postData.feelings && (
@@ -773,7 +774,7 @@ const SinglePost = () => {
                   <div className="post-nd-container">
                     <h4 className="author-name">
                       <Link to={"/" + postData.author._id}>
-                        {postData.author.fullName}
+                        <AuthorDisplayName author={postData.author} />
                       </Link>
 
                       {(postData.feelings || postData.fellings) && (

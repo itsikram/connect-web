@@ -29,6 +29,13 @@ import {
   recoverAgentActions,
   extractCaptionFromText,
   isPlaceholderCaption,
+  getMissingIntentSlots,
+  getSlotQuestion,
+  mergeFollowUpIntent,
+  isCancelFollowUp,
+  isAffirmativeFollowUp,
+  looksLikeQuestion,
+  normalizeAskField,
 } from "./agentCatalog";
 import api from "../../../api/api";
 import { fetchLatestAIChat, saveAIChat } from "../../../services/aiChatService";
@@ -131,6 +138,8 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   const [modalInteractionVersion, setModalInteractionVersion] = useState(0);
   const messagesEndRef = useRef(null);
   const autoRunMessageIdsRef = useRef(new Set());
+  const autoRunActionsRef = useRef(autoRunActions);
+  const pendingIntentRef = useRef(null);
   const [isFetchingHistory, setIsFetchingHistory] = useState(false);
 
   // Fetch chat history from database
@@ -183,6 +192,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
 
 
   useEffect(() => {
+    autoRunActionsRef.current = autoRunActions;
     try {
       window.localStorage.setItem(
         AUTO_RUN_ACTIONS_STORAGE_KEY,
@@ -190,6 +200,12 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       );
     } catch (_) {}
   }, [autoRunActions]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      pendingIntentRef.current = null;
+    }
+  }, [isOpen]);
 
 
 
@@ -268,6 +284,16 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         role: m.type === "user" ? "user" : "assistant",
         content: typeof m.content === "string" ? m.content : "",
       }));
+
+      if (pendingIntentRef.current && isCancelFollowUp(originalText)) {
+        pendingIntentRef.current = null;
+        addMessage({
+          type: "agent",
+          content: "Okay, I cancelled that.",
+        });
+        setIsLoading(false);
+        return;
+      }
 
       const presentResult = async (result, replyOverride) => {
         if (!result) return;
@@ -375,54 +401,55 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         return { matched, searchableFriends };
       };
 
-      const runIntent = async (intent, replyOverride = "") => {
+      const pauseForInput = (intent, slots, question) => {
+        pendingIntentRef.current = {
+          intent,
+          missing: slots,
+        };
+        addMessage({
+          type: "agent",
+          content: question,
+        });
+      };
+
+      const runIntent = async (intent, replyOverride = "", options = {}) => {
         const nextIntent = hydrateIntent(intent);
         if (!nextIntent?.action) return false;
+
+        const autoRun = Boolean(
+          options.forceExecute || autoRunActionsRef.current,
+        );
+        const missingSlots = getMissingIntentSlots(nextIntent);
+        if (missingSlots.length > 0) {
+          const question = looksLikeQuestion(replyOverride)
+            ? replyOverride
+            : getSlotQuestion(nextIntent, missingSlots);
+          pauseForInput(nextIntent, missingSlots, question);
+          return true;
+        }
 
         const needsFriend =
           FRIEND_REQUIRED_ACTIONS.has(nextIntent.action) ||
           (nextIntent.action === "QUERY_CONTENT" &&
-            nextIntent.queryType === "user" &&
-            nextIntent.targetName);
+            String(nextIntent.queryType || "").toLowerCase() === "user");
 
         if (needsFriend) {
-          if (!nextIntent.targetName) {
-            const meta = getActionMeta(nextIntent.action);
-            addMessage({
-              type: "agent",
-              content:
-                replyOverride ||
-                `Sure! Who would you like to ${meta.label.toLowerCase()}? Type their name.`,
-            });
-            return true;
-          }
-
-          if (
-            nextIntent.action === "SEND_MESSAGE_TO_USER" &&
-            !nextIntent.messageText
-          ) {
-            addMessage({
-              type: "agent",
-              content:
-                replyOverride || "What would you like the message to say?",
-            });
-            return true;
-          }
-
           const { matched } = await resolveFriends(nextIntent);
           if (matched.length === 0) {
-            addMessage({
-              type: "agent",
-              content: `I couldn't find "${nextIntent.targetName}" in your friends list. Check the spelling or try their username.`,
-            });
+            pauseForInput(
+              { ...nextIntent, targetName: null },
+              ["targetName"],
+              `I couldn't find "${nextIntent.targetName}" in your friends list. Who did you mean?`,
+            );
             return true;
           }
 
           const responseMode = getActionResponseMode(nextIntent.action);
           const shouldAutoExecuteSingleMatch =
-            matched.length === 1 && responseMode !== "confirm";
+            matched.length === 1 && (autoRun || responseMode !== "confirm");
 
           if (shouldAutoExecuteSingleMatch) {
+            pendingIntentRef.current = null;
             if (LOOKUP_ACTIONS.has(nextIntent.action)) {
               const result = await executeAction({
                 ...nextIntent,
@@ -444,6 +471,11 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             return true;
           }
 
+          pendingIntentRef.current = {
+            intent: nextIntent,
+            missing: matched.length > 1 ? ["targetName"] : [],
+          };
+
           const meta = getActionMeta(nextIntent.action);
           const cardLabel =
             nextIntent.action === "NAVIGATE_PROFILE"
@@ -458,25 +490,29 @@ const AIAgentModal = ({ isOpen, onClose }) => {
           addMessage({
             type: "friend-picker",
             content:
-              replyOverride ||
-              (nextIntent.action === "SEND_MESSAGE_TO_USER"
-                ? matched.length === 1
-                  ? `Ready to send "${previewText}" to ${getFriendDisplayName(matched[0])}. Click below to send it.`
-                  : `Found ${matched.length} people matching "${nextIntent.targetName}". Choose who should receive "${previewText}".`
-                : matched.length === 1
-                  ? `Found ${getFriendDisplayName(matched[0])}! Click below.`
-                  : `Found ${matched.length} people named "${nextIntent.targetName}". Which one?`),
+              replyOverride && looksLikeQuestion(replyOverride)
+                ? replyOverride
+                : nextIntent.action === "SEND_MESSAGE_TO_USER"
+                  ? matched.length === 1
+                    ? `Ready to send "${previewText}" to ${getFriendDisplayName(matched[0])}. ${autoRun ? "Running now." : "Click below to send it."}`
+                    : `Found ${matched.length} people matching "${nextIntent.targetName}". Which one should receive "${previewText}"?`
+                  : matched.length === 1
+                    ? `Found ${getFriendDisplayName(matched[0])}! ${autoRun ? "Running now." : "Click below to continue."}`
+                    : `Found ${matched.length} people named "${nextIntent.targetName}". Which one?`,
             friends: matched,
             action: nextIntent.action,
             actionLabel: cardLabel,
             intent: nextIntent,
-            onAction: (friend) =>
-              handleFriendAction(friend, nextIntent.action, nextIntent),
+            onAction: (friend) => {
+              pendingIntentRef.current = null;
+              handleFriendAction(friend, nextIntent.action, nextIntent);
+            },
           });
           return true;
         }
 
         if (NO_FRIEND_ACTIONS.has(nextIntent.action)) {
+          pendingIntentRef.current = null;
           const result = await executeAction({
             ...nextIntent,
             friend: null,
@@ -494,12 +530,36 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       };
 
       try {
+        const pendingSnapshot = pendingIntentRef.current;
         let geminiPlan = null;
+        const interpreterMessage = pendingSnapshot
+          ? `The user is answering your previous question for this pending action:\n${JSON.stringify(
+              {
+                action: pendingSnapshot.intent?.action,
+                missing: pendingSnapshot.missing,
+                current: {
+                  targetName: pendingSnapshot.intent?.targetName,
+                  messageText: pendingSnapshot.intent?.messageText,
+                  searchQuery: pendingSnapshot.intent?.searchQuery,
+                  targetRoute: pendingSnapshot.intent?.targetRoute,
+                },
+              },
+            )}\n\nUser answer: ${originalText}\n\nComplete the pending action unless they clearly asked for something else.`
+          : originalText;
+
         try {
           geminiPlan = await interpretAgentCommand({
-            message: originalText,
+            message: interpreterMessage,
             conversationHistory: history,
-            appContext: buildAppContext(myProfile),
+            appContext: {
+              ...buildAppContext(myProfile),
+              pendingIntent: pendingSnapshot
+                ? {
+                    action: pendingSnapshot.intent?.action,
+                    missing: pendingSnapshot.missing,
+                  }
+                : null,
+            },
           });
         } catch (interpreterError) {
           console.warn("[AIAgentModal] Gemini interpreter failed:", interpreterError);
@@ -513,6 +573,26 @@ const AIAgentModal = ({ isOpen, onClose }) => {
           .map((raw) => hydrateIntent(toAgentIntent(raw)))
           .filter(Boolean);
 
+        if (pendingSnapshot) {
+          const merged = mergeFollowUpIntent({
+            pending: pendingSnapshot,
+            followUpText: originalText,
+            geminiIntents,
+          });
+          if (merged) {
+            const handled = await runIntent(
+              merged,
+              geminiPlan?.reply || "",
+              {
+                forceExecute:
+                  autoRunActionsRef.current ||
+                  isAffirmativeFollowUp(originalText),
+              },
+            );
+            if (handled) return;
+          }
+        }
+
         if (geminiIntents.length > 0) {
           for (let i = 0; i < geminiIntents.length; i += 1) {
             const replyOverride = i === 0 ? geminiPlan?.reply || "" : "";
@@ -522,6 +602,33 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             }
           }
           return;
+        }
+
+        if (geminiPlan?.ask?.field || looksLikeQuestion(geminiPlan?.reply)) {
+          const stub =
+            pendingSnapshot?.intent ||
+            parseIntent(originalText) ||
+            (geminiPlan?.ask?.field
+              ? {
+                  action: null,
+                }
+              : null);
+          const parsedStub = stub?.action ? hydrateIntent(stub) : null;
+          if (parsedStub) {
+            const slots = geminiPlan?.ask?.field
+              ? [normalizeAskField(geminiPlan.ask.field) || geminiPlan.ask.field]
+              : getMissingIntentSlots(parsedStub);
+            const question =
+              geminiPlan?.ask?.question ||
+              geminiPlan?.reply ||
+              getSlotQuestion(parsedStub, slots);
+            pauseForInput(
+              parsedStub,
+              slots.filter(Boolean).length ? slots.filter(Boolean) : ["searchQuery"],
+              question,
+            );
+            return;
+          }
         }
 
         let intent = parseIntent(originalText);

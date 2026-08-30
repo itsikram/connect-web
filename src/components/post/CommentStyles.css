@@ -1255,3 +1255,43 @@
     padding-left: 8px;
     border-left: 2px solid rgba(255, 255, 255, 0.08);
 }
+
+.new-comment-assist {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px 8px;
+}
+
+.smart-replies {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.smart-reply-chip {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    color: #e8eef4;
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.smart-reply-chip:hover:not(:disabled) {
+    background: rgba(0, 212, 255, 0.12);
+    border-color: rgba(0, 212, 255, 0.35);
+}
+
+.smart-reply-chip.roast-chip {
+    color: #fbbf24;
+    border-color: rgba(251, 191, 36, 0.3);
+}
+
+.smart-reply-hint {
+    font-size: 12px;
+    color: #a8b0bb;
+}

@@ -1,7 +1,11 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { PLAYER_EMOJIS, PLAYER_LETTERS } from '../constants/gameConstants';
+import { openCreatePost } from '../../../utils/openComposer';
 
 export const GameEndedScreen = ({ winners, onResetGame }) => {
+    const navigate = useNavigate();
+    const topName = winners?.[0]?.name || 'I';
     return (
         <div className="ludo-ended" style={{ background: 'transparent' }}>
             <div className="ludo-ended__inner">
@@ -26,6 +30,20 @@ export const GameEndedScreen = ({ winners, onResetGame }) => {
                     onClick={onResetGame}
                 >
                     Play Again
+                </button>
+                <button
+                    type="button"
+                    className="ludo-btn ludo-btn--primary"
+                    style={{ marginTop: 10, minWidth: 160 }}
+                    onClick={() =>
+                        openCreatePost({
+                            caption: `${topName} finished first in Ludo on Connect.`,
+                            audience: 1,
+                            navigate,
+                        })
+                    }
+                >
+                    Share recap
                 </button>
             </div>
         </div>

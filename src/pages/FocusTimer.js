@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../api/api';
 import { showErrorToast } from '../utils/toastUtils';
+import { openCreatePost } from '../utils/openComposer';
 
 const FocusTimer = () => {
+    const navigate = useNavigate();
+    const [justCompleted, setJustCompleted] = useState(false);
     const [minutes, setMinutes] = useState(25);
     const [seconds, setSeconds] = useState(0);
     const [isRunning, setIsRunning] = useState(false);
@@ -71,6 +74,7 @@ const FocusTimer = () => {
     const handleTimerComplete = async () => {
         setIsRunning(false);
         setIsPaused(false);
+        setJustCompleted(true);
         if (sessionType === 'focus') {
             try {
                 const response = await api.post('/timer/update', {
@@ -95,6 +99,7 @@ const FocusTimer = () => {
     const handleStart = () => {
         setIsRunning(true);
         setIsPaused(false);
+        setJustCompleted(false);
     };
 
     const handlePause = () => {
@@ -368,6 +373,34 @@ const FocusTimer = () => {
                         </button>
                     )}
                 </div>
+
+                {justCompleted && (
+                    <div style={{
+                        marginTop: 16,
+                        padding: 12,
+                        borderRadius: 12,
+                        background: 'rgba(0, 212, 255, 0.08)',
+                        border: '1px solid rgba(0, 212, 255, 0.2)',
+                        textAlign: 'center',
+                    }}>
+                        <div style={{ marginBottom: 8, fontWeight: 600 }}>
+                            {presets[sessionType].label} session finished.
+                        </div>
+                        <button
+                            type="button"
+                            style={primaryButtonStyle}
+                            onClick={() =>
+                                openCreatePost({
+                                    caption: `I finished a ${presets[sessionType].label.toLowerCase()} session on Connect.`,
+                                    audience: 2,
+                                    navigate,
+                                })
+                            }
+                        >
+                            Share
+                        </button>
+                    </div>
+                )}
 
                 <div style={presetsStyle}>
                     {Object.keys(presets).map((type) => (

@@ -891,6 +891,37 @@ select {
                                 color: rgba($tc, 0.7);
                             }
 
+                            .user-profile-pic.is-media-thumb {
+                                position: relative;
+                                background: rgba(0, 0, 0, 0.35);
+                            }
+
+                            .user-profile-pic.is-post-thumb {
+                                border-radius: 10px;
+                            }
+
+                            .user-profile-pic.is-video-thumb {
+                                width: 58px;
+                                height: 36px;
+                                border-radius: 8px;
+                            }
+
+                            .search-result-play {
+                                position: absolute;
+                                inset: 0;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                background: rgba(0, 0, 0, 0.28);
+                                color: #fff;
+                                font-size: 10px;
+                                pointer-events: none;
+
+                                i {
+                                    margin-left: 1px;
+                                }
+                            }
+
                             .search-result-copy {
                                 min-width: 0;
                                 flex: 1;
@@ -8785,6 +8816,11 @@ select {
                             .item-container .user-profile-pic {
                                 width: 36px;
                                 height: 36px;
+                            }
+
+                            .item-container .user-profile-pic.is-video-thumb {
+                                width: 52px;
+                                height: 32px;
                             }
 
                             .item-container .user-details {

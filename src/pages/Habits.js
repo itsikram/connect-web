@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { openCreatePost } from '../utils/openComposer';
 
 const Habits = () => {
+    const navigate = useNavigate();
     const [habits, setHabits] = useState([]);
     const [newHabitName, setNewHabitName] = useState('');
     const [newHabitColor, setNewHabitColor] = useState('#22C55E');
@@ -451,6 +453,27 @@ const Habits = () => {
                                     {completionRate}% completion (30 days)
                                 </div>
 
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        openCreatePost({
+                                            caption: isTodayCompleted
+                                                ? `Checked off ${habit.name} today${habit.streak ? ` — ${habit.streak}-day streak` : ''}.`
+                                                : `Working on my ${habit.name} habit.`,
+                                            audience: 2,
+                                            navigate,
+                                        })
+                                    }
+                                    style={{
+                                        ...deleteButtonStyle,
+                                        background: 'rgba(0, 212, 255, 0.12)',
+                                        border: '1px solid rgba(0, 212, 255, 0.3)',
+                                        color: '#7ce7ff',
+                                        marginBottom: '10px',
+                                    }}
+                                >
+                                    Share
+                                </button>
                                 <div style={statsStyle}>
                                     <div style={statItemStyle}>
                                         <div style={{ ...statValueStyle, color: '#22C55E' }}>

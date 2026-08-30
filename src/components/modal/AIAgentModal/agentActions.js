@@ -2,15 +2,11 @@
  * AI Agent Action Executor
  */
 
-import api, { invalidateGetCache } from "../../../api/api";
+import api from "../../../api/api";
 import socket from "../../../common/socket";
 import { getFriendDisplayName } from "./agentIntentParser";
 import { sendBumpToFriend } from "../../../utils/sendBump";
 import { generatePostCaption } from "../../../services/geminiService";
-import store from "../../../store";
-import { addPost } from "../../../services/actions/postActions";
-import CacheManager from "../../../utils/cacheManager";
-import { prependProfilePostCache } from "../../../utils/requestCache";
 import {
   extractCaptionFromText,
   isPlaceholderCaption,
@@ -705,41 +701,29 @@ export const executeAction = async ({
           .trim()
           .slice(0, 500);
 
+        navigate("/");
+        window.setTimeout(() => {
+          window.dispatchEvent(
+            new CustomEvent("openCreatePost", {
+              detail: { caption, audience: 1 },
+            }),
+          );
+          if (onClose) onClose();
+        }, 350);
+
         if (!caption) {
-          navigate("/");
-          window.setTimeout(() => {
-            window.dispatchEvent(new CustomEvent("openCreatePost"));
-            if (onClose) onClose();
-          }, 350);
           return {
-            success: false,
+            success: true,
+            type: "draft-post",
             message:
-              "I couldn't write a caption automatically. Opening the post composer so you can finish it.",
+              "Opening the post composer so you can write the caption, then tap Post.",
           };
         }
 
-        const form = new FormData();
-        form.append("caption", caption);
-        form.append("photos", "");
-        form.append("feelings", "");
-        form.append("location", "");
-        form.append("audience", "1");
-        const res = await api.post("/post/create/", form);
-        const createdPost = res.data?.post;
-        if (createdPost) {
-          store.dispatch(addPost(createdPost));
-          CacheManager.prependCachedPost(createdPost);
-          if (myProfile?._id) {
-            prependProfilePostCache(myProfile._id, createdPost);
-          }
-        }
-        invalidateGetCache("/post/newsFeed");
-        go("/");
         return {
           success: true,
-          type: "created-post",
-          post: createdPost || null,
-          message: `📝 Posted: "${clipText(caption, 120)}"`,
+          type: "draft-post",
+          message: `📝 Draft ready — review it and tap Post to publish: "${clipText(caption, 120)}"`,
         };
       }
 

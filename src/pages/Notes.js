@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import api from '../api/api';
 import { showErrorToast } from '../utils/toastUtils';
+import { openCreatePost } from '../utils/openComposer';
 
 const Notes = () => {
+    const navigate = useNavigate();
     const [notes, setNotes] = useState([]);
     const [selectedNote, setSelectedNote] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -410,6 +412,26 @@ const Notes = () => {
                                 </span>
                                 <button onClick={handleDeleteNote} style={deleteButtonStyle}>
                                     Delete
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        openCreatePost({
+                                            caption: selectedNote.title && selectedNote.title !== 'Untitled Note'
+                                                ? `From my notes: ${selectedNote.title}`
+                                                : String(selectedNote.content || '').slice(0, 180),
+                                            audience: 3,
+                                            navigate,
+                                        })
+                                    }
+                                    style={{
+                                        ...deleteButtonStyle,
+                                        background: 'rgba(0, 212, 255, 0.12)',
+                                        border: '1px solid rgba(0, 212, 255, 0.3)',
+                                        color: '#7ce7ff',
+                                    }}
+                                >
+                                    Share as post
                                 </button>
                             </div>
                             <div style={editorContentStyle}>

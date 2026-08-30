@@ -57,6 +57,34 @@ const truncateText = (text, wordCount = 8) => {
   return `${words.slice(0, wordCount).join(" ")}…`;
 };
 
+const isVideoFileUrl = (url) =>
+  /\.(mp4|webm|mov|m4v|avi)(\?|#|$)/i.test(String(url || ""));
+
+const getPostImage = (photos) => {
+  if (!photos) return null;
+  const pick = (value) => {
+    if (!value || typeof value !== "string") return null;
+    const url = value.trim();
+    if (!url || isVideoFileUrl(url)) return null;
+    return url;
+  };
+
+  if (Array.isArray(photos)) {
+    return photos.map(pick).find(Boolean) || null;
+  }
+
+  const raw = String(photos).trim();
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.map(pick).find(Boolean) || null;
+    return pick(parsed);
+  } catch {
+    return pick(raw.split(",")[0]);
+  }
+};
+
 const HighlightMatch = ({ text, query }) => {
   const value = String(text || "");
   const q = String(query || "").trim();
@@ -95,6 +123,7 @@ const buildFlatResults = (data) => {
     url: `/watch/${item._id}`,
     profilePic: item.author?.profilePic,
     profileId: item.author?._id,
+    mediaUrl: item.thumbnail || null,
   }));
 
   const posts = (data?.posts || []).slice(0, MAX_RESULTS_PER_SECTION).map((item) => ({
@@ -105,6 +134,7 @@ const buildFlatResults = (data) => {
     url: `/post/${item._id}`,
     profilePic: item.author?.profilePic,
     profileId: item.author?._id,
+    mediaUrl: getPostImage(item.photos),
   }));
 
   return [...users, ...videos, ...posts];
@@ -205,6 +235,12 @@ let HeaderLeft = () => {
 
   const handleOpenAIAgent = useCallback(() => {
     setIsAIAgentModalOpen(true);
+  }, []);
+
+  useEffect(() => {
+    const openAgent = () => setIsAIAgentModalOpen(true);
+    window.addEventListener("openAIAgent", openAgent);
+    return () => window.removeEventListener("openAIAgent", openAgent);
   }, []);
 
   const startLogoLongPress = useCallback(
@@ -512,6 +548,15 @@ let HeaderLeft = () => {
   const renderResultItem = (item, index, { isRecent = false } = {}) => {
     const meta = resultTypeMeta[item.type] || resultTypeMeta.user;
     const isActive = index === activeResultIndex;
+    const mediaUrl = item.mediaUrl;
+    const thumbClass = [
+      "user-profile-pic",
+      mediaUrl && "is-media-thumb",
+      item.type === "video" && mediaUrl && "is-video-thumb",
+      item.type === "post" && mediaUrl && "is-post-thumb",
+    ]
+      .filter(Boolean)
+      .join(" ");
 
     return (
       <li
@@ -528,8 +573,17 @@ let HeaderLeft = () => {
         onClick={() => goToSearchItem(item)}
       >
         <div className="item-container">
-          <div className="user-profile-pic">
-            {item.profilePic ? (
+          <div className={thumbClass}>
+            {mediaUrl ? (
+              <>
+                <img src={mediaUrl} alt="" />
+                {item.type === "video" && (
+                  <span className="search-result-play" aria-hidden="true">
+                    <i className="fas fa-play" />
+                  </span>
+                )}
+              </>
+            ) : item.profilePic ? (
               <UserPP profilePic={item.profilePic} profile={item.profileId} />
             ) : (
               <div className="search-result-fallback-icon">

@@ -3,6 +3,10 @@ import {
   extractCaptionFromText,
   recoverAgentActions,
   isPlaceholderCaption,
+  getMissingIntentSlots,
+  mergeFollowUpIntent,
+  isAffirmativeFollowUp,
+  isCancelFollowUp,
 } from "./agentCatalog";
 
 const atikProfile = {
@@ -154,5 +158,47 @@ describe("create post recovery", () => {
         searchQuery: "I'm not lazy, I'm just on energy-saving mode.",
       },
     ]);
+  });
+});
+
+describe("pending follow-up slots", () => {
+  test("asks for a name when call has no target", () => {
+    expect(parseIntent("call")).toMatchObject({
+      action: "AUDIO_CALL",
+      targetName: null,
+    });
+    expect(getMissingIntentSlots({ action: "AUDIO_CALL", targetName: null })).toEqual([
+      "targetName",
+    ]);
+  });
+
+  test("fills a pending call with the follow-up name", () => {
+    const merged = mergeFollowUpIntent({
+      pending: {
+        intent: { action: "AUDIO_CALL", targetName: null },
+        missing: ["targetName"],
+      },
+      followUpText: "John",
+      geminiIntents: [],
+    });
+    expect(merged).toMatchObject({
+      action: "AUDIO_CALL",
+      targetName: "John",
+    });
+    expect(getMissingIntentSlots(merged)).toEqual([]);
+  });
+
+  test("treats yes as confirmation without changing the name", () => {
+    const merged = mergeFollowUpIntent({
+      pending: {
+        intent: { action: "AUDIO_CALL", targetName: "John" },
+        missing: [],
+      },
+      followUpText: "yes",
+      geminiIntents: [],
+    });
+    expect(merged.targetName).toBe("John");
+    expect(isAffirmativeFollowUp("yes")).toBe(true);
+    expect(isCancelFollowUp("never mind")).toBe(true);
   });
 });

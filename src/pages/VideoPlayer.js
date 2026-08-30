@@ -180,9 +180,12 @@ const VideoPlayer = () => {
   playlistPipRef.current = libraryPipPlaylist;
 
   const isThisPip = watchPip?.pip?.source === "library" && !!watchPip.pip.videoUrl;
+  const backgroundEndedRef = useRef(() => {});
   const backgroundAudio = useBackgroundAudioHandoff(videoRef, {
     src: currentVideo?.url,
     enabled: !!currentVideo?.url && !isThisPip,
+    loop: isLooping && playbackList.length <= 1,
+    onEndedRef: backgroundEndedRef,
   });
 
   useEffect(() => {
@@ -269,7 +272,18 @@ const VideoPlayer = () => {
       video
         .play()
         .then(() => setIsPlaying(true))
-        .catch(() => setIsPlaying(false));
+        .catch(() => {
+          if (document.hidden) {
+            backgroundAudio.wantPlayingRef.current = true;
+            backgroundAudio.playBackgroundAudio({
+              unmuted: true,
+              fromStart: true,
+            });
+            setIsPlaying(true);
+            return;
+          }
+          setIsPlaying(false);
+        });
     };
 
     video.addEventListener("canplay", onCanPlay, { once: true });
@@ -287,7 +301,7 @@ const VideoPlayer = () => {
     return () => {
       video.removeEventListener("canplay", onCanPlay);
     };
-  }, [currentTrackKey, currentVideo?.url, isThisPip]);
+  }, [currentTrackKey, currentVideo?.url, isThisPip, backgroundAudio]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -547,10 +561,28 @@ const VideoPlayer = () => {
 
   const replayCurrent = useCallback(() => {
     const video = videoRef.current;
+    if (video) {
+      try {
+        video.currentTime = 0;
+      } catch (_) {}
+    }
+    if (document.hidden) {
+      backgroundAudio.wantPlayingRef.current = true;
+      backgroundAudio.restartBackgroundAudio();
+      setIsPlaying(true);
+      return;
+    }
     if (!video) return;
-    video.currentTime = 0;
     video.play().catch(() => {});
-  }, []);
+  }, [backgroundAudio]);
+
+  const stopPlayback = useCallback(() => {
+    backgroundAudio.wantPlayingRef.current = false;
+    backgroundAudio.pauseBackgroundAudio();
+    const video = videoRef.current;
+    if (video) video.pause();
+    setIsPlaying(false);
+  }, [backgroundAudio]);
 
   const handleVideoEnd = useCallback(() => {
     const item = currentPlaybackRef.current;
@@ -565,6 +597,8 @@ const VideoPlayer = () => {
       if (isLooping) {
         setPlayPass(1);
         replayCurrent();
+      } else {
+        stopPlayback();
       }
       return;
     }
@@ -576,7 +610,7 @@ const VideoPlayer = () => {
         setPlaybackIndex(0);
         return;
       }
-      setIsPlaying(false);
+      stopPlayback();
       return;
     }
 
@@ -587,8 +621,10 @@ const VideoPlayer = () => {
     playbackIndex,
     isLooping,
     replayCurrent,
+    stopPlayback,
     setPlaybackIndex,
   ]);
+  backgroundEndedRef.current = handleVideoEnd;
 
   const switchLibraryPipByOffset = useCallback(
     (offset) => {

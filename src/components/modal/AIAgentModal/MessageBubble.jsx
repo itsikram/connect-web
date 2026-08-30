@@ -303,6 +303,21 @@ const MessageBubble = ({ message, userProfilePic }) => {
           {/* Render newlines properly */}
           <p style={{ whiteSpace: "pre-wrap" }}>{message.content}</p>
 
+          {Array.isArray(message.actions) && message.actions.length > 0 && (
+            <div className="friend-picker-cards" style={{ marginTop: 8 }}>
+              {message.actions.map((action, index) => (
+                <button
+                  key={action.label || index}
+                  type="button"
+                  className="suggestion-chip"
+                  onClick={() => action.onClick?.()}
+                >
+                  {action.label || "Continue"}
+                </button>
+              ))}
+            </div>
+          )}
+
           {message.action && (
             <div className="suggested-action">
               <i

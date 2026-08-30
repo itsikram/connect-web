@@ -1,0 +1,36 @@
+.cpm-composer-assist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.cpm-assist-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #e8eef4;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cpm-assist-chip:hover:not(:disabled) {
+  background: rgba(0, 212, 255, 0.12);
+  border-color: rgba(0, 212, 255, 0.35);
+}
+
+.cpm-assist-chip:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.cpm-assist-chip.is-live {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fecaca;
+}

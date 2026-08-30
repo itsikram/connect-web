@@ -384,6 +384,38 @@
   color: var(--post-accent);
 }
 
+.nf-post .footer .like-comment-share .buttons-container .react-buttons.hide-reacts .post-react-container,
+.nf-post .footer .like-comment-share .buttons-container .react-buttons.hide-reacts:hover .post-react-container {
+  display: none !important;
+}
+
+.nf-post .footer .like-comment-share .react-like {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.nf-post .footer .like-comment-share .buttons-container .react-buttons.show-reacts {
+  z-index: 20;
+}
+
+.nf-post .footer .like-comment-share .buttons-container .react-buttons.show-reacts .post-react-container,
+.nf-post .footer .like-comment-share .buttons-container .react-buttons.show-reacts:hover .post-react-container {
+  display: block !important;
+}
+
+@media (max-width: 768px) {
+  .nf-post .footer .like-comment-share .buttons-container .react-buttons.button:hover .post-react-container {
+    display: none !important;
+  }
+
+  .nf-post .footer .like-comment-share .buttons-container .react-buttons.show-reacts .post-react-container,
+  .nf-post .footer .like-comment-share .buttons-container .react-buttons.button.show-reacts .post-react-container,
+  .nf-post .footer .like-comment-share .buttons-container .react-buttons.button.show-reacts:hover .post-react-container {
+    display: block !important;
+  }
+}
+
 .nf-post .footer .like-comment-share .react-icon {
   width: 18px !important;
   height: 18px;

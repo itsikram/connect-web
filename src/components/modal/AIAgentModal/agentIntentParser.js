@@ -594,6 +594,13 @@ const INTENT_PATTERNS = [
   // ── Create Note ───────────────────────────────────────────────────────────
   {
     action: "CREATE_NOTE",
+    noCapture: true,
+    patterns: [
+      /^(?:please\s+)?(?:create|write|add|make)\s+(?:a\s+)?note[.!?]*$/i,
+    ],
+  },
+  {
+    action: "CREATE_NOTE",
     searchCapture: true,
     patterns: [
       /(?:create|write|add|make)\s+(?:a\s+)?note(?:\s+about|\s+saying)?\s+(.+)/i,
@@ -631,6 +638,13 @@ const INTENT_PATTERNS = [
   },
 
   // ── Create Task ────────────────────────────────────────────────────
+  {
+    action: "CREATE_TASK",
+    noCapture: true,
+    patterns: [
+      /^(?:please\s+)?(?:create|add|make)\s+(?:a\s+)?(?:task|todo|to-do)[.!?]*$/i,
+    ],
+  },
   {
     action: "CREATE_TASK",
     searchCapture: true,
@@ -699,6 +713,13 @@ const INTENT_PATTERNS = [
   // ── Video Call ─────────────────────────────────────────────────────────────
   {
     action: "VIDEO_CALL",
+    noCapture: true,
+    patterns: [
+      /^(?:please\s+)?(?:start\s+)?(?:a\s+)?video\s+call(?:\s+please)?[.!?]*$/i,
+    ],
+  },
+  {
+    action: "VIDEO_CALL",
     patterns: [
       /video\s+call\s+(.+)/i,
       /call\s+(.+?)\s+(?:via|on|using)\s+video/i,
@@ -711,6 +732,13 @@ const INTENT_PATTERNS = [
   // ── Audio Call ─────────────────────────────────────────────────────────────
   {
     action: "AUDIO_CALL",
+    noCapture: true,
+    patterns: [
+      /^(?:please\s+)?(?:make\s+)?(?:a\s+)?(?:phone\s+|voice\s+|audio\s+)?call(?:\s+(?:someone|a friend))?[.!?]*$/i,
+    ],
+  },
+  {
+    action: "AUDIO_CALL",
     patterns: [
       /(?:voice|audio|phone)\s+call\s+(.+)/i,
       /call\s+(.+?)\s+(?:via|on|using)\s+(?:voice|audio|phone)/i,
@@ -721,6 +749,13 @@ const INTENT_PATTERNS = [
   },
 
   // ── Send Message ─────────────────────────────────────────────────────────────
+  {
+    action: "SEND_MESSAGE",
+    noCapture: true,
+    patterns: [
+      /^(?:please\s+)?(?:send\s+)?(?:a\s+)?(?:message|dm|text)(?:\s+someone)?[.!?]*$/i,
+    ],
+  },
   {
     action: "SEND_MESSAGE",
     patterns: [

@@ -29,6 +29,7 @@ import {
 } from "../../utils/requestCache";
 import config from "../../config/config.json";
 import OptionsDropdown from "./OptionsDropdown";
+import { AuthorDisplayName } from "../feed/OfficialBadge";
 import "./CommentStyles.css";
 import "./PostCard.css";
 import "./SharePostModal.css";
@@ -37,6 +38,8 @@ import Rlove from "../../assets/images/reacts/reactLove.svg";
 import Rhaha from "../../assets/images/reacts/reactHaha.svg";
 
 const default_pp_src = config?.defaultProfile;
+const REACT_LONG_PRESS_MS = 450;
+const REACT_LONG_PRESS_MOVE_PX = 12;
 
 let getLastPostId = () => {
   localStorage.getItem("lastPostId");
@@ -97,6 +100,8 @@ const Post = React.memo(
     let [isActive, setIsActive] = useState(false);
     let [reactType, setReactType] = useState(false);
     let [isReacted, setIsReacted] = useState(false);
+    let [hideReactPicker, setHideReactPicker] = useState(false);
+    let [showReactPicker, setShowReactPicker] = useState(false);
     let [shareCap, setShareCap] = useState("");
     let [placedReacts, setPlacedReacts] = useState([]);
     let [isShareModal, setIsShareModal] = useState(false);
@@ -110,6 +115,10 @@ const Post = React.memo(
     let navigate = useNavigate();
     let nfPosts = useRef([]);
     let displayedPost = useRef();
+    let reactButtonsRef = useRef(null);
+    let longPressTimerRef = useRef(null);
+    let longPressTriggeredRef = useRef(false);
+    let pressStartRef = useRef({ x: 0, y: 0 });
 
     let dispatch = useDispatch();
 
@@ -276,9 +285,92 @@ const Post = React.memo(
       [isReacted, post._id, post.reacts.length],
     );
 
+    let hideReactContainer = useCallback(() => {
+      setShowReactPicker(false);
+      setHideReactPicker(true);
+    }, []);
+
+    let resetReactPickerVisibility = useCallback(() => {
+      setHideReactPicker(false);
+    }, []);
+
+    let clearLikeLongPress = useCallback(() => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+    }, []);
+
+    useEffect(() => {
+      return () => clearLikeLongPress();
+    }, [clearLikeLongPress]);
+
+    useEffect(() => {
+      if (!showReactPicker) return undefined;
+      const closePicker = (event) => {
+        if (reactButtonsRef.current?.contains(event.target)) return;
+        setShowReactPicker(false);
+      };
+      document.addEventListener("pointerdown", closePicker);
+      return () => document.removeEventListener("pointerdown", closePicker);
+    }, [showReactPicker]);
+
+    let onLikePointerDown = useCallback(
+      (e) => {
+        if (!isMobile && e.pointerType !== "touch") return;
+        longPressTriggeredRef.current = false;
+        pressStartRef.current = { x: e.clientX, y: e.clientY };
+        clearLikeLongPress();
+        longPressTimerRef.current = setTimeout(() => {
+          longPressTriggeredRef.current = true;
+          setHideReactPicker(false);
+          setShowReactPicker(true);
+          longPressTimerRef.current = null;
+        }, REACT_LONG_PRESS_MS);
+      },
+      [isMobile, clearLikeLongPress],
+    );
+
+    let onLikePointerMove = useCallback(
+      (e) => {
+        if (!longPressTimerRef.current) return;
+        const dx = Math.abs(e.clientX - pressStartRef.current.x);
+        const dy = Math.abs(e.clientY - pressStartRef.current.y);
+        if (dx > REACT_LONG_PRESS_MOVE_PX || dy > REACT_LONG_PRESS_MOVE_PX) {
+          clearLikeLongPress();
+        }
+      },
+      [clearLikeLongPress],
+    );
+
+    let onLikePointerUp = useCallback(() => {
+      clearLikeLongPress();
+      if (longPressTriggeredRef.current) {
+        window.setTimeout(() => {
+          longPressTriggeredRef.current = false;
+        }, 400);
+      }
+    }, [clearLikeLongPress]);
+
+    let onLikeContextMenu = useCallback(
+      (e) => {
+        if (isMobile || e.nativeEvent?.pointerType === "touch") {
+          e.preventDefault();
+        }
+      },
+      [isMobile],
+    );
+
     let likeBtnOnClick = useCallback(
       async (e) => {
+        if (longPressTriggeredRef.current) {
+          e.preventDefault();
+          e.stopPropagation();
+          longPressTriggeredRef.current = false;
+          return;
+        }
         let target = e.currentTarget;
+        hideReactContainer();
         if ($(target).parent().hasClass("reacted")) {
           removeReact("post");
           $(target).parent().removeClass("reacted");
@@ -287,63 +379,56 @@ const Post = React.memo(
           $(target).parent().addClass("reacted");
         }
       },
-      [removeReact, placeReact],
+      [removeReact, placeReact, hideReactContainer],
     );
 
     let likeOnClick = useCallback(
       async (e) => {
         let target = e.currentTarget;
-        $(target).parents(".post-react-container").css("display", "none");
+        hideReactContainer();
         if ($(target).hasClass("reacted")) {
           removeReact("post");
           $(target).removeClass("reacted");
-          // Keep container hidden
         } else {
           placeReact("like", "post", target);
           $(target).addClass("reacted");
           $(e.currentTarget).siblings().removeClass("reacted");
-          // Keep container hidden when react is placed
         }
       },
-      [removeReact, placeReact],
+      [removeReact, placeReact, hideReactContainer],
     );
 
     let loveOnClick = useCallback(
       (e) => {
-        let target = e.currentTarget;
-        $(target).parents(".post-react-container").css("display", "none");
+        hideReactContainer();
         if ($(e.currentTarget).hasClass("reacted")) {
           removeReact("post");
           $(e.currentTarget).removeClass("reacted");
-          // Keep container hidden
         } else {
           placeReact("love", "post");
           $(e.currentTarget).siblings().removeClass("reacted");
           $(e.currentTarget).addClass("reacted");
-          // Keep container hidden when react is placed
         }
       },
-      [removeReact, placeReact],
+      [removeReact, placeReact, hideReactContainer],
     );
 
     let hahaOnClick = useCallback(
       (e) => {
         let target = e.currentTarget;
-        $(target).parents(".post-react-container").css("display", "none");
+        hideReactContainer();
 
         if ($(e.currentTarget).hasClass("reacted")) {
           removeReact();
           $(e.currentTarget).removeClass("reacted");
-          // Keep container hidden
         } else {
           placeReact("haha", "post", target);
           $(e.currentTarget).siblings().removeClass("reacted");
 
           $(e.currentTarget).addClass("reacted");
-          // Keep container hidden when react is placed
         }
       },
-      [removeReact, placeReact],
+      [removeReact, placeReact, hideReactContainer],
     );
 
     let likeMouseOver = useCallback((e) => {
@@ -553,7 +638,7 @@ const Post = React.memo(
                     </div>
                     <div className="post-nd-container">
                       <Link to={"/" + post.author._id}>
-                        <h4 className="author-name">{post.author.fullName}</h4>
+                        <h4 className="author-name"><AuthorDisplayName author={post.author} /></h4>
                       </Link>
                       <span className="post-time">
                         <Momemt fromNow>{post.createdAt}</Momemt>
@@ -749,11 +834,19 @@ const Post = React.memo(
                 <div className="like-comment-share">
                   <div className="buttons-container">
                     <div
-                      className={`react-buttons button ${reactType ? "reacted" : ""}`}
+                      ref={reactButtonsRef}
+                      className={`react-buttons button ${reactType ? "reacted" : ""} ${hideReactPicker ? "hide-reacts" : ""} ${showReactPicker ? "show-reacts" : ""}`}
+                      onMouseLeave={resetReactPickerVisibility}
                     >
                       <div
                         onClick={likeBtnOnClick}
                         onMouseOver={likeMouseOver}
+                        onPointerDown={onLikePointerDown}
+                        onPointerMove={onLikePointerMove}
+                        onPointerUp={onLikePointerUp}
+                        onPointerCancel={onLikePointerUp}
+                        onPointerLeave={onLikePointerUp}
+                        onContextMenu={onLikeContextMenu}
                         className={`react-like ${reactType == true ? "reacted" : ""}`}
                       >
                         <span className="react-icon" datatype={reactType || ""}>
@@ -947,7 +1040,7 @@ const Post = React.memo(
                     <div className="post-nd-container">
                       <h4 className="author-name" onClick={postHeaderClick}>
                         <Link to={"/" + post.author._id}>
-                          {post.author.fullName}
+                          <AuthorDisplayName author={post.author} />
                         </Link>
                         {post.feelings && (
                           <span className="post-feelings">
@@ -1094,11 +1187,19 @@ const Post = React.memo(
                 <div className="like-comment-share">
                   <div className="buttons-container">
                     <div
-                      className={`react-buttons button ${reactType ? "reacted" : ""}`}
+                      ref={reactButtonsRef}
+                      className={`react-buttons button ${reactType ? "reacted" : ""} ${hideReactPicker ? "hide-reacts" : ""} ${showReactPicker ? "show-reacts" : ""}`}
+                      onMouseLeave={resetReactPickerVisibility}
                     >
                       <div
                         onClick={likeBtnOnClick}
                         onMouseOver={likeMouseOver}
+                        onPointerDown={onLikePointerDown}
+                        onPointerMove={onLikePointerMove}
+                        onPointerUp={onLikePointerUp}
+                        onPointerCancel={onLikePointerUp}
+                        onPointerLeave={onLikePointerUp}
+                        onContextMenu={onLikeContextMenu}
                         className={`react-like ${reactType == true ? "reacted" : ""}`}
                       >
                         <span className="react-icon" datatype={reactType || ""}>
@@ -1288,6 +1389,13 @@ const Post = React.memo(
       likeOnClick,
       loveOnClick,
       hahaOnClick,
+      hideReactPicker,
+      showReactPicker,
+      resetReactPickerVisibility,
+      onLikePointerDown,
+      onLikePointerMove,
+      onLikePointerUp,
+      onLikeContextMenu,
       postHeaderClick,
       openSinglePost,
       editAudienceClick,

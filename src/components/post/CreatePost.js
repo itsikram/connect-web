@@ -7,6 +7,9 @@ import api from "../../api/api";
 import { fetchProfileHasStoryCached, prependProfilePostCache } from "../../utils/requestCache";
 import { addPost } from "../../services/actions/postActions";
 import CacheManager from "../../utils/cacheManager";
+import { generatePostCaption } from "../../services/geminiService";
+import useSpeechToText from "../../hooks/useSpeechToText";
+import "./ComposerAssist.css";
 
 const loadingImgUrl = 'https://res.cloudinary.com/dz88yjerw/image/upload/v1743092084/i5lcu63atrbkpcy6oqam.gif'
 
@@ -35,12 +38,15 @@ let CreatePost = ({ setPosts = null }) => {
         const openComposer = (event) => {
             setPostModal(true);
             const caption = event?.detail?.caption;
-            if (caption) {
+            const audience = event?.detail?.audience;
+            if (caption || audience) {
                 setPostData((prev) => ({
                     ...prev,
-                    caption,
+                    caption: caption != null && caption !== "" ? caption : prev.caption,
+                    audience:
+                        audience != null ? parseInt(audience, 10) : prev.audience,
                 }));
-                setAttachmentType("caption");
+                if (caption) setAttachmentType("caption");
             }
         };
         window.addEventListener("openCreatePost", openComposer);
@@ -85,6 +91,42 @@ let CreatePost = ({ setPosts = null }) => {
     let [postData, setPostData] = useState(postDataInit)
     let [attachmentType, setAttachmentType] = useState(false)
     const [showAudienceMenu, setShowAudienceMenu] = useState(false)
+    const [isWritingCaption, setIsWritingCaption] = useState(false)
+
+    const appendSpeechCaption = useCallback((text) => {
+        if (!text) return
+        setPostData((prev) => ({
+            ...prev,
+            caption: `${prev.caption || ""}${prev.caption ? " " : ""}${text}`.trim().slice(0, 500),
+        }))
+        setAttachmentType("caption")
+    }, [])
+
+    const { listening, interim, supported: speechSupported, toggle: toggleSpeech } =
+        useSpeechToText({ onFinal: appendSpeechCaption })
+
+    const handleWriteCaption = useCallback(async () => {
+        if (isWritingCaption) return
+        setIsWritingCaption(true)
+        try {
+            const hint = postData.caption
+                ? `Improve or finish this caption: ${postData.caption}`
+                : postData.type === "image"
+                  ? "Write a warm caption for a photo I just uploaded."
+                  : postData.type === "video"
+                    ? "Write a short caption for a video I just uploaded."
+                    : "Write a short natural caption for Connect."
+            const caption = await generatePostCaption(hint)
+            if (caption) {
+                setPostData((prev) => ({ ...prev, caption }))
+                setAttachmentType("caption")
+            }
+        } catch (error) {
+            console.warn("Caption generation failed:", error)
+        } finally {
+            setIsWritingCaption(false)
+        }
+    }, [isWritingCaption, postData.caption, postData.type])
 
     const [hasStory, setHasStory] = useState(false);
 
@@ -497,11 +539,32 @@ let CreatePost = ({ setPosts = null }) => {
                                     <textarea 
                                         name="caption" 
                                         onChange={handleCaptionField} 
-                                        placeholder={textInputPlaceHoder} 
+                                        placeholder={listening && interim ? interim : textInputPlaceHoder} 
                                         className="cpm-form-text-input" 
-                                        value={postData.caption}
+                                        value={listening && interim ? `${postData.caption}${postData.caption ? " " : ""}${interim}` : postData.caption}
                                         rows="4"
                                     ></textarea>
+                                    <div className="cpm-composer-assist">
+                                        <button
+                                            type="button"
+                                            className="cpm-assist-chip"
+                                            onClick={handleWriteCaption}
+                                            disabled={isWritingCaption}
+                                        >
+                                            <i className={`fas ${isWritingCaption ? "fa-spinner fa-spin" : "fa-magic"}`}></i>
+                                            <span>{isWritingCaption ? "Writing…" : postData.urls ? "Write caption" : "Write caption"}</span>
+                                        </button>
+                                        {speechSupported && (
+                                            <button
+                                                type="button"
+                                                className={`cpm-assist-chip ${listening ? "is-live" : ""}`}
+                                                onClick={toggleSpeech}
+                                            >
+                                                <i className={`fas ${listening ? "fa-stop" : "fa-microphone"}`}></i>
+                                                <span>{listening ? "Listening…" : "Voice to post"}</span>
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                                 <div className="cpm-attachment-control">
                                     <div className="cpm-attachment-preview">

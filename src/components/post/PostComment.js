@@ -14,6 +14,7 @@ import CommentSkeleton from "../loading/CommentSkeleton";
 import LoadingSpinner, { TypingIndicator } from "../loading/LoadingSpinner";
 import "./CommentStyles.css";
 import config from "../../config/config.json";
+import { generateSmartReplies, generateCaptionRoast } from "../../services/geminiService";
 
 const loadingUrl = config?.loadingUrl;
 
@@ -66,6 +67,19 @@ const PostComment = ({
   });
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const [smartReplies, setSmartReplies] = useState([
+    "Love this",
+    "So true",
+    "Tell me more",
+  ]);
+  const [smartRepliesLoaded, setSmartRepliesLoaded] = useState(false);
+  const [isLoadingReplies, setIsLoadingReplies] = useState(false);
+  const [roastDraft, setRoastDraft] = useState("");
+  const [isRoasting, setIsRoasting] = useState(false);
+
+  const isOwnPost =
+    String(myProfile?._id || "") ===
+    String(post?.author?._id || post?.author || "");
 
   const syncParentComments = useCallback(
     (next) => {
@@ -260,6 +274,44 @@ const PostComment = ({
     }, 350);
   }, [canLoadMoreComments, isLoadingMoreComments, parsedInitialVisibleCount]);
 
+  const loadSmartReplies = useCallback(() => {
+    if (smartRepliesLoaded || isLoadingReplies || !post?.caption) return;
+    setIsLoadingReplies(true);
+    const lastComment = comments[comments.length - 1]?.body || "";
+    generateSmartReplies({
+      postCaption: post.caption,
+      lastComment,
+    })
+      .then((replies) => {
+        if (replies?.length) setSmartReplies(replies);
+        setSmartRepliesLoaded(true);
+      })
+      .catch(() => setSmartRepliesLoaded(true))
+      .finally(() => setIsLoadingReplies(false));
+  }, [comments, isLoadingReplies, post?.caption, smartRepliesLoaded]);
+
+  useEffect(() => {
+    if (isSingle && post?.caption) loadSmartReplies();
+  }, [isSingle, loadSmartReplies, post?.caption]);
+
+  const applySmartReply = (text) => {
+    setCommentData((s) => ({ ...s, body: text }));
+  };
+
+  const handleRoastCaption = async () => {
+    if (isRoasting || !post?.caption) return;
+    setIsRoasting(true);
+    try {
+      const roast = await generateCaptionRoast(post.caption);
+      setRoastDraft(roast);
+      setCommentData((s) => ({ ...s, body: roast }));
+    } catch (error) {
+      console.warn("Roast failed:", error);
+    } finally {
+      setIsRoasting(false);
+    }
+  };
+
   return (
     <Fragment>
       <div className="comments">
@@ -318,6 +370,36 @@ const PostComment = ({
         )}
       </div>
 
+      <div className="new-comment-assist">
+        {smartReplies.length > 0 && (
+          <div className="smart-replies" aria-label="Suggested replies">
+            {smartReplies.map((reply) => (
+              <button
+                key={reply}
+                type="button"
+                className="smart-reply-chip"
+                onClick={() => applySmartReply(reply)}
+              >
+                {reply}
+              </button>
+            ))}
+          </div>
+        )}
+        {isOwnPost && post?.caption && (
+          <button
+            type="button"
+            className="smart-reply-chip roast-chip"
+            onClick={handleRoastCaption}
+            disabled={isRoasting}
+          >
+            {isRoasting ? "Writing roast…" : roastDraft ? "Roast again" : "Roast my caption"}
+          </button>
+        )}
+        {isLoadingReplies && !smartRepliesLoaded ? (
+          <span className="smart-reply-hint">Suggestions loading…</span>
+        ) : null}
+      </div>
+
       <div className="new-comment">
         <div className="user-pp">
           <UserPP profilePic={authProfilePicture} profile={authProfile} />
@@ -330,6 +412,7 @@ const PostComment = ({
             onChange={(e) =>
               setCommentData((s) => ({ ...s, body: e.target.value }))
             }
+            onFocus={loadSmartReplies}
             className="field-comment-text"
             type="text"
             value={commentData.body || ""}

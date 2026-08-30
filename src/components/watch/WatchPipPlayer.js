@@ -82,9 +82,12 @@ const WatchPipPlayer = () => {
   const playlist = Array.isArray(pip?.playlist) ? pip.playlist : [];
   const isLibrary = pip?.source === "library";
   const looping = !!pip?.looping;
+  const backgroundEndedRef = useRef(() => {});
   const backgroundAudio = useBackgroundAudioHandoff(videoRef, {
     src: pip?.videoUrl,
     enabled: !!pip,
+    loop: looping && playlist.length <= 1,
+    onEndedRef: backgroundEndedRef,
   });
 
   if (pip && initialPlaybackRef.current?.trackKey !== pipTrackKey) {
@@ -118,9 +121,11 @@ const WatchPipPlayer = () => {
         if (initialPlayback?.playing !== false) {
           video.play().catch(() => {
             if (document.hidden) {
-              if (!backgroundAudio.isAudioPlaying()) {
-                backgroundAudio.playBackgroundAudio({ unmuted: true });
-              }
+              backgroundAudio.wantPlayingRef.current = true;
+              backgroundAudio.playBackgroundAudio({
+                unmuted: true,
+                fromStart: true,
+              });
               return;
             }
             setPaused(true);
@@ -147,7 +152,7 @@ const WatchPipPlayer = () => {
       cancelled = true;
       video.removeEventListener("canplay", playWhenReady);
     };
-  }, [pipTrackKey, pip?.videoUrl]);
+  }, [pipTrackKey, pip?.videoUrl, backgroundAudio]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -197,11 +202,21 @@ const WatchPipPlayer = () => {
       const audio = backgroundAudio.audioRef.current;
       const usingAudio =
         document.hidden && !!(audio && !audio.paused);
-      const el = usingAudio ? audio : video;
+      if (usingAudio) {
+        updatePip({
+          currentTime: audio.currentTime,
+          playing: true,
+          muted: false,
+        });
+        return;
+      }
+      if (document.hidden && backgroundAudio.wantPlayingRef.current) {
+        return;
+      }
       updatePip({
-        currentTime: el.currentTime,
-        playing: usingAudio || !video.paused,
-        muted: usingAudio ? false : video.muted,
+        currentTime: video.currentTime,
+        playing: !video.paused,
+        muted: video.muted,
       });
     };
 
@@ -355,6 +370,24 @@ const WatchPipPlayer = () => {
     switchPlaylistByOffset(1);
   }, [switchPlaylistByOffset]);
 
+  const replayCurrent = useCallback(() => {
+    const video = videoRef.current;
+    if (video) {
+      try {
+        video.currentTime = 0;
+      } catch (_) {}
+    }
+    if (document.hidden) {
+      backgroundAudio.wantPlayingRef.current = true;
+      backgroundAudio.restartBackgroundAudio();
+      setPaused(false);
+      updatePip({ playing: true, currentTime: 0 });
+      return;
+    }
+    if (!video) return;
+    video.play().catch(() => {});
+  }, [backgroundAudio, updatePip]);
+
   const handleEnded = useCallback(() => {
     const idx = getPipPlaylistIndex(playlist, pip);
     const item = (idx >= 0 ? playlist[idx] : null) || {};
@@ -362,29 +395,44 @@ const WatchPipPlayer = () => {
     const pass = Math.max(1, Number(pip?.playPass) || 1);
 
     if (pass < times) {
-      updatePip({ playPass: pass + 1 });
-      const video = videoRef.current;
-      if (video) {
-        video.currentTime = 0;
-        video.play().catch(() => {});
+      updatePip({ playPass: pass + 1, currentTime: 0, playing: true });
+      replayCurrent();
+      return;
+    }
+
+    if (playlist.length <= 1) {
+      if (looping) {
+        updatePip({ playPass: 1, currentTime: 0, playing: true });
+        replayCurrent();
+      } else {
+        backgroundAudio.wantPlayingRef.current = false;
+        backgroundAudio.pauseBackgroundAudio();
+        updatePip({ playing: false });
+        setPaused(true);
       }
       return;
     }
 
-    if (playlist.length > 1) {
-      switchPlaylistByOffset(1);
+    const atLast = idx >= playlist.length - 1;
+    if (atLast && !looping) {
+      backgroundAudio.wantPlayingRef.current = false;
+      backgroundAudio.pauseBackgroundAudio();
+      updatePip({ playing: false });
+      setPaused(true);
       return;
     }
 
-    if (looping) {
-      updatePip({ playPass: 1 });
-      const video = videoRef.current;
-      if (video) {
-        video.currentTime = 0;
-        video.play().catch(() => {});
-      }
-    }
-  }, [playlist, pip, looping, updatePip, switchPlaylistByOffset]);
+    switchPlaylistByOffset(1);
+  }, [
+    playlist,
+    pip,
+    looping,
+    updatePip,
+    switchPlaylistByOffset,
+    replayCurrent,
+    backgroundAudio,
+  ]);
+  backgroundEndedRef.current = handleEnded;
 
   const mediaSessionHandlers = useMemo(
     () => ({
