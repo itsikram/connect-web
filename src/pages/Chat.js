@@ -687,14 +687,55 @@ const Chat = () => {
   useEffect(
     function () {
       if (!friendId) return;
-      fetchProfileCached(friendId, { ttlMs: 60000, storageTtlMs: 300000 })
-        .then(function (profileData) {
-          setFriendProfile(profileData);
+
+      let isCancelled = false;
+      // Prevent stale header avatar while profile is loading for a new route.
+      setFriendProfile({ _id: friendId, profilePic: "" });
+
+      const loadProfile = async () => {
+        try {
+          let profileData = await fetchProfileCached(friendId, {
+            ttlMs: 60000,
+            storageTtlMs: 300000,
+          });
+
+          // If cached data is partial/missing, force a fresh profile fetch.
+          if (!profileData || !profileData._id) {
+            profileData = await fetchProfileCached(friendId, {
+              ttlMs: 60000,
+              storageTtlMs: 300000,
+              forceRefresh: true,
+            });
+          }
+
+          if (isCancelled) return;
+
+          if (profileData && profileData._id) {
+            setFriendProfile(profileData);
+          } else {
+            setFriendProfile((prev) => ({
+              ...(prev || {}),
+              _id: friendId,
+              profilePic: prev?.profilePic || "",
+            }));
+          }
           dispatch(setLoading(false));
-        })
-        .catch(function (e) {
+        } catch (e) {
+          if (isCancelled) return;
+          setFriendProfile((prev) => ({
+            ...(prev || {}),
+            _id: friendId,
+            profilePic: prev?.profilePic || "",
+          }));
           console.log(e);
-        });
+        }
+      };
+
+      loadProfile();
+
+      return function () {
+        isCancelled = true;
+      };
     },
     [friendId, dispatch],
   );
@@ -909,6 +950,7 @@ const Chat = () => {
           <ChatHeader
             friendProfile={friendProfile}
             friendProfilePic={friendProfile.profilePic}
+            friendId={friendId}
             isActive={isActive}
             lastSeen={lastSeen}
             room={room}

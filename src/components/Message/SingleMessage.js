@@ -163,15 +163,21 @@ const SingleMessage = ({
     });
   };
   const handleSpeakMessage = async (e) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
     hideOptions();
+
+    // Speak control is only for my own messages and should play on receiver end.
+    if (String(msg?.senderId) !== String(myId)) {
+      return;
+    }
+
     try {
-      // Relay speech request to the server.
-      // Server will forward to the other user and Android will speak via TTS.
       const msgId = msg?._id || msg?.id;
       const message = msg?.message || "";
       const attachment = msg?.attachment || "";
       const messageType = msg?.messageType || "";
-      const targetFriendId = friendId;
+      const targetFriendId = msg?.receiverId || friendId;
 
       if (!targetFriendId || !msgId) {
         console.warn("Speak failed: missing friendId or msgId", {
@@ -453,14 +459,6 @@ const SingleMessage = ({
                   onClick={handleReplyMessage.bind(this)}
                 >
                   <i className="fa fa-reply"></i>
-                </button>
-                <button
-                  type="button"
-                  data-id={msg._id}
-                  className="chat-message-option share"
-                  onClick={handleSpeakMessage.bind(this)}
-                >
-                  <i className="fa fa-volume-up"></i>
                 </button>
               </div>
             )}
