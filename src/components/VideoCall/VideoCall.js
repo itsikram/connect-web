@@ -2099,11 +2099,8 @@ const VideoCall = ({ myId }) => {
                       (isMobile ? 3 / 4 : 16 / 9),
                   )
                 : "auto",
-              maxHeight: isFullscreen
-                ? "100vh"
-                : callAccepted
-                  ? "none"
-                  : "200px",
+              maxHeight: isFullscreen ? "100vh"  : '600', 
+            // callAccepted  ? "650px" : "200px",
               minHeight: callAccepted ? "200px" : "0",
               position: "relative",
               overflow: "hidden",
