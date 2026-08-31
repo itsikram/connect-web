@@ -880,6 +880,24 @@
     transform: scale(1.05);
 }
 
+.action-button.disabled,
+.chat-header-action.is-chat-loading .action-button {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+    transform: none;
+}
+
+.chat-header-action.is-chat-loading {
+    pointer-events: none;
+}
+
+.chat-header-action.is-chat-loading .action-button:hover {
+    background: var(--msg-glass-bg);
+    color: var(--msg-text-secondary);
+    transform: none;
+}
+
 /* Search Section */
 .search-section {
     padding: 0;
@@ -1467,6 +1485,19 @@
 
 .modern-message-container #chatBox .chat-header-action .action-button:hover {
     background: rgba(255, 255, 255, 0.1);
+}
+
+.modern-message-container #chatBox .chat-header-action.is-chat-loading .action-button,
+.modern-message-container #chatBox .chat-header-action .action-button.disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.modern-message-container #chatBox .chat-header-action.is-chat-loading .action-button:hover,
+.modern-message-container #chatBox .chat-header-action .action-button.disabled:hover {
+    background: rgba(255, 255, 255, 0.04);
+    transform: none;
 }
 
 .modern-message-container #chatBox .chat-option-menu,
@@ -2834,6 +2865,24 @@
 .composer-icon-btn.disabled {
     opacity: 0.55;
     pointer-events: none;
+}
+
+.composer-emoji-btn.disabled {
+    opacity: 0.45;
+    pointer-events: none;
+    cursor: not-allowed;
+}
+
+.chat-footer.modern-composer.is-chat-loading {
+    pointer-events: none;
+}
+
+.chat-footer.modern-composer.is-chat-loading .composer-icon-btn,
+.chat-footer.modern-composer.is-chat-loading .composer-emoji-btn,
+.chat-footer.modern-composer.is-chat-loading .composer-attach-item,
+.chat-footer.modern-composer.is-chat-loading .new-message-input {
+    opacity: 0.55;
+    cursor: not-allowed;
 }
 
 .composer-field-wrap,

@@ -8821,7 +8821,7 @@ select {
 
                 .active-mobile.header-search-container {
                     position: fixed;
-                    top: calc(var(--search-vv-top, 0px) + 8px);
+                    top: calc(var(--search-vv-top, 0px) + max(8px, env(safe-area-inset-top, 0px)));
                     left: max(10px, env(safe-area-inset-left, 0px));
                     right: max(10px, env(safe-area-inset-right, 0px));
                     width: auto !important;
@@ -8875,11 +8875,11 @@ select {
                     .header-search-results {
                         display: block;
                         position: fixed;
-                        top: calc(var(--search-vv-top, 0px) + 60px);
+                        top: calc(var(--search-vv-top, 0px) + max(8px, env(safe-area-inset-top, 0px)) + 52px);
                         left: max(10px, env(safe-area-inset-left, 0px));
                         right: max(10px, env(safe-area-inset-right, 0px));
                         width: auto;
-                        max-height: calc(var(--search-vvh, 100dvh) - 76px);
+                        max-height: calc(var(--search-vvh, 100dvh) - max(8px, env(safe-area-inset-top, 0px)) - 68px);
                         overflow-y: auto;
                         overflow-x: hidden;
                         margin-top: 0;

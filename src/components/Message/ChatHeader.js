@@ -46,6 +46,7 @@ const ChatHeader = ({
   lastSeen,
   friendProfilePic,
   friendId: routeFriendId,
+  isChatLoading = false,
 }) => {
   const [emotion, setEmotion] = useState(false);
   const [expression, setExpression] = useState(null); // Store friend's expression
@@ -93,6 +94,7 @@ const ChatHeader = ({
   const emotionIntervalRef = useRef(null);
   const actionLockRef = useRef({ label: null, until: 0 });
   const bumpInFlightRef = useRef(false);
+  const isChatLoadingRef = useRef(false);
   // Keep minimized bar duration in sync while minimized
   const minimizedDurationInterval = useRef(null);
   // Majority emotion tracking (rolling window)
@@ -125,6 +127,16 @@ const ChatHeader = ({
   useEffect(() => {
     profileRef.current = profile;
   }, [profile]);
+
+  useEffect(() => {
+    isChatLoadingRef.current = Boolean(isChatLoading);
+  }, [isChatLoading]);
+
+  useEffect(() => {
+    if (!isChatLoading) return;
+    setIsCallDropdownOpen(false);
+    setIsChatOptionMenu(false);
+  }, [isChatLoading]);
 
   // Stable numeric UID for Agora (avoids string-UID warnings)
   const numericUid = useMemo(() => {
@@ -1080,6 +1092,7 @@ const ChatHeader = ({
 
   const handleVideoCallBtn = useCallback(
     (e) => {
+      if (isChatLoadingRef.current) return;
       const id = friendId || e.currentTarget.dataset.id;
       if (!id) {
         console.error("Video call: No friend ID available");
@@ -1116,6 +1129,7 @@ const ChatHeader = ({
 
   const handleAudioCallBtn = useCallback(
     (e) => {
+      if (isChatLoadingRef.current) return;
       const id = friendId || e.currentTarget.dataset.id;
       if (!id) {
         console.error("Audio call: No friend ID available");
@@ -1830,6 +1844,7 @@ const ChatHeader = ({
   const handleBumpBtnClick = useCallback(async (e) => {
     e?.preventDefault?.();
     e?.stopPropagation?.();
+    if (isChatLoadingRef.current) return;
     if (bumpInFlightRef.current) return;
     const targetFriendId = friendProfile?._id || friendId;
     const myId = profile?._id;
@@ -2193,11 +2208,13 @@ const ChatHeader = ({
   }, []);
 
   const handleCallDropdownToggle = useCallback(() => {
+    if (isChatLoadingRef.current) return;
     setIsChatOptionMenu(false);
     setIsCallDropdownOpen((prev) => !prev);
   }, []);
 
   const handleChatOptionClick = useCallback(() => {
+    if (isChatLoadingRef.current) return;
     setIsCallDropdownOpen(false);
     setIsChatOptionMenu((prev) => !prev);
   }, []);
@@ -2215,6 +2232,7 @@ const ChatHeader = ({
   }, []);
 
   const handleOpenStickyChat = useCallback(() => {
+    if (isChatLoadingRef.current) return;
     // Dispatch event to open sticky chat box
     const openChatEvent = new CustomEvent("openStickyChat", {
       detail: { profileId: friendId },
@@ -2513,22 +2531,31 @@ const ChatHeader = ({
           )}
         </div>
 
-        <div className="chat-header-action">
+        <div
+          className={`chat-header-action${isChatLoading ? " is-chat-loading" : ""}`}
+          aria-busy={isChatLoading || undefined}
+          inert={isChatLoading ? "" : undefined}
+        >
           <div className="chat-header-action-btn-container">
             {!isMobile && (
               <div
-                onClick={handleBumpBtnClick}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    handleBumpBtnClick();
-                  }
-                }}
+                onClick={isChatLoading ? undefined : handleBumpBtnClick}
+                onKeyDown={
+                  isChatLoading
+                    ? undefined
+                    : (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleBumpBtnClick();
+                        }
+                      }
+                }
                 role="button"
-                tabIndex={0}
-                className="bump-button action-button"
+                tabIndex={isChatLoading ? -1 : 0}
+                className={`bump-button action-button${isChatLoading ? " disabled" : ""}`}
                 title="Bump"
                 aria-label="Bump"
+                aria-disabled={isChatLoading}
               >
                 <i className="fas fa-record-vinyl"></i>
               </div>
@@ -2538,21 +2565,26 @@ const ChatHeader = ({
               ref={callDropdownRef}
             >
               <div
-                onClick={handleCallDropdownToggle}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    handleCallDropdownToggle();
-                  }
-                }}
+                onClick={isChatLoading ? undefined : handleCallDropdownToggle}
+                onKeyDown={
+                  isChatLoading
+                    ? undefined
+                    : (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleCallDropdownToggle();
+                        }
+                      }
+                }
                 role="button"
-                tabIndex={0}
+                tabIndex={isChatLoading ? -1 : 0}
                 data-id={friendId}
-                className="call-button action-button"
+                className={`call-button action-button${isChatLoading ? " disabled" : ""}`}
                 title="Audio call"
                 aria-label="Audio call"
                 aria-expanded={isCallDropdownOpen}
                 aria-haspopup="true"
+                aria-disabled={isChatLoading}
               >
                 <i className="fas fa-phone-alt"></i>
               </div>
@@ -2642,20 +2674,25 @@ const ChatHeader = ({
               ref={chatOptionRef}
             >
               <div
-                onClick={handleChatOptionClick}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    handleChatOptionClick();
-                  }
-                }}
+                onClick={isChatLoading ? undefined : handleChatOptionClick}
+                onKeyDown={
+                  isChatLoading
+                    ? undefined
+                    : (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleChatOptionClick();
+                        }
+                      }
+                }
                 role="button"
-                tabIndex={0}
-                className="more-button action-button"
+                tabIndex={isChatLoading ? -1 : 0}
+                className={`more-button action-button${isChatLoading ? " disabled" : ""}`}
                 title="More options"
                 aria-label="More options"
                 aria-expanded={isChatOptionMenu}
                 aria-haspopup="true"
+                aria-disabled={isChatLoading}
               >
                 <i className="fas fa-ellipsis-v"></i>
               </div>
@@ -2809,18 +2846,23 @@ const ChatHeader = ({
             </div>
             {!isMobile && (
               <div
-                onClick={handleOpenStickyChat}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    handleOpenStickyChat();
-                  }
-                }}
+                onClick={isChatLoading ? undefined : handleOpenStickyChat}
+                onKeyDown={
+                  isChatLoading
+                    ? undefined
+                    : (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleOpenStickyChat();
+                        }
+                      }
+                }
                 role="button"
-                tabIndex={0}
-                className="sticky-chat-button action-button"
+                tabIndex={isChatLoading ? -1 : 0}
+                className={`sticky-chat-button action-button${isChatLoading ? " disabled" : ""}`}
                 title="Open Sticky Chat"
                 aria-label="Open sticky chat"
+                aria-disabled={isChatLoading}
               >
                 <i className="fas fa-comment-dots"></i>
               </div>

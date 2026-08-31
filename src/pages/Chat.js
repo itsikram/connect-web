@@ -1144,6 +1144,8 @@ const Chat = () => {
     canMarkAsSeen,
   ]);
 
+  const isChatLoading = isMsgLoading && messages.length === 0;
+
   const footerProps = {
     chatFooter,
     room,
@@ -1164,6 +1166,7 @@ const Chat = () => {
     sendMessage,
     msgListRef,
     scrollToLastMessage,
+    isChatLoading,
   };
   const footerSlotRef = useRef(null);
 
@@ -1270,6 +1273,7 @@ const Chat = () => {
             isActive={isActive}
             lastSeen={lastSeen}
             room={room}
+            isChatLoading={isChatLoading}
           />
         </div>
         <div

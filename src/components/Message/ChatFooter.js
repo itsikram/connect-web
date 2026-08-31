@@ -33,6 +33,7 @@ const ChatFooter = ({
   friendProfile,
   sendMessage,
   scrollToLastMessage: scrollToLastMessageProp,
+  isChatLoading = false,
 }) => {
   // Removed unused width state
   const [inputValue, setInputValue] = useState("");
@@ -43,6 +44,7 @@ const ChatFooter = ({
   const [isAi, setIsAi] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const isSendingRef = useRef(false); // Ref to track sending state synchronously
+  const isChatLoadingRef = useRef(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [showAttachTray, setShowAttachTray] = useState(false);
@@ -85,6 +87,18 @@ const ChatFooter = ({
   useEffect(() => {
     inputValueRef.current = inputValue;
   }, [inputValue]);
+
+  useEffect(() => {
+    isChatLoadingRef.current = Boolean(isChatLoading);
+  }, [isChatLoading]);
+
+  useEffect(() => {
+    if (!isChatLoading) return;
+    setShowAttachTray(false);
+    setShowMicMenu(false);
+    setIsEmojiContainer(false);
+    setIsEmojiChangeContainer(false);
+  }, [isChatLoading]);
 
   useEffect(() => {
     setActionEmoji(chatAppearance?.actionEmoji || "👍");
@@ -215,7 +229,7 @@ const ChatFooter = ({
       const isDisabled = $(e.target).hasClass("button-disabled") || false;
 
       // Use ref for synchronous check to prevent race conditions
-      if (isDisabled || isSendingRef.current) {
+      if (isDisabled || isSendingRef.current || isChatLoadingRef.current) {
         console.log("Message send blocked:", {
           isDisabled,
           isSending: isSendingRef.current,
@@ -308,6 +322,10 @@ const ChatFooter = ({
   //     }
   // }
   const handleKeyPress = (event) => {
+    if (isChatLoadingRef.current) {
+      event.preventDefault();
+      return;
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault(); // Prevent form submission
       event.stopPropagation(); // Prevent event bubbling
@@ -319,7 +337,7 @@ const ChatFooter = ({
   };
 
   const likeButtonClick = () => {
-    if (isSendingRef.current) return;
+    if (isSendingRef.current || isChatLoadingRef.current) return;
     const emoji = actionEmoji || "❤️";
     const roomId = room || [userId, friendId].sort().join("_");
     if (!roomId || !friendId || !userId) return;
@@ -353,6 +371,7 @@ const ChatFooter = ({
   };
 
   const handleInputChange = (e) => {
+    if (isChatLoadingRef.current) return;
     const value = e.target.value;
     setInputValue(value);
     transcribeBaseRef.current = value.trim();
@@ -382,6 +401,7 @@ const ChatFooter = ({
   };
 
   const handleMessageImageButtonClick = useCallback(async () => {
+    if (isChatLoadingRef.current) return;
     const clickEvent = new MouseEvent("click", {
       bubbles: true,
       cancelable: false,
@@ -461,6 +481,7 @@ const ChatFooter = ({
   }, [friendId]);
 
   const handleLiveVoiceButtonClick = () => {
+    if (isChatLoadingRef.current) return;
     if (isLiveVoiceActiveRef.current) {
       window.dispatchEvent(new CustomEvent("stopLiveVoice"));
       return;
@@ -618,6 +639,7 @@ const ChatFooter = ({
 
   const startLiveTranscribe = useCallback(
     async (langCode) => {
+      if (isChatLoadingRef.current) return;
       setShowMicMenu(false);
       setMicMenuView("main");
       setShowAttachTray(false);
@@ -644,6 +666,7 @@ const ChatFooter = ({
   );
 
   const startVoiceMessage = useCallback(() => {
+    if (isChatLoadingRef.current) return;
     setShowMicMenu(false);
     setMicMenuView("main");
     setShowAttachTray(false);
@@ -685,6 +708,7 @@ const ChatFooter = ({
   const handleMicButtonClick = (e) => {
     e?.preventDefault?.();
     e?.stopPropagation?.();
+    if (isChatLoadingRef.current) return;
     if (isUploadingAudio) return;
     if (isRecording) {
       stopRecording(true);
@@ -764,12 +788,14 @@ const ChatFooter = ({
   }, [removeTyping]);
 
   const handleEmojiBtnClick = useCallback((event) => {
+    if (isChatLoadingRef.current) return;
     if (event?.target?.closest?.(".emoji-container")) return;
     setIsEmojiChangeContainer(false);
     setIsEmojiContainer((prev) => !prev);
   }, []);
 
   const emojiChangeClick = useCallback((event) => {
+    if (isChatLoadingRef.current) return;
     if (event?.target?.closest?.(".emoji-container")) return;
     setIsEmojiContainer(false);
     setIsEmojiChangeContainer((prev) => !prev);
@@ -798,6 +824,7 @@ const ChatFooter = ({
   }, [updateActionEmojiChange]);
 
   const handleAttachmentButtonClick = useCallback(() => {
+    if (isChatLoadingRef.current) return;
     uploadFileInput.current.dispatchEvent(
       new MouseEvent("click", {
         bubbles: true,
@@ -873,7 +900,9 @@ const ChatFooter = ({
   }, []);
 
   const hasComposableContent = Boolean(inputValue.trim() || attachmentUrl);
+  const composerLocked = Boolean(isChatLoading);
   const toggleAttachTray = () => {
+    if (isChatLoadingRef.current) return;
     setShowAttachTray((prev) => !prev);
     setShowMicMenu(false);
     setMicMenuView("main");
@@ -885,8 +914,10 @@ const ChatFooter = ({
     <>
       <div
         ref={chatFooter}
-        className={`chat-footer modern-composer ${showAttachTray ? "tray-open" : ""}`}
+        className={`chat-footer modern-composer ${showAttachTray ? "tray-open" : ""}${composerLocked ? " is-chat-loading" : ""}`}
         data-chat-footer="true"
+        aria-busy={composerLocked || undefined}
+        inert={composerLocked ? "" : undefined}
       >
         <ComposerContextPreview
           replyData={isReplying ? replyData : null}
@@ -972,12 +1003,14 @@ const ChatFooter = ({
 
         <div className="new-message-container composer-main">
           <div
-            className={`composer-icon-btn attach-toggle ${showAttachTray ? "active" : ""} ${isUploadingFile || isUploadingImage ? "disabled" : ""}`}
+            className={`composer-icon-btn attach-toggle ${showAttachTray ? "active" : ""} ${composerLocked || isUploadingFile || isUploadingImage ? "disabled" : ""}`}
             onClick={
-              isUploadingFile || isUploadingImage ? null : toggleAttachTray
+              composerLocked || isUploadingFile || isUploadingImage
+                ? null
+                : toggleAttachTray
             }
             onKeyDown={
-              isUploadingFile || isUploadingImage
+              composerLocked || isUploadingFile || isUploadingImage
                 ? null
                 : (e) => {
                     if (e.key === "Enter" || e.key === " ") {
@@ -987,11 +1020,14 @@ const ChatFooter = ({
                   }
             }
             role="button"
-            tabIndex={isUploadingFile || isUploadingImage ? -1 : 0}
+            tabIndex={
+              composerLocked || isUploadingFile || isUploadingImage ? -1 : 0
+            }
             aria-label={
               showAttachTray ? "Close attachments" : "Open attachments"
             }
             aria-expanded={showAttachTray}
+            aria-disabled={composerLocked || isUploadingFile || isUploadingImage}
           >
             <i className={showAttachTray ? "fas fa-times" : "fas fa-plus"}></i>
           </div>
@@ -1035,7 +1071,7 @@ const ChatFooter = ({
                   }
                 }}
                 onBlur={removeTyping}
-                disabled={isRecording || isUploadingAudio}
+                disabled={composerLocked || isRecording || isUploadingAudio}
                 style={{ fontSize: "16px" }}
                 enterKeyHint="send"
                 autoComplete="off"
@@ -1043,19 +1079,24 @@ const ChatFooter = ({
               />
               <div
                 ref={emogiListContainer}
-                onClick={handleEmojiBtnClick}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    handleEmojiBtnClick(e);
-                  }
-                }}
+                onClick={composerLocked ? null : handleEmojiBtnClick}
+                onKeyDown={
+                  composerLocked
+                    ? null
+                    : (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleEmojiBtnClick(e);
+                        }
+                      }
+                }
                 role="button"
-                tabIndex={0}
-                className="composer-emoji-btn message-action-emoji-container"
+                tabIndex={composerLocked ? -1 : 0}
+                className={`composer-emoji-btn message-action-emoji-container${composerLocked ? " disabled" : ""}`}
                 aria-label="Emoji"
                 aria-expanded={isImojiContainer}
                 aria-haspopup="true"
+                aria-disabled={composerLocked}
               >
                 <i className="far fa-smile"></i>
                 {isImojiContainer && (
@@ -1074,7 +1115,7 @@ const ChatFooter = ({
             {hasComposableContent ? (
               <div
                 onClick={
-                  isSendingMessage
+                  composerLocked || isSendingMessage
                     ? null
                     : (e) => {
                         setShowAttachTray(false);
@@ -1082,7 +1123,7 @@ const ChatFooter = ({
                       }
                 }
                 onKeyDown={
-                  isSendingMessage
+                  composerLocked || isSendingMessage
                     ? null
                     : (e) => {
                         if (e.key === "Enter" || e.key === " ") {
@@ -1093,12 +1134,16 @@ const ChatFooter = ({
                       }
                 }
                 role="button"
-                tabIndex={isSendingMessage ? -1 : 0}
-                className={`composer-icon-btn send message-action-button send-message ${attachmentUrl == "https://res.cloudinary.com/dz88yjerw/image/upload/v1743092084/i5lcu63atrbkpcy6oqam.gif" && "button-disabled"} ${isSendingMessage ? "disabled" : ""}`}
+                tabIndex={composerLocked || isSendingMessage ? -1 : 0}
+                className={`composer-icon-btn send message-action-button send-message ${attachmentUrl == "https://res.cloudinary.com/dz88yjerw/image/upload/v1743092084/i5lcu63atrbkpcy6oqam.gif" && "button-disabled"} ${composerLocked || isSendingMessage ? "disabled" : ""}`}
                 aria-label="Send message"
+                aria-disabled={composerLocked || isSendingMessage}
                 style={{
-                  opacity: isSendingMessage ? 0.6 : 1,
-                  cursor: isSendingMessage ? "not-allowed" : "pointer",
+                  opacity: composerLocked || isSendingMessage ? 0.6 : 1,
+                  cursor:
+                    composerLocked || isSendingMessage
+                      ? "not-allowed"
+                      : "pointer",
                 }}
               >
                 <i
@@ -1113,10 +1158,14 @@ const ChatFooter = ({
               <>
                 <div className="composer-mic-wrap" ref={micMenuRef}>
                   <div
-                    className={`composer-icon-btn mic ${isUploadingAudio ? "disabled" : ""} ${isTranscribing || isRecording || showMicMenu ? "active" : ""}`}
-                    onClick={isUploadingAudio ? null : handleMicButtonClick}
+                    className={`composer-icon-btn mic ${composerLocked || isUploadingAudio ? "disabled" : ""} ${isTranscribing || isRecording || showMicMenu ? "active" : ""}`}
+                    onClick={
+                      composerLocked || isUploadingAudio
+                        ? null
+                        : handleMicButtonClick
+                    }
                     onKeyDown={
-                      isUploadingAudio
+                      composerLocked || isUploadingAudio
                         ? null
                         : (e) => {
                             if (e.key === "Enter" || e.key === " ") {
@@ -1126,9 +1175,10 @@ const ChatFooter = ({
                           }
                     }
                     role="button"
-                    tabIndex={isUploadingAudio ? -1 : 0}
+                    tabIndex={composerLocked || isUploadingAudio ? -1 : 0}
                     aria-haspopup="menu"
                     aria-expanded={showMicMenu}
+                    aria-disabled={composerLocked || isUploadingAudio}
                     aria-label={
                       isUploadingAudio
                         ? "Uploading voice message"
@@ -1162,18 +1212,23 @@ const ChatFooter = ({
                   ) : null}
                 </div>
                 <div
-                  onClick={likeButtonClick}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      likeButtonClick();
-                    }
-                  }}
+                  onClick={composerLocked ? null : likeButtonClick}
+                  onKeyDown={
+                    composerLocked
+                      ? null
+                      : (e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            likeButtonClick();
+                          }
+                        }
+                  }
                   role="button"
-                  tabIndex={0}
-                  className="composer-icon-btn send-like message-action-button composer-like-desktop"
+                  tabIndex={composerLocked ? -1 : 0}
+                  className={`composer-icon-btn send-like message-action-button composer-like-desktop${composerLocked ? " disabled" : ""}`}
                   aria-label="Send reaction"
                   title={`Send ${actionEmoji}`}
+                  aria-disabled={composerLocked}
                 >
                   <span>{actionEmoji}</span>
                 </div>
@@ -1371,7 +1426,7 @@ const ChatFooter = ({
             onChange={handleFileChange.bind(this)}
             ref={uploadFileInput}
             style={{ display: "none" }}
-            disabled={isUploadingFile}
+            disabled={composerLocked || isUploadingFile}
           />
           <input
             type="file"
@@ -1379,7 +1434,7 @@ const ChatFooter = ({
             style={{ display: "none" }}
             ref={imageInput}
             onChange={handleMessageImageChange.bind(this)}
-            disabled={isUploadingImage}
+            disabled={composerLocked || isUploadingImage}
           />
         </div>
       </div>
