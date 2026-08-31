@@ -23,6 +23,7 @@ const initialState = {
     newFriendStoryEmail: false,
     newFriendWatchEmail: false,
     chatBackground: null,
+    friendChatSettings: {},
 };
 
 const settingReducer = (state = initialState, action) => {

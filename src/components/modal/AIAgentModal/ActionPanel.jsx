@@ -282,7 +282,7 @@ const ACTIONS = [
         id: "ac_create_ludo",
         label: "Play Ludo",
         icon: "fa-dice",
-        prompt: "go to ludo game",
+        prompt: "create ludo game",
       },
       {
         id: "ac_invite_ludo",

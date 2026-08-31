@@ -20,7 +20,11 @@ import ChatHeader from "./ChatHeader";
 import StickyChatFooter from "./StickyChatFooter";
 import SingleMsgSkleton from "../../skletons/message/SingleMsgSkleton";
 import ModalContainer from "../modal/ModalContainer";
+import ChatSettingsModal from "./ChatSettingsModal";
 import useIsMobile from "../../utils/useIsMobile";
+import useFriendChatSettings from "../../hooks/useFriendChatSettings";
+import { isRomanticMessage } from "../../utils/chatThemes";
+import LoveEmojiRain from "./LoveEmojiRain";
 import "./StickyChatBox.css";
 import "../../pages/Message.css";
 import "./UserInfoModal.css";
@@ -47,6 +51,10 @@ const StickyChatBox = ({
   const myProfile = useSelector((state) => state.profile);
   const userId = myProfile._id;
   const friendId = friendProfile?._id;
+  const { theme, wallpaper, settings: chatAppearance } = useFriendChatSettings(
+    friendId,
+  );
+  const [loveRainBurst, setLoveRainBurst] = useState(0);
 
   const [room, setRoom] = useState("");
   const [isActive, setIsActive] = useState(false);
@@ -59,11 +67,12 @@ const StickyChatBox = ({
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [lastSeen, setLastSeen] = useState(false);
   const [isBlockedMe, setIsBlockedMe] = useState(false);
-  const [scrollPercent, setScrollPercent] = useState(0);
+  const [scrollPercent, setScrollPercent] = useState(100);
   const [replyData, setReplyData] = useState({ messageId: null, body: null });
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, right: 0 });
   const [isUserInfoModalOpen, setIsUserInfoModalOpen] = useState(false);
+  const [isChatSettingsOpen, setIsChatSettingsOpen] = useState(false);
   const [userInfoData, setUserInfoData] = useState(null);
   const [loadingUserInfo, setLoadingUserInfo] = useState(false);
   const [friendLocation, setFriendLocation] = useState(null);
@@ -93,7 +102,10 @@ const StickyChatBox = ({
   const pendingFollowLatestRef = useRef(false);
   const messagesRef = useRef(messages);
   const loadingOlderRef = useRef(false);
+  const themeRef = useRef(theme);
+  const lastLoveRainRef = useRef(0);
   const typingTimeoutRef = useRef(null);
+  const markedSeenIdsRef = useRef(new Set());
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const stickyRootRef = useRef(null);
@@ -102,6 +114,19 @@ const StickyChatBox = ({
 
   const canMarkAsSeen = !isMinimized && isChatFocused && isWindowFocused;
   const hasUnseenMessages = unreadWhileScrolled > 0;
+
+  useEffect(() => {
+    themeRef.current = theme;
+  }, [theme]);
+
+  const triggerLoveRain = useCallback((text) => {
+    if (!themeRef.current?.loveRain) return;
+    if (!isRomanticMessage(text)) return;
+    const now = Date.now();
+    if (now - lastLoveRainRef.current < 400) return;
+    lastLoveRainRef.current = now;
+    setLoveRainBurst((count) => count + 1);
+  }, []);
 
   // Track browser window/tab focus so read receipts only fire when the user can
   // actually view the conversation.
@@ -232,6 +257,7 @@ const StickyChatBox = ({
     setShowScrollToBottom(false);
     setUnreadWhileScrolled(0);
     scrollToLastMessage("smooth");
+    triggerLoveRain(messageData.message);
 
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -296,23 +322,24 @@ const StickyChatBox = ({
     });
   };
 
-  // Mark only the last message as seen
-  const markMessageAsSeen = async (message) => {
-    try {
-      if (!message || !message._id) {
-        console.warn(
-          "Cannot mark message as seen - message or _id is missing:",
-          message,
-        );
-        return;
-      }
+  // Mark unseen messages from the friend as seen in one batched request
+  const markMessageAsSeen = async (messageIds) => {
+    const ids = (Array.isArray(messageIds) ? messageIds : [messageIds])
+      .map((id) => String(id || ""))
+      .filter((id) => id && !markedSeenIdsRef.current.has(id));
+    if (ids.length === 0) return;
 
-      console.log("📤 Marking message as seen:", { messageId: message._id });
-      const response = await api.post("/message/seen", {
-        messageId: message._id,
-      });
-      console.log("✅ Message marked as seen:", response.data);
+    try {
+      ids.forEach((id) => markedSeenIdsRef.current.add(id));
+      await api.post("/message/seen", { messageIds: ids });
+      const idSet = new Set(ids);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          idSet.has(String(msg?._id)) ? { ...msg, isSeen: true } : msg,
+        ),
+      );
     } catch (error) {
+      ids.forEach((id) => markedSeenIdsRef.current.delete(id));
       console.error(
         "Error marking message as seen:",
         error?.response?.data || error?.message || error,
@@ -579,25 +606,25 @@ const StickyChatBox = ({
     return "Unknown";
   };
 
-  // Initialize chat room and fetch messages - HTTP-based
+  // Fetch initial messages once the profile is ready. Kept separate from the
+  // socket effect so isLoading flipping false does not leave/rejoin the room.
   useEffect(() => {
     if (!friendId || !userId || isLoading || !friendProfile?._id) return;
 
-    console.log(
-      "StickyChatBox: Initializing chat for",
-      friendId,
-      "isLoading:",
-      isLoading,
-    );
+    const onMessagePage =
+      typeof window !== "undefined" &&
+      window.location.pathname.startsWith("/message/");
+    if (onMessagePage) return;
 
-    const newRoom = [userId, friendId].sort().join("_");
-    setRoom(newRoom);
+    let cancelled = false;
+    markedSeenIdsRef.current = new Set();
+    hasScrolledOnLoadRef.current = false;
+    setHasMoreMessages(true);
+    setScrollPercent(100);
 
-    // Fetch initial messages via HTTP API
     const fetchInitialMessages = async () => {
       setIsInitialMsgLoading(true);
       try {
-        console.log("StickyChatBox: Fetching messages for", userId, friendId);
         const response = await api.get("/message/getChatHistory", {
           params: {
             profileId: userId,
@@ -605,33 +632,40 @@ const StickyChatBox = ({
             limit: 20,
           },
         });
-
-        console.log("StickyChatBox: Messages response", response.data);
+        if (cancelled) return;
         if (response.data && response.data.messages) {
           const deduplicated = deduplicateMessages(response.data.messages);
-          setMessages((prev) =>
-            mergeHistoryWithLive(deduplicated, prev),
-          );
+          setMessages((prev) => mergeHistoryWithLive(deduplicated, prev));
           setHasMoreMessages(response.data.hasMore);
           isNearBottomRef.current = true;
         } else {
-          console.log("StickyChatBox: No messages in response");
           setMessages([]);
           setHasMoreMessages(false);
         }
       } catch (error) {
+        if (cancelled) return;
         console.error("StickyChatBox: Error fetching initial messages:", error);
         setMessages([]);
         setHasMoreMessages(false);
       } finally {
-        setIsInitialMsgLoading(false);
+        if (!cancelled) setIsInitialMsgLoading(false);
       }
     };
 
     fetchInitialMessages();
+    return () => {
+      cancelled = true;
+    };
+  }, [friendId, userId, isLoading, friendProfile?._id]);
 
-    // Real-time socket listeners for new messages
-    const roomId = [userId, friendId].sort().join("_");
+  // Real-time socket listeners for this conversation
+  useEffect(() => {
+    if (!friendId || !userId) return;
+
+    const newRoom = [userId, friendId].sort().join("_");
+    setRoom(newRoom);
+
+    const roomId = newRoom;
     socket.emit("joinRoom", roomId);
 
     const appendIncomingMessage = (updatedMessage) => {
@@ -652,6 +686,7 @@ const StickyChatBox = ({
 
       if (idOf(updatedMessage.senderId) === idOf(friendId)) {
         setIsActive(true);
+        triggerLoveRain(updatedMessage.message);
       }
     };
 
@@ -749,11 +784,7 @@ const StickyChatBox = ({
       }
       socket.emit("leaveRoom", roomId);
     };
-  }, [
-    friendId,
-    userId,
-    isLoading,
-  ]);
+  }, [friendId, userId, triggerLoveRain]);
 
   // Load Google Maps script
   useEffect(() => {
@@ -940,26 +971,19 @@ const StickyChatBox = ({
     if (!canMarkAsSeen) return;
     if (messages.length > 0 && friendId && friendProfile?._id) {
       const timeoutId = setTimeout(() => {
-        const lastMessage = messages[messages.length - 1];
-        if (
-          lastMessage &&
-          String(lastMessage.senderId) !== String(userId) &&
-          String(lastMessage.senderId) === String(friendId) &&
-          !lastMessage.isSeen
-        ) {
-          console.log("⏱️ Auto-marking last message as seen:", {
-            lastMessage: lastMessage._id,
-            sender: lastMessage.senderId,
-          });
-          markMessageAsSeen(lastMessage);
-          dispatch(seenMessage(friendId));
-        } else if (lastMessage) {
-          console.log("⏭️ Skipping mark as seen:", {
-            hasSender: !!lastMessage.senderId,
-            senderIsUser: String(lastMessage.senderId) === String(userId),
-            isSeen: lastMessage.isSeen,
-          });
-        }
+        const unseenIds = messages
+          .filter(
+            (msg) =>
+              msg &&
+              String(msg.senderId) === String(friendId) &&
+              !msg.isSeen &&
+              !msg.isOptimistic,
+          )
+          .map((msg) => msg?._id)
+          .filter(Boolean);
+        if (unseenIds.length === 0) return;
+        markMessageAsSeen(unseenIds);
+        dispatch(seenMessage(friendId));
       }, 300);
       return () => clearTimeout(timeoutId);
     }
@@ -1019,6 +1043,7 @@ const StickyChatBox = ({
   // list doesn't jump when older messages are prepended.
   useEffect(() => {
     if (!hasMoreMessages || scrollPercent >= 30 || isMsgLoading) return;
+    if (!hasScrolledOnLoadRef.current) return;
     if (loadingOlderRef.current) return;
 
     const oldestMessage = messagesRef.current[0];
@@ -1246,6 +1271,7 @@ const StickyChatBox = ({
     <div
       ref={stickyRootRef}
       className="sticky-chat-box"
+      data-chat-theme={theme?.id || "classic"}
       style={{
         zIndex,
         border: hasUnseenMessages ? "1px solid #00D4FF" : undefined,
@@ -1328,7 +1354,26 @@ const StickyChatBox = ({
         </div>
       </div>
 
-      <div className="sticky-chat-body">
+      <div
+        className="sticky-chat-body"
+        data-bg-overlay={
+          chatAppearance?.showBackgroundOverlay === false ? "off" : "on"
+        }
+        style={
+          wallpaper?.type === "image"
+            ? {
+                backgroundImage: `url('${wallpaper.value}')`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+              }
+            : {
+                backgroundImage: wallpaper?.value,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+              }
+        }
+      >
+        {theme?.loveRain ? <LoveEmojiRain burstId={loveRainBurst} /> : null}
         <div
           className="sticky-chat-message-list"
           id="chatMessageList"
@@ -1560,6 +1605,16 @@ const StickyChatBox = ({
               </span>
             </button>
             <div className="sticky-chat-options-divider"></div>
+            <button
+              className="sticky-chat-option-item"
+              onClick={() => {
+                setIsChatSettingsOpen(true);
+                setShowOptionsMenu(false);
+              }}
+            >
+              <i className="fas fa-palette"></i>
+              <span>Chat appearance</span>
+            </button>
             <button
               className="sticky-chat-option-item"
               onClick={() => {
@@ -1801,6 +1856,13 @@ const StickyChatBox = ({
         )}
       </ModalContainer>
       )}
+
+      <ChatSettingsModal
+        isOpen={isChatSettingsOpen}
+        onRequestClose={() => setIsChatSettingsOpen(false)}
+        friendId={friendId}
+        friendProfile={friendProfile}
+      />
 
     </div>
   );

@@ -1,0 +1,73 @@
+/* Rain lives in the chat body: behind bubbles, below the header, above the footer. */
+.love-emoji-rain {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.chat-body > .love-emoji-rain,
+.sticky-chat-body > .love-emoji-rain {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+}
+
+/* Footer is overlaid on the body — stop rain at the composer edge. */
+.modern-message-container #chatBox .chat-body > .love-emoji-rain {
+    bottom: var(--chat-footer-height, 72px);
+}
+
+.chat-body > .chat-message-list,
+.sticky-chat-body > .sticky-chat-message-list {
+    position: relative;
+    z-index: 2;
+}
+
+.love-emoji-flake {
+    position: absolute;
+    top: 0;
+    line-height: 1;
+    will-change: transform, opacity;
+    animation-name: love-emoji-fall;
+    animation-timing-function: cubic-bezier(0.33, 0, 0.67, 0.28);
+    animation-fill-mode: forwards;
+    filter: drop-shadow(0 8px 12px rgba(244, 63, 94, 0.32));
+}
+
+@keyframes love-emoji-fall {
+    0% {
+        transform: translate3d(0, var(--fall-from, -48px), 0) rotate(-16deg)
+            scale(0.5);
+        opacity: 0;
+    }
+    7% {
+        opacity: 1;
+        transform: translate3d(var(--sway, 12px), 12px, 0) rotate(10deg)
+            scale(1);
+    }
+    48% {
+        opacity: 1;
+        transform: translate3d(
+                calc(var(--drift, 0px) * 0.5),
+                var(--fall-mid, 280px),
+                0
+            )
+            rotate(calc(var(--spin, 180deg) * 0.4)) scale(1.06);
+    }
+    100% {
+        transform: translate3d(var(--drift, 0px), var(--fall-to, 720px), 0)
+            rotate(var(--spin, 220deg)) scale(0.86);
+        opacity: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .love-emoji-rain {
+        display: none;
+    }
+}

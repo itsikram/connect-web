@@ -1,6 +1,6 @@
 import socket from "../common/socket";
 import api from "../api/api";
-import { playBumpSound, unlockAudio } from "./audioUnlock";
+import { unlockAudio } from "./audioUnlock";
 
 const BUMP_COOLDOWN_MS = 3000;
 const inFlightKeys = new Set();
@@ -9,6 +9,7 @@ const lastSentAt = new Map();
 /**
  * Send a bump to a friend. Uses socket when connected (server also pushes if
  * they are offline). HTTP is only a fallback so one click cannot fire twice.
+ * The knock sound must play only on the recipient (via `bumpUser`), never here.
  */
 export const sendBumpToFriend = async (friendProfileId, myProfileId) => {
   const friendProfile = String(friendProfileId || "");
@@ -31,10 +32,10 @@ export const sendBumpToFriend = async (friendProfileId, myProfileId) => {
   lastSentAt.set(key, now);
 
   try {
+    // Keep audio unlocked from this click so a later incoming bump can play.
     try {
       await unlockAudio();
     } catch (_e) {}
-    playBumpSound();
 
     const connected =
       typeof socket.connected === "boolean" ? socket.connected : true;

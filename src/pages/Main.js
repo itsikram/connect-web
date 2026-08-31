@@ -523,6 +523,7 @@ const Main = () => {
   }, []);
 
   const [isTabActive, setIsTabActive] = useState(!document.hidden);
+  const isTabActiveRef = useRef(isTabActive);
   const notificationIntervalRef = useRef(null);
   const [pendingLudoInvites, setPendingLudoInvites] = useState([]);
   // Track shown ludo invite toasts to prevent duplicates
@@ -534,6 +535,10 @@ const Main = () => {
   const currentChessInviteToastIdRef = useRef(null);
 
   const profileId = user?.profile;
+
+  useEffect(() => {
+    isTabActiveRef.current = isTabActive;
+  }, [isTabActive]);
 
   useEffect(() => {
     if (!token || !profileId || !isAuthenticated) return;
@@ -829,7 +834,7 @@ const Main = () => {
     if (!profileId) return;
 
     // Skip fetch if tab is not active (optimization for background tabs)
-    if (!isTabActive) return;
+    if (!isTabActiveRef.current) return;
 
     try {
       const response = await api.get("/notification/new", {
@@ -907,7 +912,7 @@ const Main = () => {
     } catch (error) {
       console.error("Error fetching notifications:", error);
     }
-  }, [profileId, dispatch, isTabActive]);
+  }, [profileId, dispatch]);
 
   // HTTP-based message polling - memoized to prevent recreation on every render
   const fetchNewMessages = useCallback(async () => {
@@ -1009,16 +1014,12 @@ const Main = () => {
       notificationIntervalRef.current = null;
     }
 
-    // Initial fetch
     fetchNotifications();
-    // Fetch all messages on app startup to populate Redux state and message counter
     fetchNewMessages();
 
-    // Poll for notifications every 60 seconds (increased from 30s to reduce server load)
-    // Use ref to track interval for proper cleanup
     notificationIntervalRef.current = setInterval(() => {
       fetchNotifications();
-    }, 60000);
+    }, 90000);
 
     // Listen for new messages via socket instead of polling
     const handleNewMessageToUser = (data) => {
@@ -1135,7 +1136,7 @@ const Main = () => {
       }
       socket.off("newMessageToUser", handleNewMessageToUser);
     };
-  }, [profileId, fetchNotifications, dispatch, isTabActive]);
+  }, [profileId, fetchNotifications, fetchNewMessages, dispatch]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -1147,7 +1148,7 @@ const Main = () => {
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [isTabActive]);
+  }, []);
 
   useEffect(() => {
     const handleNotification = (msg, senderName, senderPP) => {

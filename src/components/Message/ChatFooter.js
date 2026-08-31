@@ -1,14 +1,14 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import api from "../../api/api";
 import $ from "jquery";
-import { useDispatch, useSelector } from "react-redux";
-import { loadSettings } from "../../services/actions/settingsActions";
+import { useSelector } from "react-redux";
 import EmojiPicker from "emoji-picker-react";
 import { useParams } from "react-router-dom";
 import socket from "../../common/socket";
 import ComposerContextPreview from "./ComposerContextPreview";
 import ComposerMicMenu from "./ComposerMicMenu";
 import useComposerLiveTranscribe from "../../hooks/useComposerLiveTranscribe";
+import useFriendChatSettings from "../../hooks/useFriendChatSettings";
 
 const UPLOAD_PLACEHOLDER =
   "https://res.cloudinary.com/dz88yjerw/image/upload/v1743092084/i5lcu63atrbkpcy6oqam.gif";
@@ -34,7 +34,6 @@ const ChatFooter = ({
   sendMessage,
   scrollToLastMessage: scrollToLastMessageProp,
 }) => {
-  const dispatch = useDispatch();
   // Removed unused width state
   const [inputValue, setInputValue] = useState("");
   const [attachmentUrl, setAttachmentUrl] = useState(false);
@@ -74,6 +73,10 @@ const ChatFooter = ({
   const inputValueRef = useRef("");
   const settings = useSelector((state) => state.setting);
   const { profile } = useParams();
+  const {
+    settings: chatAppearance,
+    updateSettings: updateChatAppearance,
+  } = useFriendChatSettings(friendId);
 
   useEffect(() => {
     if (profile === "ai-chat") setIsAi(true);
@@ -84,8 +87,8 @@ const ChatFooter = ({
   }, [inputValue]);
 
   useEffect(() => {
-    setActionEmoji(settings?.actionEmoji || "👍");
-  }, [settings]);
+    setActionEmoji(chatAppearance?.actionEmoji || "👍");
+  }, [chatAppearance?.actionEmoji]);
 
   const scrollToLastMessage = () => {
     if (typeof scrollToLastMessageProp === "function") {
@@ -128,15 +131,19 @@ const ChatFooter = ({
     }
   }, [emitTyping]);
 
+  const lastTypingEmitRef = useRef(0);
   const addTyping = useCallback(
     (value = "") => {
       if (!settings?.showIsTyping) return;
 
-      if (!isTypingRef.current) {
+      const now = Date.now();
+      const shouldEmit =
+        !isTypingRef.current || now - lastTypingEmitRef.current > 400;
+
+      if (shouldEmit) {
         emitTyping(true, value);
+        lastTypingEmitRef.current = now;
         isTypingRef.current = true;
-      } else {
-        emitTyping(true, value);
       }
 
       if (typingTimeoutRef.current) {
@@ -216,8 +223,13 @@ const ChatFooter = ({
         return;
       }
 
+      const typedMessage = String(
+        (inputValueRef.current != null ? inputValueRef.current : inputValue) ||
+          "",
+      ).trim();
+
       // Check if message is empty
-      if (!inputValue.trim() && !attachmentUrl) {
+      if (!typedMessage && !attachmentUrl) {
         return;
       }
 
@@ -229,7 +241,7 @@ const ChatFooter = ({
       const roomId = room || [userId, friendId].sort().join("_");
 
       if (roomId) {
-        const messageContent = inputValue.trim();
+        const messageContent = typedMessage;
 
         const messageData = {
           room: roomId,
@@ -294,14 +306,6 @@ const ChatFooter = ({
   //         socket.emit('update_type', { room, type: value })
   //     }
   // }
-  const enterEvent = new KeyboardEvent("keydown", {
-    key: "Enter",
-    keyCode: 13,
-    code: "Enter",
-    which: 13,
-    bubbles: true,
-  });
-
   const handleKeyPress = (event) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault(); // Prevent form submission
@@ -314,10 +318,37 @@ const ChatFooter = ({
   };
 
   const likeButtonClick = () => {
-    setInputValue(actionEmoji);
-    setTimeout(() => {
-      messageInput.current.dispatchEvent(enterEvent);
-    }, 200);
+    if (isSendingRef.current) return;
+    const emoji = actionEmoji || "❤️";
+    const roomId = room || [userId, friendId].sort().join("_");
+    if (!roomId || !friendId || !userId) return;
+
+    isSendingRef.current = true;
+    setIsSendingMessage(true);
+    setInputValue("");
+
+    sendMessage({
+      room: roomId,
+      senderId: userId,
+      receiverId: friendId,
+      message: emoji,
+      attachment: false,
+      parent: false,
+      isAi,
+    })
+      .then(() => {
+        removeTyping();
+        scrollToLastMessage();
+      })
+      .catch((error) => {
+        console.error("Failed to send quick reaction:", error);
+      })
+      .finally(() => {
+        setTimeout(() => {
+          isSendingRef.current = false;
+          setIsSendingMessage(false);
+        }, 400);
+      });
   };
 
   const handleInputChange = (e) => {
@@ -750,13 +781,20 @@ const ChatFooter = ({
     [inputValue],
   );
 
+  const updateActionEmojiChange = useCallback(
+    (emoji) => {
+      setActionEmoji(emoji);
+      updateChatAppearance({ actionEmoji: emoji });
+    },
+    [updateChatAppearance],
+  );
+
   const handleEmojiChangeClick = useCallback((emojiObj) => {
     setActionEmoji(emojiObj.emoji);
     setIsEmojiChangeContainer(false);
     setIsEmojiContainer(false);
     updateActionEmojiChange(emojiObj.emoji);
-    // setInputValue(inputValue + emojiObj.emoji)
-  }, []);
+  }, [updateActionEmojiChange]);
 
   const handleAttachmentButtonClick = useCallback(() => {
     uploadFileInput.current.dispatchEvent(
@@ -832,18 +870,6 @@ const ChatFooter = ({
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
-
-  const updateActionEmojiChange = useCallback(
-    async (emoji) => {
-      const updateSetting = await api.post("setting/update", {
-        actionEmoji: emoji,
-      });
-      if (updateSetting.status == 200) {
-        dispatch(loadSettings(updateSetting.data));
-      }
-    },
-    [settings],
-  );
 
   const hasComposableContent = Boolean(inputValue.trim() || attachmentUrl);
   const toggleAttachTray = () => {
@@ -1146,7 +1172,7 @@ const ChatFooter = ({
                   tabIndex={0}
                   className="composer-icon-btn send-like message-action-button composer-like-desktop"
                   aria-label="Send reaction"
-                  title="Quick reaction"
+                  title={`Send ${actionEmoji}`}
                 >
                   <span>{actionEmoji}</span>
                 </div>

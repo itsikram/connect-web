@@ -1,14 +1,14 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import api from "../../api/api";
-import { useDispatch, useSelector } from "react-redux";
-import { loadSettings } from "../../services/actions/settingsActions";
+import { useSelector } from "react-redux";
 import EmojiPicker from "emoji-picker-react";
 import socket from "../../common/socket";
 import "./StickyChatFooter.css";
 import ComposerContextPreview from "./ComposerContextPreview";
 import ComposerMicMenu from "./ComposerMicMenu";
 import useComposerLiveTranscribe from "../../hooks/useComposerLiveTranscribe";
+import useFriendChatSettings from "../../hooks/useFriendChatSettings";
 
 const StickyChatFooter = ({
   room,
@@ -24,8 +24,8 @@ const StickyChatFooter = ({
   isAi = false,
   sendMessage,
 }) => {
-  const dispatch = useDispatch();
   const settings = useSelector((state) => state.setting);
+  const { settings: chatAppearance } = useFriendChatSettings(friendId);
 
   const [inputValue, setInputValue] = useState("");
   const [attachmentUrl, setAttachmentUrl] = useState(false);
@@ -49,6 +49,7 @@ const StickyChatFooter = ({
   const recordingTimerRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const isTypingRef = useRef(false);
+  const lastTypingEmitRef = useRef(0);
   const imageInput = useRef(null);
   const uploadFileInput = useRef(null);
   const emojiContainerRef = useRef(null);
@@ -60,8 +61,8 @@ const StickyChatFooter = ({
   const [emojiPosition, setEmojiPosition] = useState({ top: 0, right: 0 });
 
   useEffect(() => {
-    setActionEmoji(settings.actionEmoji || "👍");
-  }, [settings]);
+    setActionEmoji(chatAppearance?.actionEmoji || "👍");
+  }, [chatAppearance?.actionEmoji]);
 
   useEffect(() => {
     inputValueRef.current = inputValue;
@@ -114,11 +115,14 @@ const StickyChatFooter = ({
     (value = "") => {
       if (!settings?.showIsTyping) return;
 
-      if (!isTypingRef.current) {
+      const now = Date.now();
+      const shouldEmit =
+        !isTypingRef.current || now - lastTypingEmitRef.current > 400;
+
+      if (shouldEmit) {
         emitTyping(true, value);
+        lastTypingEmitRef.current = now;
         isTypingRef.current = true;
-      } else {
-        emitTyping(true, value);
       }
 
       if (typingTimeoutRef.current) {

@@ -8,10 +8,12 @@ import ActionPanel from "./ActionPanel";
 import ModalHeader from "./ModalHeader";
 import {
   interpretAgentCommand,
+  sendToGemini,
 } from "../../../services/geminiService";
 import {
   parseIntent,
   searchFriendsByName,
+  splitFriendNames,
   getFriendDisplayName,
   getActionResponseMode,
   FRIEND_REQUIRED_ACTIONS,
@@ -48,6 +50,10 @@ import {
 } from "../../../services/aiAgentSettings";
 import { fetchAiProviderStatus } from "../../../services/llmClient";
 import AgentSettingsPanel from "./AgentSettingsPanel";
+import {
+  getInstantAgentReply,
+  looksLikeAppCommand,
+} from "./agentFastPath";
 
 const createId = () => Date.now() + Math.random();
 
@@ -65,7 +71,7 @@ const isWelcomeMessage = (message) =>
   (message?.type === "agent" &&
     String(message.content || "").startsWith("Hi! I'm your AI Agent"));
 
-const toLlmHistory = (messages = [], limit = 12) =>
+const toLlmHistory = (messages = [], limit = 6) =>
   messages
     .filter((item) => {
       if (isWelcomeMessage(item)) return false;
@@ -76,14 +82,14 @@ const toLlmHistory = (messages = [], limit = 12) =>
     .map((item) => ({
       role: item.type === "user" ? "user" : "assistant",
       content:
-        item.content.length > 400 ? `${item.content.slice(0, 399)}…` : item.content,
+        item.content.length > 240 ? `${item.content.slice(0, 239)}…` : item.content,
     }));
 
 const buildAppContext = (myProfile) => {
   const friendsRaw = Array.isArray(myProfile?.friends) ? myProfile.friends : [];
   const friends = friendsRaw
     .filter((friend) => friend && typeof friend === "object")
-    .slice(0, 40)
+    .slice(0, 12)
     .map((friend) => ({
       name: getFriendDisplayName(friend),
       username: friend.username || friend.user?.username || "",
@@ -170,6 +176,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   const autoRunActionsRef = useRef(autoRunActions);
   const pendingIntentRef = useRef(null);
   const skipSaveRef = useRef(false);
+  const sendGenerationRef = useRef(0);
   const [isFetchingHistory, setIsFetchingHistory] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [llmInfo, setLlmInfo] = useState(() => getResolvedAgentSettings());
@@ -295,6 +302,8 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       const result = await executeAction({
         action,
         friend,
+        extraFriends: intent?.extraFriends,
+        targetName: intent?.targetName ?? null,
         targetRoute: intent?.targetRoute ?? null,
         subPath: intent?.subPath ?? null,
         label: intent?.label ?? null,
@@ -329,11 +338,10 @@ const AIAgentModal = ({ isOpen, onClose }) => {
 
       addMessage({ type: "user", content: text });
       setInputValue("");
-      setIsLoading(true);
-
+      const generation = ++sendGenerationRef.current;
       const originalText = text.trim();
       rememberUserText(myProfile?._id, originalText);
-      const history = toLlmHistory(messages, 12);
+      const stillCurrent = () => generation === sendGenerationRef.current;
 
       if (pendingIntentRef.current && isCancelFollowUp(originalText)) {
         pendingIntentRef.current = null;
@@ -345,8 +353,20 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         return;
       }
 
+      if (!pendingIntentRef.current) {
+        const instantReply = getInstantAgentReply(originalText);
+        if (instantReply) {
+          addMessage({ type: "agent", content: instantReply });
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      setIsLoading(true);
+      const history = toLlmHistory(messages, 6);
+
       const presentResult = async (result, replyOverride, intent = null) => {
-        if (!result) return;
+        if (!result || !stillCurrent()) return;
         rememberActionResult(myProfile?._id, {
           action: intent?.action,
           friendName: intent?.targetName,
@@ -421,6 +441,21 @@ const AIAgentModal = ({ isOpen, onClose }) => {
           ? myProfile.friends
           : [];
         let matched = searchFriendsByName(friends, intent.targetName);
+        if (matched.length === 0) {
+          const names = splitFriendNames(intent.targetName);
+          if (names.length > 1) {
+            const seen = new Set();
+            matched = [];
+            names.forEach((name) => {
+              searchFriendsByName(friends, name).forEach((profile) => {
+                const id = String(profile?._id || "");
+                if (!id || seen.has(id)) return;
+                seen.add(id);
+                matched.push(profile);
+              });
+            });
+          }
+        }
         let searchableFriends = friends;
         if (matched.length === 0 && myProfile?._id) {
           try {
@@ -434,6 +469,23 @@ const AIAgentModal = ({ isOpen, onClose }) => {
               searchableFriends,
               intent.targetName,
             );
+            if (matched.length === 0) {
+              const names = splitFriendNames(intent.targetName);
+              if (names.length > 1) {
+                const seen = new Set();
+                matched = [];
+                names.forEach((name) => {
+                  searchFriendsByName(searchableFriends, name).forEach(
+                    (profile) => {
+                      const id = String(profile?._id || "");
+                      if (!id || seen.has(id)) return;
+                      seen.add(id);
+                      matched.push(profile);
+                    },
+                  );
+                });
+              }
+            }
           } catch (friendListError) {
             console.warn(
               "[AIAgentModal] Could not refresh friend profiles:",
@@ -445,6 +497,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       };
 
       const pauseForInput = (intent, slots, question) => {
+        if (!stillCurrent()) return;
         pendingIntentRef.current = {
           intent,
           missing: slots,
@@ -456,6 +509,9 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       };
 
       const runIntent = async (intent, replyOverride = "", options = {}) => {
+        const hadTypedLudoInvitee =
+          ["CREATE_LUDO", "INVITE_LUDO"].includes(intent?.action) &&
+          splitFriendNames(intent?.targetName).length > 0;
         const nextIntent = applyMemoryToIntent(
           hydrateIntent(intent),
           myProfile?._id,
@@ -474,8 +530,15 @@ const AIAgentModal = ({ isOpen, onClose }) => {
           return true;
         }
 
+        const ludoInviteNames = ["CREATE_LUDO", "INVITE_LUDO"].includes(
+          nextIntent.action,
+        )
+          ? splitFriendNames(nextIntent.targetName)
+          : [];
+
         const needsFriend =
           FRIEND_REQUIRED_ACTIONS.has(nextIntent.action) ||
+          (nextIntent.action === "CREATE_LUDO" && hadTypedLudoInvitee) ||
           (nextIntent.action === "QUERY_CONTENT" &&
             String(nextIntent.queryType || "").toLowerCase() === "user");
 
@@ -487,6 +550,27 @@ const AIAgentModal = ({ isOpen, onClose }) => {
               ["targetName"],
               `I couldn't find "${nextIntent.targetName}" in your friends list. Who did you mean?`,
             );
+            return true;
+          }
+
+          const isMultiLudoInvite =
+            ["CREATE_LUDO", "INVITE_LUDO"].includes(nextIntent.action) &&
+            ludoInviteNames.length > 1 &&
+            matched.length > 1;
+
+          if (isMultiLudoInvite) {
+            pendingIntentRef.current = null;
+            const result = await executeAction({
+              ...nextIntent,
+              friend: matched[0],
+              extraFriends: matched.slice(1),
+              hintText: replyOverride,
+              sourceText: originalText,
+              myProfile,
+              navigate,
+              onClose,
+            });
+            await presentResult(result, replyOverride, nextIntent);
             return true;
           }
 
@@ -595,6 +679,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             const handled = await runIntent(switchedIntent, "", {
               forceExecute: autoRun,
             });
+            if (!stillCurrent()) return;
             if (handled) return;
           }
 
@@ -607,6 +692,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             const handled = await runIntent(merged, "", {
               forceExecute: autoRun || isAffirmativeFollowUp(originalText),
             });
+            if (!stillCurrent()) return;
             if (handled) return;
           }
         }
@@ -616,7 +702,20 @@ const AIAgentModal = ({ isOpen, onClose }) => {
           const handled = await runIntent(hydrateIntent(localIntent), "", {
             forceExecute: autoRun,
           });
+          if (!stillCurrent()) return;
           if (handled) return;
+        }
+
+        if (!pendingSnapshot && !looksLikeAppCommand(originalText)) {
+          const chat = await sendToGemini(originalText, history);
+          if (!stillCurrent()) return;
+          addMessage({
+            type: "agent",
+            content:
+              chat?.response ||
+              "I didn't catch that. Try a short command like “open settings”.",
+          });
+          return;
         }
 
         let geminiPlan = null;
@@ -640,6 +739,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         } catch (interpreterError) {
           console.warn("[AIAgentModal] Interpreter failed:", interpreterError);
         }
+        if (!stillCurrent()) return;
 
         const geminiIntents = recoverAgentActions({
           actions: geminiPlan?.actions || [],
@@ -659,15 +759,17 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             const handled = await runIntent(merged, geminiPlan?.reply || "", {
               forceExecute: autoRun || isAffirmativeFollowUp(originalText),
             });
+            if (!stillCurrent()) return;
             if (handled) return;
           }
         }
 
         if (geminiIntents.length > 0) {
           for (let i = 0; i < geminiIntents.length; i += 1) {
+            if (!stillCurrent()) return;
             const replyOverride = i === 0 ? geminiPlan?.reply || "" : "";
             const handled = await runIntent(geminiIntents[i], replyOverride);
-            if (!handled && geminiPlan?.reply) {
+            if (!handled && geminiPlan?.reply && stillCurrent()) {
               addMessage({ type: "agent", content: geminiPlan.reply });
             }
           }
@@ -698,10 +800,12 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         }
 
         if (geminiPlan?.reply) {
+          if (!stillCurrent()) return;
           addMessage({ type: "agent", content: geminiPlan.reply });
           return;
         }
 
+        if (!stillCurrent()) return;
         addMessage({
           type: "agent",
           content:
@@ -709,12 +813,13 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         });
       } catch (err) {
         console.error("[AIAgentModal]", err);
+        if (!stillCurrent()) return;
         addMessage({
           type: "agent",
           content: "Sorry, something went wrong. Please try again.",
         });
       } finally {
-        setIsLoading(false);
+        if (stillCurrent()) setIsLoading(false);
       }
     },
     [

@@ -4,7 +4,11 @@
 
 import api from "../../../api/api";
 import socket from "../../../common/socket";
-import { getFriendDisplayName } from "./agentIntentParser";
+import {
+  getFriendDisplayName,
+  searchFriendsByName,
+  splitFriendNames,
+} from "./agentIntentParser";
 import { sendBumpToFriend } from "../../../utils/sendBump";
 import { generatePostCaption } from "../../../services/geminiService";
 import {
@@ -139,6 +143,127 @@ const startYoutubeDownloadJob = async ({
     throw new Error(json?.error || json?.message || `Download failed (${response.status})`);
   }
   return json;
+};
+
+const LUDO_AGENT_CREATE_KEY = "ludo_agent_create";
+const LUDO_INVITE_TARGET_KEY = "ludo_invite_target";
+
+const collectLudoInvitees = ({
+  friend,
+  extraFriends,
+  targetName,
+  myProfile,
+}) => {
+  const list = [];
+  const seen = new Set();
+  const add = (profile) => {
+    const id = profile?._id || profile?.id;
+    if (!id) return;
+    const key = String(id);
+    if (seen.has(key)) return;
+    seen.add(key);
+    list.push(profile);
+  };
+
+  add(friend);
+  (Array.isArray(extraFriends) ? extraFriends : []).forEach(add);
+
+  const names = splitFriendNames(targetName);
+  const friends = Array.isArray(myProfile?.friends) ? myProfile.friends : [];
+  names.forEach((name) => {
+    const matches = searchFriendsByName(friends, name);
+    if (matches[0]) add(matches[0]);
+  });
+
+  return list;
+};
+
+const startOnlineLudo = async ({ invitees = [], myProfile, go }) => {
+  const gid = generateGameId();
+  const playerCount = Math.min(4, Math.max(2, (invitees.length || 0) + 1));
+  const friendsPayload = invitees.map((item, index) => ({
+    friendId: item._id,
+    friendName: getFriendDisplayName(item),
+    friendAvatar: item.profilePic,
+    slotIndex: index + 1,
+  }));
+
+  try {
+    localStorage.setItem(
+      LUDO_AGENT_CREATE_KEY,
+      JSON.stringify({
+        gameId: gid,
+        autoStart: true,
+        playerCount,
+        friends: friendsPayload,
+      }),
+    );
+  } catch (_) {}
+
+  if (friendsPayload[0]) {
+    try {
+      localStorage.setItem(
+        LUDO_INVITE_TARGET_KEY,
+        JSON.stringify({
+          friendId: friendsPayload[0].friendId,
+          friendName: friendsPayload[0].friendName,
+          friendAvatar: friendsPayload[0].friendAvatar,
+          gameId: gid,
+        }),
+      );
+    } catch (_) {}
+  }
+
+  emitSocket(socket, "ludo:join", { gameId: gid });
+  invitees.forEach((item, index) => {
+    emitSocket(socket, "ludo:invite", {
+      to: item._id,
+      by: myProfile?._id,
+      name: myProfile?.fullName || "Player",
+      avatar: myProfile?.profilePic,
+      cover: myProfile?.coverPic,
+      gameId: gid,
+      slotIndex: index + 1,
+      playerCount,
+      ts: Date.now(),
+    });
+  });
+
+  await Promise.all(
+    invitees.map((item) =>
+      sendGameInviteNotification({
+        friend: item,
+        myProfile,
+        game: "ludo",
+        gameId: gid,
+      }).catch(() => {}),
+    ),
+  );
+
+  go(`/ludo-game?gameId=${encodeURIComponent(gid)}`);
+  try {
+    window.dispatchEvent(
+      new CustomEvent("ludo:agent-create", { detail: { gameId: gid } }),
+    );
+  } catch (_) {}
+
+  const names = friendsPayload.map((item) => item.friendName).filter(Boolean);
+  if (names.length === 0) {
+    return {
+      success: true,
+      message:
+        "🎮 Ludo lobby started. Tell me who to invite and I’ll send the invitations.",
+    };
+  }
+
+  return {
+    success: true,
+    message:
+      names.length === 1
+        ? `🎮 Ludo started and invitation sent to ${names[0]}.`
+        : `🎮 Ludo started and invitations sent to ${names.join(", ")}.`,
+    memory: { lastFriendName: names[0] },
+  };
 };
 
 const sendGameInviteNotification = async ({
@@ -479,6 +604,8 @@ const loadQueryData = async ({
 export const executeAction = async ({
   action,
   friend,
+  extraFriends,
+  targetName,
   targetRoute,
   subPath,
   label,
@@ -664,51 +791,22 @@ export const executeAction = async ({
         return { success: true, message: `👊 Bump sent to ${friendName}!` };
       }
 
-      // ── Create Ludo ────────────────────────────────────────────────────────
-      case "CREATE_LUDO": {
-        go("/ludo-game");
-        return { success: true, message: "🎮 Starting Ludo…" };
-      }
-
+      // ── Create / invite Ludo ───────────────────────────────────────────────
+      case "CREATE_LUDO":
       case "INVITE_LUDO": {
-        const gid = generateGameId();
-        try {
-          localStorage.setItem(
-            "ludo_invite_target",
-            JSON.stringify({
-              friendId: friend._id,
-              friendName,
-              friendAvatar: friend.profilePic,
-              gameId: gid,
-            }),
-          );
-        } catch (_) {}
-        emitSocket(socket, "ludo:join", { gameId: gid });
-        emitSocket(socket, "ludo:invite", {
-          to: friend._id,
-          by: myProfile?._id,
-          name: myProfile?.fullName || "Player",
-          avatar: myProfile?.profilePic,
-          cover: myProfile?.coverPic,
-          gameId: gid,
-          slotIndex: 1,
-          playerCount: 4,
-          ts: Date.now(),
+        const invitees = collectLudoInvitees({
+          friend,
+          extraFriends,
+          targetName,
+          myProfile,
         });
-        try {
-          await sendGameInviteNotification({
-            friend,
-            myProfile,
-            game: "ludo",
-            gameId: gid,
-          });
-        } catch (_) {}
-        go(`/ludo-game?gameId=${encodeURIComponent(gid)}`);
-        return {
-          success: true,
-          message: `🎮 Ludo started and invitation sent to ${friendName}.`,
-          memory: { lastFriendName: friendName },
-        };
+        if (action === "INVITE_LUDO" && invitees.length === 0) {
+          return {
+            success: false,
+            message: "Who should I invite to Ludo?",
+          };
+        }
+        return startOnlineLudo({ invitees, myProfile, go });
       }
 
       case "INVITE_CHESS": {

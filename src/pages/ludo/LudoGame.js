@@ -257,6 +257,8 @@ const LudoGame = () => {
   });
   const currentPlayerUpdatedFromServerRef = useRef(false);
   const autoStartTriggeredRef = useRef(false);
+  const pendingAgentCreateRef = useRef(null);
+  const agentCreateConsumedRef = useRef(null);
   const recentMovesRef = useRef(new Map()); // pieceKey -> { toSteps, timestamp }
   const justKeptTurnRef = useRef({}); // playerIndex -> { value, ts } - tracks recent keep-turn events
   const latestSentPlayersSeqRef = useRef(0);
@@ -3612,7 +3614,9 @@ const LudoGame = () => {
       // CRITICAL: Only send invitation if game state has been created (game has started or gameId exists in DB)
       // If game hasn't started yet, the invitation will be sent when "Start Game" is clicked
       // Check if game has started or if we're in the process of creating it
-      const shouldSendInviteNow = gameStarted || gameId; // Send if game started or gameId exists
+      const shouldSendInviteNow = Boolean(
+        gameStarted || gameId || gameIdRef.current,
+      );
 
       if (shouldSendInviteNow) {
         try {
@@ -3668,8 +3672,9 @@ const LudoGame = () => {
     ],
   );
 
-  useEffect(() => {
-    if (!myProfile?._id) return;
+  const consumeAgentLudoStart = useCallback(() => {
+    if (!myProfile?._id) return false;
+    let usedAgentCreate = false;
     try {
       const params = new URLSearchParams(window.location.search);
       const urlGameId = params.get("gameId");
@@ -3681,11 +3686,59 @@ const LudoGame = () => {
       }
     } catch (_) {}
     try {
+      const raw = localStorage.getItem("ludo_agent_create");
+      if (raw) {
+        localStorage.removeItem("ludo_agent_create");
+        const payload = JSON.parse(raw);
+        if (payload?.gameId) {
+          usedAgentCreate = true;
+          pendingAgentCreateRef.current = payload;
+          agentCreateConsumedRef.current = null;
+          gameIdRef.current = payload.gameId;
+          newGameDraftIdRef.current = payload.gameId;
+          setGameId(payload.gameId);
+          setOnlineMode(true);
+          setWaitingForPlayers(true);
+          setShowPlayerSelection(false);
+          const playerCount = [2, 3, 4].includes(Number(payload.playerCount))
+            ? Number(payload.playerCount)
+            : 4;
+          setSelectedPlayerCount(playerCount);
+          const friends = (Array.isArray(payload.friends) ? payload.friends : [])
+            .map((item) => ({
+              _id: item.friendId,
+              fullName: item.friendName,
+              profilePic: item.friendAvatar,
+            }))
+            .filter((item) => item._id);
+          if (friends.length) {
+            setSelectedFriends(friends);
+            const slots = {};
+            const statuses = {};
+            friends.forEach((item, index) => {
+              const source = (payload.friends || []).find(
+                (entry) => String(entry?.friendId) === String(item._id),
+              );
+              const slot = Number(source?.slotIndex) || index + 1;
+              const friendIdStr = String(item._id);
+              slots[friendIdStr] = slot;
+              statuses[friendIdStr] = "invited";
+            });
+            invitedSlotByFriendIdRef.current = slots;
+            invitedStatusByFriendIdRef.current = statuses;
+            setInvitedSlotByFriendId(slots);
+            setInvitedStatusByFriendId(statuses);
+          }
+        }
+      }
+    } catch (_) {}
+    try {
       const raw = localStorage.getItem("ludo_invite_target");
-      if (!raw) return;
+      if (!raw) return usedAgentCreate;
       localStorage.removeItem("ludo_invite_target");
+      if (usedAgentCreate) return true;
       const target = JSON.parse(raw);
-      if (!target?.friendId) return;
+      if (!target?.friendId) return usedAgentCreate;
       if (target.gameId) {
         gameIdRef.current = target.gameId;
         newGameDraftIdRef.current = target.gameId;
@@ -3698,7 +3751,20 @@ const LudoGame = () => {
         profilePic: target.friendAvatar,
       });
     } catch (_) {}
-  }, [myProfile?._id, inviteFriend]);
+    return usedAgentCreate;
+  }, [inviteFriend, myProfile?._id]);
+
+  useEffect(() => {
+    consumeAgentLudoStart();
+  }, [consumeAgentLudoStart]);
+
+  useEffect(() => {
+    const onAgentCreate = () => {
+      consumeAgentLudoStart();
+    };
+    window.addEventListener("ludo:agent-create", onAgentCreate);
+    return () => window.removeEventListener("ludo:agent-create", onAgentCreate);
+  }, [consumeAgentLudoStart]);
 
   // Offline: assign a searched friend/profile to the next open local seat (no socket)
   const assignFriendOffline = useCallback(
@@ -9654,6 +9720,31 @@ const LudoGame = () => {
       }
     }
   };
+
+  const confirmPlayerCountRef = useRef(confirmPlayerCount);
+  confirmPlayerCountRef.current = confirmPlayerCount;
+
+  useEffect(() => {
+    const payload = pendingAgentCreateRef.current;
+    if (!payload?.autoStart || !payload?.gameId) return;
+    if (!onlineMode || !myProfile?._id) return;
+    const gid = gameId || gameIdRef.current;
+    if (!gid || String(gid) !== String(payload.gameId)) return;
+    if (agentCreateConsumedRef.current === payload.gameId) return;
+
+    const timer = window.setTimeout(() => {
+      if (agentCreateConsumedRef.current === payload.gameId) return;
+      agentCreateConsumedRef.current = payload.gameId;
+      pendingAgentCreateRef.current = null;
+      try {
+        confirmPlayerCountRef.current?.();
+      } catch (error) {
+        console.warn("[LUDO] agent auto-start failed", error);
+      }
+    }, 200);
+
+    return () => window.clearTimeout(timer);
+  }, [onlineMode, gameId, myProfile?._id]);
 
   const continueGame = () => {
     setShowWinnerModal(false);

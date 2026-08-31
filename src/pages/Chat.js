@@ -21,6 +21,9 @@ import ChatFooter from "../components/Message/ChatFooter";
 import SingleMsgSkleton from "../skletons/message/SingleMsgSkleton";
 import defaultChatBackground from "../assets/images/default-chat-bg.svg";
 import MessageCacheManager from "../utils/messageCacheManager";
+import useFriendChatSettings from "../hooks/useFriendChatSettings";
+import { isRomanticMessage } from "../utils/chatThemes";
+import LoveEmojiRain from "../components/Message/LoveEmojiRain";
 import {
   emitChatMessage,
   idOf,
@@ -114,6 +117,7 @@ const Chat = () => {
   const hasLoadedFreshMessagesRef = useRef(false);
   const isMsgLoadingRef = useRef(false);
   const typingTimeoutRef = useRef(null);
+  const markedSeenIdsRef = useRef(new Set());
 
   const chatNewAttachment = useRef(null);
   const messageActionButtonContainer = useRef(null);
@@ -133,9 +137,28 @@ const Chat = () => {
 
   const params = useParams();
   const friendId = params.profile;
+  const { theme, wallpaper, settings: chatAppearance } = useFriendChatSettings(
+    friendId,
+  );
+  const [loveRainBurst, setLoveRainBurst] = useState(0);
+  const themeRef = useRef(theme);
+  const lastLoveRainRef = useRef(0);
   const canMarkAsSeen =
     isWindowFocused &&
     (typeof document === "undefined" || document.visibilityState === "visible");
+
+  useEffect(() => {
+    themeRef.current = theme;
+  }, [theme]);
+
+  const triggerLoveRain = useCallback((text) => {
+    if (!themeRef.current?.loveRain) return;
+    if (!isRomanticMessage(text)) return;
+    const now = Date.now();
+    if (now - lastLoveRainRef.current < 400) return;
+    lastLoveRainRef.current = now;
+    setLoveRainBurst((count) => count + 1);
+  }, []);
 
   const scrollToLastMessage = useCallback((behavior = "smooth") => {
     const el = msgListRef.current;
@@ -292,6 +315,14 @@ const Chat = () => {
       const scrollTop = el.scrollTop;
       const maxScroll = el.scrollHeight - el.clientHeight;
       isNearBottomRef.current = checkIsNearBottom(el);
+      // Ignore layout/programmatic scroll until the first jump-to-bottom finishes.
+      // Otherwise chat-open fires getOldMessages while the list is still at 0%.
+      if (!hasInitialScrolledRef.current) {
+        if (maxScroll <= 0 || checkIsNearBottom(el)) {
+          setScrollPercent(100);
+        }
+        return;
+      }
       if (maxScroll <= 0) {
         setScrollPercent(100);
         return;
@@ -339,6 +370,7 @@ const Chat = () => {
 
   useEffect(() => {
     if (!friendId || !userId || !hasMoreMessages) return;
+    if (!hasInitialScrolledRef.current) return;
     if (scrollPercent >= 30 || !Number.isFinite(scrollPercent)) return;
     const skip = messagesRef.current.length;
     if (skip === 0) return;
@@ -409,6 +441,7 @@ const Chat = () => {
     emitChatMessage(optimisticMessage);
     dispatch(newMessage(optimisticMessage, userId));
     scrollToLastMessage("smooth");
+    triggerLoveRain(messageData.message);
 
     const applyConfirmed = (updatedMessage) => {
       if (!updatedMessage?._id) return;
@@ -473,27 +506,33 @@ const Chat = () => {
     });
   };
 
-  // Mark all unseen messages from friend as seen
+  // Mark all unseen messages from friend as seen (one batched POST)
   const markMessageAsSeen = useCallback(async () => {
     try {
       if (!canMarkAsSeen) return;
 
-      // Get all unseen messages from the friend in this conversation
-      const unseenMessageIds = messages
+      const unseenMessageIds = messagesRef.current
         .filter(
           (msg) =>
-            msg && String(msg.senderId) === String(friendId) && !msg.isSeen,
+            msg &&
+            String(msg.senderId) === String(friendId) &&
+            !msg.isSeen &&
+            !msg.isOptimistic,
         )
-        .map((msg) => msg?._id)
-        .filter(Boolean);
+        .map((msg) => String(msg?._id || ""))
+        .filter((id) => id && !markedSeenIdsRef.current.has(id));
 
       if (unseenMessageIds.length === 0) return;
 
-      // Mark all unseen messages as seen
-      await api.post("/message/seen", { messageIds: unseenMessageIds });
+      unseenMessageIds.forEach((id) => markedSeenIdsRef.current.add(id));
+      try {
+        await api.post("/message/seen", { messageIds: unseenMessageIds });
+      } catch (error) {
+        unseenMessageIds.forEach((id) => markedSeenIdsRef.current.delete(id));
+        throw error;
+      }
 
-      // Update local state to mark them as seen
-      const unseenIdSet = new Set(unseenMessageIds.map((id) => String(id)));
+      const unseenIdSet = new Set(unseenMessageIds);
       setMessages((prevMessages) =>
         prevMessages.map((msg) =>
           unseenIdSet.has(String(msg?._id)) ? { ...msg, isSeen: true } : msg,
@@ -502,7 +541,7 @@ const Chat = () => {
     } catch (error) {
       console.error("Error marking messages as seen:", error);
     }
-  }, [messages, friendId, canMarkAsSeen]);
+  }, [friendId, canMarkAsSeen]);
 
   // Real-time socket listeners for new messages
   useEffect(() => {
@@ -523,6 +562,10 @@ const Chat = () => {
       );
       emitChatMessage(updatedMessage);
       dispatch(newMessage(updatedMessage, userId));
+
+      if (idOf(updatedMessage.senderId) !== idOf(userId)) {
+        triggerLoveRain(updatedMessage.message);
+      }
     };
 
     // Listen for new messages in this room
@@ -628,7 +671,7 @@ const Chat = () => {
       }
       socket.emit("leaveRoom", roomId);
     };
-  }, [friendId, userId, scrollToLastMessage, dispatch]);
+  }, [friendId, userId, scrollToLastMessage, dispatch, triggerLoveRain]);
 
   // Get online status from contacts data (no separate API calls)
   const getOnlineStatusFromContacts = useCallback(
@@ -772,8 +815,10 @@ const Chat = () => {
   useEffect(
     function () {
       if (!friendId || !userId) return;
+      let cancelled = false;
       setRoom([userId, friendId].sort().join("_"));
       hasLoadedFreshMessagesRef.current = false;
+      markedSeenIdsRef.current = new Set();
       setMessages([]);
       setHasMoreMessages(true);
       setScrollPercent(100);
@@ -786,6 +831,7 @@ const Chat = () => {
         setIsMsgLoading(true);
         try {
           const response = await fetchChatHistory(userId, friendId, 20);
+          if (cancelled) return;
 
           if (response.messages) {
             setMessages((prev) =>
@@ -798,16 +844,20 @@ const Chat = () => {
             setHasMoreMessages(false);
           }
         } catch (error) {
+          if (cancelled) return;
           console.error("Error fetching initial messages:", error);
           setMessages([]);
           setHasMoreMessages(false);
           hasLoadedFreshMessagesRef.current = true;
         } finally {
-          setIsMsgLoading(false);
+          if (!cancelled) setIsMsgLoading(false);
         }
       };
 
       fetchInitialMessages();
+      return function () {
+        cancelled = true;
+      };
     },
     [friendId, userId, fetchChatHistory],
   );
@@ -945,25 +995,48 @@ const Chat = () => {
   // Detect if background is dark and apply light text
   useEffect(() => {
     const detectBackgroundBrightness = async () => {
-      const backgroundUrl = settings?.chatBackground || defaultChatBackground;
+      if (wallpaper?.isDark === true) {
+        setIsDarkBackground(true);
+        return;
+      }
+      if (wallpaper?.isDark === false) {
+        setIsDarkBackground(false);
+        return;
+      }
+      const backgroundUrl =
+        wallpaper?.type === "image"
+          ? wallpaper.value
+          : settings?.chatBackground || defaultChatBackground;
       if (!backgroundUrl) {
         setIsDarkBackground(false);
         return;
       }
       try {
         const brightness = await getImageBrightness(backgroundUrl);
-        // If brightness is less than 140 (on a scale of 0-255), consider it dark
         setIsDarkBackground(brightness < 140);
       } catch (error) {
         setIsDarkBackground(false);
       }
     };
     detectBackgroundBrightness();
-  }, [settings?.chatBackground]);
+  }, [wallpaper, settings?.chatBackground]);
+
+  const wallpaperStyle =
+    wallpaper?.type === "image"
+      ? {
+          backgroundImage: `url('${wallpaper.value || defaultChatBackground}')`,
+        }
+      : {
+          backgroundImage: wallpaper?.value,
+        };
 
   return (
     <div className="message-chat-root">
-      <div id="chatBox" className="message-chat-box">
+      <div
+        id="chatBox"
+        className="message-chat-box"
+        data-chat-theme={theme?.id || "classic"}
+      >
         <div ref={chatHeader} className="chat-header">
           <ChatHeader
             friendProfile={friendProfile}
@@ -976,13 +1049,19 @@ const Chat = () => {
         </div>
         <div
           className={`chat-body ${isDarkBackground ? "dark-background" : ""}`}
+          data-bg-overlay={
+            chatAppearance?.showBackgroundOverlay === false ? "off" : "on"
+          }
           style={{
-            backgroundImage: `url('${settings?.chatBackground || defaultChatBackground}')`,
+            ...wallpaperStyle,
+            backgroundColor: "#0a0a0b",
             backgroundSize: "cover",
             backgroundPosition: "center",
+            backgroundRepeat: "no-repeat",
             backgroundAttachment: "fixed",
           }}
         >
+          {theme?.loveRain ? <LoveEmojiRain burstId={loveRainBurst} /> : null}
           <div
             className="chat-message-list"
             id="chatMessageList"

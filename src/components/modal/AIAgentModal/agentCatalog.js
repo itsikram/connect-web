@@ -513,12 +513,12 @@ export const normalizeAskField = (field) => {
 };
 
 export const isCancelFollowUp = (text = "") =>
-  /^(cancel|never mind|nevermind|forget it|stop|no|nope|no thanks|don't|dont|not now|থাক|না|বাতিল)(?:\s+[.!?]*)?$/i.test(
+  /^(cancel|never mind|nevermind|forget it|stop|no|nope|no thanks|don't|dont|not now|na|nah|thak|lagbe na|dorkar nai|থাক|না|বাতিল)(?:\s+[.!?]*)?$/i.test(
     String(text || "").trim(),
   );
 
 export const isAffirmativeFollowUp = (text = "") =>
-  /^(yes|yep|yeah|ok|okay|sure|do it|go ahead|please|confirm|হ্যাঁ|হা|ঠিক আছে|করো)(?:\s*[.!?]*)?$/i.test(
+  /^(yes|yep|yeah|ok|okay|sure|do it|go ahead|please|confirm|ha|haan|hya|ji|thik|thik ache|thikase|হ্যাঁ|হা|ঠিক আছে|করো)(?:\s*[.!?]*)?$/i.test(
     String(text || "").trim(),
   );
 
@@ -527,7 +527,9 @@ export const looksLikeQuestion = (text = "") => {
   if (!value) return false;
   return (
     /\?/.test(value) ||
-    /^(who|which|what|whom|whose|where|কাকে|কার|কি|কোন)\b/i.test(value) ||
+    /^(who|which|what|whom|whose|where|kothay|kothai|koi|kemon|কাকে|কার|কি|কোন)\b/i.test(
+      value,
+    ) ||
     /\b(who|which|what)\b.+\??$/i.test(value)
   );
 };
@@ -588,6 +590,9 @@ export const getSlotQuestion = (intent, slots = []) => {
       return "Who should I message?";
     }
     if (action === "BUMP") return "Who should I bump?";
+    if (action === "CREATE_LUDO" || action === "INVITE_LUDO") {
+      return "Who should I invite to Ludo?";
+    }
     if (action === "GET_LOCATION") return "Whose location do you want?";
     if (action === "GET_BIO") return "Whose bio should I look up?";
     if (action === "VIEW_PROFILE" || action === "NAVIGATE_PROFILE") {

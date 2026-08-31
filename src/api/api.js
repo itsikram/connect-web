@@ -101,13 +101,25 @@ const getGetRequestOptimization = (requestConfig) => {
   const requestUrl = getRequestUrl(requestConfig);
   const { pathname, searchParams } = requestUrl;
 
-  // Never cache live inbox polling
+  // Deduplicate in-flight polls; do not reuse a stale inbox snapshot.
   if (pathname.includes("/message/new-messages")) {
+    return { cacheTtl: 0 };
+  }
+
+  if (pathname.includes("/message/getChatHistory")) {
+    return { cacheTtl: 4000 };
+  }
+
+  if (pathname.includes("/message/getOldMessages")) {
     return { cacheTtl: 0 };
   }
 
   if (pathname.includes("/message/chatList")) {
     return { cacheTtl: 30000 };
+  }
+
+  if (pathname.includes("/message/media")) {
+    return { cacheTtl: 60000 };
   }
 
   if (pathname.includes("/profile/online-status")) {
@@ -129,15 +141,20 @@ const getGetRequestOptimization = (requestConfig) => {
     return { cacheTtl: 60000 };
   }
 
-  if (
-    pathname.includes("/notification/") &&
-    !pathname.includes("/notification/new")
-  ) {
+  if (pathname.includes("/notification/new")) {
+    return { cacheTtl: 15000 };
+  }
+
+  if (pathname.includes("/notification")) {
     return { cacheTtl: 20000 };
   }
 
+  if (pathname.includes("/watch/related") || pathname.includes("watch/related")) {
+    return { cacheTtl: 60000 };
+  }
+
   if (
-    pathname.includes("/post/newsFeed/") &&
+    pathname.includes("/post/newsFeed") &&
     searchParams.get("pageNumber") === "1"
   ) {
     return { cacheTtl: 10000 };

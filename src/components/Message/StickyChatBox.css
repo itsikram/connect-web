@@ -25,6 +25,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    position: relative;
     animation: slideUpFadeIn 0.3s ease-out;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -296,6 +297,21 @@
     z-index: 1;
 }
 
+.sticky-chat-body::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--chat-overlay, rgba(8, 12, 16, 0.38));
+    pointer-events: none;
+    z-index: 0;
+}
+
+.sticky-chat-body[data-bg-overlay="off"]::before,
+.sticky-chat-box[data-chat-theme] .sticky-chat-body[data-bg-overlay="off"]::before {
+    background: transparent !important;
+    opacity: 0 !important;
+}
+
 .sticky-chat-message-list {
     flex: 1;
     overflow-y: auto;
@@ -306,6 +322,8 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
+    position: relative;
+    z-index: 1;
     /* Keep auto here — smoothing is handled in JS via scrollTo({behavior}) so it
        can be skipped/interrupted correctly during pagination and history loads. */
     scroll-behavior: auto;
@@ -895,4 +913,92 @@
         opacity: 0.7;
         transform: scale(1.2);
     }
+}
+
+.sticky-chat-box[data-chat-theme] .message-sent .chat-message {
+    background: var(--chat-sent-bg);
+    border-color: var(--chat-sent-border);
+    color: var(--chat-sent-text);
+    box-shadow: var(--chat-sent-shadow);
+}
+
+.sticky-chat-box[data-chat-theme] .message-sent .chat-message::before {
+    background: var(--chat-sent-bg);
+    border-color: var(--chat-sent-border);
+}
+
+.sticky-chat-box[data-chat-theme] .message-receive .chat-message {
+    background: var(--chat-recv-bg);
+    border-color: var(--chat-recv-border);
+    color: var(--chat-recv-text);
+}
+
+.sticky-chat-box[data-chat-theme] .message-receive .chat-message::before {
+    background: var(--chat-recv-bg);
+    border-color: var(--chat-recv-border);
+}
+
+.sticky-chat-box[data-chat-theme] .sticky-chat-header {
+    background: var(
+        --chat-header-bg,
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--chat-accent, #00d4ff) 22%, #1c1d1e) 0%,
+            color-mix(in srgb, var(--chat-accent, #00d4ff) 10%, #161718) 100%
+        )
+    ) !important;
+    border-bottom-color: color-mix(in srgb, var(--chat-accent, #00d4ff) 32%, transparent);
+}
+
+.sticky-chat-box[data-chat-theme]:hover .sticky-chat-header {
+    background: var(
+        --chat-header-bg,
+        color-mix(in srgb, var(--chat-accent, #00d4ff) 18%, #1c1d1e)
+    ) !important;
+}
+
+.sticky-chat-box[data-chat-theme] .sticky-chat-action-btn.like,
+.sticky-chat-box[data-chat-theme] .sticky-chat-header {
+    border-color: color-mix(in srgb, var(--chat-accent, #00d4ff) 28%, transparent);
+}
+
+.sticky-chat-box[data-chat-theme] .sticky-chat-action-btn:focus {
+    outline-color: var(--chat-accent, #00d4ff);
+}
+
+.sticky-chat-box[data-chat-theme] .sticky-chat-footer,
+.sticky-chat-box[data-chat-theme] .sticky-chat-footer-container {
+    background: var(
+        --chat-footer-bg,
+        linear-gradient(
+            0deg,
+            color-mix(in srgb, var(--chat-accent, #00d4ff) 22%, #0c1018) 0%,
+            color-mix(in srgb, var(--chat-accent, #00d4ff) 10%, #080b12) 100%
+        )
+    ) !important;
+    border-top-color: color-mix(in srgb, var(--chat-accent, #00d4ff) 32%, transparent);
+}
+
+.sticky-chat-box[data-chat-theme] .sticky-chat-input:focus,
+.sticky-chat-box[data-chat-theme] .sticky-chat-input.focused {
+    border-color: color-mix(in srgb, var(--chat-accent, #00d4ff) 60%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--chat-accent, #00d4ff) 22%, transparent);
+}
+
+.sticky-chat-box[data-chat-theme] .sticky-chat-action-btn.send {
+    background: linear-gradient(
+        135deg,
+        var(--chat-accent-strong, #33e0ff),
+        var(--chat-accent, #00d4ff)
+    );
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--chat-accent, #00d4ff) 32%, transparent);
+}
+
+.sticky-chat-box[data-chat-theme] .sticky-chat-action-btn.send:hover:not(:disabled) {
+    background: var(--chat-accent-strong, #33e0ff);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--chat-accent, #00d4ff) 40%, transparent);
+}
+
+.sticky-chat-box[data-chat-theme] .sticky-chat-attachment-btn:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--chat-accent, #00d4ff) 50%, transparent);
 }

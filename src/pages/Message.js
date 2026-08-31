@@ -1,11 +1,15 @@
 import React, { Fragment, useEffect, useState } from "react";
 import { Container } from "react-bootstrap";
+import { useParams } from "react-router-dom";
 import MessageList from "../components/Message/MessageList";
 import MessageBody from "../components/Message/MessageBody";
 import MessageOptions from "../components/Message/MessageOptions.";
+import useFriendChatSettings from "../hooks/useFriendChatSettings";
 import "./Message.css";
 
 const Message = (props) => {
+  const { profile: friendId } = useParams();
+  const { theme } = useFriendChatSettings(friendId);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [showMobileNav, setShowMobileNav] = useState(false);
 
@@ -237,6 +241,7 @@ const Message = (props) => {
     <Fragment>
       <div
         className={`modern-message-container ${isInitialLoad ? "loading" : "loaded"}${isMobile ? " is-mobile" : ""}`}
+        data-chat-theme={theme?.id || "classic"}
       >
         <div className="message-backdrop"></div>
         <Container

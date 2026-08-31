@@ -4,6 +4,8 @@
  */
 
 import { normalizeAskField } from "../components/modal/AIAgentModal/agentCatalog";
+import { normalizeBanglishCommand } from "../components/modal/AIAgentModal/banglish";
+import { normalizeBanglaCommand } from "../components/modal/AIAgentModal/agentFastPath";
 import {
   completeChat,
   extractGeminiText,
@@ -17,9 +19,9 @@ import {
 
 export { parseGeminiApiKeys, isGeminiQuotaError, extractGeminiText };
 
-const SYSTEM_PROMPT = `Connect in-app assistant. Use prior chat turns. Be brief (2-4 sentences). Confirm app actions; do not list steps.`;
+const SYSTEM_PROMPT = `Connect in-app assistant. Reply in the user's language. Use prior turns. 1-2 short sentences. Confirm app actions; do not list steps.`;
 
-const toChatMessages = (conversationHistory = [], message, limit = 10, clip = 400) => {
+const toChatMessages = (conversationHistory = [], message, limit = 6, clip = 240) => {
   const messages = [];
   let foundFirstUser = false;
   const history = conversationHistory.slice(-limit);
@@ -38,7 +40,7 @@ const toChatMessages = (conversationHistory = [], message, limit = 10, clip = 40
     const content = String(message);
     messages.push({
       role: "user",
-      content: content.length > 500 ? `${content.slice(0, 499)}…` : content,
+      content: content.length > 280 ? `${content.slice(0, 279)}…` : content,
     });
   }
   return messages;
@@ -53,28 +55,12 @@ const missingKeyResult = () => ({
 
 export const translateBanglaToEnglish = async (text) => {
   const sourceText = String(text || "").trim();
-  if (!sourceText || !/[\u0980-\u09FF]/.test(sourceText)) {
-    return sourceText;
-  }
-
-  const translation = (
-    await completeChat({
-      system: `Translate the user's Bangla text into concise, natural English for an app command parser. Preserve people's names by transliterating them into Latin letters. Preserve the user's exact intent, destination, action, and search terms. Return only the English translation with no quotes, labels, notes, or explanation.`,
-      messages: [{ role: "user", content: sourceText }],
-      temperature: 0,
-      maxTokens: 256,
-      operationLabel: "Translation",
-    })
-  )
-    .replace(/^English(?: translation)?:\s*/i, "")
-    .replace(/^["“]|["”]$/g, "")
-    .trim();
-
-  if (!translation) {
-    throw new Error("Translation returned an empty result");
-  }
-
-  return translation;
+  if (!sourceText) return sourceText;
+  const banglish = normalizeBanglishCommand(sourceText);
+  if (banglish && banglish !== sourceText) return banglish;
+  const bangla = normalizeBanglaCommand(sourceText);
+  if (bangla && bangla !== sourceText) return bangla;
+  return sourceText;
 };
 
 const extractJsonObject = (text = "") => {
@@ -97,9 +83,10 @@ const extractJsonObject = (text = "") => {
 const AGENT_JSON_PROMPT = `Connect interpreter. Use the conversation and memory. Return ONLY JSON:
 {"reply":"short","actions":[{"action":"NAME","targetName":null,"targetRoute":null,"subPath":"","label":"","searchQuery":"","messageText":"","queryType":null}],"ask":{"field":null,"question":null}}
 Follow-ups like him/her/that/it/yes continue the previous request. Never guess names.
+Users may write English, Bangla, or Banglish (Bangla in Latin letters, e.g. "atik ke bolo kothay"). Map Banglish to the same actions.
 1 action or none for chat. Missing name/field -> ask.
 NAVIGATE targetRoute: / /message /friends /watch /notes /tasks /calendar /health /rehab /yt-download /settings /ludo-game /chess-game /video-player
-CREATE_POST caption=searchQuery. DOWNLOAD_YOUTUBE url=searchQuery. INVITE_LUDO/CHESS need targetName. JSON only. No tools.`;
+CREATE_POST caption=searchQuery. DOWNLOAD_YOUTUBE url=searchQuery. CREATE_LUDO starts an online lobby. INVITE_LUDO/CHESS need targetName. JSON only. No tools.`;
 
 const omitEmpty = (value) => {
   if (Array.isArray(value)) {
@@ -155,18 +142,18 @@ export const interpretAgentCommand = async ({
   }
 
   const cursorChat = getResolvedAgentSettings().provider === "cursor";
-  const context = JSON.stringify(compactInterpreterContext(appContext, cursorChat));
+  const context = JSON.stringify(compactInterpreterContext(appContext, true));
   const rawText = await completeChat({
     system: `${AGENT_JSON_PROMPT}\nC:${context}`,
     messages: toChatMessages(
       conversationHistory,
       sourceText,
-      cursorChat ? 8 : 10,
-      cursorChat ? 320 : 400,
+      cursorChat ? 3 : 4,
+      200,
     ),
     json: true,
     temperature: 0,
-    maxTokens: cursorChat ? 320 : 512,
+    maxTokens: cursorChat ? 192 : 256,
     operationLabel: "Agent interpreter",
   });
 
@@ -304,9 +291,9 @@ export const sendToGemini = async (message, conversationHistory = []) => {
   try {
     const responseText = await completeChat({
       system: SYSTEM_PROMPT,
-      messages: toChatMessages(conversationHistory, message),
-      temperature: 0.6,
-      maxTokens: 480,
+      messages: toChatMessages(conversationHistory, message, 4, 200),
+      temperature: 0.5,
+      maxTokens: 220,
       operationLabel: "Chat request",
     });
 

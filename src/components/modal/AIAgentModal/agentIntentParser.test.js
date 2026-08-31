@@ -1,4 +1,4 @@
-import { parseIntent, searchFriendsByName } from "./agentIntentParser";
+import { parseIntent, searchFriendsByName, splitFriendNames } from "./agentIntentParser";
 import {
   extractCaptionFromText,
   recoverAgentActions,
@@ -109,6 +109,60 @@ describe("direct send message parsing", () => {
       action: "SEND_MESSAGE_TO_USER",
       targetName: "আতিক",
       messageText: "তুমি কোথায় আছো",
+    });
+  });
+
+  test("parses banglish send-message commands", () => {
+    expect(parseIntent("atik ke message pathao tumi kothay")).toMatchObject({
+      action: "SEND_MESSAGE_TO_USER",
+      targetName: "atik",
+      messageText: "Tumi kothay",
+    });
+    expect(parseIntent("atik ke bolo koi ache")).toMatchObject({
+      action: "SEND_MESSAGE_TO_USER",
+      targetName: "atik",
+      messageText: "Koi ache",
+    });
+    expect(parseIntent("rahima ke msg pathao ki khobor")).toMatchObject({
+      action: "SEND_MESSAGE_TO_USER",
+      targetName: "rahima",
+      messageText: "Ki khobor",
+    });
+  });
+
+  test("parses banglish call, profile, ludo, and navigation", () => {
+    expect(parseIntent("atik ke call koro")).toMatchObject({
+      action: "AUDIO_CALL",
+      targetName: "atik",
+    });
+    expect(parseIntent("atik er profile e jao")).toMatchObject({
+      action: "NAVIGATE_PROFILE",
+      targetName: "atik",
+    });
+    expect(parseIntent("ludo khela shuru koro")).toMatchObject({
+      action: "CREATE_LUDO",
+    });
+    expect(parseIntent("atik ke ludo te invite koro")).toMatchObject({
+      action: "INVITE_LUDO",
+      targetName: "atik",
+    });
+    expect(parseIntent("settings e jao")).toMatchObject({
+      action: "NAVIGATE",
+      targetRoute: "/settings",
+    });
+  });
+
+  test("parses bangla-script call, ludo, and navigation without an LLM", () => {
+    expect(parseIntent("আতিককে কল করো")).toMatchObject({
+      action: "AUDIO_CALL",
+      targetName: "আতিক",
+    });
+    expect(parseIntent("লুডো খেলা শুরু করো")).toMatchObject({
+      action: "CREATE_LUDO",
+    });
+    expect(parseIntent("সেটিংসে যাও")).toMatchObject({
+      action: "NAVIGATE",
+      targetRoute: "/settings",
     });
   });
 
@@ -226,7 +280,9 @@ describe("pending follow-up slots", () => {
     });
     expect(merged.targetName).toBe("John");
     expect(isAffirmativeFollowUp("yes")).toBe(true);
+    expect(isAffirmativeFollowUp("haan")).toBe(true);
     expect(isCancelFollowUp("never mind")).toBe(true);
+    expect(isCancelFollowUp("na")).toBe(true);
   });
 });
 
@@ -250,6 +306,43 @@ describe("agent action parsing", () => {
       action: "INVITE_LUDO",
       targetName: "Atik",
     });
+  });
+
+  test("parses create ludo game as a lobby start", () => {
+    expect(parseIntent("create ludo game")).toMatchObject({
+      action: "CREATE_LUDO",
+      targetName: null,
+    });
+  });
+
+  test("parses create ludo with a named friend as an invite", () => {
+    expect(parseIntent("create ludo with Atik")).toMatchObject({
+      action: "CREATE_LUDO",
+      targetName: "Atik",
+    });
+    expect(parseIntent("create ludo game with Atik")).toMatchObject({
+      action: "CREATE_LUDO",
+      targetName: "Atik",
+    });
+  });
+
+  test("parses create ludo and invite a friend", () => {
+    expect(parseIntent("create a ludo game and invite Rahima")).toMatchObject({
+      action: "CREATE_LUDO",
+      targetName: "Rahima",
+    });
+  });
+
+  test("create ludo and invite friends starts a lobby without a name", () => {
+    expect(parseIntent("create ludo and invite friends")).toMatchObject({
+      action: "CREATE_LUDO",
+      targetName: null,
+    });
+  });
+
+  test("splits multiple friend names", () => {
+    expect(splitFriendNames("Atik and Rahima")).toEqual(["Atik", "Rahima"]);
+    expect(splitFriendNames("friends")).toEqual([]);
   });
 
   test("parses calendar event with a day", () => {

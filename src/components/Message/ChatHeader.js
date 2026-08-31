@@ -34,6 +34,7 @@ import {
 } from "../../utils/callNotification";
 import LocationMap from "../modal/LocationMap";
 import ReportModal from "../modal/ReportModal";
+import ChatSettingsModal from "./ChatSettingsModal";
 import "./UserInfoModal.css";
 // Using Agora RTC SDK instead of simple-peer
 
@@ -70,6 +71,7 @@ const ChatHeader = ({
   const [friendLocation, setFriendLocation] = useState(null);
   const [isCallDropdownOpen, setIsCallDropdownOpen] = useState(false);
   const [isReportModal, setIsReportModal] = useState(false);
+  const [isChatSettingsOpen, setIsChatSettingsOpen] = useState(false);
   const [mapLoading, setMapLoading] = useState(false);
   const callStartTime = useRef(null);
 
@@ -2098,6 +2100,12 @@ const ChatHeader = ({
     setIsUserInfoModalOpen((prev) => !prev);
   }, []);
 
+  const handleChatSettingsClick = useCallback(() => {
+    setIsChatOptionMenu(false);
+    setIsCallDropdownOpen(false);
+    setIsChatSettingsOpen(true);
+  }, []);
+
   const handleOpenStickyChat = useCallback(() => {
     // Dispatch event to open sticky chat box
     const openChatEvent = new CustomEvent("openStickyChat", {
@@ -2511,6 +2519,22 @@ const ChatHeader = ({
                 <div className="chat-option-menu">
                   <ul>
                     <li
+                      onClick={handleChatSettingsClick}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleChatSettingsClick();
+                        }
+                      }}
+                      tabIndex={0}
+                    >
+                      <i
+                        className="fas fa-palette"
+                        style={{ marginRight: "8px" }}
+                      ></i>
+                      Chat appearance
+                    </li>
+                    <li
                       onClick={handleViewProfile}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
@@ -2604,6 +2628,23 @@ const ChatHeader = ({
                   </ul>
                 </div>
               )}
+            </div>
+            <div
+              onClick={handleChatSettingsClick}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  handleChatSettingsClick();
+                }
+              }}
+              role="button"
+              tabIndex={0}
+              className="settings-button action-button"
+              title="Chat appearance"
+              aria-label="Chat appearance"
+              aria-expanded={isChatSettingsOpen}
+            >
+              <i className="fas fa-palette"></i>
             </div>
             <div
               onClick={handleChatInfoClick}
@@ -3158,6 +3199,13 @@ const ChatHeader = ({
             }
           />
         )}
+
+        <ChatSettingsModal
+          isOpen={isChatSettingsOpen}
+          onRequestClose={() => setIsChatSettingsOpen(false)}
+          friendId={friendId || routeFriendId || friendProfile?._id}
+          friendProfile={friendProfile}
+        />
 
       </div>
     </>

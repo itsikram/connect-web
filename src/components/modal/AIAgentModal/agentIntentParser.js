@@ -2,6 +2,8 @@ import {
   FRIEND_REQUIRED_ACTIONS,
   NO_FRIEND_ACTIONS,
 } from "./agentCatalog";
+import { normalizeBanglishCommand } from "./banglish";
+import { normalizeBanglaCommand } from "./agentFastPath";
 
 export { FRIEND_REQUIRED_ACTIONS, NO_FRIEND_ACTIONS };
 
@@ -46,6 +48,7 @@ export const ACTION_RESPONSE_MODE = {
   VIDEO_CALL: "confirm",
   AUDIO_CALL: "confirm",
   BUMP: "confirm",
+  CREATE_LUDO: "navigate",
   INVITE_LUDO: "confirm",
   INVITE_CHESS: "confirm",
   BLOCK: "confirm",
@@ -197,7 +200,17 @@ const STATIC_ROUTE_MAP = [
 
   // ── Messages ──────────────────────────────────────────────────────────────
   {
-    keys: ["messages", "message page", "inbox", "chats", "chat page", "dms"],
+    keys: [
+      "messages",
+      "message",
+      "message page",
+      "inbox",
+      "chats",
+      "chat page",
+      "dms",
+      "mesej",
+      "messege",
+    ],
     route: "/message",
     label: "Messages",
   },
@@ -475,6 +488,9 @@ const GENERIC_MESSAGE_TEXTS = new Set([
   "the text",
   "this text",
   "msg",
+  "mesej",
+  "messege",
+  "bartha",
   "বার্তা",
   "মেসেজ",
   "এই বার্তা",
@@ -492,6 +508,13 @@ const toOutgoingChatText = (value = "") => {
   const text = cleanCapturedSegment(value);
   if (!text) return "";
   const lower = text.toLowerCase();
+  if (
+    /^(where(?:'s|\s+is|\s+are)\s+(?:he|she|they|him|her)(?:\s+at)?|where\s+(?:he|she|they)\s+(?:is|are)(?:\s+at)?)$/i.test(
+      lower,
+    )
+  ) {
+    return "Where are you?";
+  }
   if (
     /^(where(?:'s|\s+is|\s+are)\s+(?:he|she|they|him|her)(?:\s+at)?|where\s+(?:he|she|they)\s+(?:is|are)(?:\s+at)?)$/i.test(
       lower,
@@ -848,6 +871,14 @@ const INTENT_PATTERNS = [
     ],
   },
 
+  // ── Create Ludo with named friends (before generic invite/create) ──────────
+  {
+    action: "CREATE_LUDO",
+    patterns: [
+      /(?:create|start|new|begin|open|launch)\s+(?:a\s+)?ludo(?:\s+game)?\s+(?:with|and\s+invite)\s+(.+)/i,
+    ],
+  },
+
   // ── Invite to Ludo ─────────────────────────────────────────────────────────
   {
     action: "INVITE_LUDO",
@@ -1159,10 +1190,7 @@ const detectProfileSubNav = (message) => {
  * @returns {{ action: string, targetName: string|null, targetRoute: string|null,
  *             subPath: string|null, label: string|null, params: object }|null}
  */
-export const parseIntent = (message) => {
-  if (!message || typeof message !== "string") return null;
-
-  const trimmed = message.trim();
+const parseIntentOnce = (trimmed) => {
   const directSendMessageIntent = parseDirectSendMessageIntent(trimmed);
   if (directSendMessageIntent) {
     return directSendMessageIntent;
@@ -1211,6 +1239,24 @@ export const parseIntent = (message) => {
             .replace(/\s+(now|please|for\s+me)$/i, "")
             .trim();
           if (!targetName) targetName = null;
+        }
+        if (
+          (action === "INVITE_LUDO" || action === "CREATE_LUDO") &&
+          targetName &&
+          /^(?:(?:invite\s+)?(?:my\s+)?friends?|everyone|all(?:\s+friends?)?)$/i.test(
+            targetName,
+          )
+        ) {
+          return {
+            action: "CREATE_LUDO",
+            targetName: null,
+            messageText: null,
+            searchQuery: null,
+            targetRoute: null,
+            subPath: null,
+            label: null,
+            params: {},
+          };
         }
         if (action === "SEND_MESSAGE" && targetName) {
           const promoted = parseDirectSendMessageIntent(
@@ -1291,6 +1337,28 @@ export const parseIntent = (message) => {
   return null;
 };
 
+/**
+ * Parse a user message to detect an actionable intent.
+ * Tries the original text, then Banglish and Bangla rewrites.
+ */
+export const parseIntent = (message) => {
+  if (!message || typeof message !== "string") return null;
+  const trimmed = message.trim();
+  if (!trimmed) return null;
+  const direct = parseIntentOnce(trimmed);
+  if (direct) return direct;
+  const banglish = normalizeBanglishCommand(trimmed);
+  if (banglish && banglish !== trimmed) {
+    const fromBanglish = parseIntentOnce(banglish);
+    if (fromBanglish) return fromBanglish;
+  }
+  const bangla = normalizeBanglaCommand(trimmed);
+  if (bangla && bangla !== trimmed) {
+    return parseIntentOnce(bangla);
+  }
+  return null;
+};
+
 // ── Friend search ──────────────────────────────────────────────────────────────
 
 const FRIEND_NAME_MATCH_THRESHOLD = 0.4; // Lowered to catch more matches (surnames, partial names)
@@ -1365,6 +1433,31 @@ const getNameSimilarity = (query, candidate) => {
   );
 
   return Math.max(tokenDice, containsScore, editScore, bestTokenEdit);
+};
+
+/**
+ * Split a captured friend phrase into individual names.
+ * "Atik and Rahima" → ["Atik", "Rahima"]. Generic "friends" → [].
+ */
+export const splitFriendNames = (value) => {
+  const text = String(value || "")
+    .trim()
+    .replace(/^(?:invite\s+)?(?:my\s+)?friends?\s*(?:named\s+)?/i, "")
+    .replace(/\s+(?:please|now)$/i, "")
+    .trim();
+  if (
+    !text ||
+    /^(?:(?:my\s+)?friends?|everyone|all(?:\s+friends?)?)$/i.test(text)
+  ) {
+    return [];
+  }
+  return text
+    .split(/\s*(?:,|&|\/|\band\b|\bআর\b|\bএবং\b)\s+/i)
+    .map((part) => part.replace(/^[\s.]+|[\s.]+$/g, "").trim())
+    .filter(
+      (part) =>
+        part && !/^(?:(?:my\s+)?friends?|everyone|all)$/i.test(part),
+    );
 };
 
 /**

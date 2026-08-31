@@ -25,6 +25,32 @@ export const isGeminiQuotaError = (status, data) => {
 };
 
 let activeGeminiKeyIndex = 0;
+const GEMINI_FETCH_MS = 20000;
+
+const fetchGemini = async (url, requestBody) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GEMINI_FETCH_MS);
+  try {
+    return await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error("Gemini request timed out");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+const geminiUrl = (model, apiKey) =>
+  `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+    model,
+  )}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
 const toGeminiContents = (messages = []) => {
   const contents = [];
@@ -67,16 +93,7 @@ const requestGemini = async ({
   for (let attempt = 0; attempt < apiKeys.length; attempt += 1) {
     const keyIndex = (startingKeyIndex + attempt) % apiKeys.length;
     const apiKey = apiKeys[keyIndex];
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-        model,
-      )}:generateContent?key=${encodeURIComponent(apiKey)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      },
-    );
+    const response = await fetchGemini(geminiUrl(model, apiKey), requestBody);
 
     const data = await response.json().catch(() => null);
     if (response.ok) {
@@ -89,16 +106,7 @@ const requestGemini = async ({
       requestBody?.generationConfig?.thinkingConfig
     ) {
       delete requestBody.generationConfig.thinkingConfig;
-      const retry = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-          model,
-        )}:generateContent?key=${encodeURIComponent(apiKey)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(requestBody),
-        },
-      );
+      const retry = await fetchGemini(geminiUrl(model, apiKey), requestBody);
       const retryData = await retry.json().catch(() => null);
       if (retry.ok) {
         activeGeminiKeyIndex = keyIndex;
@@ -147,9 +155,10 @@ const completeGemini = async ({
     contents: toGeminiContents(messages),
     generationConfig: withGeminiSpeedConfig(settings.model, {
       temperature,
-      topK: 20,
-      topP: 0.85,
-      maxOutputTokens: maxTokens,
+      topK: json ? 8 : 16,
+      topP: json ? 0.7 : 0.85,
+      maxOutputTokens: json ? Math.min(maxTokens, 256) : Math.min(maxTokens, 320),
+      candidateCount: 1,
       ...(json ? { responseMimeType: "application/json" } : {}),
     }),
   };
@@ -168,9 +177,10 @@ const completeGemini = async ({
       ...requestBody,
       generationConfig: withGeminiSpeedConfig(settings.model, {
         temperature,
-        topK: 20,
-        topP: 0.85,
-        maxOutputTokens: maxTokens,
+        topK: json ? 8 : 16,
+        topP: json ? 0.7 : 0.85,
+        maxOutputTokens: json ? Math.min(maxTokens, 256) : Math.min(maxTokens, 320),
+        candidateCount: 1,
       }),
     };
     data = await requestGemini({
@@ -221,7 +231,7 @@ const completeViaServer = async ({
     if (settings.provider === "gemini" && settings.usingUserKey && settings.apiKey) {
       payload.apiKey = settings.apiKey;
     }
-    const timeout = settings.provider === "cursor" ? 120000 : 25000;
+    const timeout = settings.provider === "cursor" ? 120000 : 20000;
     const response = await api.post("/ai-chat/complete", payload, {
       timeout,
     });
