@@ -586,7 +586,7 @@ let HeaderLeft = ({ onAIAgentOpen }) => {
                 )}
               </>
             ) : item.profilePic ? (
-              <UserPP profilePic={item.profilePic} profile={item.profileId} />
+              <UserPP size="full" profilePic={item.profilePic} profile={item.profileId} />
             ) : (
               <div className="search-result-fallback-icon">
                 <i className={meta.icon} aria-hidden="true" />
