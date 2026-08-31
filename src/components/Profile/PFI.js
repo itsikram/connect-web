@@ -89,7 +89,7 @@ const PFI = (props) => {
                     <Link to={'/' + friend._id}>
                         <div className='friend-profilePic'>
                             {
-                                isPpLoaded ? <img src={profilePic} alt={friendFullName} ></img> : <ImageSkleton />
+                                isPpLoaded ? <img src={profilePic} alt={friendFullName} referrerPolicy="no-referrer" ></img> : <ImageSkleton />
                             }
                             
                         </div>

@@ -1,9 +1,16 @@
-    const checkImgLoading = (url,setLoaded) => {
-        const img = new Image();
-        img.src = url;
+import { PROFILE_IMG_REFERRER_POLICY, sanitizeProfileImageUrl } from "./profileImage";
 
-        img.onload = () => setLoaded(true);
-        img.onerror = () => setLoaded(false);
-    };
+const checkImgLoading = (url, setLoaded) => {
+    if (!url) {
+        setLoaded(false);
+        return;
+    }
 
-    export default checkImgLoading
+    const img = new Image();
+    img.referrerPolicy = PROFILE_IMG_REFERRER_POLICY;
+    img.onload = () => setLoaded(true);
+    img.onerror = () => setLoaded(false);
+    img.src = sanitizeProfileImageUrl(url);
+};
+
+export default checkImgLoading

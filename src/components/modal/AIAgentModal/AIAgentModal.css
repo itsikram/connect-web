@@ -896,6 +896,23 @@
     border-bottom-left-radius: 4px;
 }
 
+.ai-agent-stream-caret {
+    display: inline-block;
+    width: 7px;
+    height: 1em;
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    background: var(--ai-accent, #00d4ff);
+    border-radius: 1px;
+    animation: ai-agent-caret-blink 0.7s step-end infinite;
+}
+
+@keyframes ai-agent-caret-blink {
+    50% {
+        opacity: 0;
+    }
+}
+
 /* Timestamp */
 .message-time {
     font-size: 10px;
@@ -989,6 +1006,44 @@
 @media (min-width: 769px) {
     .ai-agent-chat-input-container {
         padding: 14px 18px;
+    }
+}
+
+.ai-agent-transcribe-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 8px;
+    padding: 7px 10px;
+    background: rgba(0, 212, 255, 0.08);
+    border: 1px solid rgba(0, 212, 255, 0.22);
+    border-radius: 12px;
+}
+
+.ai-agent-transcribe-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #00d4ff;
+    flex-shrink: 0;
+    animation: ai-agent-transcribe-pulse 1.2s ease-in-out infinite;
+}
+
+.ai-agent-transcribe-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: #00d4ff;
+}
+
+@keyframes ai-agent-transcribe-pulse {
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.45;
+        transform: scale(0.85);
     }
 }
 

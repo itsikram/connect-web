@@ -111,6 +111,15 @@ export const FRIEND_REQUIRED_ACTIONS = new Set([
   AGENT_ACTIONS.NAVIGATE_PROFILE,
 ]);
 
+/** People lookups that should search Connect globally, not just friends. */
+export const DIRECTORY_LOOKUP_ACTIONS = new Set([
+  AGENT_ACTIONS.ADD_FRIEND,
+  AGENT_ACTIONS.VIEW_PROFILE,
+  AGENT_ACTIONS.NAVIGATE_PROFILE,
+  AGENT_ACTIONS.GET_BIO,
+  AGENT_ACTIONS.SEARCH_USERS,
+]);
+
 export const NO_FRIEND_ACTIONS = new Set([
   AGENT_ACTIONS.CREATE_LUDO,
   AGENT_ACTIONS.CREATE_CHESS,
@@ -597,6 +606,9 @@ export const getSlotQuestion = (intent, slots = []) => {
     if (action === "GET_BIO") return "Whose bio should I look up?";
     if (action === "VIEW_PROFILE" || action === "NAVIGATE_PROFILE") {
       return "Whose profile should I open?";
+    }
+    if (action === "ADD_FRIEND") {
+      return "Who should I send a friend request to?";
     }
     return "Who should I do that with? Type their name.";
   }

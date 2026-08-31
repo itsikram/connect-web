@@ -30,12 +30,11 @@ const prodServerUrls = [
 const serverAddr = getServerAddress();
 const baseURL = `${serverAddr}/api/`;
 
-// Initialize load balancer if we have multiple production servers
-// Only enable in production (not localhost)
+// Client-side round-robin is disabled. Point REACT_APP_SERVER_ADDR at the
+// Connect load balancer (default :4000). That process routes /api by CPU
+// and keeps Socket.IO sticky. Splitting hosts in the browser breaks sockets.
 let loadBalancer = null;
-const isProduction =
-  !serverAddr.includes("localhost") && !serverAddr.includes("127.0.0.1");
-const useLoadBalancer = isProduction && prodServerUrls.length > 1;
+const useLoadBalancer = false;
 
 if (useLoadBalancer) {
   try {

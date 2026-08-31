@@ -42,15 +42,17 @@ const CoverPic = ({ profileData }) => {
 
     const getCacheBustedUrl = (url) => {
         if (!url) return url;
+        if (/googleusercontent\.com|ggpht\.com/i.test(url)) return url.split('?')[0];
         const separator = url.includes('?') ? '&' : '?';
         return `${url}${separator}cb=${Date.now()}`;
     };
 
     const checkImageStatus = (url) => {
         const img = new Image();
-        img.src = url;
+        img.referrerPolicy = 'no-referrer';
         img.onload = () => setCpLoaded(true);
         img.onerror = () => setCpLoaded(false);
+        img.src = url;
     };
     
 
@@ -223,7 +225,7 @@ const CoverPic = ({ profileData }) => {
             {/* <CpSkleton count={1} /> */}
 
             {cpLoaded ? (
-                <img onClick={openCPViewModal} className="cover-photo" src={displayCoverPicUrl} alt="cover" />
+                <img onClick={openCPViewModal} className="cover-photo" src={displayCoverPicUrl} alt="cover" referrerPolicy="no-referrer" />
             ) : (<CpSkleton count={1} />)}
 
                 
@@ -256,7 +258,7 @@ const CoverPic = ({ profileData }) => {
 
                     </div>
                     <div className="modal-body text-center">
-                        <img src={displayCoverPicUrl} className="w-100" alt="Cover Pic View" />
+                        <img src={displayCoverPicUrl} className="w-100" alt="Cover Pic View" referrerPolicy="no-referrer" />
 
                     </div>
                 </ModalContainer>

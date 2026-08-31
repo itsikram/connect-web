@@ -305,26 +305,25 @@ const ChatSettingsModal = ({
                 </button>
               )}
             </div>
-            <label
+            <button
+              type="button"
               className={`chat-overlay-toggle ${
-                settings.showBackgroundOverlay ? "is-on" : ""
+                settings.showBackgroundOverlay !== false ? "is-on" : ""
               }`}
+              role="switch"
+              aria-checked={settings.showBackgroundOverlay !== false}
+              onClick={() =>
+                updateSettings({
+                  showBackgroundOverlay: settings.showBackgroundOverlay === false,
+                })
+              }
             >
-              <input
-                type="checkbox"
-                checked={settings.showBackgroundOverlay !== false}
-                onChange={(event) =>
-                  updateSettings({
-                    showBackgroundOverlay: event.target.checked,
-                  })
-                }
-              />
               <span className="chat-overlay-switch" aria-hidden="true" />
               <span className="chat-overlay-copy">
                 <strong>Background overlay</strong>
                 <small>Dim the wallpaper so messages stay readable</small>
               </span>
-            </label>
+            </button>
           </section>
 
           <section className="chat-settings-section">

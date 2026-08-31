@@ -1,11 +1,12 @@
 import {
   FRIEND_REQUIRED_ACTIONS,
   NO_FRIEND_ACTIONS,
+  DIRECTORY_LOOKUP_ACTIONS,
 } from "./agentCatalog";
 import { normalizeBanglishCommand } from "./banglish";
 import { normalizeBanglaCommand } from "./agentFastPath";
 
-export { FRIEND_REQUIRED_ACTIONS, NO_FRIEND_ACTIONS };
+export { FRIEND_REQUIRED_ACTIONS, NO_FRIEND_ACTIONS, DIRECTORY_LOOKUP_ACTIONS };
 
 /**
  * How the agent should respond when it confidently understands the user's intent.
@@ -444,6 +445,12 @@ const PROFILE_SUB_PATTERNS = [
     subLabel: "Profile",
   },
   {
+    regex:
+      /(?:find(?:\s+me)?|search(?:\s+for)?|look\s+up)\s+(.+?)(?:'s)?\s+profile$/i,
+    subPath: "",
+    subLabel: "Profile",
+  },
+  {
     regex: /(?:go\s+to|visit|open|view)\s+(.+?)\s+friends(?:\s+list)?$/i,
     subPath: "/friends",
     subLabel: "Friends",
@@ -563,6 +570,13 @@ const isGenericMessageText = (value = "") =>
   GENERIC_MESSAGE_TEXTS.has(cleanCapturedSegment(value).toLowerCase());
 
 const parseDirectSendMessageIntent = (message) => {
+  if (
+    /(?:send|make|add)\s+(?:a\s+)?friend\s+request\b/i.test(message) ||
+    /\bfriend\s+request\s+to\b/i.test(message)
+  ) {
+    return null;
+  }
+
   const patterns = [
     {
       regex:
@@ -970,7 +984,8 @@ const INTENT_PATTERNS = [
       /(?:enable|disable|turn\s+on|turn\s+off|mute)\s+(?:my\s+)?(?:notifications?|location(?:\s+sharing)?)/i,
       /(?:hide|share|stop sharing)\s+(?:my\s+)?location/i,
       /(?:make\s+)?(?:my\s+)?posts?\s+(?:public|private|friends?\s+only)/i,
-      /(?:update|change|open)\s+(?:my\s+)?settings(?:\s+to|\s+for)?\s*(.*)/i,
+      /(?:update|change)\s+(?:my\s+)?settings(?:\s+to|\s+for)?\s*(.*)/i,
+      /(?:open)\s+(?:my\s+)?settings\s+(?:to|for)\s+(.+)/i,
     ],
   },
   {
@@ -1033,6 +1048,16 @@ const INTENT_PATTERNS = [
     patterns: [
       /(?:view|see|check|open|show)\s+(.+?)'s\s+profile/i,
       /(?:view|see|open|show)\s+profile\s+(?:of|for)\s+(.+)/i,
+      /(?:find(?:\s+me)?|search(?:\s+for)?|look\s+up)\s+(.+?)(?:'s)?\s+profile/i,
+    ],
+  },
+
+  {
+    action: "SEARCH_USERS",
+    searchCapture: true,
+    patterns: [
+      /^(?:search|find|look\s+up)\s+(?:for\s+)?(?:a\s+)?(?:user|people|person|profiles?)\s+(?:named\s+|called\s+)?(.+)/i,
+      /^(?:search|find)\s+(?:people|users)\s+named\s+(.+)/i,
     ],
   },
 
@@ -1065,6 +1090,7 @@ const INTENT_PATTERNS = [
       /(?:add|send)\s+(?:a\s+)?friend\s+(?:request\s+(?:to\s+)?)?(.+)/i,
       /add\s+(.+?)\s+as\s+(?:a\s+)?friend/i,
       /(?:send|make)\s+(.+?)\s+(?:a\s+)?friend\s+request/i,
+      /friend\s+request\s+to\s+(.+)/i,
     ],
   },
 
@@ -1238,6 +1264,20 @@ const parseIntentOnce = (trimmed) => {
             .replace(/[?.!,;:]+$/, "")
             .replace(/\s+(now|please|for\s+me)$/i, "")
             .trim();
+          if (action === "ADD_FRIEND" && targetName) {
+            targetName = targetName.replace(/^(?:to|for)\s+/i, "").trim();
+          }
+          if (
+            targetName &&
+            (action === "VIEW_PROFILE" ||
+              action === "NAVIGATE_PROFILE" ||
+              action === "ADD_FRIEND" ||
+              action === "GET_BIO") &&
+            NON_NAME_WORDS.has(targetName.toLowerCase())
+          ) {
+            targetName = null;
+            continue;
+          }
           if (!targetName) targetName = null;
         }
         if (
@@ -1337,6 +1377,42 @@ const parseIntentOnce = (trimmed) => {
   return null;
 };
 
+export const stripCommandFiller = (text = "") => {
+  let next = String(text || "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .trim();
+  const prefix =
+    /^(?:(?:please|kindly|ok(?:ay)?|hey|hi|hello)(?:\s+agent)?[,!]?\s+)+/i;
+  const canYou = /^(?:can|could|would|will)\s+you(?:\s+please)?\s+/i;
+  const want =
+    /^(?:i(?:'d|\s+would)?\s+(?:like|want|need)(?:\s+you)?\s+to)\s+/i;
+  for (let i = 0; i < 3; i += 1) {
+    const before = next;
+    next = next.replace(prefix, "").replace(canYou, "").replace(want, "").trim();
+    if (next === before) break;
+  }
+  return next
+    .replace(/\s+(?:please|now|for me|thanks)[.!?]*$/i, "")
+    .replace(/[.!?।]+$/g, "")
+    .trim();
+};
+
+const tryParseIntentText = (text) => {
+  if (!text) return null;
+  const direct = parseIntentOnce(text);
+  if (direct) return direct;
+  const banglish = normalizeBanglishCommand(text);
+  if (banglish && banglish !== text) {
+    const fromBanglish = parseIntentOnce(banglish);
+    if (fromBanglish) return fromBanglish;
+  }
+  const bangla = normalizeBanglaCommand(text);
+  if (bangla && bangla !== text) {
+    return parseIntentOnce(bangla);
+  }
+  return null;
+};
+
 /**
  * Parse a user message to detect an actionable intent.
  * Tries the original text, then Banglish and Bangla rewrites.
@@ -1345,16 +1421,11 @@ export const parseIntent = (message) => {
   if (!message || typeof message !== "string") return null;
   const trimmed = message.trim();
   if (!trimmed) return null;
-  const direct = parseIntentOnce(trimmed);
-  if (direct) return direct;
-  const banglish = normalizeBanglishCommand(trimmed);
-  if (banglish && banglish !== trimmed) {
-    const fromBanglish = parseIntentOnce(banglish);
-    if (fromBanglish) return fromBanglish;
-  }
-  const bangla = normalizeBanglaCommand(trimmed);
-  if (bangla && bangla !== trimmed) {
-    return parseIntentOnce(bangla);
+  const parsed = tryParseIntentText(trimmed);
+  if (parsed) return parsed;
+  const stripped = stripCommandFiller(trimmed);
+  if (stripped && stripped !== trimmed) {
+    return tryParseIntentText(stripped);
   }
   return null;
 };
@@ -1628,10 +1699,12 @@ export const getFriendDisplayName = (friend) => {
 
 const agentIntentParser = {
   parseIntent,
+  stripCommandFiller,
   searchFriendsByName,
   getFriendDisplayName,
   FRIEND_REQUIRED_ACTIONS,
   NO_FRIEND_ACTIONS,
+  DIRECTORY_LOOKUP_ACTIONS,
 };
 
 export default agentIntentParser;

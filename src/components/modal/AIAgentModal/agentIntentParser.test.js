@@ -38,6 +38,47 @@ describe("friend profile navigation", () => {
     });
   });
 
+  test("parses find-profile commands for people who may not be friends", () => {
+    expect(parseIntent("find me harun profile")).toMatchObject({
+      action: "VIEW_PROFILE",
+      targetName: "harun",
+    });
+    expect(parseIntent("find harun profile")).toMatchObject({
+      action: "VIEW_PROFILE",
+      targetName: "harun",
+    });
+    expect(parseIntent("find harun's profile")).toMatchObject({
+      action: "VIEW_PROFILE",
+      targetName: "harun",
+    });
+    expect(parseIntent("search for harun profile")).toMatchObject({
+      action: "VIEW_PROFILE",
+      targetName: "harun",
+    });
+  });
+
+  test("keeps open my profile as a self-profile navigation", () => {
+    expect(parseIntent("open my profile")).toMatchObject({
+      action: "NAVIGATE",
+      targetRoute: "MY_PROFILE",
+    });
+  });
+
+  test("parses send friend request commands", () => {
+    expect(parseIntent("please send friend request to harun")).toMatchObject({
+      action: "ADD_FRIEND",
+      targetName: "harun",
+    });
+    expect(parseIntent("send friend request to harun")).toMatchObject({
+      action: "ADD_FRIEND",
+      targetName: "harun",
+    });
+    expect(parseIntent("add harun as a friend")).toMatchObject({
+      action: "ADD_FRIEND",
+      targetName: "harun",
+    });
+  });
+
   test("parses bio/vio query as a text-fetch intent", () => {
     expect(parseIntent("what is the vio of atik?")).toMatchObject({
       action: "GET_BIO",
@@ -149,6 +190,20 @@ describe("direct send message parsing", () => {
     expect(parseIntent("settings e jao")).toMatchObject({
       action: "NAVIGATE",
       targetRoute: "/settings",
+    });
+  });
+
+  test("parses polite and can-you navigation without an LLM", () => {
+    expect(parseIntent("please open settings")).toMatchObject({
+      action: "NAVIGATE",
+      targetRoute: "/settings",
+    });
+    expect(parseIntent("can you go to messages")).toMatchObject({
+      action: "OPEN_MESSAGES",
+    });
+    expect(parseIntent("please call atik")).toMatchObject({
+      action: "AUDIO_CALL",
+      targetName: "atik",
     });
   });
 
@@ -283,6 +338,22 @@ describe("pending follow-up slots", () => {
     expect(isAffirmativeFollowUp("haan")).toBe(true);
     expect(isCancelFollowUp("never mind")).toBe(true);
     expect(isCancelFollowUp("na")).toBe(true);
+  });
+
+  test("switches from a pending friend request to a profile lookup", () => {
+    const switched = parseIntent("find me harun profile");
+    const merged = mergeFollowUpIntent({
+      pending: {
+        intent: { action: "ADD_FRIEND", targetName: null },
+        missing: ["targetName"],
+      },
+      followUpText: "find me harun profile",
+      geminiIntents: switched ? [switched] : [],
+    });
+    expect(merged).toMatchObject({
+      action: "VIEW_PROFILE",
+      targetName: "harun",
+    });
   });
 });
 

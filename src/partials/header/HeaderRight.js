@@ -13,6 +13,7 @@ import MessageList from "../../components/Message/MessageList";
 import NotificationMenu from "../../components/notification/NotificationMenu";
 import { useAuth } from "../../hooks/useAuth";
 import config from "../../config/config.json";
+import { sanitizeProfileImageUrl } from "../../utils/profileImage";
 import "../../pages/Message.css";
 
 let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [], pendingChessInvites = [] }) => {
@@ -54,7 +55,7 @@ let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [], pendingChes
     if (!profileData?.profilePic) {
       setPpUrl(config?.defaultProfile);
     } else if (profileData?.profilePic) {
-      setPpUrl(profileData.profilePic);
+      setPpUrl(sanitizeProfileImageUrl(profileData.profilePic, 96) || profileData.profilePic);
     }
   }, [profileData]);
 
@@ -331,7 +332,7 @@ let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [], pendingChes
             aria-haspopup="true"
           >
             <div className="profile-pic">
-              <img src={ppUrl} alt="" />
+              <img src={ppUrl} alt="" referrerPolicy="no-referrer" />
             </div>
           </li>
           {isProfileMenu && (

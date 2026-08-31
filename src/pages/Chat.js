@@ -8,10 +8,14 @@ import React, {
 import { setLoading } from "../services/actions/optionAction";
 import { useDispatch, useSelector } from "react-redux";
 import { useParams } from "react-router-dom";
-import api from "../api/api";
+import api, { invalidateGetCache } from "../api/api";
 import socket from "../common/socket";
 import UserPP from "../components/UserPP";
-import { fetchProfileCached } from "../utils/requestCache";
+import {
+  fetchProfileCached,
+  invalidateCachedResource,
+} from "../utils/requestCache";
+import { getProfileSuccess } from "../services/actions/profileActions";
 import moment from "moment";
 import SingleMessage from "../components/Message/SingleMessage";
 import $ from "jquery";
@@ -84,8 +88,16 @@ const Chat = () => {
   const profile = useSelector((state) => state.profile);
   const settings = useSelector((state) => state.setting);
   const userId = profile._id;
+  const profileRef = useRef(profile);
+  const blockStatusRef = useRef({
+    loaded: false,
+    iBlocked: false,
+    blockedMe: false,
+  });
+  const blockLiveEpochRef = useRef(0);
   const [friendProfile, setFriendProfile] = useState({});
   const [isBlockedMe, setIsBlockedMe] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
   const [lastSeen, setLastSeen] = useState(false);
   const [isDarkBackground, setIsDarkBackground] = useState(false);
 
@@ -150,6 +162,10 @@ const Chat = () => {
   useEffect(() => {
     themeRef.current = theme;
   }, [theme]);
+
+  useEffect(() => {
+    profileRef.current = profile;
+  }, [profile]);
 
   const triggerLoveRain = useCallback((text) => {
     if (!themeRef.current?.loveRain) return;
@@ -490,9 +506,8 @@ const Chat = () => {
         socket.emit("sendMessage", payload, (response) => {
           if (!response) return;
           if (response.ok === false || response.blocked) {
-            finish(
-              new Error(response.reason || response.error || "Message blocked"),
-            );
+            const reason = response.reason || response.error || "Message blocked";
+            finish(new Error(reason));
             return;
           }
           if (response.updatedMessage) {
@@ -799,18 +814,227 @@ const Chat = () => {
     [friendId, dispatch],
   );
 
-  useEffect(
-    function () {
-      if (friendProfile && profile._id) {
-        setIsBlockedMe(
-          friendProfile.blockedUsers
-            ? friendProfile.blockedUsers.includes(profile._id)
-            : false,
-        );
+  useEffect(() => {
+    blockStatusRef.current = {
+      loaded: false,
+      iBlocked: false,
+      blockedMe: false,
+    };
+    blockLiveEpochRef.current += 1;
+    setIsBlockedMe(false);
+    if (!friendId) {
+      setIsBlocked(false);
+      return;
+    }
+    setIsBlocked(
+      Array.isArray(profileRef.current?.blockedUsers)
+        ? profileRef.current.blockedUsers.some(
+            (id) => String(id) === String(friendId),
+          )
+        : false,
+    );
+  }, [friendId]);
+
+  const patchMyBlockedUsersInStore = useCallback(
+    (shouldBlock, id) => {
+      if (!id) return;
+      const currentProfile = profileRef.current || {};
+      const current = Array.isArray(currentProfile.blockedUsers)
+        ? currentProfile.blockedUsers
+        : [];
+      const alreadyBlocked = current.some((item) => String(item) === String(id));
+      if (shouldBlock === alreadyBlocked) return;
+      const next = shouldBlock
+        ? [...current, id]
+        : current.filter((item) => String(item) !== String(id));
+      dispatch(getProfileSuccess({ ...currentProfile, blockedUsers: next }));
+    },
+    [dispatch],
+  );
+
+  const applyLiveBlockUpdate = useCallback(
+    ({ iBlocked, blockedMe, by, target } = {}) => {
+      const myId = idOf(userId);
+      const currentFriend = idOf(friendId);
+      if (!myId || !currentFriend) return;
+
+      const byId = by != null ? idOf(by) : "";
+      const targetId = target != null ? idOf(target) : "";
+
+      let nextIBlocked = iBlocked;
+      let nextBlockedMe = blockedMe;
+
+      if (typeof nextIBlocked !== "boolean") {
+        if (byId === myId && targetId === currentFriend) nextIBlocked = true;
+      }
+      if (typeof nextBlockedMe !== "boolean") {
+        if (byId === currentFriend && targetId === myId) nextBlockedMe = true;
+      }
+
+      if (typeof nextIBlocked === "boolean") {
+        blockStatusRef.current.iBlocked = nextIBlocked;
+        blockStatusRef.current.loaded = true;
+        blockLiveEpochRef.current += 1;
+        setIsBlocked(nextIBlocked);
+        patchMyBlockedUsersInStore(nextIBlocked, friendId);
+      }
+      if (typeof nextBlockedMe === "boolean") {
+        blockStatusRef.current.blockedMe = nextBlockedMe;
+        blockStatusRef.current.loaded = true;
+        blockLiveEpochRef.current += 1;
+        setIsBlockedMe(nextBlockedMe);
+        setFriendProfile((prev) => {
+          if (!prev || idOf(prev._id) !== currentFriend) return prev;
+          const current = Array.isArray(prev.blockedUsers)
+            ? prev.blockedUsers
+            : [];
+          const hasMe = current.some((id) => idOf(id) === myId);
+          if (nextBlockedMe === hasMe) return prev;
+          return {
+            ...prev,
+            blockedUsers: nextBlockedMe
+              ? [...current, userId]
+              : current.filter((id) => idOf(id) !== myId),
+          };
+        });
       }
     },
-    [friendProfile, profile._id],
+    [friendId, userId, patchMyBlockedUsersInStore],
   );
+
+  const refreshBlockStatus = useCallback(async () => {
+    if (!friendId || !userId) return;
+    const epoch = blockLiveEpochRef.current;
+    try {
+      const res = await api.get("friend/block-status", {
+        params: { friendId },
+      });
+      if (!res?.data) return;
+      if (epoch !== blockLiveEpochRef.current) return;
+      applyLiveBlockUpdate({
+        iBlocked: Boolean(res.data.iBlocked),
+        blockedMe: Boolean(res.data.blockedMe),
+      });
+    } catch (error) {
+      console.error("Error fetching block status:", error);
+    }
+  }, [friendId, userId, applyLiveBlockUpdate]);
+
+  // Header block/unblock writes Redux; mirror that into the footer immediately.
+  useEffect(() => {
+    if (!friendId) return;
+    const fromProfile = Array.isArray(profile?.blockedUsers)
+      ? profile.blockedUsers.some((id) => idOf(id) === idOf(friendId))
+      : false;
+    if (fromProfile) {
+      blockStatusRef.current.iBlocked = true;
+      setIsBlocked(true);
+      return;
+    }
+    if (blockStatusRef.current.loaded) {
+      setIsBlocked(Boolean(blockStatusRef.current.iBlocked));
+    }
+  }, [friendId, profile?.blockedUsers]);
+
+  useEffect(() => {
+    if (!friendId || !userId) return undefined;
+    let cancelled = false;
+    const epoch = blockLiveEpochRef.current;
+
+    (async () => {
+      try {
+        const res = await api.get("friend/block-status", {
+          params: { friendId },
+        });
+        if (cancelled || !res?.data) return;
+        if (epoch !== blockLiveEpochRef.current) return;
+        applyLiveBlockUpdate({
+          iBlocked: Boolean(res.data.iBlocked),
+          blockedMe: Boolean(res.data.blockedMe),
+        });
+      } catch (error) {
+        if (!cancelled) console.error("Error fetching block status:", error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [friendId, userId, applyLiveBlockUpdate]);
+
+  useEffect(() => {
+    if (!friendId || !userId) return undefined;
+
+    const invalidateBlockCaches = () => {
+      invalidateCachedResource(`profile:${friendId}`);
+      invalidateCachedResource(`profileLite:${friendId}`);
+      invalidateCachedResource(`profile:${userId}`);
+      invalidateCachedResource(`profileLite:${userId}`);
+      invalidateGetCache("/profile");
+    };
+
+    const handleUserBlocked = (payload = {}) => {
+      const { by, target } = payload;
+      if (idOf(by) === idOf(userId) && idOf(target) === idOf(friendId)) {
+        applyLiveBlockUpdate({ iBlocked: true, by, target });
+        invalidateBlockCaches();
+      }
+    };
+    const handleBlockedByUser = (payload = {}) => {
+      const { by, target } = payload;
+      if (idOf(by) === idOf(friendId) && idOf(target) === idOf(userId)) {
+        applyLiveBlockUpdate({ blockedMe: true, by, target });
+        invalidateBlockCaches();
+      }
+    };
+    const handleUserUnblocked = (payload = {}) => {
+      const { by, target } = payload;
+      if (idOf(by) === idOf(userId) && idOf(target) === idOf(friendId)) {
+        applyLiveBlockUpdate({ iBlocked: false, by, target });
+        invalidateBlockCaches();
+      }
+    };
+    const handleUnblockedByUser = (payload = {}) => {
+      const { by, target } = payload;
+      if (idOf(by) === idOf(friendId) && idOf(target) === idOf(userId)) {
+        applyLiveBlockUpdate({ blockedMe: false, by, target });
+        invalidateBlockCaches();
+      }
+    };
+    const handleMessageBlocked = (payload = {}) => {
+      if (payload.receiverId && idOf(payload.receiverId) !== idOf(friendId)) {
+        return;
+      }
+      refreshBlockStatus();
+    };
+    const handleWindowBlockStatus = (event) => {
+      const detail = event?.detail || {};
+      const detailFriend =
+        detail.friendId ||
+        (idOf(detail.by) === idOf(userId) ? detail.target : detail.by);
+      if (detailFriend && idOf(detailFriend) !== idOf(friendId)) return;
+      applyLiveBlockUpdate(detail);
+    };
+
+    socket.on("userBlocked", handleUserBlocked);
+    socket.on("blockedByUser", handleBlockedByUser);
+    socket.on("userUnblocked", handleUserUnblocked);
+    socket.on("unblockedByUser", handleUnblockedByUser);
+    socket.on("message_blocked", handleMessageBlocked);
+    window.addEventListener("connect:block-status", handleWindowBlockStatus);
+
+    return () => {
+      socket.off("userBlocked", handleUserBlocked);
+      socket.off("blockedByUser", handleBlockedByUser);
+      socket.off("userUnblocked", handleUserUnblocked);
+      socket.off("unblockedByUser", handleUnblockedByUser);
+      socket.off("message_blocked", handleMessageBlocked);
+      window.removeEventListener(
+        "connect:block-status",
+        handleWindowBlockStatus,
+      );
+    };
+  }, [friendId, userId, applyLiveBlockUpdate, refreshBlockStatus]);
 
   useEffect(
     function () {
@@ -867,6 +1091,7 @@ const Chat = () => {
     if (hasInitialScrolledRef.current) return;
     if (!friendId || messages.length === 0 || isMsgLoading) return;
     hasInitialScrolledRef.current = true;
+    setScrollPercent(100);
     scrollToLastMessage("auto");
   }, [friendId, messages.length, isMsgLoading, scrollToLastMessage]);
 
@@ -972,7 +1197,7 @@ const Chat = () => {
       window.removeEventListener("resize", syncFooterHeight);
       if (ro) ro.disconnect();
     };
-  }, [isBlockedMe, friendId]);
+  }, [isBlockedMe, isBlocked, friendId]);
 
   // Keep the thread anchored at the bottom when the iOS keyboard resizes the chat pane.
   useEffect(() => {
@@ -1058,7 +1283,6 @@ const Chat = () => {
             backgroundSize: "cover",
             backgroundPosition: "center",
             backgroundRepeat: "no-repeat",
-            backgroundAttachment: "fixed",
           }}
         >
           {theme?.loveRain ? <LoveEmojiRain burstId={loveRainBurst} /> : null}
@@ -1155,7 +1379,7 @@ const Chat = () => {
           ref={footerSlotRef}
           data-chat-footer-slot="true"
         >
-          {!isBlockedMe ? (
+          {!isBlockedMe && !isBlocked ? (
             <ChatFooter {...footerProps} />
           ) : (
             <div
@@ -1164,7 +1388,9 @@ const Chat = () => {
               data-chat-footer="true"
             >
               <p className="text-center text-danger fs-6 mb-0 py-2">
-                {friendProfile.fullName} Blocked You
+                {isBlockedMe
+                  ? `${friendProfile.fullName || "This user"} blocked you`
+                  : `You blocked ${friendProfile.fullName || "this user"}`}
               </p>
             </div>
           )}

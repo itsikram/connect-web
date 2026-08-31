@@ -8,13 +8,14 @@ import React, {
 import socket from "../../common/socket";
 import { io } from "socket.io-client";
 import UserPP from "../UserPP";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { useLocation, useNavigate } from "react-router-dom";
+import { getProfileSuccess } from "../../services/actions/profileActions";
 import AgoraRTC from "agora-rtc-sdk-ng";
 import ModalContainer from "../modal/ModalContainer";
 import useIsMobile from "../../utils/useIsMobile";
-import api from "../../api/api";
-import { fetchProfileCached } from "../../utils/requestCache";
+import api, { invalidateGetCache } from "../../api/api";
+import { fetchProfileCached, invalidateCachedResource } from "../../utils/requestCache";
 import checkImgLoading from "../../utils/checkImgLoading";
 import isValidUrl from "../../utils/isValiUrl";
 import { useCallMinimize } from "../../contexts/CallMinimizeContext";
@@ -22,6 +23,7 @@ import { emotionEmojiMap } from "../../utils/emotionDetection";
 import config from "../../config/config.json";
 import ringtones from "../../config/ringtones.json";
 import { normalizeRingtoneId } from "../../utils/normalizeRingtoneId";
+import { sanitizeProfileImageUrl } from "../../utils/profileImage";
 import {
   unlockAudio,
   playAudioWithWebAudio,
@@ -112,9 +114,17 @@ const ChatHeader = ({
 
   const isMobile = useIsMobile();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const settings = useSelector((state) => state.setting);
   const profile = useSelector((state) => state.profile);
   const profileId = profile._id;
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [isBlocking, setIsBlocking] = useState(false);
+  const profileRef = useRef(profile);
+
+  useEffect(() => {
+    profileRef.current = profile;
+  }, [profile]);
 
   // Stable numeric UID for Agora (avoids string-UID warnings)
   const numericUid = useMemo(() => {
@@ -129,6 +139,104 @@ const ChatHeader = ({
 
   const { minimizeCall, endMinimizedCall, updateMinimizedCall } =
     useCallMinimize();
+
+  const currentFriendId = friendId || routeFriendId || friendProfile?._id || null;
+
+  const listHasId = useCallback((list, id) => {
+    if (!id || !Array.isArray(list)) return false;
+    const target = String(id?._id || id);
+    return list.some((item) => String(item?._id || item) === target);
+  }, []);
+
+  const patchMyBlockedUsers = useCallback(
+    (shouldBlock, id) => {
+      if (!id) return;
+      const currentProfile = profileRef.current || {};
+      const current = Array.isArray(currentProfile.blockedUsers)
+        ? currentProfile.blockedUsers
+        : [];
+      const alreadyBlocked = listHasId(current, id);
+      const isCurrentFriend = String(id) === String(currentFriendId);
+      if (shouldBlock === alreadyBlocked) {
+        if (isCurrentFriend) setIsBlocked(shouldBlock);
+        return;
+      }
+      const next = shouldBlock
+        ? [...current, id]
+        : current.filter((item) => String(item) !== String(id));
+      if (isCurrentFriend) setIsBlocked(shouldBlock);
+      dispatch(getProfileSuccess({ ...currentProfile, blockedUsers: next }));
+      window.dispatchEvent(
+        new CustomEvent("connect:block-status", {
+          detail: {
+            friendId: id,
+            by: currentProfile?._id,
+            target: id,
+            iBlocked: shouldBlock,
+          },
+        }),
+      );
+      const myId = currentProfile?._id;
+      if (myId) {
+        invalidateCachedResource(`profile:${myId}`);
+        invalidateCachedResource(`profileLite:${myId}`);
+      }
+      if (id) {
+        invalidateCachedResource(`profile:${id}`);
+        invalidateCachedResource(`profileLite:${id}`);
+      }
+      invalidateGetCache("/profile");
+    },
+    [currentFriendId, dispatch, listHasId],
+  );
+
+  useEffect(() => {
+    if (!currentFriendId) {
+      setIsBlocked(false);
+      return;
+    }
+    setIsBlocked(listHasId(profile?.blockedUsers, currentFriendId));
+  }, [currentFriendId, listHasId, profile?.blockedUsers]);
+
+  useEffect(() => {
+    if (!profileId) return undefined;
+
+    const handleUserBlocked = ({ by, target } = {}) => {
+      if (String(by) !== String(profileId) || !target) return;
+      patchMyBlockedUsers(true, target);
+    };
+    const handleUserUnblocked = ({ by, target } = {}) => {
+      if (String(by) !== String(profileId) || !target) return;
+      patchMyBlockedUsers(false, target);
+    };
+    const handleBlockedByUser = ({ by, target } = {}) => {
+      if (String(target) !== String(profileId)) return;
+      window.dispatchEvent(
+        new CustomEvent("connect:block-status", {
+          detail: { by, target, friendId: by, blockedMe: true },
+        }),
+      );
+    };
+    const handleUnblockedByUser = ({ by, target } = {}) => {
+      if (String(target) !== String(profileId)) return;
+      window.dispatchEvent(
+        new CustomEvent("connect:block-status", {
+          detail: { by, target, friendId: by, blockedMe: false },
+        }),
+      );
+    };
+
+    socket.on("userBlocked", handleUserBlocked);
+    socket.on("userUnblocked", handleUserUnblocked);
+    socket.on("blockedByUser", handleBlockedByUser);
+    socket.on("unblockedByUser", handleUnblockedByUser);
+    return () => {
+      socket.off("userBlocked", handleUserBlocked);
+      socket.off("userUnblocked", handleUserUnblocked);
+      socket.off("blockedByUser", handleBlockedByUser);
+      socket.off("unblockedByUser", handleUnblockedByUser);
+    };
+  }, [patchMyBlockedUsers, profileId]);
 
   // Consistent mobile button styling (perfect circles)
   const mobileActionButtonStyle = isMobile
@@ -2114,14 +2222,44 @@ const ChatHeader = ({
     window.dispatchEvent(openChatEvent);
   }, [friendId]);
   const handleBlockUser = useCallback(async () => {
-    const res = await api.post("friend/block", { friendId });
-    if (res.status === 200) alert("User Blocked");
-  }, [friendId]);
+    const targetId = currentFriendId;
+    if (!targetId || isBlocking) return;
+    setIsBlocking(true);
+    try {
+      const res = await api.post("friend/block", { friendId: targetId });
+      if (res.status === 200) {
+        patchMyBlockedUsers(true, targetId);
+        setIsChatOptionMenu(false);
+      } else {
+        alert("Failed to block user. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error blocking user:", error);
+      alert("Failed to block user. Please try again.");
+    } finally {
+      setIsBlocking(false);
+    }
+  }, [currentFriendId, isBlocking, patchMyBlockedUsers]);
 
   const handleUnBlockUser = useCallback(async () => {
-    const res = await api.post("friend/unblock", { friendId });
-    if (res.status === 200) alert("User unblocked");
-  }, [friendId]);
+    const targetId = currentFriendId;
+    if (!targetId || isBlocking) return;
+    setIsBlocking(true);
+    try {
+      const res = await api.post("friend/unblock", { friendId: targetId });
+      if (res.status === 200) {
+        patchMyBlockedUsers(false, targetId);
+        setIsChatOptionMenu(false);
+      } else {
+        alert("Failed to unblock user. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error unblocking user:", error);
+      alert("Failed to unblock user. Please try again.");
+    } finally {
+      setIsBlocking(false);
+    }
+  }, [currentFriendId, isBlocking, patchMyBlockedUsers]);
 
   const handleViewProfile = useCallback(
     () => navigate(`/${friendId}`),
@@ -2281,7 +2419,7 @@ const ChatHeader = ({
 
   const getUserProfilePic = useCallback(() => {
     const data = userInfoData || friendProfile;
-    return data?.profilePic || friendPP || "";
+    return sanitizeProfileImageUrl(data?.profilePic || friendPP || "", 200);
   }, [userInfoData, friendProfile, friendPP]);
 
   const displayName =
@@ -2395,7 +2533,10 @@ const ChatHeader = ({
                 <i className="fas fa-record-vinyl"></i>
               </div>
             )}
-            <div style={{ position: "relative" }} ref={callDropdownRef}>
+            <div
+              style={{ position: "relative", overflow: "visible", zIndex: 2 }}
+              ref={callDropdownRef}
+            >
               <div
                 onClick={handleCallDropdownToggle}
                 onKeyDown={(e) => {
@@ -2426,7 +2567,7 @@ const ChatHeader = ({
                     border: "1px solid rgba(255, 255, 255, 0.12)",
                     borderRadius: "8px",
                     boxShadow: "0 8px 24px rgba(0, 0, 0, 0.45)",
-                    zIndex: 1000,
+                    zIndex: 80,
                     minWidth: "150px",
                     marginTop: "4px",
                     color: "#ffffff",
@@ -2496,7 +2637,10 @@ const ChatHeader = ({
                 </div>
               )}
             </div>
-            <div style={{ position: "relative" }} ref={chatOptionRef}>
+            <div
+              style={{ position: "relative", overflow: "visible", zIndex: 2 }}
+              ref={chatOptionRef}
+            >
               <div
                 onClick={handleChatOptionClick}
                 onKeyDown={(e) => {
@@ -2535,6 +2679,22 @@ const ChatHeader = ({
                       Chat appearance
                     </li>
                     <li
+                      onClick={handleChatInfoClick}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleChatInfoClick();
+                        }
+                      }}
+                      tabIndex={0}
+                    >
+                      <i
+                        className="fas fa-info-circle"
+                        style={{ marginRight: "8px" }}
+                      ></i>
+                      Info
+                    </li>
+                    <li
                       onClick={handleViewProfile}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
@@ -2544,6 +2704,10 @@ const ChatHeader = ({
                       }}
                       tabIndex={0}
                     >
+                      <i
+                        className="fas fa-user"
+                        style={{ marginRight: "8px" }}
+                      ></i>
                       View Profile
                     </li>
                     {isMobile && (
@@ -2582,7 +2746,7 @@ const ChatHeader = ({
                         Sticky Chat
                       </li>
                     )}
-                    {profile?.blockedUsers.includes(friendId) ? (
+                    {isBlocked ? (
                       <li
                         onClick={handleUnBlockUser}
                         onKeyDown={(e) => {
@@ -2592,7 +2756,12 @@ const ChatHeader = ({
                           }
                         }}
                         tabIndex={0}
+                        aria-disabled={isBlocking}
                       >
+                        <i
+                          className="fas fa-unlock"
+                          style={{ marginRight: "8px" }}
+                        ></i>
                         Unblock {friendProfile.user.firstName}
                       </li>
                     ) : (
@@ -2605,7 +2774,12 @@ const ChatHeader = ({
                           }
                         }}
                         tabIndex={0}
+                        aria-disabled={isBlocking}
                       >
+                        <i
+                          className="fas fa-ban"
+                          style={{ marginRight: "8px" }}
+                        ></i>
                         Block {friendProfile.user.firstName}
                       </li>
                     )}
@@ -2623,45 +2797,15 @@ const ChatHeader = ({
                       }}
                       tabIndex={0}
                     >
+                      <i
+                        className="fas fa-flag"
+                        style={{ marginRight: "8px" }}
+                      ></i>
                       Report {friendProfile.user.firstName}
                     </li>
                   </ul>
                 </div>
               )}
-            </div>
-            <div
-              onClick={handleChatSettingsClick}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  handleChatSettingsClick();
-                }
-              }}
-              role="button"
-              tabIndex={0}
-              className="settings-button action-button"
-              title="Chat appearance"
-              aria-label="Chat appearance"
-              aria-expanded={isChatSettingsOpen}
-            >
-              <i className="fas fa-palette"></i>
-            </div>
-            <div
-              onClick={handleChatInfoClick}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  handleChatInfoClick();
-                }
-              }}
-              role="button"
-              tabIndex={0}
-              className="info-button action-button"
-              title="User Info"
-              aria-label="User info"
-              aria-expanded={isUserInfoModalOpen}
-            >
-              <i className="fas fa-info-circle"></i>
             </div>
             {!isMobile && (
               <div
@@ -2990,6 +3134,7 @@ const ChatHeader = ({
                       src={getUserProfilePic()}
                       alt={getUserName()}
                       className="user-info-avatar"
+                      referrerPolicy="no-referrer"
                       onError={(e) => {
                         e.target.src =
                           "https://via.placeholder.com/120?text=User";

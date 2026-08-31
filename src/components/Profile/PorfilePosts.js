@@ -33,8 +33,12 @@ let PorfilePosts = () => {
             setPosts(Array.isArray(postsResponse) ? postsResponse : [])
             setProfileData(profileResponse)
             setBio(profileResponse?.bio || myProfileData.bio || '')
+        }).catch(e => {
+            console.log(e)
+            setPosts([])
+        }).finally(() => {
             setHasLoadedPosts(true)
-        }).catch(e => console.log(e))
+        })
 
     }, [profile, myProfileData.bio])
 
@@ -128,9 +132,14 @@ let PorfilePosts = () => {
                     {posts.length > 0 ? posts.map((data, index) => {
                         return <Post key={data._id} myProfile={myProfileData} postContainer={postContainer} data={data} index={index} onPostDeleted={handlePostDeleted} onPostUpdated={handlePostUpdated}></Post>
                     })
-                        :
-                        <PostSkeleton count={3} />
-
+                        : hasLoadedPosts ? (
+                            <div className="no-posts-message text-center py-4">
+                                <h4>No posts yet</h4>
+                                <p>{isAuth ? "Share your first post to get started." : "This user hasn't posted anything yet."}</p>
+                            </div>
+                        ) : (
+                            <PostSkeleton count={3} />
+                        )
                     }
 
                 </div>

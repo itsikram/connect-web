@@ -8,6 +8,7 @@ import { normalizeBanglishCommand } from "../components/modal/AIAgentModal/bangl
 import { normalizeBanglaCommand } from "../components/modal/AIAgentModal/agentFastPath";
 import {
   completeChat,
+  streamChat,
   extractGeminiText,
   isGeminiQuotaError,
 } from "./llmClient";
@@ -141,19 +142,18 @@ export const interpretAgentCommand = async ({
     return { reply: "", actions: [], success: false };
   }
 
-  const cursorChat = getResolvedAgentSettings().provider === "cursor";
+  const settings = getResolvedAgentSettings();
+  if (settings.provider === "cursor") {
+    return { reply: "", actions: [], success: false };
+  }
+
   const context = JSON.stringify(compactInterpreterContext(appContext, true));
-  const rawText = await completeChat({
+  const rawText = await streamChat({
     system: `${AGENT_JSON_PROMPT}\nC:${context}`,
-    messages: toChatMessages(
-      conversationHistory,
-      sourceText,
-      cursorChat ? 3 : 4,
-      200,
-    ),
+    messages: toChatMessages(conversationHistory, sourceText, 3, 160),
     json: true,
     temperature: 0,
-    maxTokens: cursorChat ? 192 : 256,
+    maxTokens: 192,
     operationLabel: "Agent interpreter",
   });
 
@@ -283,18 +283,26 @@ export const answerFromAppData = async ({
   return response;
 };
 
-export const sendToGemini = async (message, conversationHistory = []) => {
+export const sendToGeminiStream = async (
+  message,
+  conversationHistory = [],
+  { onDelta, signal } = {},
+) => {
   if (!hasConfiguredApiKey()) {
-    return missingKeyResult();
+    const missing = missingKeyResult();
+    onDelta?.(missing.response);
+    return missing;
   }
 
   try {
-    const responseText = await completeChat({
+    const responseText = await streamChat({
       system: SYSTEM_PROMPT,
-      messages: toChatMessages(conversationHistory, message, 4, 200),
-      temperature: 0.5,
-      maxTokens: 220,
+      messages: toChatMessages(conversationHistory, message, 4, 160),
+      temperature: 0.4,
+      maxTokens: 180,
       operationLabel: "Chat request",
+      onDelta,
+      signal,
     });
 
     if (!responseText) {
@@ -304,6 +312,9 @@ export const sendToGemini = async (message, conversationHistory = []) => {
     const suggestedAction = extractSuggestedAction(responseText);
     return { response: responseText, suggestedAction, success: true };
   } catch (error) {
+    if (error?.name === "AbortError") {
+      throw error;
+    }
     return {
       response: `Sorry, something went wrong: ${error.message}`,
       suggestedAction: null,
@@ -311,6 +322,9 @@ export const sendToGemini = async (message, conversationHistory = []) => {
     };
   }
 };
+
+export const sendToGemini = async (message, conversationHistory = []) =>
+  sendToGeminiStream(message, conversationHistory);
 
 /**
  * Try to pull a short suggested next-action string out of the AI's reply.
@@ -391,6 +405,7 @@ export const getModelInfo = () => {
 
 const geminiService = {
   sendToGemini,
+  sendToGeminiStream,
   translateBanglaToEnglish,
   interpretAgentCommand,
   generatePostCaption,

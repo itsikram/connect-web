@@ -11,6 +11,7 @@ import PpSkleton from "../../skletons/profile/PpSkleton";
 import config from "../../config/config.json";
 import { getProfileSuccess } from "../../services/actions/profileActions";
 import { fetchProfileHasStoryCached } from "../../utils/requestCache";
+import { PROFILE_IMG_REFERRER_POLICY, isGoogleHostedImage, sanitizeProfileImageUrl } from "../../utils/profileImage";
 const defaultPpSrc = config?.defaultProfile;
 
 let ProfilePic = ({ profileData }) => {
@@ -23,8 +24,8 @@ let ProfilePic = ({ profileData }) => {
     const [isPPModal, setIsPPModal] = useState(false)
     const [isPPViewModal, setIsPPViewModal] = useState(false)
     const [profileImage, setProfileimage] = useState()
-    const [ppUrl, setPpUrl] = useState(profileData.profilePic)
-    const [displayPpUrl, setDisplayPpUrl] = useState(profileData.profilePic)
+    const [ppUrl, setPpUrl] = useState(sanitizeProfileImageUrl(profileData.profilePic, 400) || profileData.profilePic)
+    const [displayPpUrl, setDisplayPpUrl] = useState(sanitizeProfileImageUrl(profileData.profilePic, 400) || profileData.profilePic)
     const [isPpLoaded, setIsPpLoaded] = useState(profileData.profilePic);
     const [isPpUploading, setIsPpUploading] = useState(false)
     const [uploadProgress, setUploadProgress] = useState(0)
@@ -44,15 +45,25 @@ let ProfilePic = ({ profileData }) => {
 
     const getCacheBustedUrl = (url) => {
         if (!url) return url;
+        // Extra query params break Google avatar URLs (lh3.googleusercontent.com)
+        if (isGoogleHostedImage(url)) return sanitizeProfileImageUrl(url, 400);
         const separator = url.includes('?') ? '&' : '?';
         return `${url}${separator}cb=${Date.now()}`;
     };
 
+    const handleProfileImgError = (e) => {
+        if (e?.currentTarget?.src && !e.currentTarget.src.includes('default-profile-pic')) {
+            e.currentTarget.src = defaultPpSrc;
+        }
+        setIsPpLoaded(true);
+    };
+
     useEffect(() => {
         if(profileData) {
-            const url = isValidUrl(profileData.profilePic) ? profileData.profilePic : '';
+            const rawUrl = isValidUrl(profileData.profilePic) ? profileData.profilePic : '';
+            const url = isGoogleHostedImage(rawUrl) ? sanitizeProfileImageUrl(rawUrl, 400) : rawUrl;
             setPpUrl(url)
-            setDisplayPpUrl(getCacheBustedUrl(url))
+            setDisplayPpUrl(url ? getCacheBustedUrl(url) : defaultPpSrc)
         } else {
             setPpUrl(defaultPpSrc)
             setDisplayPpUrl(defaultPpSrc)
@@ -209,7 +220,7 @@ setUploadProgress(0)
 
 
                 <div className={`profilePic-container ${hasStory == 'yes' ? 'has-story' : ''}`} onClick={PPContainerClick}>
-{ isPpLoaded ? <img src={displayPpUrl} alt="" /> : <ImageSkleton  /> }
+{ (displayPpUrl || defaultPpSrc) ? <img src={displayPpUrl || defaultPpSrc} alt="" referrerPolicy={PROFILE_IMG_REFERRER_POLICY} onError={handleProfileImgError} /> : <ImageSkleton  /> }
 
                 </div>
 
@@ -239,7 +250,7 @@ setUploadProgress(0)
 
                     </div>
                     <div className="modal-body text-center">
-                        <img src={displayPpUrl} className="w-100" alt="Profile" />
+                        <img src={displayPpUrl} className="w-100" alt="Profile" referrerPolicy={PROFILE_IMG_REFERRER_POLICY} onError={handleProfileImgError} />
 
                     </div>
                 </ModalContainer>

@@ -61,7 +61,7 @@ const MessageBubble = ({ message, userProfilePic }) => {
         className="ai-agent-message user-message"
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: "spring", stiffness: 120 }}
+        transition={{ duration: 0.12 }}
       >
         <div className="ai-agent-bubble user-bubble">
           <div className="message-content">
@@ -84,7 +84,7 @@ const MessageBubble = ({ message, userProfilePic }) => {
         className="ai-agent-message agent-message"
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: "spring", stiffness: 120 }}
+        transition={{ duration: 0.12 }}
       >
         <div className="ai-agent-bubble agent-bubble">
           {agentAvatar}
@@ -125,7 +125,7 @@ const MessageBubble = ({ message, userProfilePic }) => {
         className="ai-agent-message agent-message"
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: "spring", stiffness: 120 }}
+        transition={{ duration: 0.12 }}
       >
         <div
           className="ai-agent-bubble agent-bubble"
@@ -164,7 +164,7 @@ const MessageBubble = ({ message, userProfilePic }) => {
         className="ai-agent-message agent-message"
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: "spring", stiffness: 120 }}
+        transition={{ duration: 0.12 }}
       >
         <div
           className="ai-agent-bubble agent-bubble"
@@ -232,7 +232,7 @@ const MessageBubble = ({ message, userProfilePic }) => {
         className="ai-agent-message agent-message"
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        transition={{ type: "spring", stiffness: 120 }}
+        transition={{ duration: 0.12 }}
       >
         <div className="ai-agent-bubble agent-bubble">
           {agentAvatar}
@@ -295,15 +295,20 @@ const MessageBubble = ({ message, userProfilePic }) => {
   return (
     <motion.div
       className="ai-agent-message agent-message"
-      initial={{ scale: 0.9, opacity: 0 }}
+      initial={message.streaming ? false : { scale: 0.9, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
-      transition={{ type: "spring", stiffness: 120 }}
+      transition={{ duration: 0.08 }}
     >
       <div className="ai-agent-bubble agent-bubble">
         {agentAvatar}
         <div className="message-content">
           {/* Render newlines properly */}
-          <p style={{ whiteSpace: "pre-wrap" }}>{message.content}</p>
+          <p style={{ whiteSpace: "pre-wrap" }}>
+            {message.content}
+            {message.streaming ? (
+              <span className="ai-agent-stream-caret" aria-hidden="true" />
+            ) : null}
+          </p>
 
           {Array.isArray(message.actions) && message.actions.length > 0 && (
             <div className="friend-picker-cards" style={{ marginTop: 8 }}>

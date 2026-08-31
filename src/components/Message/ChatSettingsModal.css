@@ -6,14 +6,18 @@
 .chat-settings-modal {
     display: flex;
     flex-direction: column;
+    flex: 1 1 auto;
+    width: 100%;
     min-height: 0;
     max-height: min(88dvh, 760px);
+    overflow: hidden;
     color: #e8eaed;
 }
 
-.chat-settings-modal .modal-header {
+#chatSettingsModal.chat-settings-modal-shell .chat-settings-modal .modal-header,
+.chat-settings-modal-shell .chat-settings-modal .modal-header {
     margin: 0;
-    padding: 16px 18px 12px;
+    padding: 20px 22px 16px;
     align-items: flex-start;
 }
 
@@ -216,6 +220,8 @@
     border: 1px solid rgba(255, 255, 255, 0.08);
     overflow: hidden;
     position: relative;
+    isolation: isolate;
+    z-index: 0;
 }
 
 .chat-wallpaper-preview::after {
@@ -223,6 +229,8 @@
     position: absolute;
     inset: 0;
     background: rgba(0, 0, 0, 0.28);
+    pointer-events: none;
+    z-index: 0;
 }
 
 .chat-wallpaper-preview-bubbles {
@@ -261,6 +269,7 @@
 }
 
 .chat-wallpaper-options label {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -271,6 +280,7 @@
     background: rgba(255, 255, 255, 0.03);
     font-size: 0.78rem;
     cursor: pointer;
+    overflow: hidden;
 }
 
 .chat-wallpaper-options label.is-active {
@@ -295,19 +305,34 @@
 }
 
 .chat-overlay-toggle {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 12px;
+    width: 100%;
     margin-top: 12px;
     padding: 10px 12px;
     border-radius: 12px;
     border: 1px solid rgba(255, 255, 255, 0.08);
     background: rgba(255, 255, 255, 0.03);
+    color: inherit;
+    text-align: left;
     cursor: pointer;
+    overflow: hidden;
+    appearance: none;
+    -webkit-appearance: none;
 }
 
 .chat-overlay-toggle input {
     position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
     opacity: 0;
     pointer-events: none;
 }

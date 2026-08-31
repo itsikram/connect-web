@@ -14,21 +14,23 @@ const ChatArea = ({
   autoRunActions,
   modalInteractionVersion,
 }) => {
+  const lastStreaming = Boolean(messages[messages.length - 1]?.streaming);
+
   return (
     <div className="ai-agent-chat-area">
       <div className="ai-agent-messages-container">
-        {messages.map((msg, index) => (
+        {messages.map((msg) => (
           <motion.div
             key={msg.id}
-            initial={{ opacity: 0, y: 10 }}
+            initial={msg.streaming ? false : { opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: Math.min(index * 0.03, 0.3) }}
+            transition={{ duration: 0.08 }}
           >
             <MessageBubble message={msg} userProfilePic={userProfilePic} />
           </motion.div>
         ))}
 
-        {isLoading && (
+        {isLoading && !lastStreaming && (
           <motion.div
             className="ai-agent-typing-indicator"
             initial={{ opacity: 0 }}
@@ -47,7 +49,7 @@ const ChatArea = ({
         value={inputValue}
         onChange={onInputChange}
         onSend={onSendMessage}
-        isLoading={isLoading}
+        isLoading={isLoading && !lastStreaming}
         autoRunActions={autoRunActions}
         modalInteractionVersion={modalInteractionVersion}
       />

@@ -101,6 +101,16 @@ export const primeCachedResource = (key, data, storageKey = key) => {
   writeStorageCache(storageKey, data);
 };
 
+export const invalidateCachedResource = (key) => {
+  if (!key) return;
+  memoryCache.delete(key);
+  try {
+    localStorage.removeItem(key);
+  } catch (error) {
+    // Ignore storage failures
+  }
+};
+
 export const fetchProfileCached = async (
   profileId,
   { ttlMs = 60000, storageTtlMs = 300000, forceRefresh = false, lite = false } = {},

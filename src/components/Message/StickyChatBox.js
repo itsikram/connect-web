@@ -28,6 +28,7 @@ import LoveEmojiRain from "./LoveEmojiRain";
 import "./StickyChatBox.css";
 import "../../pages/Message.css";
 import "./UserInfoModal.css";
+import { sanitizeProfileImageUrl } from "../../utils/profileImage";
 import {
   emitChatMessage,
   idOf,
@@ -538,7 +539,7 @@ const StickyChatBox = ({
 
   const getUserProfilePic = () => {
     const data = userInfoData || friendProfile;
-    return data?.profilePic || "";
+    return sanitizeProfileImageUrl(data?.profilePic || "", 200);
   };
 
   const formatLastActive = (lastSeenValue) => {
@@ -611,10 +612,10 @@ const StickyChatBox = ({
   useEffect(() => {
     if (!friendId || !userId || isLoading || !friendProfile?._id) return;
 
-    const onMessagePage =
+    const onSameChatPage =
       typeof window !== "undefined" &&
-      window.location.pathname.startsWith("/message/");
-    if (onMessagePage) return;
+      window.location.pathname === `/message/${friendId}`;
+    if (onSameChatPage) return;
 
     let cancelled = false;
     markedSeenIdsRef.current = new Set();
@@ -1153,6 +1154,7 @@ const StickyChatBox = ({
     )
       return;
     hasScrolledOnLoadRef.current = true;
+    setScrollPercent(100);
     scrollToLastMessage("auto");
   }, [
     isMinimized,
@@ -1726,6 +1728,7 @@ const StickyChatBox = ({
                     src={getUserProfilePic()}
                     alt={getUserName()}
                     className="user-info-avatar"
+                    referrerPolicy="no-referrer"
                     onError={(e) => {
                       e.target.src =
                         "https://via.placeholder.com/120?text=User";

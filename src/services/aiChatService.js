@@ -7,8 +7,32 @@ import api from "../api/api";
  */
 export const saveAIChat = async (messages) => {
   try {
+    const slimPerson = (person) => {
+      if (!person || typeof person !== "object") return person;
+      return {
+        _id: person._id,
+        fullName: person.fullName,
+        displayName: person.displayName,
+        nickname: person.nickname,
+        username: person.username,
+        banglaName: person.banglaName,
+        profilePic: person.profilePic,
+      };
+    };
+    const payload = (Array.isArray(messages) ? messages : []).map((msg) => {
+      if (!msg || typeof msg !== "object") return msg;
+      const next = { ...msg };
+      delete next.onAction;
+      delete next.onOpenUser;
+      delete next.onOpenPost;
+      delete next.onPlay;
+      delete next.intent;
+      if (Array.isArray(next.friends)) next.friends = next.friends.map(slimPerson);
+      if (Array.isArray(next.users)) next.users = next.users.map(slimPerson);
+      return next;
+    });
     const response = await api.post("ai-chat/save", {
-      messages: messages,
+      messages: payload,
       timestamp: new Date(),
     });
     return response.data;

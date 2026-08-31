@@ -8,7 +8,7 @@ import ActionPanel from "./ActionPanel";
 import ModalHeader from "./ModalHeader";
 import {
   interpretAgentCommand,
-  sendToGemini,
+  sendToGeminiStream,
 } from "../../../services/geminiService";
 import {
   parseIntent,
@@ -19,10 +19,12 @@ import {
   FRIEND_REQUIRED_ACTIONS,
   NO_FRIEND_ACTIONS,
   findStaticRoute,
+  stripCommandFiller,
 } from "./agentIntentParser";
-import { executeAction, getActionMeta } from "./agentActions";
+import { executeAction, getActionMeta, searchConnectUsers } from "./agentActions";
 import {
   LOOKUP_ACTIONS,
+  DIRECTORY_LOOKUP_ACTIONS,
   toAgentIntent,
   resolveCatalogRoute,
   recoverAgentActions,
@@ -48,7 +50,7 @@ import {
   getResolvedAgentSettings,
   subscribeAgentSettings,
 } from "../../../services/aiAgentSettings";
-import { fetchAiProviderStatus } from "../../../services/llmClient";
+import { fetchAiProviderStatus, warmupCursorProvider } from "../../../services/llmClient";
 import AgentSettingsPanel from "./AgentSettingsPanel";
 import {
   getInstantAgentReply,
@@ -177,33 +179,54 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   const pendingIntentRef = useRef(null);
   const skipSaveRef = useRef(false);
   const sendGenerationRef = useRef(0);
+  const friendsCacheRef = useRef([]);
+  const messagesRef = useRef(messages);
+  const streamAbortRef = useRef(null);
+  const streamRafRef = useRef(0);
+  const streamPendingRef = useRef(null);
   const [isFetchingHistory, setIsFetchingHistory] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [llmInfo, setLlmInfo] = useState(() => getResolvedAgentSettings());
 
   // Fetch chat history from database
   const fetchChatHistory = useCallback(async () => {
+    const openGeneration = sendGenerationRef.current;
     setIsFetchingHistory(true);
     try {
       const chatData = await fetchLatestAIChat();
+      if (sendGenerationRef.current !== openGeneration) return;
       if (chatData?.messages && Array.isArray(chatData.messages) && chatData.messages.length > 0) {
-        // Load existing messages
         setMessages(chatData.messages);
       } else {
-        // No previous chat, show initial message
         setMessages([
           { ...INITIAL_MESSAGE, id: createId(), timestamp: new Date() },
         ]);
       }
     } catch (error) {
       console.error("Failed to load chat history:", error);
-      // Fallback to initial message on error
+      if (sendGenerationRef.current !== openGeneration) return;
       setMessages([
         { ...INITIAL_MESSAGE, id: createId(), timestamp: new Date() },
       ]);
     } finally {
-      setIsFetchingHistory(false);
+      if (sendGenerationRef.current === openGeneration) {
+        setIsFetchingHistory(false);
+      }
     }
+  }, []);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    return () => {
+      streamAbortRef.current?.abort();
+      if (streamRafRef.current) {
+        cancelAnimationFrame(streamRafRef.current);
+        streamRafRef.current = 0;
+      }
+    };
   }, []);
 
   // Detect mobile to keep sidebar closed by default and fetch chat history
@@ -225,13 +248,29 @@ const AIAgentModal = ({ isOpen, onClose }) => {
     }
   }, [isOpen, fetchChatHistory]);
 
+  useEffect(() => {
+    const local = Array.isArray(myProfile?.friends) ? myProfile.friends : [];
+    if (local.length) friendsCacheRef.current = local;
+  }, [myProfile?.friends]);
+
+  useEffect(() => {
+    if (!isOpen || !myProfile?._id) return undefined;
+    let cancelled = false;
+    api
+      .get("/friend/getFriends", { params: { profile: myProfile._id } })
+      .then((response) => {
+        if (cancelled || !Array.isArray(response.data)) return;
+        friendsCacheRef.current = response.data;
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, myProfile?._id]);
+
   // Scroll to latest message
   useEffect(() => {
-    // Add a small delay to ensure DOM is updated
-    const timer = setTimeout(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, 100);
-    return () => clearTimeout(timer);
+    messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
   }, [messages]);
 
 
@@ -250,16 +289,25 @@ const AIAgentModal = ({ isOpen, onClose }) => {
     if (!isOpen) {
       pendingIntentRef.current = null;
       setSettingsOpen(false);
+      streamAbortRef.current?.abort();
     }
   }, [isOpen]);
 
   useEffect(() => {
     setLlmInfo(getResolvedAgentSettings());
-    fetchAiProviderStatus();
+    fetchAiProviderStatus().then(() => {
+      warmupCursorProvider();
+    });
     return subscribeAgentSettings(() => {
       setLlmInfo(getResolvedAgentSettings());
     });
   }, []);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    warmupCursorProvider();
+    return undefined;
+  }, [isOpen]);
 
 
 
@@ -274,7 +322,14 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   // Save messages to database whenever messages change (debounced)
   useEffect(() => {
     // Skip saving if still loading or only initial message
-    if (isFetchingHistory || skipSaveRef.current || messages.length <= 1) return;
+    if (
+      isFetchingHistory ||
+      skipSaveRef.current ||
+      messages.length <= 1 ||
+      messages.some((item) => item?.streaming)
+    ) {
+      return;
+    }
     
     const timer = setTimeout(async () => {
       try {
@@ -336,12 +391,111 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       const text = typeof rawMessage === "string" ? rawMessage : inputValue;
       if (!text || !text.trim()) return;
 
-      addMessage({ type: "user", content: text });
+      streamAbortRef.current?.abort();
+      if (streamRafRef.current) {
+        cancelAnimationFrame(streamRafRef.current);
+        streamRafRef.current = 0;
+      }
+      streamPendingRef.current = null;
+      setMessages((prev) => [
+        ...prev
+          .filter((msg) => !(msg.streaming && !String(msg.content || "").trim()))
+          .map((msg) =>
+            msg.streaming ? { ...msg, streaming: false } : msg,
+          ),
+        {
+          id: createId(),
+          timestamp: new Date(),
+          type: "user",
+          content: text,
+        },
+      ]);
       setInputValue("");
       const generation = ++sendGenerationRef.current;
       const originalText = text.trim();
       rememberUserText(myProfile?._id, originalText);
       const stillCurrent = () => generation === sendGenerationRef.current;
+
+      const history = toLlmHistory(messagesRef.current, 4);
+
+      const flushStreamMessage = (id, content, streaming) => {
+        streamPendingRef.current = { id, content, streaming };
+        if (streaming) {
+          if (streamRafRef.current) return;
+          streamRafRef.current = requestAnimationFrame(() => {
+            streamRafRef.current = 0;
+            const pending = streamPendingRef.current;
+            if (!pending || generation !== sendGenerationRef.current) return;
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === pending.id
+                  ? {
+                      ...msg,
+                      content: pending.content,
+                      streaming: pending.streaming,
+                    }
+                  : msg,
+              ),
+            );
+          });
+          return;
+        }
+        if (streamRafRef.current) {
+          cancelAnimationFrame(streamRafRef.current);
+          streamRafRef.current = 0;
+        }
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === id ? { ...msg, content, streaming: false } : msg,
+          ),
+        );
+      };
+
+      const streamAgentReply = async (userText, chatHistory) => {
+        const streamId = createId();
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: streamId,
+            type: "agent",
+            content: "",
+            streaming: true,
+            timestamp: new Date(),
+          },
+        ]);
+
+        const abort = new AbortController();
+        streamAbortRef.current = abort;
+
+        try {
+          const chat = await sendToGeminiStream(userText, chatHistory, {
+            onDelta: (next) => {
+              if (!stillCurrent()) {
+                abort.abort();
+                return;
+              }
+              flushStreamMessage(streamId, next, true);
+            },
+            signal: abort.signal,
+          });
+          if (!stillCurrent()) return;
+          flushStreamMessage(
+            streamId,
+            chat?.response ||
+              "I didn't catch that. Try a short command like “open settings”.",
+            false,
+          );
+        } catch (error) {
+          if (!stillCurrent() || error?.name === "AbortError") return;
+          flushStreamMessage(
+            streamId,
+            error?.message
+              ? `Sorry, something went wrong: ${error.message}`
+              : "Sorry, something went wrong. Please try again.",
+            false,
+          );
+        }
+      };
 
       if (pendingIntentRef.current && isCancelFollowUp(originalText)) {
         pendingIntentRef.current = null;
@@ -361,9 +515,6 @@ const AIAgentModal = ({ isOpen, onClose }) => {
           return;
         }
       }
-
-      setIsLoading(true);
-      const history = toLlmHistory(messages, 6);
 
       const presentResult = async (result, replyOverride, intent = null) => {
         if (!result || !stillCurrent()) return;
@@ -437,9 +588,13 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       };
 
       const resolveFriends = async (intent) => {
-        const friends = Array.isArray(myProfile?.friends)
+        const localFriends = Array.isArray(myProfile?.friends)
           ? myProfile.friends
           : [];
+        const cached = Array.isArray(friendsCacheRef.current)
+          ? friendsCacheRef.current
+          : [];
+        const friends = cached.length >= localFriends.length ? cached : localFriends;
         let matched = searchFriendsByName(friends, intent.targetName);
         if (matched.length === 0) {
           const names = splitFriendNames(intent.targetName);
@@ -456,44 +611,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             });
           }
         }
-        let searchableFriends = friends;
-        if (matched.length === 0 && myProfile?._id) {
-          try {
-            const response = await api.get("/friend/getFriends", {
-              params: { profile: myProfile._id },
-            });
-            searchableFriends = Array.isArray(response.data)
-              ? response.data
-              : [];
-            matched = searchFriendsByName(
-              searchableFriends,
-              intent.targetName,
-            );
-            if (matched.length === 0) {
-              const names = splitFriendNames(intent.targetName);
-              if (names.length > 1) {
-                const seen = new Set();
-                matched = [];
-                names.forEach((name) => {
-                  searchFriendsByName(searchableFriends, name).forEach(
-                    (profile) => {
-                      const id = String(profile?._id || "");
-                      if (!id || seen.has(id)) return;
-                      seen.add(id);
-                      matched.push(profile);
-                    },
-                  );
-                });
-              }
-            }
-          } catch (friendListError) {
-            console.warn(
-              "[AIAgentModal] Could not refresh friend profiles:",
-              friendListError,
-            );
-          }
-        }
-        return { matched, searchableFriends };
+        return { matched, searchableFriends: friends };
       };
 
       const pauseForInput = (intent, slots, question) => {
@@ -543,13 +661,55 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             String(nextIntent.queryType || "").toLowerCase() === "user");
 
         if (needsFriend) {
-          const { matched } = await resolveFriends(nextIntent);
+          let { matched } = await resolveFriends(nextIntent);
+          const foundInFriends = matched.length > 0;
+          const canSearchDirectory = DIRECTORY_LOOKUP_ACTIONS.has(
+            nextIntent.action,
+          );
+
+          if (!foundInFriends && canSearchDirectory) {
+            matched = await searchConnectUsers(nextIntent.targetName, {
+              excludeId: myProfile?._id,
+            });
+          }
+
           if (matched.length === 0) {
+            const askedName = nextIntent.targetName || "that person";
             pauseForInput(
               { ...nextIntent, targetName: null },
               ["targetName"],
-              `I couldn't find "${nextIntent.targetName}" in your friends list. Who did you mean?`,
+              canSearchDirectory
+                ? `I couldn't find anyone named "${askedName}" on Connect. Try a username or full name.`
+                : `I couldn't find "${askedName}" in your friends list. Who did you mean?`,
             );
+            return true;
+          }
+
+          if (nextIntent.action === "ADD_FRIEND" && foundInFriends) {
+            pendingIntentRef.current = null;
+            if (matched.length === 1) {
+              addMessage({
+                type: "action-result",
+                success: true,
+                content: `You're already friends with ${getFriendDisplayName(matched[0])}.`,
+              });
+              return true;
+            }
+            addMessage({
+              type: "friend-picker",
+              content: `You're already friends with these people matching "${nextIntent.targetName}". Open a profile?`,
+              friends: matched,
+              action: "VIEW_PROFILE",
+              actionLabel: "View Profile",
+              intent: { ...nextIntent, action: "VIEW_PROFILE" },
+              onAction: (friend) => {
+                pendingIntentRef.current = null;
+                handleFriendAction(friend, "VIEW_PROFILE", {
+                  ...nextIntent,
+                  action: "VIEW_PROFILE",
+                });
+              },
+            });
             return true;
           }
 
@@ -697,7 +857,23 @@ const AIAgentModal = ({ isOpen, onClose }) => {
           }
         }
 
-        const localIntent = parseIntent(originalText);
+        const localIntent =
+          parseIntent(originalText) ||
+          (() => {
+            const stripped = stripCommandFiller(originalText);
+            const route = findStaticRoute(stripped);
+            if (!route?.route) return null;
+            return {
+              action: "NAVIGATE",
+              targetName: null,
+              messageText: null,
+              searchQuery: null,
+              targetRoute: route.route,
+              subPath: null,
+              label: route.label,
+              params: {},
+            };
+          })();
         if (localIntent && isFastLocalIntent(localIntent, originalText)) {
           const handled = await runIntent(hydrateIntent(localIntent), "", {
             forceExecute: autoRun,
@@ -706,15 +882,19 @@ const AIAgentModal = ({ isOpen, onClose }) => {
           if (handled) return;
         }
 
-        if (!pendingSnapshot && !looksLikeAppCommand(originalText)) {
-          const chat = await sendToGemini(originalText, history);
-          if (!stillCurrent()) return;
-          addMessage({
-            type: "agent",
-            content:
-              chat?.response ||
-              "I didn't catch that. Try a short command like “open settings”.",
-          });
+        setIsLoading(true);
+
+        const providerId = getResolvedAgentSettings().provider;
+        if (
+          providerId === "cursor" ||
+          (!pendingSnapshot &&
+            (!looksLikeAppCommand(originalText) ||
+              looksLikeQuestion(originalText) ||
+              /^(please\s+)?(tell me|send me|give me|write|explain)\b/i.test(
+                originalText,
+              )))
+        ) {
+          await streamAgentReply(originalText, history);
           return;
         }
 
@@ -824,7 +1004,6 @@ const AIAgentModal = ({ isOpen, onClose }) => {
     },
     [
       inputValue,
-      messages,
       myProfile,
       navigate,
       onClose,

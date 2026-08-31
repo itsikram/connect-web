@@ -258,10 +258,21 @@ const ChatFooter = ({
           .then(() => {
             removeTyping();
             scrollToLastMessage();
+            setInputValue("");
+            setIsReplying(false);
+            setIsPreview(false);
+            setAttachmentUrl("");
+            setReplyData({
+              messageId: null,
+              body: null,
+              attachment: null,
+              senderId: null,
+              messageType: null,
+            });
           })
           .catch((error) => {
             console.error("Failed to send message:", error);
-            // Optionally show error to user
+            if (typedMessage) setInputValue(typedMessage);
           })
           .finally(() => {
             // Reset sending flag after a short delay
@@ -270,20 +281,10 @@ const ChatFooter = ({
               setIsSendingMessage(false);
             }, 500);
           });
+      } else {
+        isSendingRef.current = false;
+        setIsSendingMessage(false);
       }
-
-      // Clear input and reset state
-      setInputValue("");
-      setIsReplying(false);
-      setIsPreview(false);
-      setAttachmentUrl("");
-      setReplyData({
-        messageId: null,
-        body: null,
-        attachment: null,
-        senderId: null,
-        messageType: null,
-      });
     },
     [
       messages,

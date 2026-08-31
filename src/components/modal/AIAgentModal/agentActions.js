@@ -2,7 +2,7 @@
  * AI Agent Action Executor
  */
 
-import api from "../../../api/api";
+import api, { invalidateGetCache } from "../../../api/api";
 import socket from "../../../common/socket";
 import {
   getFriendDisplayName,
@@ -10,7 +10,6 @@ import {
   splitFriendNames,
 } from "./agentIntentParser";
 import { sendBumpToFriend } from "../../../utils/sendBump";
-import { generatePostCaption } from "../../../services/geminiService";
 import {
   extractCaptionFromText,
   isPlaceholderCaption,
@@ -85,6 +84,56 @@ const unwrapList = (payload, keys = []) => {
 
 const formatNamedPerson = (profile) =>
   getFriendDisplayName(profile) || profile?.username || "Unknown";
+
+const MONGO_ID_RE = /^[a-fA-F0-9]{24}$/;
+
+const toProfileId = (person) => {
+  if (!person) return "";
+  if (typeof person === "string") {
+    return MONGO_ID_RE.test(person) ? person : "";
+  }
+  const raw =
+    person._id ??
+    person.id ??
+    person.profileId ??
+    person.profile?._id ??
+    person.profile;
+  if (raw && typeof raw === "object") {
+    return toProfileId(raw._id ?? raw.id ?? raw.$oid);
+  }
+  const value = String(raw || "").trim();
+  return MONGO_ID_RE.test(value) ? value : "";
+};
+
+const listHasProfileId = (list, targetId) => {
+  const target = String(targetId || "");
+  if (!target || !Array.isArray(list)) return false;
+  return list.some((item) => String(item?._id || item?.id || item) === target);
+};
+
+const toPublicPerson = (person) => {
+  if (!person) return null;
+  const id = toProfileId(person);
+  if (!id) return null;
+  return {
+    _id: id,
+    fullName: person.fullName || "",
+    displayName: person.displayName || "",
+    nickname: person.nickname || "",
+    username: person.username || "",
+    banglaName: person.banglaName || "",
+    profilePic: person.profilePic || "",
+    bio: person.bio || "",
+    user:
+      person.user && typeof person.user === "object"
+        ? {
+            firstName: person.user.firstName || "",
+            surname: person.user.surname || "",
+            username: person.user.username || "",
+          }
+        : undefined,
+  };
+};
 
 const matchProfileByName = (profiles, name) => {
   const query = String(name || "")
@@ -587,6 +636,30 @@ const loadQueryData = async ({
   };
 };
 
+const MAX_DIRECTORY_RESULTS = 8;
+
+/**
+ * Search all Connect users by name/username (not limited to friends).
+ * Used for friend requests and opening profiles of people you don't know yet.
+ */
+export const searchConnectUsers = async (query, { excludeId } = {}) => {
+  const q = String(query || "").trim();
+  if (!q) return [];
+  try {
+    const res = await api.get("/search", { params: { input: q } });
+    const users = Array.isArray(res.data?.users) ? res.data.users : [];
+    const exclude = String(excludeId || "");
+    const others = users
+      .map(toPublicPerson)
+      .filter((user) => user && String(user._id) !== exclude);
+    const ranked = searchFriendsByName(others, q);
+    const list = ranked.length > 0 ? ranked : others;
+    return list.slice(0, MAX_DIRECTORY_RESULTS);
+  } catch (_err) {
+    return [];
+  }
+};
+
 /**
  * Execute an agent action.
  *
@@ -929,11 +1002,82 @@ export const executeAction = async ({
 
       // ── Add Friend ─────────────────────────────────────────────────────────
       case "ADD_FRIEND": {
-        await api.post("/friend/sendRequest", { profile: friend._id });
-        return {
-          success: true,
-          message: `✉️ Friend request sent to ${friendName}!`,
-        };
+        const profileId = toProfileId(friend);
+        const myId = toProfileId(myProfile);
+        if (!profileId) {
+          return {
+            success: false,
+            message: "I need a person to send the friend request to.",
+          };
+        }
+        if (myId && profileId === myId) {
+          return {
+            success: false,
+            message: "You can't send a friend request to yourself.",
+          };
+        }
+        try {
+          const res = await api.post("/friend/sendRequest/", {
+            profile: profileId,
+          });
+          const body = res?.data || {};
+          if (body.alreadyFriend || body.message === "Already Friend") {
+            return {
+              success: true,
+              message: `You're already friends with ${friendName}.`,
+            };
+          }
+          if (body.alreadyRequested || body.message === "Already Requested") {
+            return {
+              success: true,
+              message: `A friend request to ${friendName} is already pending.`,
+            };
+          }
+
+          const storedOnReceiver = listHasProfileId(body.friendReqs, myId);
+          if (body.success === true || storedOnReceiver) {
+            try {
+              invalidateGetCache("profile");
+            } catch (_err) {}
+            return {
+              success: true,
+              message: `✉️ Friend request sent to ${friendName}!`,
+            };
+          }
+
+          const verify = await api.get("/profile", {
+            params: { profileId, lite: 1 },
+          });
+          const confirmed = listHasProfileId(
+            verify?.data?.friendReqs,
+            myId,
+          );
+          if (confirmed) {
+            try {
+              invalidateGetCache("profile");
+            } catch (_err) {}
+            return {
+              success: true,
+              message: `✉️ Friend request sent to ${friendName}!`,
+            };
+          }
+
+          return {
+            success: false,
+            message: `Couldn't confirm the friend request to ${friendName}. Try sending it from their profile.`,
+          };
+        } catch (err) {
+          const reason =
+            err?.response?.data?.reason ||
+            err?.response?.data?.message ||
+            err?.message;
+          return {
+            success: false,
+            message: reason
+              ? `Couldn't send a friend request to ${friendName}: ${reason}`
+              : `Couldn't send a friend request to ${friendName}.`,
+          };
+        }
       }
 
       // ── Unfriend ───────────────────────────────────────────────────────────
@@ -996,15 +1140,6 @@ export const executeAction = async ({
         if (!caption) {
           caption = extractCaptionFromText(hintText) || "";
         }
-        if (!caption) {
-          try {
-            caption = await generatePostCaption(
-              sourceText || hintText || searchQuery || "Write a short funny caption.",
-            );
-          } catch (captionError) {
-            console.warn("[AgentActions] Caption generation failed:", captionError);
-          }
-        }
         caption = String(caption || "")
           .trim()
           .slice(0, 500);
@@ -1018,7 +1153,7 @@ export const executeAction = async ({
               }),
             );
             if (onClose) onClose();
-          }, 350);
+          }, 50);
         };
 
         if (!caption || wantDraft) {
@@ -1729,8 +1864,6 @@ export const executeAction = async ({
             } catch (_) {}
           }
 
-          await new Promise((resolve) => setTimeout(resolve, 200));
-
           openStickyChat(friend._id);
           return {
             success: true,
@@ -1747,7 +1880,7 @@ export const executeAction = async ({
       case "SEARCH_USERS":
       case "SEARCH_POSTS":
       case "SEARCH_APP": {
-        const query = (searchQuery || label || "").trim();
+        const query = (searchQuery || label || targetName || "").trim();
         if (!query) {
           return { success: false, message: "What should I search for?" };
         }
