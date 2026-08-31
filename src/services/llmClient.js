@@ -27,11 +27,25 @@ export const isGeminiQuotaError = (status, data) => {
 };
 
 let activeGeminiKeyIndex = 0;
-const GEMINI_FETCH_MS = 20000;
+const GEMINI_FETCH_MS = 16000;
+const GEMINI_JSON_MS = 8000;
 
-const fetchGemini = async (url, requestBody) => {
+const geminiOutputCap = (json, maxTokens) =>
+  json ? Math.min(maxTokens, 128) : Math.min(maxTokens, 160);
+
+const isGeminiNotFound = (status, data) => {
+  if (status === 404) return true;
+  const message = String(data?.error?.message || "").toLowerCase();
+  return (
+    message.includes("not found") ||
+    message.includes("unknown model") ||
+    message.includes("is not supported")
+  );
+};
+
+const fetchGemini = async (url, requestBody, timeoutMs = GEMINI_FETCH_MS) => {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), GEMINI_FETCH_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, {
       method: "POST",
@@ -69,7 +83,7 @@ const toGeminiContents = (messages = []) => {
 };
 
 const supportsGeminiThinkingOff = (model = "") =>
-  /gemini-(2\.5|3)/i.test(String(model));
+  /gemini-(2\.5|3)/i.test(String(model)) && !/lite/i.test(String(model));
 
 const withGeminiSpeedConfig = (model, generationConfig) => {
   if (!supportsGeminiThinkingOff(model)) return generationConfig;
@@ -84,6 +98,7 @@ const requestGemini = async ({
   apiKeys,
   requestBody,
   operationLabel,
+  timeoutMs = GEMINI_FETCH_MS,
 }) => {
   if (!apiKeys.length) {
     throw new Error("Gemini API key is not configured");
@@ -95,7 +110,11 @@ const requestGemini = async ({
   for (let attempt = 0; attempt < apiKeys.length; attempt += 1) {
     const keyIndex = (startingKeyIndex + attempt) % apiKeys.length;
     const apiKey = apiKeys[keyIndex];
-    const response = await fetchGemini(geminiUrl(model, apiKey), requestBody);
+    const response = await fetchGemini(
+      geminiUrl(model, apiKey),
+      requestBody,
+      timeoutMs,
+    );
 
     const data = await response.json().catch(() => null);
     if (response.ok) {
@@ -108,7 +127,11 @@ const requestGemini = async ({
       requestBody?.generationConfig?.thinkingConfig
     ) {
       delete requestBody.generationConfig.thinkingConfig;
-      const retry = await fetchGemini(geminiUrl(model, apiKey), requestBody);
+      const retry = await fetchGemini(
+        geminiUrl(model, apiKey),
+        requestBody,
+        timeoutMs,
+      );
       const retryData = await retry.json().catch(() => null);
       if (retry.ok) {
         activeGeminiKeyIndex = keyIndex;
@@ -151,19 +174,22 @@ const completeGemini = async ({
   temperature,
   maxTokens,
   operationLabel,
+  timeoutMs,
 }) => {
   const requestBody = {
     systemInstruction: system ? { parts: [{ text: system }] } : undefined,
     contents: toGeminiContents(messages),
     generationConfig: withGeminiSpeedConfig(settings.model, {
       temperature,
-      topK: json ? 8 : 16,
-      topP: json ? 0.7 : 0.85,
-      maxOutputTokens: json ? Math.min(maxTokens, 256) : Math.min(maxTokens, 320),
+      topK: json ? 4 : 12,
+      topP: json ? 0.6 : 0.8,
+      maxOutputTokens: geminiOutputCap(json, maxTokens),
       candidateCount: 1,
       ...(json ? { responseMimeType: "application/json" } : {}),
     }),
   };
+
+  const requestTimeout = timeoutMs || (json ? GEMINI_JSON_MS : GEMINI_FETCH_MS);
 
   let data;
   try {
@@ -172,6 +198,7 @@ const completeGemini = async ({
       apiKeys: settings.apiKeys,
       requestBody,
       operationLabel,
+      timeoutMs: requestTimeout,
     });
   } catch (error) {
     if (!json) throw error;
@@ -179,9 +206,9 @@ const completeGemini = async ({
       ...requestBody,
       generationConfig: withGeminiSpeedConfig(settings.model, {
         temperature,
-        topK: json ? 8 : 16,
-        topP: json ? 0.7 : 0.85,
-        maxOutputTokens: json ? Math.min(maxTokens, 256) : Math.min(maxTokens, 320),
+        topK: json ? 4 : 12,
+        topP: json ? 0.6 : 0.8,
+        maxOutputTokens: geminiOutputCap(json, maxTokens),
         candidateCount: 1,
       }),
     };
@@ -190,6 +217,7 @@ const completeGemini = async ({
       apiKeys: settings.apiKeys,
       requestBody: fallbackBody,
       operationLabel,
+      timeoutMs: requestTimeout,
     });
   }
 
@@ -213,10 +241,19 @@ const parseSseBlock = (block = "") => {
   return dataLines.join("\n");
 };
 
+const emitSsePayload = (raw, onData) => {
+  if (!raw || raw === "[DONE]") return;
+  try {
+    onData(JSON.parse(raw));
+  } catch {
+    onData({ text: raw });
+  }
+};
+
 const readSseStream = async (response, onData) => {
   if (!response?.body || typeof response.body.getReader !== "function") {
     const text = await response.text();
-    if (text) onData(JSON.parse(text));
+    if (text) emitSsePayload(text, onData);
     return;
   }
 
@@ -228,27 +265,40 @@ const readSseStream = async (response, onData) => {
     const { value, done } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
-    const parts = buffer.split(/\r?\n\r?\n/);
-    buffer = parts.pop() || "";
-    for (let i = 0; i < parts.length; i += 1) {
-      const raw = parseSseBlock(parts[i]);
+
+    let boundary = buffer.search(/\r?\n\r?\n/);
+    while (boundary !== -1) {
+      const block = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary).replace(/^\r?\n\r?\n/, "");
+      emitSsePayload(parseSseBlock(block), onData);
+      boundary = buffer.search(/\r?\n\r?\n/);
+    }
+
+    const lastNl = buffer.lastIndexOf("\n");
+    if (lastNl < 0) continue;
+    const head = buffer.slice(0, lastNl + 1);
+    const tail = buffer.slice(lastNl + 1);
+    const remain = [];
+    const lines = head.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      if (!line) continue;
+      if (!line.startsWith("data:")) {
+        remain.push(line);
+        continue;
+      }
+      const raw = line.slice(5).trimStart();
       if (!raw || raw === "[DONE]") continue;
       try {
         onData(JSON.parse(raw));
       } catch {
-        onData({ text: raw });
+        remain.push(line);
       }
     }
+    buffer = remain.length ? `${remain.join("\n")}\n${tail}` : tail;
   }
 
-  const tail = parseSseBlock(buffer);
-  if (tail && tail !== "[DONE]") {
-    try {
-      onData(JSON.parse(tail));
-    } catch {
-      if (tail.trim()) onData({ text: tail });
-    }
-  }
+  emitSsePayload(parseSseBlock(buffer), onData);
 };
 
 const withAbortTimeout = (userSignal, timeoutMs) => {
@@ -278,6 +328,7 @@ const streamGemini = async ({
   operationLabel,
   onDelta,
   signal,
+  timeoutMs,
 }) => {
   if (!settings.apiKeys.length) {
     throw new Error("Gemini API key is not configured");
@@ -288,11 +339,9 @@ const streamGemini = async ({
     contents: toGeminiContents(messages),
     generationConfig: {
       temperature,
-      topK: json ? 8 : 16,
-      topP: json ? 0.7 : 0.85,
-      maxOutputTokens: json
-        ? Math.min(maxTokens, 256)
-        : Math.min(maxTokens, 320),
+      topK: json ? 4 : 12,
+      topP: json ? 0.6 : 0.8,
+      maxOutputTokens: geminiOutputCap(json, maxTokens),
       candidateCount: 1,
       ...(json ? { responseMimeType: "application/json" } : {}),
       ...(includeThinking && supportsGeminiThinkingOff(settings.model)
@@ -303,7 +352,7 @@ const streamGemini = async ({
 
   const { signal: fetchSignal, cleanup } = withAbortTimeout(
     signal,
-    GEMINI_FETCH_MS,
+    timeoutMs || (json ? GEMINI_JSON_MS : GEMINI_FETCH_MS),
   );
   let lastError = null;
   const startingKeyIndex = activeGeminiKeyIndex;
@@ -312,9 +361,10 @@ const streamGemini = async ({
     for (let attempt = 0; attempt < settings.apiKeys.length; attempt += 1) {
       const keyIndex = (startingKeyIndex + attempt) % settings.apiKeys.length;
       const apiKey = settings.apiKeys[keyIndex];
+      let modelId = settings.model;
       let requestBody = buildBody(true);
 
-      let response = await fetch(geminiStreamUrl(settings.model, apiKey), {
+      let response = await fetch(geminiStreamUrl(modelId, apiKey), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
@@ -326,7 +376,7 @@ const streamGemini = async ({
         requestBody.generationConfig?.thinkingConfig
       ) {
         requestBody = buildBody(false);
-        response = await fetch(geminiStreamUrl(settings.model, apiKey), {
+        response = await fetch(geminiStreamUrl(modelId, apiKey), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(requestBody),
@@ -340,11 +390,31 @@ const streamGemini = async ({
           data?.error?.message ||
             `${operationLabel} failed with HTTP ${response.status}`,
         );
-        if (!isGeminiQuotaError(response.status, data)) {
+        if (
+          isGeminiNotFound(response.status, data) &&
+          modelId !== "gemini-2.0-flash"
+        ) {
+          response = await fetch(geminiStreamUrl("gemini-2.0-flash", apiKey), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(requestBody),
+            signal: fetchSignal,
+          });
+          if (!response.ok) {
+            const retryData = await response.json().catch(() => null);
+            lastError = new Error(
+              retryData?.error?.message || lastError.message,
+            );
+            if (!isGeminiQuotaError(response.status, retryData)) throw lastError;
+            activeGeminiKeyIndex = (keyIndex + 1) % settings.apiKeys.length;
+            continue;
+          }
+        } else if (!isGeminiQuotaError(response.status, data)) {
           throw lastError;
+        } else {
+          activeGeminiKeyIndex = (keyIndex + 1) % settings.apiKeys.length;
+          continue;
         }
-        activeGeminiKeyIndex = (keyIndex + 1) % settings.apiKeys.length;
-        continue;
       }
 
       activeGeminiKeyIndex = keyIndex;
@@ -367,7 +437,9 @@ const streamGemini = async ({
           streamError = new Error(payload.error.message);
           return;
         }
-        const chunk = extractGeminiText(payload, { trim: false });
+        const chunk =
+          extractGeminiText(payload, { trim: false }) ||
+          (typeof payload?.text === "string" ? payload.text : "");
         if (!chunk) return;
         text += chunk;
         onDelta?.(text);
@@ -400,6 +472,32 @@ const getApiClient = () => {
   return apiClientPromise;
 };
 
+let streamHelpersPromise = null;
+const getStreamHelpers = () => {
+  if (!streamHelpersPromise) {
+    streamHelpersPromise = Promise.all([
+      import("../utils/storageUtils"),
+      import("../utils/offlineUtils"),
+    ]);
+  }
+  return streamHelpersPromise;
+};
+
+let geminiPreconnected = false;
+const preconnectGemini = () => {
+  if (geminiPreconnected || typeof document === "undefined") return;
+  geminiPreconnected = true;
+  const dns = document.createElement("link");
+  dns.rel = "dns-prefetch";
+  dns.href = "https://generativelanguage.googleapis.com";
+  document.head.appendChild(dns);
+  const link = document.createElement("link");
+  link.rel = "preconnect";
+  link.href = "https://generativelanguage.googleapis.com";
+  link.crossOrigin = "anonymous";
+  document.head.appendChild(link);
+};
+
 const completeViaServer = async ({
   settings,
   system,
@@ -425,7 +523,7 @@ const completeViaServer = async ({
     if (settings.provider === "gemini" && settings.usingUserKey && settings.apiKey) {
       payload.apiKey = settings.apiKey;
     }
-    const timeout = settings.provider === "cursor" ? 120000 : 20000;
+    const timeout = settings.provider === "cursor" ? 90000 : json ? 10000 : 16000;
     const response = await api.post("/ai-chat/complete", payload, {
       timeout,
     });
@@ -455,12 +553,9 @@ const streamViaServer = async ({
   onDelta,
   signal,
 }) => {
-  const [{ getUserFromStorage }, { getServerAddress }] = await Promise.all([
-    import("../utils/storageUtils"),
-    import("../utils/offlineUtils"),
-  ]);
+  const [{ getUserFromStorage }, { getServerAddress }] = await getStreamHelpers();
   const token = getUserFromStorage()?.accessToken || "";
-  const timeoutMs = settings.provider === "cursor" ? 120000 : 25000;
+  const timeoutMs = settings.provider === "cursor" ? 90000 : json ? 10000 : 18000;
   const { signal: fetchSignal, cleanup } = withAbortTimeout(signal, timeoutMs);
 
   try {
@@ -524,6 +619,10 @@ const streamViaServer = async ({
     if (error?.name === "AbortError" || signal?.aborted || fetchSignal.aborted) {
       throw error;
     }
+    if (settings.provider === "cursor") throw error;
+    if (/quota|resource exhausted|rate limit|timed out/i.test(String(error?.message || ""))) {
+      throw error;
+    }
     const fallback = await completeViaServer({
       settings,
       system,
@@ -561,6 +660,22 @@ export const fetchAiProviderStatus = async () => {
 export const warmupCursorProvider = async () => {
   try {
     const settings = getResolvedAgentSettings();
+    if (settings.provider === "gemini") {
+      preconnectGemini();
+      getStreamHelpers().catch(() => {});
+      const key = String(settings.apiKeys?.[0] || settings.apiKey)
+        .split(",")[0]
+        .trim();
+      if (!key) return;
+      fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+          settings.model,
+        )}?key=${encodeURIComponent(key)}`,
+        { method: "GET" },
+      ).catch(() => {});
+      return;
+    }
+    getStreamHelpers().catch(() => {});
     if (settings.provider !== "cursor") return;
     const api = await getApiClient();
     await api.post(
@@ -593,6 +708,7 @@ export const completeChat = async ({
   temperature = 0.7,
   maxTokens = 1024,
   operationLabel = "AI request",
+  timeoutMs,
 } = {}) => {
   const settings = assertProviderReady();
 
@@ -605,6 +721,7 @@ export const completeChat = async ({
       temperature,
       maxTokens,
       operationLabel,
+      timeoutMs,
     });
   }
 
@@ -627,6 +744,7 @@ export const streamChat = async ({
   operationLabel = "AI request",
   onDelta,
   signal,
+  timeoutMs,
 } = {}) => {
   const settings = assertProviderReady();
 
@@ -642,11 +760,15 @@ export const streamChat = async ({
         operationLabel,
         onDelta,
         signal,
+        timeoutMs,
       });
     } catch (error) {
       if (error?.name === "AbortError" || signal?.aborted) throw error;
       if (
-        /quota|resource exhausted|rate limit/i.test(String(error?.message || ""))
+        json ||
+        /quota|resource exhausted|rate limit|timed out/i.test(
+          String(error?.message || ""),
+        )
       ) {
         throw error;
       }
@@ -658,6 +780,7 @@ export const streamChat = async ({
         temperature,
         maxTokens,
         operationLabel,
+        timeoutMs,
       });
       onDelta?.(text);
       return text;

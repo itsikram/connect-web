@@ -46,6 +46,7 @@ const CameraViewfinder = ({
       x: point.clientX,
       y: point.clientY,
       dx: point.clientX - startRef.current.x,
+      dy: point.clientY - startRef.current.y,
     });
   };
 
@@ -87,9 +88,16 @@ const CameraViewfinder = ({
       <div className={`camera-flash-overlay${flashOn ? " is-on" : ""}`} />
       {focusPt && (
         <div
-          className="camera-focus"
+          className={`camera-focus${focusPt.adjusting ? " is-adjusting" : ""}`}
           style={{ left: focusPt.x, top: focusPt.y }}
-        />
+        >
+          {focusPt.adjusting && focusPt.brightness != null && (
+            <span className="camera-focus-brightness">
+              {focusPt.brightness > 0 ? "+" : ""}
+              {Math.round(focusPt.brightness)}
+            </span>
+          )}
+        </div>
       )}
       <div className={`camera-filter-name${showFilterName ? " is-on" : ""}`}>
         {filterLabel}

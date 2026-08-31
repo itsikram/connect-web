@@ -3,6 +3,8 @@
  * Gemini is instructed to pick from these action names only.
  */
 
+import { parseProfilePatch, parseSettingsPatch } from "./agentActionHelpers";
+
 export const QUERY_TYPES = [
   "search",
   "friends",
@@ -271,6 +273,9 @@ export const normalizeAgentAction = (action) => {
     MAKEPOST: "CREATE_POST",
     PUBLISH_POST: "CREATE_POST",
     PUBLISHPOST: "CREATE_POST",
+    UPLOAD_POST: "CREATE_POST",
+    UPLOADPOST: "CREATE_POST",
+    SHARE_POST: "CREATE_POST",
     ADD_POST: "CREATE_POST",
     STATUS_POST: "CREATE_POST",
     NEW_STORY: "CREATE_STORY",
@@ -356,6 +361,16 @@ export const isPlaceholderCaption = (value = "") => {
   ) || /^(with\s+)?((a|an)\s+)?((funny|witty|random|good|nice)\s+)+caption$/i.test(text);
 };
 
+export const wantsGeneratedPostCaption = (text = "") =>
+  /\b((funny|witty|random|good|nice|cool|humorous)\s+)+caption\b|\bgenerate\s+(?:me\s+)?(?:a\s+)?(?:funny\s+|witty\s+)?caption\b|\b(write|make|create)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:funny|witty)\s+(?:caption|post)\b/i.test(
+    String(text || ""),
+  );
+
+export const wantsDraftPost = (text = "") =>
+  /\b(draft|composer|preview|don't post|dont post|don't publish|dont publish|don't upload|dont upload)\b/i.test(
+    String(text || ""),
+  );
+
 export const extractCaptionFromText = (text = "") => {
   const value = String(text || "")
     .replace(/\s+/g, " ")
@@ -367,6 +382,13 @@ export const extractCaptionFromText = (text = "") => {
   );
   if (labeled?.[1]) {
     return stripWrappingQuotes(labeled[1]);
+  }
+
+  const withCaption = value.match(
+    /\b(?:upload|create|make|write|publish|share)?(?:\s+(?:me\s+)?(?:a\s+|an\s+)?(?:new\s+)?)?(?:status\s+)?post\s+with\s+(?:the\s+|a\s+|an\s+)?caption\s*[:\-–]?\s*(.+)$/i,
+  );
+  if (withCaption?.[1]) {
+    return stripWrappingQuotes(withCaption[1]);
   }
 
   const doubleQuoted = value.match(/"([^"]{2,500})"/);
@@ -382,11 +404,11 @@ export const userWantsCreatePost = (userMessage = "", reply = "") => {
   const request = String(userMessage || "");
   const assistant = String(reply || "");
   if (
-    /(?:create|make|write|publish)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:new\s+)?(?:funny\s+|witty\s+)?post\b/i.test(
+    /(?:create|make|write|publish|upload|share)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:new\s+)?(?:funny\s+|witty\s+)?post\b/i.test(
       request,
     ) ||
     /\bpost\b.{0,40}\b(caption|status)\b/i.test(request) ||
-    /পোস্ট\s*(কর|তৈরি)/.test(request)
+    /পোস্ট\s*(কর|তৈরি|আপলোড)/.test(request)
   ) {
     return true;
   }
@@ -473,6 +495,7 @@ export const toAgentIntent = (raw = {}) => {
     label,
     queryType: raw.queryType || null,
     params: {},
+    sourceText: raw.sourceText || null,
   };
 };
 
@@ -585,6 +608,41 @@ export const getMissingIntentSlots = (intent) => {
     missing.push("targetRoute");
   }
 
+  if (action === AGENT_ACTIONS.CREATE_POST) {
+    const blob = [
+      intent.searchQuery,
+      intent.label,
+      intent.messageText,
+      intent.sourceText,
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const hasCaption =
+      hasValue(intent.searchQuery) ||
+      hasValue(intent.label) ||
+      hasValue(intent.messageText);
+    if (!hasCaption && !wantsDraftPost(blob) && !wantsGeneratedPostCaption(blob)) {
+      missing.push("searchQuery");
+    }
+  }
+
+  if (action === AGENT_ACTIONS.UPDATE_SETTINGS) {
+    const blob = [
+      intent.searchQuery,
+      intent.label,
+      intent.messageText,
+      intent.sourceText,
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const hasPatch =
+      Object.keys(parseSettingsPatch(blob).patch || {}).length > 0 ||
+      Object.keys(parseProfilePatch(blob).patch || {}).length > 0;
+    if (!hasPatch) {
+      missing.push("searchQuery");
+    }
+  }
+
   if (
     CONTENT_SLOT_ACTIONS.has(action) &&
     !hasValue(intent.searchQuery) &&
@@ -637,8 +695,11 @@ export const getSlotQuestion = (intent, slots = []) => {
     if (action === "SEARCH_YOUTUBE") {
       return "What YouTube video should I search for?";
     }
+    if (action === "CREATE_POST") {
+      return "What should the caption say?";
+    }
     if (action === "UPDATE_SETTINGS") {
-      return "What should I change? Theme, privacy, location sharing, or notifications?";
+      return "What should I change? Theme, privacy, notifications, typing, ringtone, or a profile field?";
     }
     if (action === "LOG_HEALTH") {
       return "What should I log — weight, a meal with calories, or a workout?";

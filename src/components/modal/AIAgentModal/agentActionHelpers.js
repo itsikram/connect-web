@@ -221,57 +221,224 @@ export const matchByText = (items = [], query = "", getText) => {
   return scored[0]?.item || list[0];
 };
 
+const VISIBILITY_LABELS = {
+  om: "only you",
+  fof: "friends of friends",
+  public: "everyone",
+};
+
+const parseVisibilityValue = (source = "") => {
+  if (/\b(only\s*me|onlyme|private|nobody|just me|hidden)\b/i.test(source)) {
+    return "om";
+  }
+  if (/\b(friends?\s+of\s+friends|friend of friends|fof)\b/i.test(source)) {
+    return "fof";
+  }
+  if (/\bfriends?\s+only\b/i.test(source)) return "fof";
+  if (/\bpublic\b/i.test(source)) return "public";
+  return null;
+};
+
+const PUSH_NOTIFICATION_KEYS = [
+  "friendRequestReceived",
+  "friendRequestAccepted",
+  "newMessageReceived",
+  "newFriendPost",
+  "newFriendStory",
+  "newFriendWatch",
+];
+
+const NOTIFICATION_TYPE_PATTERNS = [
+  { keys: ["friendRequestAccepted"], re: /\bfriend request(?:s)?\s+accepted\b/i },
+  { keys: ["friendRequestReceived"], re: /\bfriend request/i },
+  { keys: ["newMessageReceived"], re: /\bmessages?\b/i },
+  { keys: ["newFriendStory"], re: /\bstor(?:y|ies)\b/i },
+  { keys: ["newFriendWatch"], re: /\bwatch\b/i },
+  { keys: ["newFriendPost"], re: /\bposts?\b/i },
+];
+
+const RINGTONE_ALIASES = [
+  { id: 5, names: ["office"] },
+  { id: 4, names: ["telephone 2", "telephone two"] },
+  { id: 2, names: ["bells", "bell"] },
+  { id: 3, names: ["old telephone", "telephone"] },
+  { id: 1, names: ["default", "original"] },
+];
+
+const matchRingtone = (source = "") => {
+  const numbered = source.match(
+    /\bringtones?\s*(?:to\s*|number\s*|id\s*)?(\d+)\b/i,
+  );
+  if (numbered) {
+    const id = Number(numbered[1]);
+    if (id >= 1 && id <= 5) return id;
+  }
+  const named = RINGTONE_ALIASES.find(({ names }) =>
+    names.some((name) => source.includes(name)),
+  );
+  return named?.id || null;
+};
+
+const trimCapturedValue = (value = "") =>
+  String(value || "")
+    .replace(/[?.!,;]+$/g, "")
+    .replace(/\s+(please|now|for me)$/i, "")
+    .replace(/^['"“”‘’]+|['"“”‘’]+$/g, "")
+    .trim()
+    .slice(0, 160);
+
 export const parseSettingsPatch = (text = "") => {
   const source = String(text || "").toLowerCase();
   const patch = {};
   const notes = [];
+  const routes = new Set();
 
   if (/\b(dark mode|dark theme|night mode)\b/.test(source)) {
     patch.themeMode = "dark";
     notes.push("theme set to dark");
+    routes.add("/settings/preference");
   } else if (/\b(light mode|light theme|day mode)\b/.test(source)) {
     patch.themeMode = "light";
     notes.push("theme set to light");
+    routes.add("/settings/preference");
+  } else if (/\b(default theme|system theme|default mode)\b/.test(source)) {
+    patch.themeMode = "default";
+    notes.push("theme set to default");
+    routes.add("/settings/preference");
   }
 
-  if (/\b(hide|stop sharing|don't share|dont share|turn off)\b.+\blocation\b|\blocation\b.+\b(off|hide|private)\b/.test(source)) {
+  if (
+    /\b(hide|stop sharing|don't share|dont share|turn off|disable)\b.+\blocation\b|\blocation\b.+\b(off|hide|private)\b/.test(
+      source,
+    )
+  ) {
     patch.isShareLocation = false;
     notes.push("location sharing off");
-  } else if (/\b(share|show|enable|turn on)\b.+\blocation\b|\blocation\b.+\b(on|public)\b/.test(source)) {
+    routes.add("/settings/privacy");
+  } else if (
+    /\b(share|show|enable|turn on)\b.+\blocation\b|\blocation\b.+\b(on|public)\b/.test(
+      source,
+    )
+  ) {
     patch.isShareLocation = true;
     notes.push("location sharing on");
+    routes.add("/settings/privacy");
   }
 
-  if (/\b(mute|disable|turn off|stop)\b.+\bnotification|\bno notifications?\b/.test(source)) {
-    patch.friendRequestReceived = false;
-    patch.friendRequestAccepted = false;
-    patch.newMessageReceived = false;
-    patch.newFriendPost = false;
-    patch.newFriendStory = false;
-    patch.newFriendWatch = false;
-    notes.push("notifications muted");
-  } else if (/\b(enable|unmute|turn on)\b.+\bnotification/.test(source)) {
-    patch.friendRequestReceived = true;
-    patch.friendRequestAccepted = true;
-    patch.newMessageReceived = true;
-    patch.newFriendPost = true;
-    patch.newFriendStory = true;
-    patch.newFriendWatch = true;
-    notes.push("notifications enabled");
+  const wantsNotifOff =
+    /\b(mute|disable|turn off|switch off|stop)\b/.test(source) ||
+    /\bno notifications?\b/.test(source);
+  const wantsNotifOn = /\b(enable|unmute|turn on|switch on)\b/.test(source);
+  const mentionsNotifications = /\bnotifications?\b/.test(source);
+  const isEmailNotif = /\bemail\b/.test(source);
+  const matchedNotifTypes = NOTIFICATION_TYPE_PATTERNS.filter(({ re }) =>
+    re.test(source),
+  ).flatMap(({ keys }) => keys);
+
+  if (
+    (wantsNotifOff || wantsNotifOn) &&
+    (mentionsNotifications || (matchedNotifTypes.length && isEmailNotif))
+  ) {
+    const enabled = Boolean(wantsNotifOn && !wantsNotifOff);
+    const baseKeys = matchedNotifTypes.length
+      ? [...new Set(matchedNotifTypes)]
+      : PUSH_NOTIFICATION_KEYS;
+    baseKeys.forEach((key) => {
+      patch[isEmailNotif ? `${key}Email` : key] = enabled;
+    });
+    notes.push(
+      `${isEmailNotif ? "email " : ""}${
+        matchedNotifTypes.length ? "selected " : ""
+      }notifications ${enabled ? "enabled" : "muted"}`,
+    );
+    routes.add("/settings/notification");
   }
 
-  if (/\b(only me|private|nobody)\b/.test(source)) {
-    patch.postVisibility = "onlyme";
-    patch.timelinePostVisibility = "onlyme";
-    notes.push("posts visible only to you");
-  } else if (/\bfriends?\s+only\b|\bfriends\b.+\b(privacy|visibility|posts?)\b/.test(source)) {
-    patch.postVisibility = "friends";
-    patch.timelinePostVisibility = "friends";
-    notes.push("posts visible to friends");
-  } else if (/\bpublic\b.+\b(privacy|posts?|visibility)\b|\b(privacy|posts?)\b.+\bpublic\b/.test(source)) {
-    patch.postVisibility = "public";
-    patch.timelinePostVisibility = "public";
-    notes.push("posts public");
+  const visibility = parseVisibilityValue(source);
+  const mentionsPosts =
+    /\b(who can see my posts|post visibility|my posts?|posts? (?:to|are|should)|make (?:my )?posts?)\b/.test(
+      source,
+    );
+  const mentionsFriendRequests =
+    /\b(who can send (?:me )?(?:a )?friend request|friend request visibility)\b/.test(
+      source,
+    );
+  const mentionsTimeline =
+    /\b(who can post on my timeline|timeline(?:\s+post)? visibility)\b/.test(
+      source,
+    );
+
+  if (
+    visibility &&
+    (mentionsPosts ||
+      mentionsFriendRequests ||
+      mentionsTimeline ||
+      /\b(privacy|visibility|only me|friends?\s+only|private|public)\b/.test(
+        source,
+      ))
+  ) {
+    const label = VISIBILITY_LABELS[visibility] || visibility;
+    if (mentionsFriendRequests && !mentionsPosts && !mentionsTimeline) {
+      patch.friendRequestVisibility = visibility;
+      notes.push(`friend requests visible to ${label}`);
+    } else if (mentionsTimeline && !mentionsPosts && !mentionsFriendRequests) {
+      patch.timelinePostVisibility = visibility;
+      notes.push(`timeline posts visible to ${label}`);
+    } else if (mentionsPosts && !mentionsFriendRequests && !mentionsTimeline) {
+      patch.postVisibility = visibility;
+      notes.push(`posts visible to ${label}`);
+    } else {
+      patch.postVisibility = visibility;
+      patch.timelinePostVisibility = visibility;
+      if (mentionsFriendRequests) patch.friendRequestVisibility = visibility;
+      notes.push(`posts visible to ${label}`);
+    }
+    routes.add("/settings/privacy");
+  }
+
+  if (
+    /\b(hide|disable|turn off|stop showing|don't show|dont show)\b.+\btyping|\btyping(?:\s+indicator)?\b.+\b(off|hide|disable)\b/.test(
+      source,
+    )
+  ) {
+    patch.showIsTyping = false;
+    notes.push("typing indicator hidden");
+    routes.add("/settings/message");
+  } else if (
+    /\b(show|enable|turn on)\b.+\btyping|\btyping(?:\s+indicator)?\b.+\b(on|show)\b/.test(
+      source,
+    )
+  ) {
+    patch.showIsTyping = true;
+    notes.push("typing indicator shown");
+    routes.add("/settings/message");
+  }
+
+  if (
+    /\b(hide|disable|turn off|stop sharing|don't share|dont share)\b.+\b(emotion|feelings|face mode)|\b(emotion|feelings|face mode)\b.+\b(off|hide|disable)\b/.test(
+      source,
+    )
+  ) {
+    patch.isShareEmotion = false;
+    notes.push("emotion sharing off");
+    routes.add("/settings/message");
+  } else if (
+    /\b(share|show|enable|turn on)\b.+\b(emotion|feelings|face mode)|\b(face mode|emotion sharing)\b.+\b(on|enable)\b/.test(
+      source,
+    )
+  ) {
+    patch.isShareEmotion = true;
+    notes.push("emotion sharing on");
+    routes.add("/settings/message");
+  }
+
+  if (/\bringtones?\b/.test(source)) {
+    const ringtone = matchRingtone(source);
+    if (ringtone) {
+      patch.ringtone = ringtone;
+      notes.push(`ringtone set to ${ringtone}`);
+      routes.add("/settings/sound");
+    }
   }
 
   const language = [
@@ -288,7 +455,97 @@ export const parseSettingsPatch = (text = "") => {
     notes.push(`language ${language[1]}`);
   }
 
-  return { patch, notes };
+  const route =
+    routes.size === 1 ? [...routes][0] : routes.size > 1 ? "/settings" : "";
+
+  return { patch, notes, route };
+};
+
+const PROFILE_FIELD_PATTERNS = [
+  {
+    key: "nickname",
+    label: "nickname",
+    patterns: [
+      /(?:set|change|update|edit)\s+(?:my\s+)?nick\s*name\s+(?:to|as|:)\s+(.+?)(?:\s+and\s+(?:set|change|update)|$)/i,
+      /(?:my\s+)?nick\s*name\s+(?:is|to|:)\s+(.+?)(?:\s+and\s+(?:set|change|update)|$)/i,
+    ],
+  },
+  {
+    key: "displayName",
+    label: "display name",
+    patterns: [
+      /(?:set|change|update|edit)\s+(?:my\s+)?display\s*name\s+(?:to|as|:)\s+(.+?)(?:\s+and\s+(?:set|change|update)|$)/i,
+      /(?:my\s+)?display\s*name\s+(?:is|to|:)\s+(.+?)(?:\s+and\s+(?:set|change|update)|$)/i,
+    ],
+  },
+  {
+    key: "banglaName",
+    label: "Bangla name",
+    patterns: [
+      /(?:set|change|update|edit)\s+(?:my\s+)?(?:bangla|bengali)\s*name\s+(?:to|as|:)\s+(.+?)(?:\s+and\s+(?:set|change|update)|$)/i,
+      /(?:my\s+)?(?:bangla|bengali)\s*name\s+(?:is|to|:)\s+(.+?)(?:\s+and\s+(?:set|change|update)|$)/i,
+    ],
+  },
+  {
+    key: "username",
+    label: "username",
+    patterns: [
+      /(?:set|change|update|edit)\s+(?:my\s+)?user\s*name\s+(?:to|as|:)\s+(\S+)/i,
+      /(?:my\s+)?user\s*name\s+(?:is|to|:)\s+(\S+)/i,
+    ],
+  },
+  {
+    key: "firstName",
+    label: "first name",
+    patterns: [
+      /(?:set|change|update|edit)\s+(?:my\s+)?first\s*name\s+(?:to|as|:)\s+(.+?)(?:\s+and\s+(?:set|change|update)|$)/i,
+      /(?:my\s+)?first\s*name\s+(?:is|to|:)\s+(.+?)(?:\s+and\s+(?:set|change|update)|$)/i,
+    ],
+  },
+  {
+    key: "surname",
+    label: "surname",
+    patterns: [
+      /(?:set|change|update|edit)\s+(?:my\s+)?(?:surname|last\s*name)\s+(?:to|as|:)\s+(.+?)(?:\s+and\s+(?:set|change|update)|$)/i,
+      /(?:my\s+)?(?:surname|last\s*name)\s+(?:is|to|:)\s+(.+?)(?:\s+and\s+(?:set|change|update)|$)/i,
+    ],
+  },
+  {
+    key: "presentAddress",
+    label: "present address",
+    patterns: [
+      /(?:set|change|update|edit)\s+(?:my\s+)?present\s+address\s+(?:to|as|:)\s+(.+?)(?:\s+and\s+(?:set|change|update)|$)/i,
+    ],
+  },
+  {
+    key: "permanentAddress",
+    label: "permanent address",
+    patterns: [
+      /(?:set|change|update|edit)\s+(?:my\s+)?permanent\s+address\s+(?:to|as|:)\s+(.+?)(?:\s+and\s+(?:set|change|update)|$)/i,
+    ],
+  },
+];
+
+export const parseProfilePatch = (text = "") => {
+  const source = String(text || "").trim();
+  const patch = {};
+  const notes = [];
+
+  PROFILE_FIELD_PATTERNS.forEach(({ key, label, patterns }) => {
+    for (const pattern of patterns) {
+      const match = source.match(pattern);
+      if (match?.[1]) {
+        const value = trimCapturedValue(match[1]);
+        if (value) {
+          patch[key] = value;
+          notes.push(`${label} set to ${value}`);
+        }
+        break;
+      }
+    }
+  });
+
+  return { patch, notes, route: Object.keys(patch).length ? "/settings" : "" };
 };
 
 export const parseHealthLog = (text = "") => {

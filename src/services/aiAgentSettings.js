@@ -13,11 +13,12 @@ export const AI_PROVIDERS = {
     keyHelp:
       "From Google AI Studio. You can paste several keys separated by commas for quota failover.",
     keyPlaceholder: "AIza… or AQ.…",
-    defaultModel: "gemini-3.5-flash",
+    defaultModel: "gemini-2.0-flash",
     models: [
-      { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash" },
+      { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash (fast)" },
+      { id: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite" },
       { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
-      { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
+      { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash" },
       { id: "gemini-1.5-flash", label: "Gemini 1.5 Flash" },
       { id: "gemini-1.5-pro", label: "Gemini 1.5 Pro" },
     ],
@@ -123,7 +124,7 @@ const readStored = () => {
     const parsed = JSON.parse(raw);
     const base = emptyState();
     const provider = normalizeProvider(parsed?.provider);
-    return {
+    const next = {
       ...base,
       ...parsed,
       provider,
@@ -131,6 +132,16 @@ const readStored = () => {
       customModels: { ...base.customModels, ...(parsed?.customModels || {}) },
       keys: { ...base.keys, ...(parsed?.keys || {}) },
     };
+    if (!parsed?.fastDefaultV2 && next.models?.gemini === "gemini-3.5-flash") {
+      next.models.gemini = "gemini-2.0-flash";
+      next.fastDefaultV2 = true;
+      try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+    }
+    return next;
   } catch {
     return emptyState();
   }

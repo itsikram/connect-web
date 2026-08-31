@@ -24,9 +24,9 @@ import {
 
 export { parseGeminiApiKeys, isGeminiQuotaError, extractGeminiText };
 
-const SYSTEM_PROMPT = `Connect AI companion. Understand English, Bangla, and Banglish instantly. Answer personal questions for real. App actions: one short confirm. 1–3 short sentences. No markdown, no preamble, no emoji spam.`;
+const SYSTEM_PROMPT = `Connect companion. English/Bangla/Banglish. 1–2 short sentences. No markdown.`;
 
-const toChatMessages = (conversationHistory = [], message, limit = 5, clip = 180) => {
+const toChatMessages = (conversationHistory = [], message, limit = 3, clip = 140) => {
   const messages = [];
   let foundFirstUser = false;
   const history = conversationHistory.slice(-limit);
@@ -85,13 +85,11 @@ const extractJsonObject = (text = "") => {
   }
 };
 
-const AGENT_JSON_PROMPT = `Connect interpreter. Use the conversation and memory. Return ONLY JSON:
-{"reply":"short","actions":[{"action":"NAME","targetName":null,"targetRoute":null,"subPath":"","label":"","searchQuery":"","messageText":"","queryType":null}],"ask":{"field":null,"question":null}}
-Follow-ups like him/her/that/it/yes continue the previous request. Never guess names.
-Users may write English, Bangla, or Banglish (Bangla in Latin letters, e.g. "atik ke bolo kothay"). Map Banglish to the same actions.
-1 action or none for chat. Missing name/field -> ask.
-NAVIGATE targetRoute: / /message /friends /watch /notes /tasks /calendar /health /rehab /yt-download /settings /ludo-game /chess-game /video-player
-CREATE_POST caption=searchQuery. SEARCH_YOUTUBE keywords=searchQuery. DOWNLOAD_YOUTUBE url or keywords in searchQuery. CREATE_LUDO starts an online lobby. INVITE_LUDO/CHESS need targetName. JSON only. No tools.`;
+const AGENT_JSON_PROMPT = `Connect interpreter. JSON only:
+{"reply":"short","actions":[{"action":"NAME","targetName":null,"targetRoute":null,"searchQuery":"","messageText":"","queryType":null}],"ask":{"field":null,"question":null}}
+1 action or none. Never guess names. him/that/yes continue prior.
+NAVIGATE routes: / /message /friends /watch /notes /tasks /settings /ludo-game /yt-download
+SEARCH_YOUTUBE/DOWNLOAD_YOUTUBE use searchQuery. INVITE_LUDO needs targetName.`;
 
 const omitEmpty = (value) => {
   if (Array.isArray(value)) {
@@ -152,12 +150,13 @@ export const interpretAgentCommand = async ({
   }
 
   const context = JSON.stringify(compactInterpreterContext(appContext, true));
-  const rawText = await streamChat({
+  const rawText = await completeChat({
     system: `${AGENT_JSON_PROMPT}\nC:${context}`,
-    messages: toChatMessages(conversationHistory, sourceText, 3, 160),
+    messages: toChatMessages(conversationHistory, sourceText, 2, 120),
     json: true,
     temperature: 0,
-    maxTokens: 192,
+    maxTokens: 128,
+    timeoutMs: 8000,
     operationLabel: "Agent interpreter",
   });
 
@@ -300,11 +299,17 @@ export const sendToGeminiStream = async (
 
   const lang = detectAgentLanguage(message);
   const extra = [languageSystemHint(lang)];
-  if (userName) extra.push(`User's name: ${userName}.`);
+  if (userName) extra.push(`User: ${userName}.`);
   if (!voice && memory && typeof memory === "object") {
-    extra.push(`Context: ${JSON.stringify(memory)}`);
+    const compact = omitEmpty({
+      friend: memory.friend,
+      yt: memory.yt,
+      action: memory.action,
+      caption: memory.caption,
+    });
+    if (compact) extra.push(`Ctx:${JSON.stringify(compact)}`);
   }
-  if (voice) extra.push("Live voice. Speak naturally in 1–3 short sentences.");
+  if (voice) extra.push("Live voice. 1–2 short sentences.");
 
   try {
     const responseText = await streamChat({
@@ -312,11 +317,12 @@ export const sendToGeminiStream = async (
       messages: toChatMessages(
         conversationHistory,
         message,
-        voice ? 4 : 5,
-        voice ? 140 : 180,
+        voice ? 3 : 4,
+        voice ? 110 : 140,
       ),
-      temperature: 0.45,
-      maxTokens: voice ? 140 : 200,
+      temperature: 0.35,
+      maxTokens: voice ? 80 : 120,
+      timeoutMs: voice ? 10000 : 12000,
       operationLabel: "Chat request",
       onDelta,
       signal,

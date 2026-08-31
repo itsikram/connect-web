@@ -10,6 +10,7 @@ const CameraReview = ({
   videoUrl,
   filterId,
   intensity,
+  vividBrightness = 0,
   thumbs,
   busy,
   onChangeFilter,
@@ -22,8 +23,8 @@ const CameraReview = ({
   const canvasRef = useRef(null);
   const imageRef = useRef(null);
   const rendererRef = useRef(null);
-  const settingsRef = useRef({ filterId, intensity });
-  settingsRef.current = { filterId, intensity };
+  const settingsRef = useRef({ filterId, intensity, vividBrightness });
+  settingsRef.current = { filterId, intensity, vividBrightness };
 
   useEffect(() => {
     if (type !== "photo" || !originalUrl) return undefined;
@@ -46,6 +47,9 @@ const CameraReview = ({
       );
       const settings = settingsRef.current;
       renderer.setFilter(getFilterById(settings.filterId).params, settings.intensity);
+      renderer.setExtraBrightness(
+        settings.filterId === "vivid" ? (settings.vividBrightness || 0) / 100 : 0
+      );
       renderer.setMirror(false);
       renderer.draw(img);
     };
@@ -80,7 +84,7 @@ const CameraReview = ({
   useEffect(() => {
     if (type !== "photo") return;
     rendererRef.current?.redraw?.();
-  }, [filterId, intensity, type]);
+  }, [filterId, intensity, type, vividBrightness]);
 
   return (
     <div className="camera-review">

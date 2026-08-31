@@ -42,7 +42,9 @@ const LiveVoice = ({ myId }) => {
   const durationTimerRef = useRef(null);
   const roleRef = useRef("sender");
   const stopSessionRef = useRef(async () => {});
+  const startSessionRef = useRef(async () => {});
   const recentlyStoppedRef = useRef(new Map());
+  const userLeftTimerRef = useRef(null);
 
   const numericUid = useMemo(() => hashUid(myId), [myId]);
 
@@ -107,6 +109,10 @@ const LiveVoice = ({ myId }) => {
       }
 
       sessionIdRef.current += 1;
+      if (userLeftTimerRef.current) {
+        clearTimeout(userLeftTimerRef.current);
+        userLeftTimerRef.current = null;
+      }
 
       if (notifyPeer && hadSession && (peerId || channelName)) {
         socket.emit("live-voice-stop", {
@@ -140,10 +146,18 @@ const LiveVoice = ({ myId }) => {
     [broadcastStatus, clearDurationTimer, ensureLeave, peerFromChannel],
   );
 
-  const subscribeRemoteAudio = useCallback(async (client) => {
+  const bindRemoteListeners = useCallback((client) => {
     if (!client) return;
 
+    const clearUserLeftTimer = () => {
+      if (userLeftTimerRef.current) {
+        clearTimeout(userLeftTimerRef.current);
+        userLeftTimerRef.current = null;
+      }
+    };
+
     client.on("user-published", async (user, mediaType) => {
+      clearUserLeftTimer();
       if (mediaType !== "audio") return;
       try {
         await client.subscribe(user, "audio");
@@ -160,10 +174,21 @@ const LiveVoice = ({ myId }) => {
     });
 
     client.on("user-left", () => {
-      if (!isActiveRef.current && !isJoiningRef.current) return;
-      stopSessionRef.current(false);
+      // The app WebView can leave+rejoin while spinning up. Hang up only
+      // after the peer stays gone, and only once we are actually live.
+      if (!isActiveRef.current) return;
+      clearUserLeftTimer();
+      userLeftTimerRef.current = setTimeout(() => {
+        userLeftTimerRef.current = null;
+        if (isActiveRef.current) {
+          stopSessionRef.current(false);
+        }
+      }, 2500);
     });
+  }, []);
 
+  const subscribeExistingRemotes = useCallback(async (client) => {
+    if (!client) return;
     for (const user of client.remoteUsers || []) {
       if (!user?.hasAudio) continue;
       try {
@@ -219,6 +244,15 @@ const LiveVoice = ({ myId }) => {
         role: sessionRole,
       });
 
+      // Notify the peer immediately so the app can start joining in parallel
+      // with our Agora setup. A second emit after join covers a missed first packet.
+      if (notifyPeer) {
+        socket.emit("live-voice-start", {
+          to: String(to),
+          channelName,
+        });
+      }
+
       try {
         const { data } = await api.post("/agora/token", {
           channelName,
@@ -236,6 +270,10 @@ const LiveVoice = ({ myId }) => {
         const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
         clientRef.current = client;
 
+        // Bind remote listeners before join so we never miss user-published
+        // from a peer that is already in the channel (typical for app → web).
+        bindRemoteListeners(client);
+
         await client.join(data.appId, channelName, data.token, numericUid);
 
         try {
@@ -247,7 +285,7 @@ const LiveVoice = ({ myId }) => {
           localTrackRef.current = null;
         }
 
-        await subscribeRemoteAudio(client);
+        await subscribeExistingRemotes(client);
 
         if (sessionId !== sessionIdRef.current) {
           await ensureLeave();
@@ -303,17 +341,21 @@ const LiveVoice = ({ myId }) => {
       myId,
       numericUid,
       stopSession,
-      subscribeRemoteAudio,
+      bindRemoteListeners,
+      subscribeExistingRemotes,
     ],
   );
+
+  startSessionRef.current = startSession;
+  stopSessionRef.current = stopSession;
 
   useEffect(() => {
     const onIncoming = ({ from, channelName, callerName }) => {
       if (!from || !channelName) return;
       if (String(from) === String(myId)) return;
       const stoppedAt = recentlyStoppedRef.current.get(String(channelName));
-      if (stoppedAt && Date.now() - stoppedAt < 8000) return;
-      startSession({
+      if (stoppedAt && Date.now() - stoppedAt < 1500) return;
+      startSessionRef.current({
         to: from,
         channelName,
         friendName: callerName,
@@ -345,12 +387,12 @@ const LiveVoice = ({ myId }) => {
       if (!isActiveRef.current && !isJoiningRef.current && !channelRef.current) {
         return;
       }
-      stopSession(false);
+      stopSessionRef.current(false);
     };
 
     const onOutgoing = (event) => {
       const { to, channelName, friendName: name } = event.detail || {};
-      startSession({
+      startSessionRef.current({
         to,
         channelName,
         friendName: name,
@@ -360,7 +402,7 @@ const LiveVoice = ({ myId }) => {
     };
 
     const onStopRequest = () => {
-      stopSession(true);
+      stopSessionRef.current(true);
     };
 
     socket.on("live-voice-start", onIncoming);
@@ -374,11 +416,7 @@ const LiveVoice = ({ myId }) => {
       window.removeEventListener("startLiveVoice", onOutgoing);
       window.removeEventListener("stopLiveVoice", onStopRequest);
     };
-  }, [myId, startSession, stopSession]);
-
-  useEffect(() => {
-    stopSessionRef.current = stopSession;
-  }, [stopSession]);
+  }, [myId]);
 
   useEffect(() => {
     return () => {

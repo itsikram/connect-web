@@ -23,6 +23,15 @@ import { showErrorToast, showInfoToast, showSuccessToast } from "../utils/toastU
 import "./Camera.css";
 
 const IDENTITY_INTENSITY = 0;
+const VIVID_FILTER_ID = "vivid";
+const VIVID_SELFIE_MS = 2000;
+const VIVID_BRIGHTNESS_MIN = -45;
+const VIVID_BRIGHTNESS_MAX = 45;
+
+const clampVividBrightness = (value) =>
+  Math.min(VIVID_BRIGHTNESS_MAX, Math.max(VIVID_BRIGHTNESS_MIN, value));
+
+const vividBrightnessToShader = (value) => clampVividBrightness(value) / 100;
 
 const getCaptureSize = (srcW, srcH, mode) => {
   const vw = srcW || 1080;
@@ -70,6 +79,10 @@ const Camera = () => {
   const objectUrlsRef = useRef([]);
   const workBusyRef = useRef(false);
   const mountedRef = useRef(true);
+  const focusTimerRef = useRef(0);
+  const focusSessionRef = useRef(null);
+  const vividSelfieTimerRef = useRef(0);
+  const vividSelfieRestoreRef = useRef("environment");
 
   const [permission, setPermission] = useState("pending");
   const [error, setError] = useState("");
@@ -90,6 +103,7 @@ const Camera = () => {
   const [isCapturing, setIsCapturing] = useState(false);
   const [flashOn, setFlashOn] = useState(false);
   const [focusPt, setFocusPt] = useState(null);
+  const [vividBrightness, setVividBrightness] = useState(0);
   const [flipSpin, setFlipSpin] = useState(false);
   const [thumbs, setThumbs] = useState({});
   const [lastThumb, setLastThumb] = useState(null);
@@ -101,11 +115,22 @@ const Camera = () => {
     zoom,
     filterId,
     intensity,
+    vividBrightness,
     mode,
     hasHwZoom,
     isRecording,
     lastThumb,
   };
+
+  const applyRendererFilter = useCallback((renderer, nextFilterId, nextIntensity, nextVividBrightness) => {
+    if (!renderer) return;
+    renderer.setFilter(getFilterById(nextFilterId).params, nextIntensity);
+    const extra =
+      nextFilterId === VIVID_FILTER_ID
+        ? vividBrightnessToShader(nextVividBrightness)
+        : 0;
+    renderer.setExtraBrightness(extra);
+  }, []);
 
   const rememberUrl = (url) => {
     objectUrlsRef.current.push(url);
@@ -202,14 +227,14 @@ const Camera = () => {
     renderer.setMirror(Boolean(mirror));
     const next = {};
     IOS_FILTERS.forEach((filter) => {
-      renderer.setFilter(filter.params, 100);
+      applyRendererFilter(renderer, filter.id, 100, 0);
       renderer.draw(source);
       next[filter.id] = renderer.toDataURL(0.62);
     });
     setThumbs(next);
-  }, []);
+  }, [applyRendererFilter]);
 
-  const bakeBlob = useCallback(async (source, nextFilterId, nextIntensity, nextMode) => {
+  const bakeBlob = useCallback(async (source, nextFilterId, nextIntensity, nextMode, nextVividBrightness = 0) => {
     const renderer = workRendererRef.current;
     if (!renderer || !source) return null;
     workBusyRef.current = true;
@@ -220,7 +245,7 @@ const Camera = () => {
       renderer.setSourceSize(w, h);
       renderer.setZoom(1);
       renderer.setMirror(false);
-      renderer.setFilter(getFilterById(nextFilterId).params, nextIntensity);
+      applyRendererFilter(renderer, nextFilterId, nextIntensity, nextVividBrightness);
       renderer.draw(source);
       return await new Promise((resolve) => {
         workCanvasRef.current.toBlob((blob) => resolve(blob), "image/jpeg", 0.92);
@@ -228,7 +253,7 @@ const Camera = () => {
     } finally {
       workBusyRef.current = false;
     }
-  }, []);
+  }, [applyRendererFilter]);
 
   const captureOriginal = useCallback(async () => {
     const video = videoRef.current;
@@ -271,6 +296,7 @@ const Camera = () => {
       originalUrl,
       filterId: liveRef.current.filterId,
       intensity: liveRef.current.intensity,
+      vividBrightness: liveRef.current.vividBrightness,
     });
   }, [generateThumbs]);
 
@@ -383,12 +409,25 @@ const Camera = () => {
     else navigate("/");
   }, [navigate, review]);
 
+  const startVividSelfiePreview = useCallback(() => {
+    window.clearTimeout(vividSelfieTimerRef.current);
+    vividSelfieRestoreRef.current = liveRef.current.facing;
+    setFacing("user");
+    vividSelfieTimerRef.current = window.setTimeout(() => {
+      setFacing(vividSelfieRestoreRef.current || "environment");
+      vividSelfieTimerRef.current = 0;
+    }, VIVID_SELFIE_MS);
+  }, []);
+
   const selectFilter = useCallback((id) => {
     setFilterId(id);
     setShowFilters(true);
     setShowFilterName(true);
+    if (id === VIVID_FILTER_ID) {
+      startVividSelfiePreview();
+    }
     if (navigator.vibrate) navigator.vibrate(10);
-  }, []);
+  }, [startVividSelfiePreview]);
 
   const cycleFlash = useCallback(() => {
     setFlash((prev) => {
@@ -458,34 +497,83 @@ const Camera = () => {
     }
   }, [isRecording, mode, startRecording, stopRecording]);
 
+  const panRef = useRef(null);
+
+  const clearFocusLater = useCallback((delay) => {
+    window.clearTimeout(focusTimerRef.current);
+    focusTimerRef.current = window.setTimeout(() => {
+      setFocusPt(null);
+      focusSessionRef.current = null;
+    }, delay);
+  }, []);
+
   const onViewPointerDown = useCallback((evt) => {
     if (evt.type === "pinch") {
       pinchRef.current = { startDist: evt.dist, startZoom: liveRef.current.zoom };
+      return;
     }
+    const rect = canvasRef.current?.parentElement?.getBoundingClientRect();
+    if (!rect || evt.x == null || evt.y == null) return;
+    panRef.current = {
+      startX: evt.x,
+      startY: evt.y,
+      focusX: evt.x - rect.left,
+      focusY: evt.y - rect.top,
+      startBrightness: liveRef.current.vividBrightness,
+      adjusted: false,
+    };
   }, []);
 
   const onViewPointerMove = useCallback((evt) => {
-    if (evt.type !== "pinch" || !evt.dist || !pinchRef.current.startDist) return;
-    const ratio = evt.dist / pinchRef.current.startDist;
-    const next = Math.min(5, Math.max(1, pinchRef.current.startZoom * ratio));
-    setZoom(next);
-  }, []);
+    if (evt.type === "pinch" && evt.dist && pinchRef.current.startDist) {
+      const ratio = evt.dist / pinchRef.current.startDist;
+      const next = Math.min(5, Math.max(1, pinchRef.current.startZoom * ratio));
+      setZoom(next);
+      return;
+    }
+    const pan = panRef.current;
+    if (!pan || liveRef.current.filterId !== VIVID_FILTER_ID || evt.y == null) return;
+    const dy = evt.y - pan.startY;
+    if (Math.abs(dy) < 8) return;
+    const next = clampVividBrightness(pan.startBrightness - dy * 0.22);
+    pan.adjusted = true;
+    setVividBrightness(next);
+    setFocusPt({
+      x: pan.focusX,
+      y: pan.focusY,
+      adjusting: true,
+      brightness: next,
+    });
+    focusSessionRef.current = { x: pan.focusX, y: pan.focusY };
+    clearFocusLater(3200);
+  }, [clearFocusLater]);
 
   const onViewPointerUp = useCallback((evt) => {
     if (evt.type === "pinch") return;
+    const pan = panRef.current;
+    panRef.current = null;
     const dx = evt.dx || 0;
     const dy = evt.dy || 0;
     if (Math.abs(dx) > 56 && Math.abs(dy) < 90) {
       selectFilter(adjacentFilterId(liveRef.current.filterId, dx < 0 ? 1 : -1));
       return;
     }
-    if (Math.abs(dx) < 12 && Math.abs(dy) < 12 && evt.x != null) {
-      const rect = canvasRef.current?.parentElement?.getBoundingClientRect();
-      if (!rect) return;
-      setFocusPt({ x: evt.x - rect.left, y: evt.y - rect.top });
-      window.setTimeout(() => setFocusPt(null), 900);
+    if (pan?.adjusted) {
+      clearFocusLater(2600);
+      return;
     }
-  }, [selectFilter]);
+    if (Math.abs(dx) < 12 && Math.abs(dy) < 12 && pan) {
+      const isVivid = liveRef.current.filterId === VIVID_FILTER_ID;
+      setFocusPt({
+        x: pan.focusX,
+        y: pan.focusY,
+        adjusting: isVivid,
+        brightness: liveRef.current.vividBrightness,
+      });
+      focusSessionRef.current = { x: pan.focusX, y: pan.focusY };
+      clearFocusLater(isVivid ? 3200 : 900);
+    }
+  }, [clearFocusLater, selectFilter]);
 
   const bakeReviewPhoto = useCallback(async () => {
     if (!review || review.type !== "photo") return null;
@@ -495,7 +583,13 @@ const Camera = () => {
       img.onload = resolve;
       img.onerror = resolve;
     });
-    return bakeBlob(img, review.filterId, review.intensity, mode);
+    return bakeBlob(
+      img,
+      review.filterId,
+      review.intensity,
+      mode,
+      review.vividBrightness ?? 0
+    );
   }, [bakeBlob, mode, review]);
 
   const downloadBlob = useCallback((blob, name) => {
@@ -631,12 +725,12 @@ const Camera = () => {
       renderer.setSourceSize(video.videoWidth, video.videoHeight);
       renderer.setZoom(live.hasHwZoom ? 1 : live.zoom);
       renderer.setMirror(live.facing === "user");
-      renderer.setFilter(getFilterById(live.filterId).params, live.intensity);
+      applyRendererFilter(renderer, live.filterId, live.intensity, live.vividBrightness);
       renderer.draw(video);
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [review]);
+  }, [applyRendererFilter, review]);
 
   useEffect(() => {
     if (permission !== "granted" || review) return undefined;
@@ -679,6 +773,8 @@ const Camera = () => {
     cancelAnimationFrame(rafRef.current);
     window.clearInterval(thumbTimerRef.current);
     window.clearInterval(recTimerRef.current);
+    window.clearTimeout(focusTimerRef.current);
+    window.clearTimeout(vividSelfieTimerRef.current);
     stopRecording();
     stopStream(streamRef.current);
     stopStream(audioStreamRef.current);
@@ -767,6 +863,7 @@ const Camera = () => {
             videoUrl={review.videoUrl}
             filterId={review.filterId || filterId}
             intensity={review.intensity ?? intensity}
+            vividBrightness={review.vividBrightness ?? vividBrightness}
             thumbs={thumbs}
             busy={busy}
             onChangeFilter={(id) => setReview((prev) => ({ ...prev, filterId: id }))}

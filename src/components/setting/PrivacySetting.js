@@ -36,6 +36,25 @@ const PrivacySetting = () => {
             }
         };
         fetchSettings();
+
+        const onAgentSettings = (event) => {
+            const patch = event?.detail || {};
+            setSettings((prev) => ({
+                ...prev,
+                ...(patch.postVisibility != null ? { postVisibility: patch.postVisibility } : {}),
+                ...(patch.friendRequestVisibility != null
+                    ? { friendRequestVisibility: patch.friendRequestVisibility }
+                    : {}),
+                ...(patch.timelinePostVisibility != null
+                    ? { timelinePostVisibility: patch.timelinePostVisibility }
+                    : {}),
+                ...(patch.isShareLocation != null
+                    ? { isShareLocation: patch.isShareLocation }
+                    : {}),
+            }));
+        };
+        window.addEventListener('connect:settings-updated', onAgentSettings);
+        return () => window.removeEventListener('connect:settings-updated', onAgentSettings);
     }, [profile?._id]);
 
     const handleSave = async (e) => {

@@ -1034,9 +1034,9 @@
 .ai-agent-transcribe-bar {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     margin: 0 0 8px;
-    padding: 7px 10px;
+    padding: 8px 10px;
     background: rgba(0, 212, 255, 0.08);
     border: 1px solid rgba(0, 212, 255, 0.22);
     border-radius: 12px;
@@ -1051,10 +1051,43 @@
     animation: ai-agent-transcribe-pulse 1.2s ease-in-out infinite;
 }
 
+.ai-agent-transcribe-copy {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
 .ai-agent-transcribe-label {
     font-size: 12px;
     font-weight: 700;
     color: #00d4ff;
+}
+
+.ai-agent-transcribe-interim {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ai-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ai-agent-transcribe-stop {
+    border: 0;
+    border-radius: 999px;
+    padding: 6px 12px;
+    background: rgba(0, 212, 255, 0.18);
+    color: #e8fbff;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.ai-agent-transcribe-stop:hover {
+    background: rgba(0, 212, 255, 0.28);
 }
 
 .ai-agent-transcribe-bar.phase-thinking {

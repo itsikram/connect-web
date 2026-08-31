@@ -219,6 +219,34 @@ body.camera-page-open #nprogress {
   animation: cam-focus 900ms ease-out forwards;
 }
 
+.camera-focus.is-adjusting {
+  animation: cam-focus-hold 3.2s ease-out forwards;
+}
+
+.camera-focus-brightness {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 8px);
+  transform: translateX(-50%);
+  min-width: 44px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.58);
+  color: var(--cam-yellow);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-align: center;
+  white-space: nowrap;
+}
+
+@keyframes cam-focus-hold {
+  0% { transform: scale(1.35); opacity: 0; }
+  12% { transform: scale(1); opacity: 1; }
+  88% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.96); opacity: 0; }
+}
+
 @keyframes cam-focus {
   0% { transform: scale(1.35); opacity: 0; }
   18% { transform: scale(1); opacity: 1; }

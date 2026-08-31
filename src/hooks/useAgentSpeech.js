@@ -69,6 +69,9 @@ const pickVoice = (lang) => {
   return ranked[0] || null;
 };
 
+const utteranceTimeoutMs = (text = "") =>
+  Math.min(12000, 900 + String(text).length * 70);
+
 export default function useAgentSpeech() {
   const [speaking, setSpeaking] = useState(false);
   const [supported] = useState(
@@ -80,23 +83,7 @@ export default function useAgentSpeech() {
   const restRef = useRef("");
   const pendingRef = useRef(0);
   const onIdleRef = useRef(null);
-
-  useEffect(() => {
-    if (!supported) return undefined;
-    const warm = () => window.speechSynthesis.getVoices();
-    warm();
-    window.speechSynthesis.addEventListener("voiceschanged", warm);
-    const keepAlive = setInterval(() => {
-      if (window.speechSynthesis.speaking && window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-      }
-    }, 8000);
-    return () => {
-      window.speechSynthesis.removeEventListener("voiceschanged", warm);
-      clearInterval(keepAlive);
-      window.speechSynthesis.cancel();
-    };
-  }, [supported]);
+  const lastSpeakAtRef = useRef(0);
 
   const markIdleIfDone = useCallback(() => {
     if (pendingRef.current > 0) return;
@@ -106,10 +93,47 @@ export default function useAgentSpeech() {
     onIdle?.();
   }, []);
 
+  const forceIdle = useCallback(() => {
+    pendingRef.current = 0;
+    onIdleRef.current = null;
+    setSpeaking(false);
+  }, []);
+
+  useEffect(() => {
+    if (!supported) return undefined;
+    const warm = () => window.speechSynthesis.getVoices();
+    warm();
+    window.speechSynthesis.addEventListener("voiceschanged", warm);
+    const keepAlive = setInterval(() => {
+      const synth = window.speechSynthesis;
+      if (synth.speaking && synth.paused) synth.resume();
+      if (pendingRef.current <= 0) return;
+      const idleFor = Date.now() - lastSpeakAtRef.current;
+      if (idleFor < 3000) return;
+      const browserIdle = !synth.speaking && !synth.pending;
+      if (idleFor > 14000 || browserIdle) {
+        pendingRef.current = 0;
+        if (idleFor > 14000) {
+          try {
+            synth.cancel();
+          } catch {
+            /* ignore */
+          }
+        }
+        markIdleIfDone();
+      }
+    }, 1200);
+    return () => {
+      window.speechSynthesis.removeEventListener("voiceschanged", warm);
+      clearInterval(keepAlive);
+      window.speechSynthesis.cancel();
+    };
+  }, [markIdleIfDone, supported]);
+
   const enqueue = useCallback(
     (raw, langHint) => {
       if (!supported) return;
-      const text = stripForSpeech(raw);
+      const text = stripForSpeech(raw).slice(0, 280);
       if (!text) return;
       const lang = hasBangla(text) || String(langHint || "").startsWith("bn")
         ? "bn-BD"
@@ -123,19 +147,25 @@ export default function useAgentSpeech() {
       if (voice) utterance.voice = voice;
       const generation = generationRef.current;
       pendingRef.current += 1;
+      lastSpeakAtRef.current = Date.now();
       setSpeaking(true);
-      utterance.onend = () => {
-        if (generation !== generationRef.current) return;
+      let finished = false;
+      const finishUtterance = () => {
+        if (finished || generation !== generationRef.current) return;
+        finished = true;
+        clearTimeout(watchdog);
         pendingRef.current = Math.max(0, pendingRef.current - 1);
         markIdleIfDone();
       };
-      utterance.onerror = () => {
-        if (generation !== generationRef.current) return;
-        pendingRef.current = Math.max(0, pendingRef.current - 1);
-        markIdleIfDone();
-      };
-      window.speechSynthesis.resume();
-      window.speechSynthesis.speak(utterance);
+      const watchdog = setTimeout(finishUtterance, utteranceTimeoutMs(text));
+      utterance.onend = finishUtterance;
+      utterance.onerror = finishUtterance;
+      try {
+        window.speechSynthesis.resume();
+        window.speechSynthesis.speak(utterance);
+      } catch {
+        finishUtterance();
+      }
     },
     [markIdleIfDone, supported],
   );
@@ -147,7 +177,14 @@ export default function useAgentSpeech() {
     restRef.current = "";
     pendingRef.current = 0;
     onIdleRef.current = null;
-    if (supported) window.speechSynthesis.cancel();
+    lastSpeakAtRef.current = 0;
+    if (supported) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {
+        /* ignore */
+      }
+    }
     setSpeaking(false);
   }, [supported]);
 
@@ -191,6 +228,7 @@ export default function useAgentSpeech() {
     (text, { lang, onEnd } = {}) =>
       new Promise((resolve) => {
         cancel();
+        const startGeneration = generationRef.current;
         const cleaned = stripForSpeech(text);
         if (!supported || !cleaned) {
           onEnd?.();
@@ -206,10 +244,19 @@ export default function useAgentSpeech() {
         };
         onIdleRef.current = finish;
         enqueue(text, lang);
-        const ms = Math.min(4200, 550 + cleaned.length * 55);
-        setTimeout(finish, ms);
+        const ms = Math.min(2800, 500 + cleaned.length * 45);
+        setTimeout(() => {
+          finish();
+          if (generationRef.current !== startGeneration) return;
+          try {
+            window.speechSynthesis.cancel();
+          } catch {
+            /* ignore */
+          }
+          forceIdle();
+        }, ms);
       }),
-    [cancel, enqueue, supported],
+    [cancel, enqueue, forceIdle, supported],
   );
 
   return { supported, speaking, speak, feed, flush, cancel };

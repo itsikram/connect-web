@@ -261,6 +261,9 @@ describe("create post parsing", () => {
     expect(parseIntent("create me a post with a funny caption")).toMatchObject({
       action: "CREATE_POST",
     });
+    expect(
+      getMissingIntentSlots(parseIntent("create me a post with a funny caption")),
+    ).toEqual([]);
   });
 
   test("parses create a post saying a caption", () => {
@@ -268,6 +271,26 @@ describe("create post parsing", () => {
       action: "CREATE_POST",
       searchQuery: "I'm on energy-saving mode",
     });
+  });
+
+  test("parses upload a post with a caption and publishes that caption", () => {
+    expect(
+      parseIntent("upload a post with caption Hello from Connect"),
+    ).toMatchObject({
+      action: "CREATE_POST",
+      searchQuery: "Hello from Connect",
+    });
+    expect(
+      getMissingIntentSlots(
+        parseIntent("upload a post with caption Hello from Connect"),
+      ),
+    ).toEqual([]);
+  });
+
+  test("asks for a caption when uploading a post without one", () => {
+    const intent = parseIntent("upload a post");
+    expect(intent).toMatchObject({ action: "CREATE_POST" });
+    expect(getMissingIntentSlots(intent)).toEqual(["searchQuery"]);
   });
 });
 
@@ -444,6 +467,25 @@ describe("agent action parsing", () => {
     expect(parseIntent("set dark mode")).toMatchObject({
       action: "UPDATE_SETTINGS",
     });
+    expect(getMissingIntentSlots(parseIntent("set dark mode"))).toEqual([]);
+  });
+
+  test("parses nickname and privacy setting commands", () => {
+    expect(parseIntent("set my nickname to Ikram")).toMatchObject({
+      action: "UPDATE_SETTINGS",
+    });
+    expect(parseIntent("make my posts only me")).toMatchObject({
+      action: "UPDATE_SETTINGS",
+    });
+    expect(parseIntent("hide typing indicator")).toMatchObject({
+      action: "UPDATE_SETTINGS",
+    });
+    expect(parseIntent("set ringtone to bells")).toMatchObject({
+      action: "UPDATE_SETTINGS",
+    });
+    expect(getMissingIntentSlots(parseIntent("update my settings"))).toEqual([
+      "searchQuery",
+    ]);
   });
 
   test("parses health weight log", () => {

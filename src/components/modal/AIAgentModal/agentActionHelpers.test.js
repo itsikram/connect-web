@@ -2,6 +2,7 @@ import {
   extractYouTubeUrl,
   parseCalendarWhen,
   parseSettingsPatch,
+  parseProfilePatch,
   parseHealthLog,
   stripDatePhrases,
   pickBestYoutubeMatch,
@@ -34,6 +35,36 @@ describe("agent action helpers", () => {
     expect(parseSettingsPatch("hide my location").patch.isShareLocation).toBe(
       false,
     );
+  });
+
+  test("maps privacy values to the settings page options", () => {
+    expect(parseSettingsPatch("make my posts private").patch.postVisibility).toBe(
+      "om",
+    );
+    expect(
+      parseSettingsPatch("set my posts to only me").patch.postVisibility,
+    ).toBe("om");
+    expect(
+      parseSettingsPatch("who can see my posts public").patch.postVisibility,
+    ).toBe("public");
+    expect(parseSettingsPatch("hide typing indicator").patch.showIsTyping).toBe(
+      false,
+    );
+    expect(parseSettingsPatch("set ringtone to bells").patch.ringtone).toBe(2);
+    expect(
+      parseSettingsPatch("turn off message notifications").patch
+        .newMessageReceived,
+    ).toBe(false);
+  });
+
+  test("parses profile fields from settings commands", () => {
+    expect(parseProfilePatch("set my nickname to Ikram").patch.nickname).toBe(
+      "Ikram",
+    );
+    expect(
+      parseProfilePatch("change my display name to Connect User").patch
+        .displayName,
+    ).toBe("Connect User");
   });
 
   test("parses a weight log", () => {

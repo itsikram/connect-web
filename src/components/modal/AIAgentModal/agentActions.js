@@ -13,7 +13,11 @@ import { sendBumpToFriend } from "../../../utils/sendBump";
 import {
   extractCaptionFromText,
   isPlaceholderCaption,
+  wantsDraftPost,
+  wantsGeneratedPostCaption,
 } from "./agentCatalog";
+import { generatePostCaption } from "../../../services/geminiService";
+import { getProfileSuccess } from "../../../services/actions/profileActions";
 import store from "../../../store";
 import { addPost, removePost } from "../../../services/actions/postActions";
 import { newMessage } from "../../../services/actions/messageActions";
@@ -39,6 +43,7 @@ import {
   stripDatePhrases,
   matchByText,
   parseSettingsPatch,
+  parseProfilePatch,
   parseHealthLog,
   parseRecoveryLog,
   readJsonStorage,
@@ -1311,16 +1316,38 @@ export const executeAction = async ({
       }
 
       case "CREATE_POST": {
-        const wantDraft = /\b(draft|composer|don't post|dont post|preview)\b/i.test(
-          String(sourceText || ""),
-        );
+        const combinedPostText = [sourceText, searchQuery, label, messageText, hintText]
+          .filter(Boolean)
+          .join(" ");
+        const wantDraft = wantsDraftPost(combinedPostText);
         let caption = [searchQuery, label, messageText]
           .map((value) => String(value || "").trim())
           .find((value) => value && !isPlaceholderCaption(value));
 
         if (!caption) {
-          caption = extractCaptionFromText(hintText) || "";
+          const extracted =
+            extractCaptionFromText(sourceText) ||
+            extractCaptionFromText(hintText) ||
+            "";
+          caption = isPlaceholderCaption(extracted) ? "" : extracted;
         }
+
+        if (
+          !caption &&
+          !wantDraft &&
+          wantsGeneratedPostCaption(combinedPostText)
+        ) {
+          try {
+            caption = String(
+              await generatePostCaption(
+                sourceText || searchQuery || "Write a short funny caption.",
+              ) || "",
+            ).trim();
+          } catch (_) {
+            caption = "";
+          }
+        }
+
         caption = String(caption || "")
           .trim()
           .slice(0, 500);
@@ -1344,7 +1371,7 @@ export const executeAction = async ({
             type: "draft-post",
             message: caption
               ? `📝 Draft ready — review it and tap Post: "${clipText(caption, 120)}"`
-              : "Opening the post composer so you can write the caption, then tap Post.",
+              : "What should the caption say? Tell me the caption and I’ll upload the post.",
             memory: caption ? { lastCaption: caption } : {},
           };
         }
@@ -1795,13 +1822,19 @@ export const executeAction = async ({
         const combined = [searchQuery, label, messageText, sourceText]
           .filter(Boolean)
           .join(" ");
-        const { patch, notes } = parseSettingsPatch(combined);
-        if (!Object.keys(patch).length) {
+        const { patch, notes, route } = parseSettingsPatch(combined);
+        const {
+          patch: profilePatch,
+          notes: profileNotes,
+          route: profileRoute,
+        } = parseProfilePatch(combined);
+        const allNotes = [...notes, ...profileNotes];
+        if (!Object.keys(patch).length && !Object.keys(profilePatch).length) {
           go("/settings");
           return {
             success: false,
             message:
-              "What should I change? Try dark mode, light mode, hide location, mute notifications, or friends-only posts.",
+              "What should I change? Try dark mode, posts to only me, hide typing, mute message notifications, set ringtone to bells, or set my nickname to …",
           };
         }
         const language = patch.preferredLanguage;
@@ -1810,6 +1843,31 @@ export const executeAction = async ({
           const res = await api.post("/setting/update", patch);
           if (res.data) store.dispatch(loadSettings(res.data));
           if (patch.themeMode) applyThemeMode(patch.themeMode);
+          emitConnectEvent("connect:settings-updated", patch);
+        }
+        if (Object.keys(profilePatch).length) {
+          const user =
+            myProfile?.user && typeof myProfile.user === "object"
+              ? myProfile.user
+              : {};
+          const profileBody = {
+            firstName: profilePatch.firstName ?? user.firstName ?? "",
+            surname: profilePatch.surname ?? user.surname ?? "",
+            nickname: profilePatch.nickname ?? myProfile?.nickname ?? "",
+            username: profilePatch.username ?? myProfile?.username ?? "",
+            displayName: profilePatch.displayName ?? myProfile?.displayName ?? "",
+            banglaName: profilePatch.banglaName ?? myProfile?.banglaName ?? "",
+            presentAddress:
+              profilePatch.presentAddress ?? myProfile?.presentAddress ?? "",
+            permanentAddress:
+              profilePatch.permanentAddress ?? myProfile?.permanentAddress ?? "",
+            ...profilePatch,
+          };
+          const res = await api.post("/profile/update", profileBody);
+          if (res.data) {
+            store.dispatch(getProfileSuccess(res.data));
+            invalidateGetCache("/profile");
+          }
         }
         if (language) {
           try {
@@ -1819,9 +1877,11 @@ export const executeAction = async ({
             });
           } catch (_) {}
         }
+        const nextRoute = route || profileRoute || "/settings";
+        go(nextRoute);
         return {
           success: true,
-          message: `⚙️ Updated settings: ${notes.join(", ")}.`,
+          message: `⚙️ Updated settings: ${allNotes.join(", ")}.`,
         };
       }
 

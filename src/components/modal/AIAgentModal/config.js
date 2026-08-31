@@ -28,9 +28,9 @@ export const AIAgentConfig = {
 
   // Gemini API settings
   GEMINI: {
-    MODEL: "gemini-3.5-flash",
-    TEMPERATURE: 0.7,
-    MAX_OUTPUT_TOKENS: 1024,
+    MODEL: "gemini-2.0-flash",
+    TEMPERATURE: 0.45,
+    MAX_OUTPUT_TOKENS: 220,
     TOP_K: 40,
     TOP_P: 0.95,
   },

@@ -6,10 +6,7 @@ import "./AIAgentModal.css";
 import ChatArea from "./ChatArea";
 import ActionPanel from "./ActionPanel";
 import ModalHeader from "./ModalHeader";
-import {
-  interpretAgentCommand,
-  sendToGeminiStream,
-} from "../../../services/geminiService";
+import { sendToGeminiStream } from "../../../services/geminiService";
 import {
   parseIntent,
   searchFriendsByName,
@@ -25,16 +22,13 @@ import { executeAction, getActionMeta, searchConnectUsers } from "./agentActions
 import {
   LOOKUP_ACTIONS,
   DIRECTORY_LOOKUP_ACTIONS,
-  toAgentIntent,
   resolveCatalogRoute,
-  recoverAgentActions,
   getMissingIntentSlots,
   getSlotQuestion,
   mergeFollowUpIntent,
   isCancelFollowUp,
   isAffirmativeFollowUp,
   looksLikeQuestion,
-  normalizeAskField,
   isFastLocalIntent,
 } from "./agentCatalog";
 import {
@@ -55,8 +49,6 @@ import AgentSettingsPanel from "./AgentSettingsPanel";
 import {
   describeUpcomingAction,
   getInstantAgentReply,
-  looksLikeConnectCommand,
-  looksLikePersonalChat,
 } from "./agentFastPath";
 import { detectAgentLanguage } from "./banglish";
 import { pickBestYoutubeMatch } from "./agentActionHelpers";
@@ -78,7 +70,7 @@ const isWelcomeMessage = (message) =>
   (message?.type === "agent" &&
     String(message.content || "").startsWith("Hi! I'm your AI Agent"));
 
-const toLlmHistory = (messages = [], limit = 8) =>
+const toLlmHistory = (messages = [], limit = 4) =>
   messages
     .filter((item) => {
       if (isWelcomeMessage(item)) return false;
@@ -89,30 +81,8 @@ const toLlmHistory = (messages = [], limit = 8) =>
     .map((item) => ({
       role: item.type === "user" ? "user" : "assistant",
       content:
-        item.content.length > 180 ? `${item.content.slice(0, 179)}…` : item.content,
+        item.content.length > 140 ? `${item.content.slice(0, 139)}…` : item.content,
     }));
-
-const buildAppContext = (myProfile) => {
-  const friendsRaw = Array.isArray(myProfile?.friends) ? myProfile.friends : [];
-  const friends = friendsRaw
-    .filter((friend) => friend && typeof friend === "object")
-    .slice(0, 12)
-    .map((friend) => ({
-      name: getFriendDisplayName(friend),
-      username: friend.username || friend.user?.username || "",
-      banglaName: friend.banglaName || "",
-    }));
-
-  return {
-    user: {
-      name: getFriendDisplayName(myProfile),
-      username: myProfile?.username || myProfile?.user?.username || "",
-      bio: myProfile?.bio || "",
-      friendCount: friendsRaw.length,
-    },
-    friends,
-  };
-};
 
 const hydrateIntent = (intent) => {
   if (!intent) return null;
@@ -384,7 +354,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         content: line,
         skipSpeech: true,
       });
-      await speakText(line);
+      speakText(line);
     },
     [addMessage, speakText],
   );
@@ -402,6 +372,9 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   const handleClose = useCallback(() => {
     setIsMinimized(false);
     setLiveTalkOn(false);
+    streamAbortRef.current?.abort();
+    sendGenerationRef.current += 1;
+    setIsLoading(false);
     cancelSpeech();
     onClose?.();
   }, [cancelSpeech, onClose]);
@@ -562,15 +535,15 @@ const AIAgentModal = ({ isOpen, onClose }) => {
 
       const history = toLlmHistory(
         messagesRef.current,
-        liveTalkOnRef.current ? 4 : 5,
+        liveTalkOnRef.current ? 3 : 4,
       );
 
-      let streamPrimed = false;
+      let streamPrimed = 0;
       const flushStreamMessage = (id, content, streaming) => {
         streamPendingRef.current = { id, content, streaming };
         if (streaming) {
-          if (!streamPrimed) {
-            streamPrimed = true;
+          if (streamPrimed < 8) {
+            streamPrimed += 1;
             setMessages((prev) =>
               prev.map((msg) =>
                 msg.id === id ? { ...msg, content, streaming: true } : msg,
@@ -610,19 +583,34 @@ const AIAgentModal = ({ isOpen, onClose }) => {
 
       const streamAgentReply = async (userText, chatHistory) => {
         const streamId = createId();
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: streamId,
-            type: "agent",
-            content: "",
-            streaming: true,
-            timestamp: new Date(),
-          },
-        ]);
-
+        let inserted = false;
         const abort = new AbortController();
         streamAbortRef.current = abort;
+        const liveWatchdog = liveTalkOnRef.current
+          ? setTimeout(() => {
+              if (!stillCurrent()) return;
+              abort.abort();
+            }, 12000)
+          : 0;
+
+        const pushDelta = (next, streaming) => {
+          if (!inserted) {
+            inserted = true;
+            streamPrimed = 1;
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: streamId,
+                type: "agent",
+                content: next,
+                streaming,
+                timestamp: new Date(),
+              },
+            ]);
+            return;
+          }
+          flushStreamMessage(streamId, next, streaming);
+        };
 
         try {
           const chat = await sendToGeminiStream(userText, chatHistory, {
@@ -631,8 +619,8 @@ const AIAgentModal = ({ isOpen, onClose }) => {
                 abort.abort();
                 return;
               }
-              flushStreamMessage(streamId, next, true);
-              if (liveTalkOnRef.current) feedSpeech(streamId, next);
+              if (typeof next !== "string" || !next) return;
+              pushDelta(next, true);
             },
             signal: abort.signal,
             voice: liveTalkOnRef.current,
@@ -640,21 +628,45 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             memory: getMemoryPromptBlock(myProfile?._id),
           });
           if (!stillCurrent()) return;
+          const finalText = String(chat?.response || "").trim();
+          if (!inserted) {
+            pushDelta(
+              finalText ||
+                "I didn't catch that. Try a short command like “open settings”.",
+              false,
+            );
+            return;
+          }
           flushStreamMessage(
             streamId,
-            chat?.response ||
+            finalText ||
               "I didn't catch that. Try a short command like “open settings”.",
             false,
           );
         } catch (error) {
-          if (!stillCurrent() || error?.name === "AbortError") return;
-          flushStreamMessage(
-            streamId,
-            error?.message
-              ? `Sorry, something went wrong: ${error.message}`
-              : "Sorry, something went wrong. Please try again.",
-            false,
-          );
+          if (!stillCurrent()) return;
+          if (error?.name === "AbortError") {
+            if (inserted) {
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === streamId ? { ...msg, streaming: false } : msg,
+                ),
+              );
+            } else if (liveTalkOnRef.current) {
+              addMessage({
+                type: "agent",
+                content: "I missed that. Say it again.",
+              });
+            }
+            return;
+          }
+          const errText = error?.message
+            ? `Sorry, something went wrong: ${error.message}`
+            : "Sorry, something went wrong. Please try again.";
+          if (inserted) flushStreamMessage(streamId, errText, false);
+          else addMessage({ type: "agent", content: errText });
+        } finally {
+          if (liveWatchdog) clearTimeout(liveWatchdog);
         }
       };
 
@@ -813,7 +825,10 @@ const AIAgentModal = ({ isOpen, onClose }) => {
           ["CREATE_LUDO", "INVITE_LUDO"].includes(intent?.action) &&
           splitFriendNames(intent?.targetName).length > 0;
         const nextIntent = applyMemoryToIntent(
-          hydrateIntent(intent),
+          hydrateIntent({
+            ...intent,
+            sourceText: intent.sourceText || originalText || "",
+          }),
           myProfile?._id,
         );
         if (!nextIntent?.action) return false;
@@ -1074,115 +1089,8 @@ const AIAgentModal = ({ isOpen, onClose }) => {
           if (handled) return;
         }
 
-        setIsLoading(true);
-
-        const providerId = getResolvedAgentSettings().provider;
-        const wantsConversation =
-          !pendingSnapshot &&
-          (looksLikePersonalChat(originalText) ||
-            looksLikeQuestion(originalText) ||
-            /^(please\s+)?(tell me|send me|give me|write|explain)\b/i.test(
-              originalText,
-            ) ||
-            !looksLikeConnectCommand(originalText));
-        if (wantsConversation || providerId === "cursor") {
-          await streamAgentReply(originalText, history);
-          return;
-        }
-
-        let geminiPlan = null;
-        try {
-          geminiPlan = await interpretAgentCommand({
-            message: pendingSnapshot
-              ? `Pending action ${pendingSnapshot.intent?.action}. Missing: ${(pendingSnapshot.missing || []).join(", ") || "none"}. User answer: ${originalText}`
-              : originalText,
-            conversationHistory: history,
-            appContext: {
-              ...buildAppContext(myProfile),
-              memory: getMemoryPromptBlock(myProfile?._id),
-              pendingIntent: pendingSnapshot
-                ? {
-                    action: pendingSnapshot.intent?.action,
-                    missing: pendingSnapshot.missing,
-                  }
-                : null,
-            },
-          });
-        } catch (interpreterError) {
-          console.warn("[AIAgentModal] Interpreter failed:", interpreterError);
-        }
-        if (!stillCurrent()) return;
-
-        const geminiIntents = recoverAgentActions({
-          actions: geminiPlan?.actions || [],
-          reply: geminiPlan?.reply || "",
-          userMessage: originalText,
-        })
-          .map((raw) => hydrateIntent(toAgentIntent(raw)))
-          .filter(Boolean);
-
-        if (pendingSnapshot) {
-          const merged = mergeFollowUpIntent({
-            pending: pendingSnapshot,
-            followUpText: originalText,
-            geminiIntents,
-          });
-          if (merged) {
-            const handled = await runIntent(merged, geminiPlan?.reply || "", {
-              forceExecute: autoRun || isAffirmativeFollowUp(originalText),
-            });
-            if (!stillCurrent()) return;
-            if (handled) return;
-          }
-        }
-
-        if (geminiIntents.length > 0) {
-          for (let i = 0; i < geminiIntents.length; i += 1) {
-            if (!stillCurrent()) return;
-            const replyOverride = i === 0 ? geminiPlan?.reply || "" : "";
-            const handled = await runIntent(geminiIntents[i], replyOverride);
-            if (!handled && geminiPlan?.reply && stillCurrent()) {
-              addMessage({ type: "agent", content: geminiPlan.reply });
-            }
-          }
-          return;
-        }
-
-        if (geminiPlan?.ask?.field || looksLikeQuestion(geminiPlan?.reply)) {
-          const stub =
-            pendingSnapshot?.intent ||
-            localIntent ||
-            (geminiPlan?.ask?.field ? { action: null } : null);
-          const parsedStub = stub?.action ? hydrateIntent(stub) : null;
-          if (parsedStub) {
-            const slots = geminiPlan?.ask?.field
-              ? [normalizeAskField(geminiPlan.ask.field) || geminiPlan.ask.field]
-              : getMissingIntentSlots(parsedStub);
-            const question =
-              geminiPlan?.ask?.question ||
-              geminiPlan?.reply ||
-              getSlotQuestion(parsedStub, slots);
-            pauseForInput(
-              parsedStub,
-              slots.filter(Boolean).length ? slots.filter(Boolean) : ["searchQuery"],
-              question,
-            );
-            return;
-          }
-        }
-
-        if (geminiPlan?.reply) {
-          if (!stillCurrent()) return;
-          addMessage({ type: "agent", content: geminiPlan.reply });
-          return;
-        }
-
-        if (!stillCurrent()) return;
-        addMessage({
-          type: "agent",
-          content:
-            "I didn't catch a command. Try something like “open settings”, “invite Atik to Ludo”, or ask a question.",
-        });
+        await streamAgentReply(originalText, history);
+        return;
       } catch (err) {
         console.error("[AIAgentModal]", err);
         if (!stillCurrent()) return;
@@ -1204,7 +1112,6 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       handlePlayVideo,
       handleDownloadYoutube,
       cancelSpeech,
-      feedSpeech,
       announceUpcomingAction,
     ],
   );
@@ -1247,6 +1154,24 @@ const AIAgentModal = ({ isOpen, onClose }) => {
     flushSpeech(latest.id, content);
   }, [messages, liveTalkOn, isOpen, feedSpeech, flushSpeech]);
 
+  const liveTalkStuck =
+    Boolean(liveTalkOn) &&
+    (isLoading || messages.some((item) => item?.streaming));
+
+  useEffect(() => {
+    if (!isOpen || !liveTalkStuck) return undefined;
+    const timer = setTimeout(() => {
+      streamAbortRef.current?.abort();
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.streaming ? { ...msg, streaming: false } : msg,
+        ),
+      );
+      setIsLoading(false);
+    }, 14000);
+    return () => clearTimeout(timer);
+  }, [isOpen, liveTalkStuck]);
+
   const handleToggleLiveTalk = useCallback(() => {
     setLiveTalkOn((on) => {
       const next = !on;
@@ -1256,6 +1181,14 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         });
         speakText("I'm listening.");
       } else {
+        streamAbortRef.current?.abort();
+        sendGenerationRef.current += 1;
+        setIsLoading(false);
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.streaming ? { ...msg, streaming: false } : msg,
+          ),
+        );
         cancelSpeech();
       }
       return next;

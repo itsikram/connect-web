@@ -32,6 +32,10 @@ uniform float uVignette;
 uniform float uGrain;
 uniform float uGrayMode;
 uniform vec2 uTexel;
+uniform float uVividMode;
+uniform float uGreenBoost;
+uniform float uSkinSoft;
+uniform float uExtraBrightness;
 
 float luma(vec3 c) {
   return dot(c, vec3(0.2126, 0.7152, 0.0722));
@@ -39,6 +43,19 @@ float luma(vec3 c) {
 
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+
+vec3 applyTemperature(vec3 c, float temp, float tint) {
+  vec3 warm = vec3(1.06, 0.96, 0.82);
+  vec3 cool = vec3(0.82, 0.94, 1.08);
+  vec3 tcol = temp >= 0.0
+    ? mix(vec3(1.0), warm, clamp(temp, 0.0, 1.0))
+    : mix(vec3(1.0), cool, clamp(-temp, 0.0, 1.0));
+  c *= tcol;
+  c.r *= 1.0 + tint * 0.08;
+  c.g *= 1.0 - tint * 0.1;
+  c.b *= 1.0 - tint * 0.04;
+  return c;
 }
 
 vec3 vibranceColor(vec3 c, float amount) {
@@ -57,17 +74,47 @@ vec3 contrastCurve(vec3 c, float k) {
   return clamp((mixed - 0.5) * (1.0 + k * 1.15) + 0.5, 0.0, 1.0);
 }
 
-vec3 applyTemperature(vec3 c, float temp, float tint) {
-  vec3 warm = vec3(1.06, 0.96, 0.82);
-  vec3 cool = vec3(0.82, 0.94, 1.08);
-  vec3 tcol = temp >= 0.0
-    ? mix(vec3(1.0), warm, clamp(temp, 0.0, 1.0))
-    : mix(vec3(1.0), cool, clamp(-temp, 0.0, 1.0));
-  c *= tcol;
-  c.r *= 1.0 + tint * 0.08;
-  c.g *= 1.0 - tint * 0.1;
-  c.b *= 1.0 - tint * 0.04;
-  return c;
+float skinMask(vec3 c) {
+  float l = luma(c);
+  float rg = c.r - c.g;
+  float warm = c.r + c.g * 0.45 - c.b * 0.55;
+  float m = smoothstep(0.035, 0.17, rg) * smoothstep(0.06, 0.32, warm);
+  m *= smoothstep(0.2, 0.4, l) * (1.0 - smoothstep(0.7, 0.93, l));
+  return clamp(m, 0.0, 1.0);
+}
+
+vec3 softenSkin(vec3 c, float amount) {
+  float m = skinMask(c);
+  vec3 soft = applyTemperature(c, 0.07, 0.015);
+  float l = luma(soft);
+  soft = mix(vec3(l), soft, 1.0 - amount * 0.1);
+  soft = mix(vec3(l), soft, 0.92);
+  soft = mix(soft, vec3(l + (soft - vec3(l)) * 0.88), amount * 0.35);
+  return mix(c, soft, m * amount);
+}
+
+vec3 boostGreens(vec3 c, float amount) {
+  float greenLead = c.g - max(c.r, c.b);
+  float mask = smoothstep(0.012, 0.14, greenLead);
+  vec3 boosted = c;
+  boosted.g = min(c.g + greenLead * amount * 0.9, 1.0);
+  boosted.r *= 1.0 - mask * amount * 0.07;
+  boosted.b *= 1.0 - mask * amount * 0.14;
+  float l = luma(boosted);
+  boosted = mix(vec3(l), boosted, 1.0 + mask * amount * 0.5);
+  return mix(c, boosted, mask);
+}
+
+vec3 vividSharpen(vec3 c, vec2 uv, float amount) {
+  vec3 blur =
+    texture2D(uTexture, uv + vec2(uTexel.x, 0.0)).rgb * 0.25 +
+    texture2D(uTexture, uv - vec2(uTexel.x, 0.0)).rgb * 0.25 +
+    texture2D(uTexture, uv + vec2(0.0, uTexel.y)).rgb * 0.25 +
+    texture2D(uTexture, uv - vec2(0.0, uTexel.y)).rgb * 0.25;
+  float edge = length(c - blur);
+  float edgeMask = smoothstep(0.015, 0.08, edge);
+  float skin = skinMask(c);
+  return c + (c - blur) * amount * edgeMask * (1.0 - skin * 0.55);
 }
 
 vec3 applyFilter(vec3 src, vec2 uv) {
@@ -90,7 +137,15 @@ vec3 applyFilter(vec3 src, vec2 uv) {
        texture2D(uTexture, uv - vec2(uTexel.x, 0.0)).rgb +
        texture2D(uTexture, uv + vec2(0.0, uTexel.y)).rgb +
        texture2D(uTexture, uv - vec2(0.0, uTexel.y)).rgb) * 0.25;
-    c += (c - blur) * uClarity;
+    float skin = skinMask(c);
+    c += (c - blur) * uClarity * (1.0 - skin * 0.35);
+  }
+
+  if (uVividMode > 0.5) {
+    c = boostGreens(c, uGreenBoost);
+    c = softenSkin(c, uSkinSoft);
+    c = vividSharpen(c, uv, 0.12);
+    c += vec3(uExtraBrightness);
   }
 
   if (uGrayMode > 0.5) {
@@ -175,6 +230,9 @@ const IDENTITY = {
   vignette: 0,
   grain: 0,
   grayMode: 0,
+  vividMode: 0,
+  greenBoost: 0,
+  skinSoft: 0,
 };
 
 export default class IosFilterRenderer {
@@ -190,6 +248,7 @@ export default class IosFilterRenderer {
     this.zoom = 1;
     this.mirror = 0;
     this.intensity = 1;
+    this.extraBrightness = 0;
     this.params = { ...IDENTITY };
     this._init();
   }
@@ -255,6 +314,10 @@ export default class IosFilterRenderer {
       "uGrain",
       "uGrayMode",
       "uTexel",
+      "uVividMode",
+      "uGreenBoost",
+      "uSkinSoft",
+      "uExtraBrightness",
     ];
     names.forEach((n) => {
       this.locs[n] = gl.getUniformLocation(program, n);
@@ -282,6 +345,10 @@ export default class IosFilterRenderer {
   setFilter(params, intensity) {
     this.params = { ...IDENTITY, ...(params || {}) };
     this.intensity = Math.max(0, Math.min(1, (Number(intensity) || 0) / 100));
+  }
+
+  setExtraBrightness(value) {
+    this.extraBrightness = Math.max(-0.45, Math.min(0.45, Number(value) || 0));
   }
 
   resize(width, height) {
@@ -329,6 +396,10 @@ export default class IosFilterRenderer {
     gl.uniform1f(this.locs.uVignette, p.vignette);
     gl.uniform1f(this.locs.uGrain, p.grain);
     gl.uniform1f(this.locs.uGrayMode, p.grayMode);
+    gl.uniform1f(this.locs.uVividMode, p.vividMode || 0);
+    gl.uniform1f(this.locs.uGreenBoost, p.greenBoost || 0);
+    gl.uniform1f(this.locs.uSkinSoft, p.skinSoft || 0);
+    gl.uniform1f(this.locs.uExtraBrightness, this.extraBrightness);
     gl.uniform2f(
       this.locs.uTexel,
       1 / Math.max(this.srcW, 1),

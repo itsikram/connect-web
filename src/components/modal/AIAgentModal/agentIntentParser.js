@@ -690,11 +690,14 @@ const INTENT_PATTERNS = [
     action: "CREATE_POST",
     searchCapture: true,
     patterns: [
-      /(?:create|make|write|publish)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:new\s+)?post(?:\s+with\s+(?:a\s+|an\s+)?(?:funny|witty|random|good|nice)\s+caption)?(?:\s*(?:that says|saying|caption(?:ed)?|:)\s+(.+))?(?:\s+(?:please|now|for me))?[.!?]*$/i,
-      /(?:create|make|write|publish)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:funny|witty)\s+post(?:\s+(?:about|saying|:)\s*(.+))?$/i,
+      /(?:upload|create|make|write|publish|share)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:new\s+)?post\s+with\s+(?:the\s+|a\s+|an\s+)?caption\s*[:\-–]?\s*(.+)/i,
+      /(?:upload|create|make|write|publish|share)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:new\s+)?post\s+(?:that\s+)?(?:says|saying|captioned)\s*[:\-–]?\s*(.+)/i,
+      /(?:upload|publish|share)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:new\s+)?post\s*[:\-–]\s*(.+)/i,
+      /(?:create|make|write|publish|upload|share)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:new\s+)?post(?:\s+with\s+(?:a\s+|an\s+)?(?:funny|witty|random|good|nice)\s+caption)?(?:\s*(?:that says|saying|caption(?:ed)?|:)\s+(.+))?(?:\s+(?:please|now|for me))?[.!?]*$/i,
+      /(?:create|make|write|publish|upload)\s+(?:me\s+)?(?:a\s+|an\s+)?(?:funny|witty)\s+post(?:\s+(?:about|saying|:)\s*(.+))?$/i,
       /post\s+(?:this|that)\s*(?:to\s+(?:my\s+)?(?:feed|timeline))?\s*[:\-]\s*(.+)/i,
       /(?:new\s+)?post\s*[:\-]\s*(.+)/i,
-      /(?:একটা|একটি)?\s*পোস্ট\s+(?:করো|করুন|তৈরি(?:\s+করো)?)(?:\s+(.+))?/,
+      /(?:একটা|একটি)?\s*পোস্ট\s+(?:আপলোড\s+)?(?:করো|করুন|তৈরি(?:\s+করো)?)(?:\s+(?:ক্যাপশন|caption)\s*[:\-–]?\s*)?(.+)?/,
     ],
   },
 
@@ -983,10 +986,16 @@ const INTENT_PATTERNS = [
     action: "UPDATE_SETTINGS",
     searchCapture: true,
     patterns: [
-      /(?:set|change|switch|turn(?:\s+on)?|update)\s+(?:to\s+)?(?:dark|light)\s+(?:mode|theme)/i,
-      /(?:enable|disable|turn\s+on|turn\s+off|mute)\s+(?:my\s+)?(?:notifications?|location(?:\s+sharing)?)/i,
-      /(?:hide|share|stop sharing)\s+(?:my\s+)?location/i,
-      /(?:make\s+)?(?:my\s+)?posts?\s+(?:public|private|friends?\s+only)/i,
+      /(?:set|change|switch|turn(?:\s+on)?|update)\s+(?:to\s+)?(?:dark|light|default)\s+(?:mode|theme)/i,
+      /(?:enable|disable|turn\s+on|turn\s+off|mute|unmute)\s+(?:my\s+)?(?:email\s+)?(?:notifications?|location(?:\s+sharing)?)/i,
+      /(?:hide|share|stop sharing|show)\s+(?:my\s+)?location/i,
+      /(?:make\s+)?(?:my\s+)?posts?\s+(?:public|private|only\s+me|friends?\s+only|friends of friends)/i,
+      /(?:set|change|update)\s+(?:my\s+)?(?:posts?|post visibility|privacy)\s+(?:to\s+)?(?:public|private|only\s+me|friends?\s+only)/i,
+      /(?:who can (?:see my posts|send (?:me )?(?:a )?friend request|post on my timeline))\s*(.*)/i,
+      /(?:hide|show|enable|disable|turn\s+on|turn\s+off)\s+(?:the\s+)?(?:typing(?:\s+indicator)?|face mode|emotion sharing|share(?:ing)? (?:my )?emotions?)/i,
+      /(?:set|change|update)\s+(?:my\s+)?ringtone(?:\s+to)?\s*(.*)/i,
+      /(?:set|change|update|edit)\s+(?:my\s+)?(?:nickname|nick name|display name|bangla name|bengali name|username|user name|first name|surname|last name|present address|permanent address)\s*(.*)/i,
+      /(?:turn\s+off|disable|mute)\s+(?:my\s+)?(?:message|post|story|watch|friend request)\s+notifications?/i,
       /(?:update|change)\s+(?:my\s+)?settings(?:\s+to|\s+for)?\s*(.*)/i,
       /(?:open)\s+(?:my\s+)?settings\s+(?:to|for)\s+(.+)/i,
     ],
@@ -1437,11 +1446,13 @@ export const parseIntent = (message) => {
   if (!message || typeof message !== "string") return null;
   const trimmed = message.trim();
   if (!trimmed) return null;
+  const attachSource = (parsed) =>
+    parsed ? { ...parsed, sourceText: parsed.sourceText || trimmed } : null;
   const parsed = tryParseIntentText(trimmed);
-  if (parsed) return parsed;
+  if (parsed) return attachSource(parsed);
   const stripped = stripCommandFiller(trimmed);
   if (stripped && stripped !== trimmed) {
-    return tryParseIntentText(stripped);
+    return attachSource(tryParseIntentText(stripped));
   }
   return null;
 };
