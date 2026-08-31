@@ -6,11 +6,13 @@ import {
   applyPlatformAiDefaults,
 } from "./aiAgentSettings";
 
-const extractGeminiText = (data) =>
-  data?.candidates?.[0]?.content?.parts
-    ?.map((part) => part?.text || "")
-    .join("")
-    .trim() || "";
+const extractGeminiText = (data, { trim = true } = {}) => {
+  const text =
+    data?.candidates?.[0]?.content?.parts
+      ?.map((part) => part?.text || "")
+      .join("") || "";
+  return trim ? text.trim() : text;
+};
 
 export const isGeminiQuotaError = (status, data) => {
   const apiStatus = String(data?.error?.status || "").toUpperCase();
@@ -365,7 +367,7 @@ const streamGemini = async ({
           streamError = new Error(payload.error.message);
           return;
         }
-        const chunk = extractGeminiText(payload);
+        const chunk = extractGeminiText(payload, { trim: false });
         if (!chunk) return;
         text += chunk;
         onDelta?.(text);

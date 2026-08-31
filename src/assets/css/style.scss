@@ -9229,8 +9229,8 @@ html[data-theme="light"],
     }
 
     #home {
-        padding-left: 20px;
-        padding-right: 20px;
+        padding-left: 0;
+        padding-right: 0;
 
         .newsfeed-container {
             width: 100%;
@@ -9343,7 +9343,7 @@ html[data-theme="light"],
         padding-top: 20px;
     }
 
-    #profile:not(.profile-page) #profile-friends-content {
+    #profile-friends-content {
         width: 95% !important;
 
         .friend-item {

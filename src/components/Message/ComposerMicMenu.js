@@ -43,7 +43,7 @@ const ComposerMicMenu = ({
           <span className="composer-mic-menu-copy">
             <span className="composer-mic-menu-title">Bangla</span>
             <span className="composer-mic-menu-desc">
-              Recognize speech in Bangla via Deepgram
+              Recognize speech in Bangla
             </span>
           </span>
         </button>
@@ -93,7 +93,7 @@ const ComposerMicMenu = ({
       </button>
       <button
         type="button"
-        className="composer-mic-menu-item"
+        className="composer-mic-menu-item is-voice-send"
         role="menuitem"
         onClick={(e) => {
           e.preventDefault();

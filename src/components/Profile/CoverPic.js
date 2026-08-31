@@ -224,31 +224,20 @@ const CoverPic = ({ profileData }) => {
             <div className="cover-photo-container">
             {/* <CpSkleton count={1} /> */}
 
-            {coverPicUrl && cpLoaded ? (
+            {cpLoaded ? (
                 <img onClick={openCPViewModal} className="cover-photo" src={displayCoverPicUrl} alt="cover" referrerPolicy="no-referrer" />
-            ) : coverPicUrl ? (
-                <CpSkleton count={1} />
-            ) : (
-                <div className="cover-photo cover-placeholder" />
-            )}
+            ) : (<CpSkleton count={1} />)}
 
-                {isCpUploading && (
-                    <div className="cover-upload-overlay">
-                        <i className="fas fa-spinner fa-spin" />
-                        <span>{uploadProgress > 0 ? `${uploadProgress}%` : 'Uploading...'}</span>
-                    </div>
-                )}
+                
 
                 {
                     isAuth &&
-                    <div
-                        className={`upload-cover-photo${isCpUploading ? ' is-disabled' : ''}`}
-                        onClick={isCpUploading ? undefined : showCpModal}
-                    >
+                    <div className="upload-cover-photo" onClick={showCpModal}>
                         <i className="fa fa-camera-alt"></i>
                         <span>
-                            {isCpUploading ? 'Uploading...' : 'Edit cover photo'}
+                            Upload Cover Photo
                         </span>
+
                     </div>
                 }
 

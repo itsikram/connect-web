@@ -48,6 +48,51 @@ export const extractYouTubeUrl = (...parts) => {
   return url;
 };
 
+export const isVagueYoutubeRef = (value) => {
+  const text = String(value || "").trim();
+  if (!text) return true;
+  return /^(?:(?:this|that|it|the|same)(?:\s+(?:video|link|one|url|youtube(?:\s+video)?))?|the\s+same(?:\s+one)?)$/i.test(
+    text,
+  );
+};
+
+export const stripYoutubeSearchNoise = (text = "") =>
+  String(text || "")
+    .replace(YOUTUBE_URL_RE, " ")
+    .replace(
+      /\b(please|kindly|can you|could you|would you|download|save|search(?:ing)?|find|look(?:ing)?(?:\s+up)?|show(?:\s+me)?|youtube|yt|videos?|audio|mp3|from|on|for me|now)\b/gi,
+      " ",
+    )
+    .replace(/[?.!,;:]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+export const pickBestYoutubeMatch = (videos, query) => {
+  if (!Array.isArray(videos) || videos.length === 0) return null;
+  const terms = String(query || "")
+    .toLowerCase()
+    .split(/[^a-z0-9\u0980-\u09ff]+/i)
+    .filter((word) => word.length > 1);
+  if (!terms.length) return videos[0];
+  let best = videos[0];
+  let bestScore = -1;
+  videos.forEach((video, index) => {
+    const hay = `${video.title || video.caption || ""} ${
+      video.channelTitle || ""
+    }`.toLowerCase();
+    const overlap = terms.reduce(
+      (count, term) => count + (hay.includes(term) ? 1 : 0),
+      0,
+    );
+    const score = overlap * 10 - index;
+    if (score > bestScore) {
+      bestScore = score;
+      best = video;
+    }
+  });
+  return best;
+};
+
 export const extractMediaUrl = (...parts) => {
   const youtube = extractYouTubeUrl(...parts);
   if (youtube) return youtube;

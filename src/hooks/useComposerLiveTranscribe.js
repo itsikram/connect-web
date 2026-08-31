@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getSocketUrl } from "../utils/offlineUtils";
+import { mergeTranscriptChunk } from "./transcriptText";
 
 const TARGET_SAMPLE_RATE = 16000;
 const PCM_PROCESSOR_BUFFER_SIZE = 2048;
@@ -15,6 +15,42 @@ const canUseDeepgram = () =>
   !!window.WebSocket &&
   !!navigator?.mediaDevices?.getUserMedia &&
   !!(window.AudioContext || window.webkitAudioContext);
+
+const START_ERRORS = new Set([
+  "not-allowed",
+  "audio-capture",
+  "language-not-supported",
+  "service-not-allowed",
+  "network",
+]);
+
+const stopTracks = (stream) => {
+  stream?.getTracks?.().forEach((track) => {
+    try {
+      track.stop();
+    } catch {
+      /* ignore */
+    }
+  });
+};
+
+const requestMicStream = async () => {
+  if (!navigator?.mediaDevices?.getUserMedia) {
+    throw new Error("microphone-unavailable");
+  }
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+  } catch {
+    return navigator.mediaDevices.getUserMedia({ audio: true });
+  }
+};
 
 const downsampleTo16k = (float32, inputSampleRate) => {
   if (!float32?.length) return float32;
@@ -58,11 +94,41 @@ const pickRecorderMime = () => {
   return "";
 };
 
+const resolveSpeechServerBase = () => {
+  const fromEnv = String(
+    process.env.REACT_APP_SOCKET_URL || process.env.REACT_APP_SERVER_ADDR || "",
+  )
+    .trim()
+    .replace(/\/+$/, "");
+  if (fromEnv) return fromEnv;
+  if (typeof window === "undefined") return "http://localhost:4000";
+  const { hostname, protocol } = window.location;
+  if (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "[::1]"
+  ) {
+    return `${protocol}//${hostname}:4000`;
+  }
+  return window.location.origin;
+};
+
 const speechSocketUrls = () => {
-  const base = getSocketUrl();
-  const url = new URL(base);
+  const url = new URL(resolveSpeechServerBase());
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = "/ws/speech";
+  if (typeof window !== "undefined") {
+    const pageHost = window.location.hostname;
+    const socketIsLoopback =
+      url.hostname === "localhost" || url.hostname === "127.0.0.1";
+    const pageIsLoopback =
+      pageHost === "localhost" ||
+      pageHost === "127.0.0.1" ||
+      pageHost === "[::1]";
+    if (socketIsLoopback && !pageIsLoopback) {
+      url.hostname = pageHost;
+    }
+  }
   try {
     const user = JSON.parse(localStorage.getItem("user") || "{}");
     if (user?.accessToken) url.searchParams.set("token", user.accessToken);
@@ -157,6 +223,9 @@ export default function useComposerLiveTranscribe({
   const audioSourceRef = useRef(null);
   const audioProcessorRef = useRef(null);
   const audioGainRef = useRef(null);
+  const langRef = useRef("en-US");
+  const lastPartialRef = useRef("");
+  const lastFinalRef = useRef({ text: "", at: 0 });
   const engineRef = useRef(null);
 
   onFinalRef.current = onFinal;
@@ -167,16 +236,50 @@ export default function useComposerLiveTranscribe({
     setDeepgramSupported(canUseDeepgram());
   }, []);
 
-  const stopBrowser = useCallback(() => {
-    wantListenRef.current = false;
+  const emitFinal = useCallback((text) => {
+    const next = mergeTranscriptChunk("", text);
+    if (!next) return;
+    const now = Date.now();
+    const prev = lastFinalRef.current;
+    if (prev.text && now - prev.at < 3500) {
+      if (next.toLowerCase() === prev.text.toLowerCase()) return;
+      const merged = mergeTranscriptChunk(prev.text, next);
+      if (merged.toLowerCase() === prev.text.toLowerCase()) return;
+    }
+    lastFinalRef.current = { text: next, at: now };
+    lastPartialRef.current = "";
+    onFinalRef.current?.(next);
+  }, []);
+  const startBrowserRef = useRef(null);
+  const startDeepgramRef = useRef(null);
+
+  const haltBrowserRec = useCallback(() => {
     const rec = recRef.current;
     recRef.current = null;
+    if (!rec) return;
     try {
-      rec?.stop?.();
+      rec.onstart = null;
+      rec.onresult = null;
+      rec.onerror = null;
+      rec.onend = null;
     } catch {
       /* ignore */
     }
+    try {
+      rec.abort?.();
+    } catch {
+      try {
+        rec.stop?.();
+      } catch {
+        /* ignore */
+      }
+    }
   }, []);
+
+  const stopBrowser = useCallback(() => {
+    wantListenRef.current = false;
+    haltBrowserRec();
+  }, [haltBrowserRec]);
 
   const stopDeepgramHardware = useCallback(() => {
     try {
@@ -243,58 +346,113 @@ export default function useComposerLiveTranscribe({
     stopDeepgramHardware();
     closeSocket();
     engineRef.current = null;
+    lastPartialRef.current = "";
     setListening(false);
   }, [closeSocket, stopBrowser, stopDeepgramHardware]);
 
-  const startBrowserEnglish = useCallback(() => {
-    const Ctor = SpeechRecognitionCtor();
-    if (!Ctor) return false;
-    stopBrowser();
-    wantListenRef.current = true;
-    const rec = new Ctor();
-    rec.lang = "en-US";
-    rec.interimResults = true;
-    rec.continuous = true;
-    rec.maxAlternatives = 3;
-    rec.onresult = (event) => {
-      if (!wantListenRef.current) return;
-      let interimText = "";
-      let finalText = "";
-      for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        const piece = event.results[i][0]?.transcript || "";
-        if (event.results[i].isFinal) finalText += piece;
-        else interimText += piece;
-      }
-      if (interimText) onInterimRef.current?.(interimText);
-      if (finalText) {
-        onFinalRef.current?.(finalText.trim());
-      }
-    };
-    rec.onerror = () => {
-      wantListenRef.current = false;
-      setListening(false);
-    };
-    rec.onend = () => {
-      if (recRef.current !== rec) return;
-      if (wantListenRef.current) {
+  const startBrowser = useCallback(
+    (langCode = "en-US") =>
+      new Promise((resolve, reject) => {
+        const Ctor = SpeechRecognitionCtor();
+        if (!Ctor) {
+          reject(new Error("no-speech-recognition"));
+          return;
+        }
+        haltBrowserRec();
+        wantListenRef.current = true;
+        langRef.current = langCode;
+        const rec = new Ctor();
+        rec.lang = langCode;
+        rec.interimResults = true;
+        rec.continuous = true;
+        rec.maxAlternatives = 1;
+        let settled = false;
+        let timer = 0;
+        const finish = (error) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          if (error) {
+            haltBrowserRec();
+            reject(error);
+            return;
+          }
+          engineRef.current = "browser";
+          setListening(true);
+          resolve(true);
+        };
+        timer = setTimeout(() => {
+          finish(new Error("speech-start-timeout"));
+        }, 4000);
+        rec.onstart = () => finish(null);
+        rec.onresult = (event) => {
+          if (!wantListenRef.current) return;
+          let interimText = "";
+          let finalText = "";
+          for (let i = event.resultIndex; i < event.results.length; i += 1) {
+            const piece = event.results[i][0]?.transcript || "";
+            if (event.results[i].isFinal) finalText += piece;
+            else interimText += piece;
+          }
+          if (interimText) onInterimRef.current?.(interimText);
+          if (finalText) emitFinal(finalText.trim());
+        };
+        rec.onerror = (event) => {
+          const err = String(event?.error || "").trim();
+          if (!err || err === "no-speech" || err === "aborted") {
+            return;
+          }
+          if (!settled && START_ERRORS.has(err)) {
+            finish(new Error(err));
+            return;
+          }
+          if (
+            (err === "language-not-supported" || err === "service-not-allowed") &&
+            canUseDeepgram() &&
+            startDeepgramRef.current
+          ) {
+            haltBrowserRec();
+            startDeepgramRef.current(toDeepgramLang(langCode)).catch(() => {
+              wantListenRef.current = false;
+              setListening(false);
+            });
+            return;
+          }
+          if (err === "not-allowed" || err === "audio-capture") {
+            wantListenRef.current = false;
+            setListening(false);
+          }
+        };
+        rec.onend = () => {
+          if (recRef.current !== rec) return;
+          if (wantListenRef.current) {
+            try {
+              rec.start();
+              setListening(true);
+              return;
+            } catch {
+              /* fall through */
+            }
+          }
+          wantListenRef.current = false;
+          setListening(false);
+          recRef.current = null;
+        };
+        recRef.current = rec;
         try {
           rec.start();
-          setListening(true);
-          return;
-        } catch {
-          /* fall through */
+        } catch (error) {
+          finish(
+            error instanceof Error
+              ? error
+              : new Error(String(error || "speech-start-failed")),
+          );
         }
-      }
-      wantListenRef.current = false;
-      setListening(false);
-      recRef.current = null;
-    };
-    recRef.current = rec;
-    rec.start();
-    engineRef.current = "browser";
-    setListening(true);
-    return true;
-  }, [stopBrowser]);
+      }),
+    [emitFinal, haltBrowserRec],
+  );
+
+  startBrowserRef.current = startBrowser;
 
   const handleSocketMessage = useCallback((event) => {
     if (!wantListenRef.current) return;
@@ -304,36 +462,48 @@ export default function useComposerLiveTranscribe({
     } catch {
       return;
     }
-    if (payload.type === "partial") {
-      const partial = String(payload.text || "").trim();
-      if (partial) onInterimRef.current?.(partial);
+    if (payload.type === "error") {
+      console.warn("[speech]", payload.message || "Speech recognition failed");
+      const lang = langRef.current;
+      if (
+        String(lang).toLowerCase().startsWith("bn") &&
+        SpeechRecognitionCtor() &&
+        engineRef.current === "deepgram"
+      ) {
+        stopDeepgramHardware();
+        closeSocket();
+        startBrowserRef.current?.(lang)?.catch(() => {});
+      }
       return;
     }
-    if (payload.type === "final") {
-      const finalText = String(payload.text || "").trim();
-      if (finalText) onFinalRef.current?.(finalText);
+    if (payload.type === "partial") {
+      const partial = String(payload.text || "").trim();
+      if (partial) {
+        lastPartialRef.current = partial;
+        if (payload.isFinal) {
+          emitFinal(partial);
+        } else {
+          onInterimRef.current?.(partial);
+        }
+      }
+      return;
     }
-  }, []);
+    if (payload.type === "final" || payload.type === "utterance-end") {
+      const finalText = String(
+        payload.text || lastPartialRef.current || "",
+      ).trim();
+      lastPartialRef.current = "";
+      if (finalText) emitFinal(finalText);
+    }
+  }, [closeSocket, emitFinal, stopDeepgramHardware]);
 
   const startDeepgram = useCallback(
-    async (language) => {
+    async (language, existingStream = null) => {
       const socketUrls = speechSocketUrls();
-      const [stream, ws] = await Promise.all([
-        (async () => {
-          try {
-            return await navigator.mediaDevices.getUserMedia({
-              audio: {
-                channelCount: 1,
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true,
-              },
-            });
-          } catch {
-            return navigator.mediaDevices.getUserMedia({ audio: true });
-          }
-        })(),
-        (async () => {
+      let stream = existingStream;
+      let ws = null;
+      try {
+        const wsPromise = (async () => {
           let lastError = null;
           for (const socketUrl of socketUrls) {
             try {
@@ -343,19 +513,50 @@ export default function useComposerLiveTranscribe({
             }
           }
           throw lastError || new Error("Unable to connect to speech server");
-        })(),
-      ]);
+        })();
+        if (!stream) {
+          stream = await requestMicStream();
+        }
+        ws = await wsPromise;
+      } catch (error) {
+        if (!existingStream) stopTracks(stream);
+        try {
+          ws?.close();
+        } catch {
+          /* ignore */
+        }
+        throw error;
+      }
 
       mediaStreamRef.current = stream;
       wsRef.current = ws;
       wantListenRef.current = true;
 
       ws.onerror = () => {
+        if (
+          wantListenRef.current &&
+          String(langRef.current).toLowerCase().startsWith("bn") &&
+          SpeechRecognitionCtor()
+        ) {
+          stopDeepgramHardware();
+          closeSocket();
+          startBrowserRef.current?.(langRef.current)?.catch(() => {});
+          return;
+        }
         stop();
       };
       ws.onclose = () => {
         wsRef.current = null;
-        if (wantListenRef.current) stop();
+        if (!wantListenRef.current || engineRef.current !== "deepgram") return;
+        if (
+          String(langRef.current).toLowerCase().startsWith("bn") &&
+          SpeechRecognitionCtor()
+        ) {
+          stopDeepgramHardware();
+          startBrowserRef.current?.(langRef.current)?.catch(() => {});
+          return;
+        }
+        stop();
       };
 
       let pcmReady = false;
@@ -436,30 +637,91 @@ export default function useComposerLiveTranscribe({
       setListening(true);
       return true;
     },
-    [handleSocketMessage, stop],
+    [closeSocket, handleSocketMessage, stop, stopDeepgramHardware],
   );
+
+  startDeepgramRef.current = startDeepgram;
 
   const start = useCallback(
     async (langCode) => {
-      stop();
-      const isBangla = String(langCode || "")
-        .toLowerCase()
-        .startsWith("bn");
-      const useBrowserEnglish = !isBangla && Boolean(SpeechRecognitionCtor());
-
       try {
-        if (useBrowserEnglish) {
-          return startBrowserEnglish();
+        const micRequest = navigator?.mediaDevices?.getUserMedia
+          ? requestMicStream()
+          : null;
+        stop();
+        lastPartialRef.current = "";
+        const requested = String(langCode || "en-US");
+        langRef.current = requested;
+        const isBangla = requested.toLowerCase().startsWith("bn");
+        const browserLangs = isBangla
+          ? requested.toLowerCase().startsWith("bn-in")
+            ? ["bn-IN", "bn-BD"]
+            : ["bn-BD", "bn-IN"]
+          : ["en-US"];
+
+        let primedStream = null;
+        if (micRequest) {
+          try {
+            primedStream = await micRequest;
+          } catch (error) {
+            console.warn("Microphone permission failed:", error);
+          }
         }
-        if (!canUseDeepgram()) return false;
-        return await startDeepgram(toDeepgramLang(langCode));
+
+        const tryBrowser = async () => {
+          if (!SpeechRecognitionCtor()) return false;
+          stopTracks(primedStream);
+          primedStream = null;
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          for (const lang of browserLangs) {
+            try {
+              await startBrowser(lang);
+              return true;
+            } catch (error) {
+              console.warn(
+                `Browser speech recognition failed (${lang}):`,
+                error,
+              );
+            }
+          }
+          return false;
+        };
+
+        if (isBangla && canUseDeepgram() && primedStream) {
+          try {
+            await startDeepgram("bn", primedStream);
+            primedStream = null;
+            return true;
+          } catch (error) {
+            console.warn("Deepgram speech recognition failed:", error);
+            stopTracks(primedStream);
+            primedStream = null;
+          }
+        }
+
+        if (await tryBrowser()) return true;
+
+        if (canUseDeepgram()) {
+          try {
+            await startDeepgram(toDeepgramLang(requested));
+            return true;
+          } catch (error) {
+            console.warn("Deepgram speech recognition failed:", error);
+          }
+        }
+
+        return false;
       } catch (error) {
         console.error("Live transcription failed:", error);
-        stop();
+        try {
+          stop();
+        } catch {
+          /* ignore */
+        }
         return false;
       }
     },
-    [startBrowserEnglish, startDeepgram, stop],
+    [startBrowser, startDeepgram, stop],
   );
 
   useEffect(() => () => stop(), [stop]);

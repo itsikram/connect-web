@@ -12,7 +12,12 @@ import VideoResultCard from "./VideoResultCard";
  *   'friend-picker'– agent bubble + list of FriendResultCards
  *   'action-result'– agent bubble showing result of an executed action
  */
-const MessageBubble = ({ message, userProfilePic }) => {
+const MessageBubble = ({
+  message,
+  userProfilePic,
+  onPlayVideo,
+  onDownloadYoutube,
+}) => {
   const isUser = message.type === "user";
   const isFriendPicker = message.type === "friend-picker";
   const isActionResult = message.type === "action-result";
@@ -118,7 +123,16 @@ const MessageBubble = ({ message, userProfilePic }) => {
 
   // ── Video results bubble ────────────────────────────────────────────────────
   if (isVideoResults) {
-    const { videos, onPlay, content } = message;
+    const {
+      videos,
+      onPlay,
+      onDownload,
+      content,
+      source,
+      defaultPostAsWatch,
+    } = message;
+    const playHandler = onPlay || onPlayVideo;
+    const downloadHandler = onDownload || onDownloadYoutube;
     const isMultiple = videos && videos.length > 1;
     return (
       <motion.div
@@ -141,9 +155,12 @@ const MessageBubble = ({ message, userProfilePic }) => {
               <div className="friend-picker-cards">
                 {videos.map((video) => (
                   <VideoResultCard
-                    key={video._id}
+                    key={video._id || video.videoId || video.url}
                     video={video}
-                    onPlay={onPlay}
+                    onPlay={playHandler}
+                    onDownload={downloadHandler}
+                    source={source}
+                    defaultPostAsWatch={defaultPostAsWatch}
                     compact={isMultiple && videos.length > 3}
                   />
                 ))}
@@ -209,7 +226,7 @@ const MessageBubble = ({ message, userProfilePic }) => {
               <div className="friend-picker-cards">
                 {videos.slice(0, 6).map((video) => (
                   <VideoResultCard
-                    key={video._id}
+                    key={video._id || video.videoId || video.url}
                     video={video}
                     onPlay={onPlay}
                     compact={videos.length > 2}

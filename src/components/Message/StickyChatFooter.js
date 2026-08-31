@@ -8,6 +8,7 @@ import "./StickyChatFooter.css";
 import ComposerContextPreview from "./ComposerContextPreview";
 import ComposerMicMenu from "./ComposerMicMenu";
 import useComposerLiveTranscribe from "../../hooks/useComposerLiveTranscribe";
+import { mergeTranscriptChunk } from "../../hooks/transcriptText";
 import useFriendChatSettings from "../../hooks/useFriendChatSettings";
 
 const StickyChatFooter = ({
@@ -147,7 +148,7 @@ const StickyChatFooter = ({
   const handleTranscriptInterim = useCallback(
     (text) => {
       if (!text) return;
-      const next = [transcribeBaseRef.current, text].filter(Boolean).join(" ");
+      const next = mergeTranscriptChunk(transcribeBaseRef.current, text);
       setInputValue(next);
       if (next) addTyping(next);
     },
@@ -157,7 +158,7 @@ const StickyChatFooter = ({
   const handleTranscriptFinal = useCallback(
     (text) => {
       if (!text) return;
-      const next = [transcribeBaseRef.current, text].filter(Boolean).join(" ");
+      const next = mergeTranscriptChunk(transcribeBaseRef.current, text);
       transcribeBaseRef.current = next;
       setInputValue(next);
       addTyping(next);
@@ -443,7 +444,12 @@ const StickyChatFooter = ({
       }
       setTranscribeLang(langCode);
       transcribeBaseRef.current = String(inputValueRef.current || "").trim();
-      const started = await startTranscription(langCode);
+      let started = false;
+      try {
+        started = await startTranscription(langCode);
+      } catch (error) {
+        console.error("Live transcription failed:", error);
+      }
       if (started) {
         messageInput?.current?.focus?.({ preventScroll: true });
       } else {

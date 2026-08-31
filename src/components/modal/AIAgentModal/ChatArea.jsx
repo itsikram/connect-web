@@ -15,8 +15,11 @@ const ChatArea = ({
   modalInteractionVersion,
   liveTalkOn = false,
   onToggleLiveTalk,
+  onInterruptSpeech,
   isSpeaking = false,
   speechSupported = true,
+  onPlayVideo,
+  onDownloadYoutube,
 }) => {
   const lastStreaming = Boolean(messages[messages.length - 1]?.streaming);
 
@@ -30,7 +33,12 @@ const ChatArea = ({
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.08 }}
           >
-            <MessageBubble message={msg} userProfilePic={userProfilePic} />
+            <MessageBubble
+              message={msg}
+              userProfilePic={userProfilePic}
+              onPlayVideo={onPlayVideo}
+              onDownloadYoutube={onDownloadYoutube}
+            />
           </motion.div>
         ))}
 
@@ -59,6 +67,7 @@ const ChatArea = ({
         modalInteractionVersion={modalInteractionVersion}
         liveTalkOn={liveTalkOn}
         onToggleLiveTalk={onToggleLiveTalk}
+        onInterruptSpeech={onInterruptSpeech}
         isSpeaking={isSpeaking}
         speechSupported={speechSupported}
       />

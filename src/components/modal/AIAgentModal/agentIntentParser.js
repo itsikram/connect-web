@@ -23,6 +23,7 @@ export const ACTION_RESPONSE_MODE = {
   SEARCH_USERS: "reply",
   SEARCH_POSTS: "reply",
   SEARCH_VIDEO: "reply",
+  SEARCH_YOUTUBE: "reply",
   LIST_NOTES: "reply",
   LIST_TASKS: "reply",
   LIST_NOTIFICATIONS: "reply",
@@ -939,10 +940,12 @@ const INTENT_PATTERNS = [
     action: "DOWNLOAD_YOUTUBE",
     searchCapture: true,
     patterns: [
-      /download\s+(?:this\s+|that\s+|the\s+)?(?:youtube\s+)?(?:video|audio|mp3)\s*(.*)/i,
+      /download\s+(?:this\s+|that\s+|the\s+)?(?:youtube\s+)?(?:video|audio|mp3|song|clip|track)\s*(.*)/i,
       /(?:download|save)\s+(?:from\s+)?youtube\s*(.*)/i,
       /youtube\s+download\s*(.*)/i,
       /(?:download|save)\s+((?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\S*)/i,
+      /(?:download|save)\s+(.+?)\s+(?:from|on)\s+youtube/i,
+      /^(?:download)\s+(?:me\s+)?(.+)/i,
       /(?:ডাউনলোড).*(youtu\S*)/i,
     ],
   },
@@ -1013,6 +1016,19 @@ const INTENT_PATTERNS = [
       /(?:need|want|give me)\s+(?:recovery\s+)?support/i,
       /(?:help|support)\s+(?:me\s+)?(?:with\s+)?(?:recovery|craving|rehab|relapse)/i,
       /(?:open|go to)\s+(?:rehab|recovery)/i,
+    ],
+  },
+
+  // ── Search YouTube ───────────────────────────────────────────────────────
+  {
+    action: "SEARCH_YOUTUBE",
+    searchCapture: true,
+    patterns: [
+      /^search\s+(?:on\s+|for\s+)?youtube(?:\s+for)?\s+(.+)/i,
+      /^youtube\s+search\s+(?:for\s+)?(.+)/i,
+      /^(?:search|find|look\s+(?:for|up)|show(?:\s+me)?)\s+(.+?)\s+on\s+youtube/i,
+      /^find\s+(?:a\s+)?youtube\s+video(?:s)?\s+(?:about|of|for|on)?\s*(.+)/i,
+      /^(?:search|find)\s+youtube\s+(?:videos?\s+)?(?:for\s+|about\s+)?(.+)/i,
     ],
   },
 

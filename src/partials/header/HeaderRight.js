@@ -5,57 +5,132 @@ import React, {
   useRef,
   useCallback,
   useMemo,
+  lazy,
+  Suspense,
+  memo,
 } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import MegaMC from "../../components/MegaMC";
 import UserPP from "../../components/UserPP";
-import MessageList from "../../components/Message/MessageList";
 import NotificationMenu from "../../components/notification/NotificationMenu";
 import { useAuth } from "../../hooks/useAuth";
+import { shallowEqual, useDispatch, useSelector } from "react-redux";
 import config from "../../config/config.json";
 import { sanitizeProfileImageUrl } from "../../utils/profileImage";
-import "../../pages/Message.css";
 
-let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [], pendingChessInvites = [] }) => {
+const HeaderMessageMenu = lazy(() => import("./HeaderMessageMenu"));
+
+const EMPTY_LIST = [];
+
+const selectUnreadMessageCount = (state) => {
+  const myId = state.profile?._id;
+  const list = state.message;
+  if (!myId || !Array.isArray(list)) return 0;
+  const me = String(myId);
+  let count = 0;
+  for (let i = 0; i < list.length; i += 1) {
+    const messages = list[i]?.messages;
+    if (!messages) continue;
+    for (let j = 0; j < messages.length; j += 1) {
+      const msg = messages[j];
+      if (msg && String(msg.receiverId) === me && msg.isSeen !== true) {
+        count += 1;
+      }
+    }
+  }
+  return count;
+};
+
+const selectNotifications = (state) =>
+  Array.isArray(state.notification) ? state.notification : EMPTY_LIST;
+
+const selectUnseenNotificationCount = (state) => {
+  const list = state.notification;
+  if (!Array.isArray(list)) return 0;
+  let count = 0;
+  for (let i = 0; i < list.length; i += 1) {
+    const item = list[i];
+    if (item && item.type !== "message" && item.isSeen === false) count += 1;
+  }
+  return count;
+};
+
+const selectMenuMaxHeight = (state) => {
+  const option = state.option || {};
+  return Math.max((option.bodyHeight || 0) - (option.headerHeight || 0) - 100, 280);
+};
+
+const selectProfileHeader = (state) => {
+  const profile = state.profile;
+  if (!profile) return null;
+  return {
+    _id: profile._id,
+    profilePic: profile.profilePic,
+    fullName: profile.fullName,
+    firstName: profile.user?.firstName,
+    surname: profile.user?.surname,
+  };
+};
+
+const HeaderNotificationPanel = memo(function HeaderNotificationPanel({
+  menuStyle,
+  profileId,
+  dispatch,
+  onClose,
+  pendingLudoInvites,
+  pendingChessInvites,
+}) {
+  const notificationData = useSelector(selectNotifications);
+  const headerNotifications = useMemo(
+    () => notificationData.filter((n) => n?.type !== "message"),
+    [notificationData],
+  );
+
+  return (
+    <NotificationMenu
+      notifications={headerNotifications}
+      menuStyle={menuStyle}
+      profileId={profileId}
+      dispatch={dispatch}
+      onClose={onClose}
+      pendingLudoInvites={pendingLudoInvites}
+      pendingChessInvites={pendingChessInvites}
+    />
+  );
+});
+
+let HeaderRight = ({ pendingLudoInvites = [], pendingChessInvites = [] }) => {
+  const dispatch = useDispatch();
   const { user, logout, isAuthenticated } = useAuth();
-  let profileData = useSelector((state) => state.profile);
-  let optionData = useSelector((state) => state.option);
-  let notificaitonData = useSelector((state) => state.notification);
-  let messageData = useSelector((state) => state.message);
-  let [isMsgMenu, setIsMsgMenu] = useState(false);
-  let [isProfileMenu, setIsProfileMenu] = useState(false);
-  let [isNotificationMenu, setIsNotificationMenu] = useState(false);
-  let [totalNotifications, setTotalNotifications] = useState(0);
-  let [totalMessages, setTotalMessages] = useState(0);
-  let location = useLocation();
-  let [ppUrl, setPpUrl] = useState(config?.defaultProfile);
-  let navigate = useNavigate();
+  const profileData = useSelector(selectProfileHeader, shallowEqual);
+  const totalNotifications = useSelector(selectUnseenNotificationCount);
+  const totalMessages = useSelector(selectUnreadMessageCount);
+  const menuMaxHeight = useSelector(selectMenuMaxHeight);
+  const [isMsgMenu, setIsMsgMenu] = useState(false);
+  const [isProfileMenu, setIsProfileMenu] = useState(false);
+  const [isNotificationMenu, setIsNotificationMenu] = useState(false);
+  const location = useLocation();
+  const [ppUrl, setPpUrl] = useState(config?.defaultProfile);
+  const navigate = useNavigate();
   const profilePath = user?.profile ? `/${user.profile}/` : "/";
 
   const [messageOption, setMessageOption] = useState(false);
   const messageOptionMenuRef = useRef(null);
   const headerMenusRef = useRef(null);
 
-  let notificationMenuHeight =
-    optionData.bodyHeight - optionData.headerHeight - 100;
-  let notificationMenuStyle = {
-    maxHeight: Math.max(notificationMenuHeight, 280) + "px",
-  };
-
-  const headerNotifications = useMemo(
-    () =>
-      Array.isArray(notificaitonData)
-        ? notificaitonData.filter((n) => n.type !== "message")
-        : [],
-    [notificaitonData],
+  const notificationMenuStyle = useMemo(
+    () => ({ maxHeight: menuMaxHeight + "px" }),
+    [menuMaxHeight],
   );
 
   useEffect(() => {
-    // Reset to default profile pic when profile data is cleared (after logout)
     if (!profileData?.profilePic) {
       setPpUrl(config?.defaultProfile);
-    } else if (profileData?.profilePic) {
-      setPpUrl(sanitizeProfileImageUrl(profileData.profilePic, 96) || profileData.profilePic);
+    } else {
+      setPpUrl(
+        sanitizeProfileImageUrl(profileData.profilePic, 96) ||
+          profileData.profilePic,
+      );
     }
   }, [profileData]);
 
@@ -63,50 +138,40 @@ let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [], pendingChes
     setIsMsgMenu(false);
     setIsProfileMenu(false);
     setIsNotificationMenu(false);
+    setMessageOption(false);
   }, [location]);
 
-  useEffect(() => {
-    let unseenNotifications = headerNotifications.filter(
-      (data) => data.isSeen === false,
-    );
-    setTotalNotifications(unseenNotifications.length);
-  }, [headerNotifications]);
-  useEffect(() => {
-    if (!messageData || !profileData._id) return;
-
-    // Count total number of unseen messages across all conversations
-    let totalUnseenCount = 0;
-    messageData.forEach((data) => {
-      if (data && data.messages && data.messages.length > 0) {
-        const unseenCount = data.messages.filter((msg) => 
-          msg.receiverId === profileData._id && msg.isSeen !== true
-        ).length;
-        totalUnseenCount += unseenCount;
-      }
-    });
-    setTotalMessages(totalUnseenCount);
-  }, [messageData, profileData._id]);
-
-  let showMsgList = () => {
-    setIsMsgMenu((prev) => !prev);
+  const closeMenus = useCallback(() => {
+    setIsMsgMenu(false);
     setIsProfileMenu(false);
     setIsNotificationMenu(false);
     setMessageOption(false);
-  };
+  }, []);
 
-  let clickProfileBtn = () => {
+  const showMsgList = useCallback(() => {
+    setIsProfileMenu(false);
+    setIsNotificationMenu(false);
+    setMessageOption(false);
+    setIsMsgMenu((prev) => !prev);
+  }, []);
+
+  const clickProfileBtn = useCallback(() => {
     setIsProfileMenu((prev) => !prev);
     setIsMsgMenu(false);
     setIsNotificationMenu(false);
     setMessageOption(false);
-  };
+  }, []);
 
-  let showNotificationList = () => {
+  const showNotificationList = useCallback(() => {
     setIsNotificationMenu((prev) => !prev);
     setIsProfileMenu(false);
     setIsMsgMenu(false);
     setMessageOption(false);
-  };
+  }, []);
+
+  const preloadMessageMenu = useCallback(() => {
+    import("./HeaderMessageMenu");
+  }, []);
 
   useEffect(() => {
     const openMenu = () => {
@@ -124,10 +189,7 @@ let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [], pendingChes
         headerMenusRef.current &&
         !headerMenusRef.current.contains(event.target)
       ) {
-        setIsMsgMenu(false);
-        setIsProfileMenu(false);
-        setIsNotificationMenu(false);
-        setMessageOption(false);
+        closeMenus();
       }
       if (
         messageOptionMenuRef.current &&
@@ -140,62 +202,26 @@ let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [], pendingChes
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, []);
+  }, [closeMenus]);
 
-  let handleMessageToggleClick = useCallback(() => {
+  const handleMessageToggleClick = useCallback((e) => {
+    e.stopPropagation();
     setMessageOption((prev) => !prev);
   }, []);
 
-  let MessageOptionMenu = () => (
-    <div
-      className="header-message-option-menu"
-      style={{ position: "relative", display: "inline-block" }}
-    >
-      {messageOption && (
-        <div
-          style={{
-            position: "absolute",
-            top: "20px",
-            right: "0",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-            zIndex: 1003,
-            width: "200px",
-          }}
-        >
-          <ul
-            className="notification-option-menu"
-            style={{ listStyle: "none", margin: 0, padding: "8px 0" }}
-          >
-            <li style={{ padding: "8px 16px", cursor: "pointer" }}>
-              <Link to={"/settings/message"}>Message Settings</Link>
-            </li>
-          </ul>
-        </div>
-      )}
-    </div>
-  );
+  const goToProfilePath = useCallback(() => {
+    navigate(profilePath);
+  }, [navigate, profilePath]);
 
-  let goToProfilePath = useCallback(
-    (e) => {
-      navigate(profilePath);
-    },
-    [navigate, profilePath],
-  );
-
-  let logOutBtn = useCallback(
+  const logOutBtn = useCallback(
     (e) => {
       e.preventDefault();
-
-      // Call the logout function from AuthContext
       logout();
-
-      // Navigate to login page
       navigate("/login");
     },
     [logout, navigate],
   );
 
-  // Early return if not authenticated
   if (!isAuthenticated) {
     return null;
   }
@@ -206,6 +232,7 @@ let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [], pendingChes
         <ul className="header-quick-menu">
           <li
             onClick={showMsgList}
+            onMouseEnter={preloadMessageMenu}
             className={`header-quick-menu-item ${isMsgMenu ? "active" : ""}`}
             title="Message"
             aria-expanded={isMsgMenu}
@@ -228,10 +255,10 @@ let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [], pendingChes
                 zIndex: 1002,
                 transform: "translateX(50%)",
                 top: "101%",
-                width: "300px",
+                width: "340px",
                 backgroundColor: "#242526",
-                borderRadius: "5px",
-                display: isMsgMenu ? "block" : "none",
+                borderRadius: "8px",
+                display: "block",
                 boxShadow: "0px 0px 2px 0px rgba(255,255,255,0.3)",
               }}
               className="hr-mega-menu"
@@ -241,40 +268,84 @@ let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [], pendingChes
                   <div className="notification-leftside-header">
                     <h2 className="notification-leftside-title">Messages</h2>
                     <div className="notification-sidebar-header-menu">
-                    <div
-                      className="header-menu-icons"
-                      style={{ position: "relative" }}
-                      ref={messageOptionMenuRef}
-                    >
                       <div
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleMessageToggleClick();
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            handleMessageToggleClick();
-                          }
-                        }}
-                        role="button"
-                        tabIndex={0}
-                        aria-label="Message options"
-                        aria-expanded={messageOption}
-                        aria-haspopup="true"
+                        className="header-menu-icons"
+                        style={{ position: "relative" }}
+                        ref={messageOptionMenuRef}
                       >
-                        <i className="far fa-ellipsis-h"></i>
+                        <div
+                          onClick={handleMessageToggleClick}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              handleMessageToggleClick(e);
+                            }
+                          }}
+                          role="button"
+                          tabIndex={0}
+                          aria-label="Message options"
+                          aria-expanded={messageOption}
+                          aria-haspopup="true"
+                        >
+                          <i className="far fa-ellipsis-h"></i>
+                        </div>
+                        {messageOption && (
+                          <div
+                            className="header-message-option-menu"
+                            style={{
+                              position: "absolute",
+                              top: "20px",
+                              right: "0",
+                              boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                              zIndex: 1003,
+                              width: "200px",
+                            }}
+                          >
+                            <ul
+                              className="notification-option-menu"
+                              style={{
+                                listStyle: "none",
+                                margin: 0,
+                                padding: "8px 0",
+                              }}
+                            >
+                              <li
+                                style={{
+                                  padding: "8px 16px",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <Link to={"/settings/message"}>
+                                  Message Settings
+                                </Link>
+                              </li>
+                            </ul>
+                          </div>
+                        )}
                       </div>
-                      {messageOption && <MessageOptionMenu />}
-                    </div>
                     </div>
                   </div>
-                  <MessageList
-                    compact
-                    menuStyle={notificationMenuStyle}
-                    onChatSelect={() => setIsMsgMenu(false)}
-                  />
+                  <Suspense
+                    fallback={
+                      <div
+                        style={{
+                          minHeight: 160,
+                          color: "#b0b3b8",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 13,
+                        }}
+                      >
+                        Loading…
+                      </div>
+                    }
+                  >
+                    <HeaderMessageMenu
+                      menuStyle={notificationMenuStyle}
+                      onChatSelect={closeMenus}
+                    />
+                  </Suspense>
                 </div>
               </div>
             </MegaMC>
@@ -312,12 +383,11 @@ let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [], pendingChes
               className="hr-mega-menu hr-notification-mega"
             >
               <div className="hr-mm-container">
-                <NotificationMenu
-                  notifications={headerNotifications}
+                <HeaderNotificationPanel
                   menuStyle={notificationMenuStyle}
-                  profileId={profileData._id}
+                  profileId={profileData?._id}
                   dispatch={dispatch}
-                  onClose={() => setIsNotificationMenu(false)}
+                  onClose={closeMenus}
                   pendingLudoInvites={pendingLudoInvites}
                   pendingChessInvites={pendingChessInvites}
                 />
@@ -357,10 +427,9 @@ let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [], pendingChes
                       {" "}
                       {profileData.fullName
                         ? profileData.fullName
-                        : profileData.user &&
-                          profileData.user.firstName +
-                            " " +
-                            profileData.user.surname}{" "}
+                        : [profileData.firstName, profileData.surname]
+                            .filter(Boolean)
+                            .join(" ")}{" "}
                     </span>
                   </div>
                 </div>
@@ -391,4 +460,4 @@ let HeaderRight = ({ dispatch, useSelector, pendingLudoInvites = [], pendingChes
   );
 };
 
-export default HeaderRight;
+export default memo(HeaderRight);

@@ -221,22 +221,13 @@ setUploadProgress(0)
 
                 <div className={`profilePic-container ${hasStory == 'yes' ? 'has-story' : ''}`} onClick={PPContainerClick}>
 { (displayPpUrl || defaultPpSrc) ? <img src={displayPpUrl || defaultPpSrc} alt="" referrerPolicy={PROFILE_IMG_REFERRER_POLICY} onError={handleProfileImgError} /> : <ImageSkleton  /> }
-                    {isPpUploading && (
-                        <div className="pp-upload-overlay">
-                            <i className="fas fa-spinner fa-spin" />
-                            <span>{uploadProgress > 0 ? `${uploadProgress}%` : 'Uploading...'}</span>
-                        </div>
-                    )}
+
                 </div>
 
                 {
                     isAuth &&
-                    <div onClick={isPpUploading ? undefined : PPuploadBtnClick} className="upload-profile-pic">
-                        {isPpUploading ? (
-                            <i className="fas fa-spinner fa-spin"></i>
-                        ) : (
-                            <i className="fa fa-camera-alt"></i>
-                        )}
+                    <div onClick={PPuploadBtnClick} className="upload-profile-pic">
+                        <i className="fa fa-camera-alt"></i>
                     </div>
                 }
 

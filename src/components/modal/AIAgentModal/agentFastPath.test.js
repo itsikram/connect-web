@@ -1,4 +1,5 @@
 import {
+  describeUpcomingAction,
   getInstantAgentReply,
   isVoiceFiller,
   looksLikeAppCommand,
@@ -29,7 +30,8 @@ describe("agent fast path", () => {
     expect(looksLikePersonalChat("I feel sad today")).toBe(true);
     expect(looksLikePersonalChat("what should I do about my job")).toBe(true);
     expect(looksLikePersonalChat("tell me a joke")).toBe(true);
-    expect(looksLikePersonalChat("আমি খারাপ লাগছে")).toBe(true);
+    expect(looksLikePersonalChat("ami kharap lagche")).toBe(true);
+    expect(looksLikePersonalChat("ki korbo")).toBe(true);
     expect(looksLikePersonalChat("invite atik to ludo")).toBe(false);
     expect(looksLikeConnectCommand("open settings")).toBe(true);
     expect(looksLikeConnectCommand("call John")).toBe(true);
@@ -43,5 +45,38 @@ describe("agent fast path", () => {
     expect(normalizeBanglaCommand("আতিককে কল করো")).toBe("call আতিক");
     expect(normalizeBanglaCommand("সেটিংসে যাও")).toBe("go to settings");
     expect(normalizeBanglaCommand("লুডো খেলা শুরু করো")).toBe("create ludo game");
+  });
+
+  test("describes upcoming actions in the user's language", () => {
+    expect(
+      describeUpcomingAction(
+        { action: "NAVIGATE", label: "Settings" },
+        { lang: "en" },
+      ),
+    ).toMatch(/Opening Settings/i);
+    expect(
+      describeUpcomingAction(
+        { action: "AUDIO_CALL", targetName: "Atik" },
+        { friendName: "Atik", lang: "bn" },
+      ),
+    ).toMatch(/কল/);
+    expect(
+      describeUpcomingAction(
+        { action: "CREATE_LUDO" },
+        { lang: "banglish" },
+      ),
+    ).toMatch(/Ludo/i);
+    expect(
+      describeUpcomingAction(
+        { action: "PLAY_VIDEO", searchQuery: "music" },
+        { lang: "en" },
+      ),
+    ).toMatch(/Playing music/i);
+    expect(
+      describeUpcomingAction(
+        { action: "SEARCH_YOUTUBE", searchQuery: "lo-fi" },
+        { lang: "en" },
+      ),
+    ).toMatch(/Searching.*lo-fi/i);
   });
 });

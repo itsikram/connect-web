@@ -51,6 +51,58 @@ const parseYoutubeUrls = (text) =>
     .map((s) => s.trim())
     .filter(Boolean);
 
+const YOUTUBE_CLIENT_API_KEY = String(
+  process.env.REACT_APP_YOUTUBE_API_KEY || "",
+).trim();
+
+const decodeYoutubeHtml = (value) => {
+  if (!value) return "";
+  const el = document.createElement("textarea");
+  el.innerHTML = value;
+  return el.value.trim();
+};
+
+const mapYoutubeSearchItems = (items) =>
+  (items || [])
+    .filter((item) => item?.id?.videoId)
+    .map((item) => {
+      const videoId = item.id.videoId;
+      const snippet = item.snippet || {};
+      const thumbs = snippet.thumbnails || {};
+      return {
+        videoId,
+        title: decodeYoutubeHtml(snippet.title) || "Untitled",
+        channelTitle: decodeYoutubeHtml(snippet.channelTitle),
+        thumbnail:
+          thumbs.medium?.url ||
+          thumbs.high?.url ||
+          thumbs.default?.url ||
+          `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+      };
+    });
+
+const searchYouTubeFromClient = async (query, signal) => {
+  const params = new URLSearchParams({
+    part: "snippet",
+    type: "video",
+    maxResults: "12",
+    q: query,
+    key: YOUTUBE_CLIENT_API_KEY,
+  });
+  const response = await fetch(
+    `https://www.googleapis.com/youtube/v3/search?${params.toString()}`,
+    { signal },
+  );
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      data?.error?.message || `YouTube search failed (${response.status})`,
+    );
+  }
+  return mapYoutubeSearchItems(data.items);
+};
+
 const YtDownload = () => {
   const { isAuthenticated, token } = useAuth();
   const location = useLocation();
@@ -62,16 +114,23 @@ const YtDownload = () => {
   const [downloadHistory, setDownloadHistory] = useState([]);
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [completedDownload, setCompletedDownload] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [selectedSearchVideoId, setSelectedSearchVideoId] = useState(null);
 
   const pollersRef = useRef(new Map());
   const completedRef = useRef(new Set());
   const slowNotifyRef = useRef(new Set());
   const pollInFlightRef = useRef(new Set());
+  const searchAbortRef = useRef(null);
 
   useEffect(() => {
     return () => {
       pollersRef.current.forEach((intervalId) => clearInterval(intervalId));
       pollersRef.current.clear();
+      searchAbortRef.current?.abort();
     };
   }, []);
 
@@ -546,9 +605,128 @@ const YtDownload = () => {
     return () => window.removeEventListener("connect:yt-download-job", onAgentJob);
   }, [attachAgentJob, location.state]);
 
-  const handleDownload = async () => {
-    const rawUrls = parseYoutubeUrls(youtubeUrl);
-    if (rawUrls.length === 0) {
+  const handleSearch = async (event) => {
+    event?.preventDefault?.();
+    const query = searchQuery.trim();
+    if (!query) {
+      showErrorToast("Enter a video title or keywords to search", {
+        title: "Search",
+      });
+      return;
+    }
+
+    if (isOffline()) {
+      showErrorToast(
+        "YouTube search is not available offline. Please connect to the internet.",
+        { title: "Offline Mode" },
+      );
+      return;
+    }
+
+    searchAbortRef.current?.abort();
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+
+    setSearching(true);
+    setSearchError("");
+
+    try {
+      const response = await axios.get(`${getYTDownloadAPI()}/youtube/search`, {
+        params: { q: query, maxResults: 12 },
+        headers: getAuthHeaders(),
+        signal: controller.signal,
+      });
+      const items = Array.isArray(response.data?.items)
+        ? response.data.items
+        : [];
+      setSearchResults(items);
+      if (items.length === 0) {
+        setSearchError("No videos found. Try a different search.");
+      }
+    } catch (err) {
+      if (
+        axios.isCancel?.(err) ||
+        err.code === "ERR_CANCELED" ||
+        err.name === "CanceledError" ||
+        err.name === "AbortError"
+      ) {
+        return;
+      }
+
+      const code = err.response?.data?.code;
+      const shouldTryClient =
+        Boolean(YOUTUBE_CLIENT_API_KEY) &&
+        (code === "YOUTUBE_API_KEY_MISSING" ||
+          err.response?.status === 404 ||
+          err.code === "ERR_NETWORK" ||
+          !err.response);
+      if (shouldTryClient) {
+        try {
+          const items = await searchYouTubeFromClient(query, controller.signal);
+          setSearchResults(items);
+          if (items.length === 0) {
+            setSearchError("No videos found. Try a different search.");
+          }
+          return;
+        } catch (clientErr) {
+          if (clientErr.name === "AbortError") return;
+          const clientMsg = clientErr.message || "YouTube search failed";
+          setSearchResults([]);
+          setSearchError(clientMsg);
+          showErrorToast(clientMsg, { title: "Search failed" });
+          return;
+        }
+      }
+
+      const missingKey = code === "YOUTUBE_API_KEY_MISSING";
+      const msg = missingKey
+        ? "Add YOUTUBE_API_KEY on the server, or REACT_APP_YOUTUBE_API_KEY in the web app."
+        : err.response?.data?.error || err.message || "YouTube search failed";
+      setSearchResults([]);
+      setSearchError(msg);
+      showErrorToast(
+        missingKey ? "YouTube API key is not configured" : msg,
+        { title: "Search failed" },
+      );
+    } finally {
+      if (searchAbortRef.current === controller) {
+        setSearching(false);
+      }
+    }
+  };
+
+  const selectSearchResult = (video, { append = false } = {}) => {
+    if (!video?.url) return;
+    setYoutubeUrl((prev) => {
+      const nextUrl = video.url;
+      if (!append) return nextUrl;
+      const existing = parseYoutubeUrls(prev);
+      if (existing.includes(nextUrl)) return prev.trim() ? prev : nextUrl;
+      return prev.trim() ? `${prev.trim()}\n${nextUrl}` : nextUrl;
+    });
+    setSelectedSearchVideoId(video.videoId);
+    showInfoToast(video.title, {
+      title: append ? "Added to URL list" : "Video selected",
+      autoClose: 2000,
+    });
+  };
+
+  const copySearchUrl = async (url, event) => {
+    event?.stopPropagation?.();
+    event?.preventDefault?.();
+    try {
+      await navigator.clipboard.writeText(url);
+      showSuccessToast("Video URL copied", {
+        title: "Copied",
+        autoClose: 2000,
+      });
+    } catch (_) {
+      showErrorToast("Could not copy URL", { title: "Copy failed" });
+    }
+  };
+
+  const queueDownloads = (rawUrls, { clearInput = true } = {}) => {
+    if (!rawUrls || rawUrls.length === 0) {
       showErrorToast("Please enter at least one YouTube URL", {
         title: "Invalid URL",
       });
@@ -642,11 +820,29 @@ const YtDownload = () => {
     }));
 
     setActiveJobs((prev) => [...newJobs, ...prev]);
-    setYoutubeUrl("");
+    if (clearInput) setYoutubeUrl("");
 
     newJobs.forEach((job) => {
       startDownloadJob(job, openModalOnComplete);
     });
+  };
+
+  const handleDownload = () => {
+    queueDownloads(parseYoutubeUrls(youtubeUrl), { clearInput: true });
+  };
+
+  const appendSearchUrl = (video, event) => {
+    event?.stopPropagation?.();
+    event?.preventDefault?.();
+    selectSearchResult(video, { append: true });
+  };
+
+  const downloadSearchResult = (video, event) => {
+    event?.stopPropagation?.();
+    event?.preventDefault?.();
+    if (!video?.url) return;
+    setSelectedSearchVideoId(video.videoId);
+    queueDownloads([video.url], { clearInput: false });
   };
 
   const handleCancelJob = (clientId) => {
@@ -707,12 +903,115 @@ const YtDownload = () => {
                 YouTube Video Downloader
               </h1>
               <p className="yt-download-subtitle">
-                Download merged high-quality video with HQ audio, extract
-                audio-only in high quality MP3, or post directly to Watch. Paste
-                multiple URLs (one per line) to download in parallel.
+                Search YouTube for a video, or paste URL(s). Download merged
+                high-quality video with HQ audio, extract audio-only MP3, or
+                post directly to Watch. Paste multiple URLs (one per line) to
+                download in parallel.
               </p>
 
               <div className="yt-download-form">
+                <form className="form-group yt-search-form" onSubmit={handleSearch}>
+                  <label htmlFor="youtube-search">Search YouTube</label>
+                  <div className="yt-search-row">
+                    <input
+                      id="youtube-search"
+                      type="search"
+                      className="form-control yt-url-input yt-search-input"
+                      placeholder="Search by title, artist, or keywords…"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      autoComplete="off"
+                    />
+                    <button
+                      type="submit"
+                      className="btn btn-primary yt-search-btn"
+                      disabled={searching || !searchQuery.trim()}
+                    >
+                      <i
+                        className={`fas ${searching ? "fa-spinner fa-spin" : "fa-search"}`}
+                        style={{ marginRight: "8px" }}
+                      ></i>
+                      {searching ? "Searching" : "Search"}
+                    </button>
+                  </div>
+                </form>
+
+                {searchError && searchResults.length === 0 && (
+                  <p className="yt-search-status yt-search-status-error">
+                    {searchError}
+                  </p>
+                )}
+
+                {searchResults.length > 0 && (
+                  <div className="yt-search-results">
+                    <div className="yt-search-results-header">
+                      <h3>Search results</h3>
+                      <span>{searchResults.length} videos</span>
+                    </div>
+                    <div className="yt-search-results-list">
+                      {searchResults.map((video) => (
+                        <div
+                          key={video.videoId}
+                          className={`yt-search-result${
+                            selectedSearchVideoId === video.videoId
+                              ? " is-selected"
+                              : ""
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            className="yt-search-result-main"
+                            onClick={() => selectSearchResult(video)}
+                          >
+                            <img
+                              className="yt-search-thumb"
+                              src={video.thumbnail}
+                              alt={video.title}
+                              loading="lazy"
+                            />
+                            <div className="yt-search-result-meta">
+                              <span className="yt-search-result-title">
+                                {video.title}
+                              </span>
+                              {video.channelTitle ? (
+                                <span className="yt-search-result-channel">
+                                  {video.channelTitle}
+                                </span>
+                              ) : null}
+                            </div>
+                          </button>
+                          <div className="yt-search-result-actions">
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-link"
+                              onClick={(event) => appendSearchUrl(video, event)}
+                            >
+                              Use URL
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-link yt-search-download-btn"
+                              onClick={(event) =>
+                                downloadSearchResult(video, event)
+                              }
+                            >
+                              Download
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-link"
+                              onClick={(event) => copySearchUrl(video.url, event)}
+                            >
+                              Copy
+                            </button>
+                          </div>
+
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="form-group">
                   <label htmlFor="youtube-url">YouTube URL(s)</label>
                   <textarea

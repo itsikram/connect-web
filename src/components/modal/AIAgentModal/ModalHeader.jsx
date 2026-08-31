@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 
 const ModalHeader = ({
   onClose,
+  onMinimize,
   onMenuToggle,
   isSidebarOpen,
   autoRunActions,
@@ -80,9 +81,20 @@ const ModalHeader = ({
         </button>
 
         <button
+          className="ai-agent-minimize-btn"
+          onClick={onMinimize}
+          aria-label="Minimize"
+          title="Minimize"
+          type="button"
+        >
+          <i className="fas fa-minus" />
+        </button>
+
+        <button
           className="ai-agent-close-btn"
           onClick={onClose}
           aria-label="Close"
+          type="button"
         >
           <i className="fas fa-times" />
         </button>

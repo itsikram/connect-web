@@ -1,4 +1,11 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, {
+  useState,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+} from "react";
+import { createPortal } from "react-dom";
 import api from "../../api/api";
 import $ from "jquery";
 import { useSelector } from "react-redux";
@@ -8,6 +15,7 @@ import socket from "../../common/socket";
 import ComposerContextPreview from "./ComposerContextPreview";
 import ComposerMicMenu from "./ComposerMicMenu";
 import useComposerLiveTranscribe from "../../hooks/useComposerLiveTranscribe";
+import { mergeTranscriptChunk } from "../../hooks/transcriptText";
 import useFriendChatSettings from "../../hooks/useFriendChatSettings";
 
 const UPLOAD_PLACEHOLDER =
@@ -71,6 +79,9 @@ const ChatFooter = ({
   const imageInput = useRef(null);
   const uploadFileInput = useRef(null);
   const micMenuRef = useRef(null);
+  const micButtonRef = useRef(null);
+  const micMenuPanelRef = useRef(null);
+  const [micMenuPosition, setMicMenuPosition] = useState({ left: 0, bottom: 0 });
   const transcribeBaseRef = useRef("");
   const inputValueRef = useRef("");
   const settings = useSelector((state) => state.setting);
@@ -179,7 +190,7 @@ const ChatFooter = ({
   const handleTranscriptInterim = useCallback(
     (text) => {
       if (!text) return;
-      const next = [transcribeBaseRef.current, text].filter(Boolean).join(" ");
+      const next = mergeTranscriptChunk(transcribeBaseRef.current, text);
       setInputValue(next);
       if (next) addTyping(next);
     },
@@ -189,7 +200,7 @@ const ChatFooter = ({
   const handleTranscriptFinal = useCallback(
     (text) => {
       if (!text) return;
-      const next = [transcribeBaseRef.current, text].filter(Boolean).join(" ");
+      const next = mergeTranscriptChunk(transcribeBaseRef.current, text);
       transcribeBaseRef.current = next;
       setInputValue(next);
       addTyping(next);
@@ -209,17 +220,49 @@ const ChatFooter = ({
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (
-        micMenuRef.current &&
-        !micMenuRef.current.contains(event.target)
-      ) {
+      const inWrap = micMenuRef.current?.contains(event.target);
+      const inPanel = micMenuPanelRef.current?.contains(event.target);
+      if (!inWrap && !inPanel) {
         setShowMicMenu(false);
         setMicMenuView("main");
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside, {
+      passive: true,
+    });
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
   }, []);
+
+  useLayoutEffect(() => {
+    if (!showMicMenu) return undefined;
+
+    const updatePosition = () => {
+      const button = micButtonRef.current;
+      if (!button) return;
+      const rect = button.getBoundingClientRect();
+      const menuWidth = Math.min(280, window.innerWidth - 16);
+      const left = Math.min(
+        Math.max(8, rect.right - menuWidth),
+        Math.max(8, window.innerWidth - menuWidth - 8),
+      );
+      setMicMenuPosition({
+        left,
+        bottom: Math.max(8, window.innerHeight - rect.top + 10),
+      });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [showMicMenu, micMenuView]);
 
   const handleSendMessage = useCallback(
     (e) => {
@@ -651,7 +694,12 @@ const ChatFooter = ({
       }
       setTranscribeLang(langCode);
       transcribeBaseRef.current = String(inputValueRef.current || "").trim();
-      const started = await startTranscription(langCode);
+      let started = false;
+      try {
+        started = await startTranscription(langCode);
+      } catch (error) {
+        console.error("Live transcription failed:", error);
+      }
       if (started) {
         requestAnimationFrame(() => {
           messageInput?.current?.focus?.({ preventScroll: true });
@@ -1158,6 +1206,7 @@ const ChatFooter = ({
               <>
                 <div className="composer-mic-wrap" ref={micMenuRef}>
                   <div
+                    ref={micButtonRef}
                     className={`composer-icon-btn mic ${composerLocked || isUploadingAudio ? "disabled" : ""} ${isTranscribing || isRecording || showMicMenu ? "active" : ""}`}
                     onClick={
                       composerLocked || isUploadingAudio
@@ -1201,15 +1250,29 @@ const ChatFooter = ({
                       }
                     ></i>
                   </div>
-                  {showMicMenu ? (
-                    <ComposerMicMenu
-                      view={micMenuView}
-                      onOpenTranscribe={() => setMicMenuView("transcribe")}
-                      onBack={() => setMicMenuView("main")}
-                      onSelectLang={startLiveTranscribe}
-                      onVoiceMessage={startVoiceMessage}
-                    />
-                  ) : null}
+                  {showMicMenu
+                    ? createPortal(
+                        <div
+                          ref={micMenuPanelRef}
+                          className="composer-mic-menu-portal"
+                          style={{
+                            left: `${micMenuPosition.left}px`,
+                            bottom: `${micMenuPosition.bottom}px`,
+                          }}
+                        >
+                          <ComposerMicMenu
+                            view={micMenuView}
+                            onOpenTranscribe={() =>
+                              setMicMenuView("transcribe")
+                            }
+                            onBack={() => setMicMenuView("main")}
+                            onSelectLang={startLiveTranscribe}
+                            onVoiceMessage={startVoiceMessage}
+                          />
+                        </div>,
+                        document.body,
+                      )
+                    : null}
                 </div>
                 <div
                   onClick={composerLocked ? null : likeButtonClick}

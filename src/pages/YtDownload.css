@@ -83,6 +83,194 @@
     font-family: inherit;
 }
 
+.yt-search-row {
+    display: flex;
+    gap: 10px;
+    align-items: stretch;
+}
+
+.yt-search-input {
+    flex: 1;
+    min-width: 0;
+}
+
+.yt-download-form .yt-search-btn.btn-primary {
+    flex-shrink: 0;
+    padding: 0 18px;
+    border: none;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #ff0000 0%, #cc0000 100%);
+    color: #ffffff;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+}
+
+.yt-search-btn:hover:not(:disabled) {
+    box-shadow: 0 8px 20px rgba(255, 0, 0, 0.28);
+}
+
+.yt-search-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.yt-search-status {
+    margin: -8px 0 16px;
+    font-size: 0.9rem;
+}
+
+.yt-search-status-error {
+    color: #fca5a5;
+}
+
+.yt-search-results {
+    margin: 0 0 clamp(16px, 4vw, 25px);
+}
+
+.yt-search-results-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.yt-search-results-header h3 {
+    margin: 0;
+    font-size: clamp(1rem, 3vw, 1.15rem);
+    color: #f8fafc;
+    font-weight: 600;
+}
+
+.yt-search-results-header span {
+    color: #94a3b8;
+    font-size: 0.85rem;
+}
+
+.yt-search-results-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 420px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+
+.yt-search-result {
+    display: flex;
+    flex-direction: column;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    overflow: hidden;
+    min-height: 93px;
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.yt-search-result.is-selected {
+    border-color: #ef4444;
+    background: #1e293b;
+}
+
+.yt-search-result-main {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    width: 100%;
+    padding: 10px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.yt-search-thumb {
+    width: 128px;
+    height: 72px;
+    object-fit: cover;
+    border-radius: 6px;
+    flex-shrink: 0;
+    background: #1e293b;
+}
+
+.yt-search-result-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.yt-search-result-title {
+    color: #f8fafc;
+    font-weight: 600;
+    font-size: 0.95rem;
+    line-height: 1.35;
+}
+
+.yt-search-result-channel {
+    color: #94a3b8;
+    font-size: 0.82rem;
+}
+
+.yt-search-result-url {
+    color: #64748b;
+    font-size: 0.75rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.yt-search-result-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    padding: 0 10px 8px 150px;
+}
+
+.yt-search-result-actions .btn-link {
+    color: #93c5fd !important;
+    text-decoration: none !important;
+    padding: 0;
+    font-size: 0.82rem;
+}
+
+.yt-search-result-actions .btn-link:hover {
+    color: #ffffff !important;
+}
+
+.yt-search-download-btn {
+    color: #86efac !important;
+    font-weight: 600 !important;
+}
+
+.yt-search-download-btn:hover {
+    color: #bbf7d0 !important;
+}
+
+@media (max-width: 768px) {
+    .yt-search-row {
+        flex-direction: column;
+    }
+
+    .yt-search-btn {
+        width: 100%;
+        min-height: 44px;
+    }
+
+    .yt-search-thumb {
+        width: 108px;
+        height: 60px;
+    }
+
+    .yt-search-result-actions {
+        padding-left: 10px;
+    }
+}
+
 .yt-active-downloads {
     margin: clamp(16px, 4vw, 24px) 0;
 }

@@ -34,6 +34,7 @@ import {
   looksLikeAudioDownload,
   shouldSkipWatchPost,
   parseQualityFromText,
+  stripYoutubeSearchNoise,
   parseCalendarWhen,
   stripDatePhrases,
   matchByText,
@@ -159,6 +160,143 @@ const matchProfileByName = (profiles, name) => {
 };
 
 const getAccessToken = () => getUserFromStorage()?.accessToken || "";
+
+const decodeYoutubeHtml = (value) => {
+  if (!value) return "";
+  if (typeof document !== "undefined") {
+    const el = document.createElement("textarea");
+    el.innerHTML = value;
+    return el.value.trim();
+  }
+  return String(value)
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .trim();
+};
+
+const mapYoutubeSearchItems = (items) =>
+  (Array.isArray(items) ? items : [])
+    .map((item) => {
+      const videoId = item?.videoId || item?.id?.videoId;
+      if (!videoId) return null;
+      const snippet = item.snippet || {};
+      const thumbs = snippet.thumbnails || {};
+      return {
+        videoId,
+        title:
+          item.title || decodeYoutubeHtml(snippet.title) || "Untitled",
+        channelTitle:
+          item.channelTitle || decodeYoutubeHtml(snippet.channelTitle) || "",
+        thumbnail:
+          item.thumbnail ||
+          thumbs.medium?.url ||
+          thumbs.high?.url ||
+          thumbs.default?.url ||
+          `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+        url: item.url || `https://www.youtube.com/watch?v=${videoId}`,
+      };
+    })
+    .filter(Boolean);
+
+const searchYoutubeFromClient = async (query, maxResults = 8) => {
+  const apiKey = String(process.env.REACT_APP_YOUTUBE_API_KEY || "").trim();
+  if (!apiKey) {
+    throw new Error("YouTube search is not configured.");
+  }
+  const params = new URLSearchParams({
+    part: "snippet",
+    type: "video",
+    maxResults: String(maxResults),
+    q: query,
+    key: apiKey,
+  });
+  const response = await fetch(
+    `https://www.googleapis.com/youtube/v3/search?${params.toString()}`,
+  );
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      data?.error?.message || `YouTube search failed (${response.status})`,
+    );
+  }
+  return mapYoutubeSearchItems(data.items);
+};
+
+const searchYoutubeVideos = async (query, maxResults = 8) => {
+  if (isOffline()) {
+    throw new Error("YouTube search needs an internet connection.");
+  }
+  const q = String(query || "").trim();
+  if (!q) return [];
+  const apiUrl = normalizeServerUrl(getYtDownloadApiUrl());
+  const token = getAccessToken();
+  try {
+    const response = await fetch(
+      `${apiUrl}/youtube/search?q=${encodeURIComponent(q)}&maxResults=${maxResults}&_ts=${Date.now()}`,
+      {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          ...(token ? { Authorization: token } : {}),
+        },
+        cache: "no-store",
+      },
+    );
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) {
+      return mapYoutubeSearchItems(data.items);
+    }
+    const canFallback =
+      Boolean(String(process.env.REACT_APP_YOUTUBE_API_KEY || "").trim()) &&
+      (data.code === "YOUTUBE_API_KEY_MISSING" ||
+        response.status === 404 ||
+        response.status >= 500);
+    if (canFallback) {
+      return searchYoutubeFromClient(q, maxResults);
+    }
+    throw new Error(
+      data.error || data.message || `YouTube search failed (${response.status})`,
+    );
+  } catch (error) {
+    const canFallback = Boolean(
+      String(process.env.REACT_APP_YOUTUBE_API_KEY || "").trim(),
+    );
+    if (
+      canFallback &&
+      (error?.name === "TypeError" ||
+        /failed to fetch|network/i.test(String(error?.message || "")))
+    ) {
+      return searchYoutubeFromClient(q, maxResults);
+    }
+    throw error;
+  }
+};
+
+const youtubeSearchResultsPayload = ({
+  query,
+  videos,
+  audioOnly = false,
+  postAsWatch = true,
+  quality = 2160,
+}) => ({
+  success: true,
+  type: "video-results",
+  source: "youtube",
+  videos,
+  query,
+  audioOnly,
+  defaultPostAsWatch: postAsWatch && !audioOnly,
+  quality,
+  message:
+    videos.length > 0
+      ? `Found ${videos.length} YouTube video${
+          videos.length === 1 ? "" : "s"
+        } for "${query}":`
+      : `No YouTube videos found for "${query}".`,
+});
 
 const startYoutubeDownloadJob = async ({
   url,
@@ -687,6 +825,9 @@ export const executeAction = async ({
   queryType,
   hintText,
   sourceText,
+  postAsWatch: postAsWatchOverride,
+  audioOnly: audioOnlyOverride,
+  quality: qualityOverride,
   myProfile,
   navigate,
   onClose,
@@ -719,6 +860,46 @@ export const executeAction = async ({
 
   try {
     switch (action) {
+      case "SEARCH_YOUTUBE": {
+        const combined = [searchQuery, label, messageText, sourceText, hintText]
+          .filter(Boolean)
+          .join(" ");
+        const query =
+          stripYoutubeSearchNoise(combined) ||
+          String(searchQuery || "").trim();
+        if (!query) {
+          return {
+            success: false,
+            message: "What YouTube video should I search for?",
+          };
+        }
+        try {
+          const videos = await searchYoutubeVideos(query);
+          const audioOnly =
+            audioOnlyOverride === true || looksLikeAudioDownload(combined);
+          const postAsWatch =
+            typeof postAsWatchOverride === "boolean"
+              ? postAsWatchOverride && !audioOnly
+              : !audioOnly && !shouldSkipWatchPost(combined);
+          const quality =
+            Number.isFinite(qualityOverride) && qualityOverride > 0
+              ? qualityOverride
+              : parseQualityFromText(combined);
+          return youtubeSearchResultsPayload({
+            query,
+            videos,
+            audioOnly,
+            postAsWatch,
+            quality,
+          });
+        } catch (err) {
+          return {
+            success: false,
+            message: err?.message || "YouTube search failed.",
+          };
+        }
+      }
+
       // ── Search / Play Video ────────────────────────────────────────────────────
       case "SEARCH_VIDEO": {
         const query = (searchQuery || "").trim();
@@ -1510,16 +1691,48 @@ export const executeAction = async ({
           .filter(Boolean)
           .join(" ");
         const url = extractYouTubeUrl(combined);
-        if (!url) {
-          return {
-            success: false,
-            message: "Paste the YouTube link you want me to download.",
-          };
-        }
         const audioOnly =
-          looksLikeAudioDownload(combined) || String(label || "").toLowerCase() === "audio";
-        const postAsWatch = !audioOnly && !shouldSkipWatchPost(combined);
-        const quality = parseQualityFromText(combined);
+          audioOnlyOverride === true ||
+          looksLikeAudioDownload(combined) ||
+          String(label || "").toLowerCase() === "audio";
+        const postAsWatch =
+          typeof postAsWatchOverride === "boolean"
+            ? postAsWatchOverride && !audioOnly
+            : !audioOnly && !shouldSkipWatchPost(combined);
+        const quality =
+          Number.isFinite(qualityOverride) && qualityOverride > 0
+            ? qualityOverride
+            : parseQualityFromText(combined);
+
+        if (!url) {
+          const query =
+            stripYoutubeSearchNoise(combined) ||
+            String(searchQuery || "").trim();
+          if (!query) {
+            return {
+              success: false,
+              message:
+                "Paste a YouTube link, or tell me the video name to search.",
+            };
+          }
+          try {
+            const videos = await searchYoutubeVideos(query);
+            return youtubeSearchResultsPayload({
+              query,
+              videos,
+              audioOnly,
+              postAsWatch,
+              quality,
+            });
+          } catch (searchError) {
+            return {
+              success: false,
+              message:
+                searchError?.message || "Couldn't search YouTube for that video.",
+            };
+          }
+        }
+
         try {
           const job = await startYoutubeDownloadJob({
             url,
@@ -2053,6 +2266,11 @@ export const getActionMeta = (action) => {
     CREATE_HABIT: { label: "Add Habit", icon: "fa-plus", color: "#00c851" },
     EDIT_HABIT: { label: "Edit Habit", icon: "fa-edit", color: "#00c851" },
     DELETE_HABIT: { label: "Delete Habit", icon: "fa-trash", color: "#ef4444" },
+    SEARCH_YOUTUBE: {
+      label: "YouTube Search",
+      icon: "fa-search",
+      color: "#ef4444",
+    },
     SEARCH_VIDEO: { label: "Find Video", icon: "fa-play", color: "#29b1a9" },
     BLOCK: { label: "Block", icon: "fa-ban", color: "#ef4444" },
     UNBLOCK: { label: "Unblock", icon: "fa-check-circle", color: "#00c851" },

@@ -1,5 +1,6 @@
 import {
   looksLikeBanglish,
+  detectAgentLanguage,
   normalizeBanglishChatText,
   normalizeBanglishCommand,
 } from "./banglish";
@@ -24,5 +25,13 @@ describe("banglish normalization", () => {
   test("recognizes banglish chat questions", () => {
     expect(normalizeBanglishChatText("tumi kothay")).toBe("Where are you?");
     expect(normalizeBanglishChatText("ki khobor")).toBe("How are you?");
+    expect(normalizeBanglishChatText("ki korbo")).toBe("What should I do?");
+    expect(normalizeBanglishChatText("ami kharap")).toBe("I feel sad");
+  });
+
+  test("detects reply language", () => {
+    expect(detectAgentLanguage("সেটিংসে যাও")).toBe("bn");
+    expect(detectAgentLanguage("ami valo nai")).toBe("banglish");
+    expect(detectAgentLanguage("open settings")).toBe("en");
   });
 });

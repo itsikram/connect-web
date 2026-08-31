@@ -310,6 +310,7 @@
     flex: none !important;
     z-index: 60;
     box-sizing: border-box;
+    overflow: visible;
     pointer-events: none; /* let clicks pass except on the composer itself */
 }
 
@@ -335,6 +336,7 @@
     z-index: 60;
     margin: 0 !important;
     box-sizing: border-box;
+    overflow: visible;
     background: linear-gradient(
         0deg,
         rgba(10, 14, 24, 0.98) 0%,
@@ -2288,12 +2290,14 @@
 
 .voice-message {
     --voice-accent: #00d4ff;
+    --voice-track-h: 28px;
     display: flex;
     align-items: center;
     gap: 8px;
     width: 100%;
     min-width: 0;
     max-width: 100%;
+    overflow: hidden;
 }
 
 .voice-message audio {
@@ -2340,7 +2344,7 @@
     position: relative;
     flex: 1 1 0%;
     min-width: 0;
-    height: 28px;
+    height: var(--voice-track-h, 28px);
     display: flex;
     align-items: center;
 }
@@ -2394,12 +2398,14 @@
     min-width: 0;
     height: 100%;
     margin: 0;
+    padding: 0;
     background: transparent;
     cursor: pointer;
+    box-sizing: border-box;
 }
 
 .voice-slider::-webkit-slider-runnable-track {
-    height: 4px;
+    height: var(--voice-track-h, 28px);
     background: transparent;
     border: 0;
 }
@@ -2409,7 +2415,7 @@
     appearance: none;
     width: 12px;
     height: 12px;
-    margin-top: -4px;
+    margin-top: calc((var(--voice-track-h, 28px) - 12px) / 2);
     border: 0;
     border-radius: 50%;
     background: #fff;
@@ -2452,16 +2458,82 @@
     --voice-accent: #00d4ff;
 }
 
-.message-sent .voice-play-btn {
-    background: rgba(255, 255, 255, 0.94);
-    color: #0b1220;
-    -webkit-text-fill-color: #0b1220;
+.message-sent .chat-message.is-voice,
+.modern-message-container
+    #chatBox
+    .chat-body
+    .chat-message-list
+    .chat-message-container.message-sent
+    .chat-message.is-voice {
+    background: linear-gradient(
+        135deg,
+        rgba(0, 212, 255, 0.48) 0%,
+        rgba(0, 153, 204, 0.42) 100%
+    ) !important;
+    border-color: rgba(0, 212, 255, 0.55) !important;
+    box-shadow: 0 8px 22px rgba(0, 212, 255, 0.22);
 }
 
-.message-receive .voice-play-btn {
+.message-sent .voice-play-btn,
+.modern-message-container .message-sent .voice-play-btn,
+.chat-body.dark-background .message-sent .voice-play-btn {
+    background: #ffffff !important;
+    color: #0b1220 !important;
+    -webkit-text-fill-color: #0b1220 !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+}
+
+.message-sent .voice-play-btn i,
+.modern-message-container .message-sent .voice-play-btn i,
+.chat-body.dark-background .message-sent .voice-play-btn i {
+    color: #0b1220 !important;
+    -webkit-text-fill-color: #0b1220 !important;
+}
+
+.message-receive .voice-play-btn,
+.modern-message-container .message-receive .voice-play-btn {
     background: #00d4ff;
     color: #041018;
-    -webkit-text-fill-color: #041018;
+    -webkit-text-fill-color: #041018 !important;
+}
+
+.message-receive .voice-play-btn i,
+.modern-message-container .message-receive .voice-play-btn i {
+    color: #041018 !important;
+    -webkit-text-fill-color: #041018 !important;
+}
+
+.message-sent .voice-waveform span,
+.modern-message-container .message-sent .voice-waveform span,
+.chat-body.dark-background .message-sent .voice-waveform span {
+    background: #ffffff !important;
+    opacity: 0.88;
+}
+
+.message-sent .voice-time,
+.modern-message-container .message-sent .voice-time,
+.chat-body.dark-background .message-sent .voice-time {
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    opacity: 1;
+    font-weight: 700;
+}
+
+.modern-message-container .voice-time,
+.sticky-chat-box .voice-time {
+    -webkit-text-fill-color: currentColor !important;
+}
+
+.modern-message-container[data-chat-theme] .message-receive .voice-message,
+#chatBox[data-chat-theme] .message-receive .voice-message,
+.sticky-chat-box[data-chat-theme] .message-receive .voice-message {
+    --voice-accent: var(--chat-accent, #00d4ff);
+}
+
+.modern-message-container[data-chat-theme] .message-receive .voice-play-btn,
+#chatBox[data-chat-theme] .message-receive .voice-play-btn,
+.sticky-chat-box[data-chat-theme] .message-receive .voice-play-btn {
+    background: var(--chat-accent, #00d4ff);
 }
 
 .chat-message.is-voice,
@@ -2476,7 +2548,6 @@
     min-width: 0 !important;
     padding: 10px 12px !important;
     box-sizing: border-box;
-    overflow: hidden;
 }
 
 .chat-message.is-voice .message-container {
@@ -3006,10 +3077,44 @@
     margin-bottom: 4px;
 }
 
-.composer-mic-menu-icon.voice {
-    background: rgba(29, 185, 84, 0.16);
-    color: #4ade80;
+.composer-mic-menu-icon.voice,
+.modern-message-container .composer-mic-menu-icon.voice {
+    background: rgba(29, 185, 84, 0.22);
+    color: #4ade80 !important;
     -webkit-text-fill-color: #4ade80 !important;
+}
+
+.composer-mic-menu-icon.voice i,
+.modern-message-container .composer-mic-menu-icon.voice i {
+    color: #4ade80 !important;
+    -webkit-text-fill-color: #4ade80 !important;
+    background: transparent;
+}
+
+.composer-mic-menu-item.is-voice-send {
+    background: rgba(29, 185, 84, 0.12);
+    border: 1px solid rgba(74, 222, 128, 0.28);
+}
+
+.composer-mic-menu-item.is-voice-send:hover,
+.modern-message-container .composer-mic-menu-item.is-voice-send:hover {
+    background: rgba(29, 185, 84, 0.2);
+}
+
+/* Portaled above #chatBox overflow / footer backdrop-filter so the
+   Voice message option is not clipped on mobile. */
+.composer-mic-menu-portal {
+    position: fixed;
+    z-index: 100000;
+    pointer-events: auto;
+}
+
+.composer-mic-menu-portal .composer-mic-menu {
+    position: relative;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    width: min(280px, calc(100vw - 16px));
 }
 
 .composer-mic-menu-copy {
@@ -3767,6 +3872,44 @@
         max-width: calc(100% - 46px) !important;
     }
 
+    .chat-message.is-voice,
+    .modern-message-container
+        #chatBox
+        .chat-body
+        .chat-message-list
+        .chat-message-container
+        .chat-message.is-voice {
+        width: min(210px, 100%) !important;
+        max-width: calc(100% - 46px) !important;
+        padding: 8px 10px !important;
+    }
+
+    .voice-message {
+        gap: 6px;
+        --voice-track-h: 24px;
+    }
+
+    .voice-play-btn {
+        flex-basis: 28px;
+        width: 28px;
+        height: 28px;
+    }
+
+    .voice-play-btn .fa-play,
+    .voice-play-btn .fa-pause {
+        font-size: 11px;
+    }
+
+    .voice-message-track,
+    .voice-waveform {
+        height: 24px;
+    }
+
+    .voice-time {
+        font-size: 10px;
+        min-width: 2.2em;
+    }
+
     .modern-message-container #chatBox .chat-message-list {
         padding: 12px 8px 16px;
         gap: 8px;
@@ -3825,6 +3968,73 @@
         height: 44px;
         border-radius: 14px;
     }
+
+    .composer-mic-menu-portal .composer-mic-menu,
+    .composer-mic-menu {
+        width: min(280px, calc(100vw - 16px));
+        padding: 8px;
+    }
+
+    .composer-mic-menu-item {
+        gap: 12px;
+        padding: 12px;
+        min-height: 52px;
+    }
+
+    .composer-mic-menu-item.is-voice-send {
+        background: rgba(29, 185, 84, 0.18);
+        border-color: rgba(74, 222, 128, 0.45);
+    }
+
+    .composer-mic-menu-icon {
+        flex-basis: 40px;
+        width: 40px;
+        height: 40px;
+        font-size: 1rem;
+    }
+
+    .composer-mic-menu-title,
+    .modern-message-container .composer-mic-menu-title {
+        font-size: 0.95rem;
+    }
+
+    .composer-mic-menu-desc,
+    .modern-message-container .composer-mic-menu-desc {
+        font-size: 0.78rem;
+        color: rgba(226, 232, 240, 0.82) !important;
+        -webkit-text-fill-color: rgba(226, 232, 240, 0.82) !important;
+    }
+
+    .composer-recording-bar {
+        gap: 8px;
+        padding: 8px;
+        min-height: 52px;
+    }
+
+    .composer-recording-wave {
+        max-width: none;
+        min-width: 0;
+        flex: 1 1 0%;
+        height: 22px;
+    }
+
+    .composer-recording-actions {
+        flex-shrink: 0;
+        gap: 6px;
+    }
+
+    .composer-recording-actions .composer-icon-btn {
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+    }
+
+    .message-sent .chat-message.is-voice .voice-play-btn,
+    .modern-message-container .message-sent .voice-play-btn {
+        flex-basis: 32px;
+        width: 32px;
+        height: 32px;
+    }
 }
 
 @media (max-width: 480px) {
@@ -3833,6 +4043,18 @@
         padding: 10px 14px;
         border-radius: 16px;
         font-size: 0.92rem;
+    }
+
+    .chat-message.is-voice,
+    .modern-message-container
+        #chatBox
+        .chat-body
+        .chat-message-list
+        .chat-message-container
+        .chat-message.is-voice {
+        width: min(228px, 100%) !important;
+        max-width: calc(100% - 42px) !important;
+        padding: 10px 12px !important;
     }
 
     .message-text {
@@ -5773,6 +5995,34 @@
     .chat-body
     .chat-message-list
     .chat-message-container.message-sent
+    .chat-message.is-voice,
+#chatBox[data-chat-theme].message-chat-box
+    .chat-body.dark-background
+    .message-sent
+    .chat-message.is-voice,
+.modern-message-container
+    #chatBox[data-chat-theme]
+    .chat-body
+    .chat-message-list
+    .chat-message-container.message-sent
+    .chat-message.is-voice {
+    background: color-mix(
+        in srgb,
+        var(--chat-accent, #00d4ff) 46%,
+        rgba(8, 14, 24, 0.92)
+    ) !important;
+    border-color: color-mix(
+        in srgb,
+        var(--chat-accent, #00d4ff) 62%,
+        transparent
+    ) !important;
+    box-shadow: 0 8px 22px color-mix(in srgb, var(--chat-accent, #00d4ff) 28%, transparent);
+}
+
+#chatBox[data-chat-theme]
+    .chat-body
+    .chat-message-list
+    .chat-message-container.message-sent
     .chat-message::before,
 #chatBox[data-chat-theme].message-chat-box
     .chat-body.dark-background
@@ -5786,6 +6036,33 @@
     .chat-message::before {
     background: var(--chat-sent-bg) !important;
     border-color: var(--chat-sent-border) !important;
+}
+
+#chatBox[data-chat-theme]
+    .chat-body
+    .chat-message-list
+    .chat-message-container.message-sent
+    .chat-message.is-voice::before,
+#chatBox[data-chat-theme].message-chat-box
+    .chat-body.dark-background
+    .message-sent
+    .chat-message.is-voice::before,
+.modern-message-container
+    #chatBox[data-chat-theme]
+    .chat-body
+    .chat-message-list
+    .chat-message-container.message-sent
+    .chat-message.is-voice::before {
+    background: color-mix(
+        in srgb,
+        var(--chat-accent, #00d4ff) 46%,
+        rgba(8, 14, 24, 0.92)
+    ) !important;
+    border-color: color-mix(
+        in srgb,
+        var(--chat-accent, #00d4ff) 62%,
+        transparent
+    ) !important;
 }
 
 #chatBox[data-chat-theme]

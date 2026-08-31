@@ -4,7 +4,11 @@
  */
 
 import { normalizeAskField } from "../components/modal/AIAgentModal/agentCatalog";
-import { normalizeBanglishCommand } from "../components/modal/AIAgentModal/banglish";
+import {
+  detectAgentLanguage,
+  languageSystemHint,
+  normalizeBanglishCommand,
+} from "../components/modal/AIAgentModal/banglish";
 import { normalizeBanglaCommand } from "../components/modal/AIAgentModal/agentFastPath";
 import {
   completeChat,
@@ -20,15 +24,9 @@ import {
 
 export { parseGeminiApiKeys, isGeminiQuotaError, extractGeminiText };
 
-const SYSTEM_PROMPT = `You are Connect's AI companion inside a social app. Chat naturally and also help with in-app actions.
+const SYSTEM_PROMPT = `Connect AI companion. Understand English, Bangla, and Banglish instantly. Answer personal questions for real. App actions: one short confirm. 1–3 short sentences. No markdown, no preamble, no emoji spam.`;
 
-Answer personal and general questions for real — advice, feelings, knowledge, jokes, plans, explanations, opinions. Be warm, direct, and logical. Do not dodge with app features unless the user asked for one.
-
-For in-app actions, confirm in one short sentence. Never invent that you already did something the app must still run.
-Reply in the user's language (English, Bangla, or Banglish).
-Keep answers tight and spoken-friendly: 1–5 short sentences. No markdown, no bullet walls, no emoji spam.`;
-
-const toChatMessages = (conversationHistory = [], message, limit = 8, clip = 320) => {
+const toChatMessages = (conversationHistory = [], message, limit = 5, clip = 180) => {
   const messages = [];
   let foundFirstUser = false;
   const history = conversationHistory.slice(-limit);
@@ -93,7 +91,7 @@ Follow-ups like him/her/that/it/yes continue the previous request. Never guess n
 Users may write English, Bangla, or Banglish (Bangla in Latin letters, e.g. "atik ke bolo kothay"). Map Banglish to the same actions.
 1 action or none for chat. Missing name/field -> ask.
 NAVIGATE targetRoute: / /message /friends /watch /notes /tasks /calendar /health /rehab /yt-download /settings /ludo-game /chess-game /video-player
-CREATE_POST caption=searchQuery. DOWNLOAD_YOUTUBE url=searchQuery. CREATE_LUDO starts an online lobby. INVITE_LUDO/CHESS need targetName. JSON only. No tools.`;
+CREATE_POST caption=searchQuery. SEARCH_YOUTUBE keywords=searchQuery. DOWNLOAD_YOUTUBE url or keywords in searchQuery. CREATE_LUDO starts an online lobby. INVITE_LUDO/CHESS need targetName. JSON only. No tools.`;
 
 const omitEmpty = (value) => {
   if (Array.isArray(value)) {
@@ -300,28 +298,25 @@ export const sendToGeminiStream = async (
     return missing;
   }
 
-  const extra = [];
-  if (userName) extra.push(`The user's name is ${userName}.`);
-  if (memory && typeof memory === "object") {
-    extra.push(`Recent session context: ${JSON.stringify(memory)}`);
+  const lang = detectAgentLanguage(message);
+  const extra = [languageSystemHint(lang)];
+  if (userName) extra.push(`User's name: ${userName}.`);
+  if (!voice && memory && typeof memory === "object") {
+    extra.push(`Context: ${JSON.stringify(memory)}`);
   }
-  if (voice) {
-    extra.push(
-      "The user is talking live. Answer as spoken dialogue: concise, natural, no lists unless asked.",
-    );
-  }
+  if (voice) extra.push("Live voice. Speak naturally in 1–3 short sentences.");
 
   try {
     const responseText = await streamChat({
-      system: extra.length ? `${SYSTEM_PROMPT}\n${extra.join(" ")}` : SYSTEM_PROMPT,
+      system: `${SYSTEM_PROMPT} ${extra.join(" ")}`,
       messages: toChatMessages(
         conversationHistory,
         message,
-        voice ? 8 : 6,
-        voice ? 220 : 280,
+        voice ? 4 : 5,
+        voice ? 140 : 180,
       ),
-      temperature: voice ? 0.55 : 0.6,
-      maxTokens: voice ? 220 : 360,
+      temperature: 0.45,
+      maxTokens: voice ? 140 : 200,
       operationLabel: "Chat request",
       onDelta,
       signal,

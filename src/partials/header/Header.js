@@ -23,7 +23,7 @@ const Header = ({ pendingLudoInvites = [], pendingChessInvites = [], onAIAgentOp
   let headerRef = useRef(null);
   const [height, setHeight] = useState(null);
 
-  const hrProps = { dispatch, useSelector, pendingLudoInvites, pendingChessInvites };
+  const hrProps = { pendingLudoInvites, pendingChessInvites };
 
   useEffect(() => {
     dispatch(setHeaderHeight(height));

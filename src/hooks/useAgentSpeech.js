@@ -26,11 +26,23 @@ const takeSpeakable = (buffer) => {
     match = re.exec(buffer);
   }
   let rest = buffer.slice(last);
-  if (!pieces.length && rest.trim().split(/\s+/).length >= 12) {
-    const cut = rest.lastIndexOf(" ");
-    if (cut > 24) {
-      pieces.push(rest.slice(0, cut).trim());
-      rest = rest.slice(cut);
+  const words = rest.trim().split(/\s+/).filter(Boolean);
+  const banglaChars = (rest.match(/[\u0980-\u09FF]/g) || []).length;
+  const ready = words.length >= 2 || banglaChars >= 4;
+  if (!pieces.length && ready) {
+    const comma = rest.search(/[,;:،]\s+/);
+    if (comma >= 4) {
+      pieces.push(rest.slice(0, comma + 1).trim());
+      rest = rest.slice(comma + 1);
+    } else if (words.length >= 2) {
+      const take = Math.min(words.length, 3);
+      const head = words.slice(0, take).join(" ");
+      const at = rest.indexOf(head);
+      pieces.push(head);
+      rest = at >= 0 ? rest.slice(at + head.length) : "";
+    } else {
+      pieces.push(rest.trim());
+      rest = "";
     }
   }
   return { pieces, rest };
@@ -105,7 +117,7 @@ export default function useAgentSpeech() {
       const utterance = new SpeechSynthesisUtterance(text);
       const voice = pickVoice(lang);
       utterance.lang = voice ? voice.lang || lang : "en-US";
-      utterance.rate = 1.06;
+      utterance.rate = 1.12;
       utterance.pitch = 1;
       utterance.volume = 1;
       if (voice) utterance.voice = voice;
@@ -176,12 +188,28 @@ export default function useAgentSpeech() {
   );
 
   const speak = useCallback(
-    (text, { lang, onEnd } = {}) => {
-      cancel();
-      if (typeof onEnd === "function") onIdleRef.current = onEnd;
-      enqueue(text, lang);
-    },
-    [cancel, enqueue],
+    (text, { lang, onEnd } = {}) =>
+      new Promise((resolve) => {
+        cancel();
+        const cleaned = stripForSpeech(text);
+        if (!supported || !cleaned) {
+          onEnd?.();
+          resolve();
+          return;
+        }
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          onEnd?.();
+          resolve();
+        };
+        onIdleRef.current = finish;
+        enqueue(text, lang);
+        const ms = Math.min(4200, 550 + cleaned.length * 55);
+        setTimeout(finish, ms);
+      }),
+    [cancel, enqueue, supported],
   );
 
   return { supported, speaking, speak, feed, flush, cancel };

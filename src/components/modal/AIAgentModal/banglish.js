@@ -11,14 +11,18 @@ const STRONG_TOKENS = new Set([
   "pathiye",
   "koro",
   "korun",
+  "korbo",
+  "korchi",
   "bolo",
   "bolun",
+  "bolto",
   "kothay",
   "kothai",
   "kemon",
   "khobor",
   "khabor",
   "jao",
+  "jan",
   "khela",
   "shuru",
   "suru",
@@ -40,6 +44,23 @@ const STRONG_TOKENS = new Set([
   "dosto",
   "bondhu",
   "bondhura",
+  "kharap",
+  "valo",
+  "bhalo",
+  "lagche",
+  "lagse",
+  "lagbe",
+  "chai",
+  "parchi",
+  "bujhi",
+  "bujhte",
+  "keno",
+  "kobe",
+  "koto",
+  "uchit",
+  "tension",
+  "dhonnobad",
+  "shukriya",
 ]);
 
 const WEAK_TOKENS = new Set([
@@ -80,6 +101,15 @@ const DESTINATION_ALIASES = {
   notific: "notifications",
   ludu: "ludo",
   luddu: "ludo",
+  note: "notes",
+  notes: "notes",
+  task: "tasks",
+  tasks: "tasks",
+  calendar: "calendar",
+  watch: "watch",
+  home: "home",
+  profile: "profile",
+  health: "health",
 };
 
 const trimName = (value = "") =>
@@ -151,6 +181,35 @@ export const normalizeBanglishChatText = (value = "") => {
     return "What are you doing?";
   }
 
+  if (
+    /^(ami\s+)?(kharap|valo nai|bhalo nai|mon kharap|tension e|stress e)(achi|ase|lagche|lagse)?$/.test(
+      lower,
+    ) ||
+    /^(mon\s+kharap|ami\s+kharap\s+achi)$/.test(lower)
+  ) {
+    return "I feel sad";
+  }
+
+  if (
+    /^(ki\s+korbo|ki\s+kora\s+uchit|ki\s+kora\s+jabe|ami\s+ki\s+korbo)$/.test(
+      lower,
+    )
+  ) {
+    return "What should I do?";
+  }
+
+  if (/^(ekta\s+joke\s+(dao|koro|bolo)|joke\s+(dao|koro))$/.test(lower)) {
+    return "Tell me a joke";
+  }
+
+  if (
+    /^(help\s+(koro|dao|lagbe)|amake\s+help\s+koro|bujhte\s+parchi\s+na)$/.test(
+      lower,
+    )
+  ) {
+    return "I need help";
+  }
+
   return "";
 };
 
@@ -219,7 +278,40 @@ const COMMAND_REWRITES = [
     /^(?:ami\s+)?(.+?)\s+e\s+(?:jao|jan|ja)$/i,
     (match) => `go to ${aliasDestination(match[1])}`,
   ],
+  [
+    /^(?:notes?|kaj|tasks?|calendar|watch|home|profile)\s+(?:e\s+)?(?:jao|jan|kholo|open)$/i,
+    (match) => `go to ${aliasDestination(match[0].split(/\s+/)[0])}`,
+  ],
+  [
+    /^(?:youtube|yt)\s+(?:e\s+)?(?:search|khuj|khoj)\s*(?:koro|korun)?(?:\s+(?:for|kore))?\s*(.+)$/i,
+    (match) => `search youtube for ${trimName(match[1])}`,
+  ],
+  [
+    /^(?:youtube|yt)\s+(?:link\s+)?download\s+kor(?:o|un)?(?:\s+(.+))?$/i,
+    (match) =>
+      match[1]
+        ? `download youtube ${match[1]}`
+        : "download youtube",
+  ],
 ];
+
+export const detectAgentLanguage = (text = "") => {
+  const source = String(text || "").trim();
+  if (!source) return "en";
+  if (/[\u0980-\u09FF]/.test(source)) return "bn";
+  if (looksLikeBanglish(source)) return "banglish";
+  return "en";
+};
+
+export const languageSystemHint = (lang) => {
+  if (lang === "bn") {
+    return "User wrote Bangla script. Reply in Bangla. Start the answer in the first words — no preamble.";
+  }
+  if (lang === "banglish") {
+    return "User wrote Banglish (Bangla in Latin letters). Reply in Banglish, not English and not Bangla script. Start immediately.";
+  }
+  return "Reply in English. Start immediately.";
+};
 
 export const normalizeBanglishCommand = (text = "") => {
   const source = String(text || "").trim();

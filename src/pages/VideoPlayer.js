@@ -1639,7 +1639,6 @@ const VideoPlayer = () => {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
               <label className="video-player-sort-label">
-                <span className="video-player-sort-text">Sort by</span>
                 <select
                   className="form-input video-player-sort"
                   value={sortMode}

@@ -310,6 +310,28 @@
     transform: rotate(90deg);
 }
 
+.ai-agent-minimize-btn {
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--ai-text);
+    border-radius: 9px;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition:
+        background 0.2s,
+        color 0.2s;
+}
+.ai-agent-minimize-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
 .ai-agent-settings-btn-header {
     width: 36px;
     height: 36px;
@@ -1631,8 +1653,170 @@
     .ai-agent-status-indicator,
     .typing-dot,
     .ai-agent-modal-container,
-    .ai-agent-sidebar {
+    .ai-agent-sidebar,
+    .ai-agent-mini-dot,
+    .ai-agent-mini-icon {
         animation: none !important;
         transition: none !important;
+    }
+}
+
+/* ══════════════════════════════════════════════════
+   17. MINIMIZED LIVE BUBBLE
+   ══════════════════════════════════════════════════ */
+.ai-agent-mini-bar {
+    display: none;
+}
+
+.ai-agent-modal-backdrop.is-minimized {
+    background: transparent;
+    pointer-events: none;
+    align-items: flex-end;
+    justify-content: flex-start;
+    padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+    z-index: 1100;
+}
+
+.ai-agent-modal-backdrop.is-minimized .ai-agent-modal-container {
+    pointer-events: auto;
+    width: auto;
+    max-width: min(360px, calc(100vw - 24px));
+    height: auto;
+    max-height: none;
+    border-radius: 18px;
+    padding: 0;
+    overflow: visible;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+}
+
+.ai-agent-modal-backdrop.is-minimized .ai-agent-mini-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-width: 220px;
+    padding: 10px 10px 10px 12px;
+    cursor: pointer;
+    color: var(--ai-text);
+}
+
+.ai-agent-modal-backdrop.is-minimized .ai-agent-modal-header,
+.ai-agent-modal-backdrop.is-minimized .ai-agent-sidebar,
+.ai-agent-modal-backdrop.is-minimized .ai-agent-sidebar-backdrop,
+.ai-agent-modal-backdrop.is-minimized .ai-agent-settings-overlay,
+.ai-agent-modal-backdrop.is-minimized .ai-agent-sidebar-toggle,
+.ai-agent-modal-backdrop.is-minimized .ai-agent-messages-container,
+.ai-agent-modal-backdrop.is-minimized .ai-agent-suggestions,
+.ai-agent-modal-backdrop.is-minimized .ai-agent-typing-indicator,
+.ai-agent-modal-backdrop.is-minimized .ai-agent-transcribe-bar {
+    display: none !important;
+}
+
+.ai-agent-modal-backdrop.is-minimized .ai-agent-modal-body,
+.ai-agent-modal-backdrop.is-minimized .ai-agent-main-content,
+.ai-agent-modal-backdrop.is-minimized .ai-agent-chat-area,
+.ai-agent-modal-backdrop.is-minimized .ai-agent-chat-input-container {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
+.ai-agent-mini-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, #00d4ff, #0099cc);
+    color: #041018;
+    font-size: 15px;
+}
+
+.ai-agent-mini-copy {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+    gap: 2px;
+}
+
+.ai-agent-mini-title {
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.ai-agent-mini-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--ai-muted);
+    white-space: nowrap;
+}
+
+.ai-agent-mini-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #6b7280;
+    flex-shrink: 0;
+}
+
+.ai-agent-mini-bar.phase-listening .ai-agent-mini-dot {
+    background: #00c851;
+    box-shadow: 0 0 0 0 rgba(0, 200, 81, 0.5);
+    animation: aiMiniPulse 1.4s ease-in-out infinite;
+}
+
+.ai-agent-mini-bar.phase-speaking .ai-agent-mini-dot {
+    background: #00d4ff;
+    animation: aiMiniPulse 1s ease-in-out infinite;
+}
+
+.ai-agent-mini-bar.phase-thinking .ai-agent-mini-dot {
+    background: #f59e0b;
+    animation: aiMiniPulse 0.8s ease-in-out infinite;
+}
+
+.ai-agent-mini-expand,
+.ai-agent-mini-close {
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--ai-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.ai-agent-mini-expand:hover,
+.ai-agent-mini-close:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+@keyframes aiMiniPulse {
+    0%,
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.35);
+        opacity: 0.7;
     }
 }

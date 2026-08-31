@@ -165,6 +165,12 @@ const ACTIONS = [
         prompt: "go to yt download",
       },
       {
+        id: "ac_yt_search",
+        label: "Search YouTube",
+        icon: "fa-search",
+        prompt: "search youtube for ",
+      },
+      {
         id: "nav_downloads",
         label: "Saved Videos",
         icon: "fa-film",

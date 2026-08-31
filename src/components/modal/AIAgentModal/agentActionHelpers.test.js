@@ -4,6 +4,8 @@ import {
   parseSettingsPatch,
   parseHealthLog,
   stripDatePhrases,
+  pickBestYoutubeMatch,
+  stripYoutubeSearchNoise,
 } from "./agentActionHelpers";
 import {
   applyMemoryToIntent,
@@ -60,6 +62,36 @@ describe("agent memory", () => {
       profileId,
     );
     expect(filled.searchQuery).toContain("youtube.com");
+  });
+
+  test("does not replace a keyword download with the last youtube url", () => {
+    rememberUserText(
+      profileId,
+      "check this https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    );
+    const filled = applyMemoryToIntent(
+      { action: "DOWNLOAD_YOUTUBE", searchQuery: "despacito" },
+      profileId,
+    );
+    expect(filled.searchQuery).toBe("despacito");
+  });
+
+  test("picks the youtube result whose title matches the query", () => {
+    const best = pickBestYoutubeMatch(
+      [
+        { title: "Lo-fi mix 2024", channelTitle: "Various" },
+        { title: "Despacito Official Video", channelTitle: "Luis Fonsi" },
+        { title: "Summer hits", channelTitle: "VEVO" },
+      ],
+      "despacito",
+    );
+    expect(best.title).toMatch(/Despacito/i);
+  });
+
+  test("strips download/search filler from youtube keywords", () => {
+    expect(stripYoutubeSearchNoise("download youtube despacito")).toBe(
+      "despacito",
+    );
   });
 
   test("fills him/her from the last friend", () => {

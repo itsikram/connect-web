@@ -53,10 +53,13 @@ import {
 import { fetchAiProviderStatus, warmupCursorProvider } from "../../../services/llmClient";
 import AgentSettingsPanel from "./AgentSettingsPanel";
 import {
+  describeUpcomingAction,
   getInstantAgentReply,
   looksLikeConnectCommand,
   looksLikePersonalChat,
 } from "./agentFastPath";
+import { detectAgentLanguage } from "./banglish";
+import { pickBestYoutubeMatch } from "./agentActionHelpers";
 import useAgentSpeech from "../../../hooks/useAgentSpeech";
 
 const createId = () => Date.now() + Math.random();
@@ -66,7 +69,7 @@ const INITIAL_MESSAGE = {
   type: "agent",
   meta: "welcome",
   content:
-    'Hi! I\'m your AI Agent 🤖 Tap the headset to talk with me live — I\'ll listen, speak answers, and run app actions. I remember this chat, so you can say "that video" or "invite him". Ask me anything, or try: "download this YouTube link", "invite Atik to Ludo", "post I am feeling good".',
+    'Hi! I\'m your AI Agent 🤖 Tap the headset to talk with me live — I\'ll listen, speak answers, and run app actions. I remember this chat, so you can say "that video" or "invite him". Ask me anything, or try: "search youtube for lo-fi", "download despacito", "invite Atik to Ludo".',
   timestamp: new Date(),
 };
 
@@ -86,7 +89,7 @@ const toLlmHistory = (messages = [], limit = 8) =>
     .map((item) => ({
       role: item.type === "user" ? "user" : "assistant",
       content:
-        item.content.length > 320 ? `${item.content.slice(0, 319)}…` : item.content,
+        item.content.length > 180 ? `${item.content.slice(0, 179)}…` : item.content,
     }));
 
 const buildAppContext = (myProfile) => {
@@ -150,6 +153,21 @@ const getSingleMessageAction = (message) => {
     }
   }
 
+  if (message?.type === "video-results" && message.source === "youtube") {
+    if (!message.videos?.length || typeof message.onDownload !== "function") {
+      return null;
+    }
+    return () => {
+      const best = pickBestYoutubeMatch(message.videos, message.query);
+      if (!best) return undefined;
+      return message.onDownload(best, {
+        postAsWatch: message.defaultPostAsWatch !== false,
+        audioOnly: message.audioOnly,
+        quality: message.quality,
+      });
+    };
+  }
+
   if (message?.type === "video-results" && message.videos?.length === 1) {
     return () => message.onPlay?.(message.videos[0]);
   }
@@ -190,6 +208,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [llmInfo, setLlmInfo] = useState(() => getResolvedAgentSettings());
   const [liveTalkOn, setLiveTalkOn] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
   const {
     supported: speechSupported,
     speaking: isAgentSpeaking,
@@ -253,17 +272,24 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       setIsSidebarOpen(!isMobile);
       setInputValue("");
       setModalInteractionVersion(0);
-      
-      // Fetch chat history from database
+      setIsMinimized(false);
       fetchChatHistory();
-      document.body.classList.add("app-modal-open");
-      document.documentElement.classList.add("app-modal-open-html");
-      return () => {
-        document.body.classList.remove("app-modal-open");
-        document.documentElement.classList.remove("app-modal-open-html");
-      };
     }
   }, [isOpen, fetchChatHistory]);
+
+  useEffect(() => {
+    if (!isOpen || isMinimized) {
+      document.body.classList.remove("app-modal-open");
+      document.documentElement.classList.remove("app-modal-open-html");
+      return undefined;
+    }
+    document.body.classList.add("app-modal-open");
+    document.documentElement.classList.add("app-modal-open-html");
+    return () => {
+      document.body.classList.remove("app-modal-open");
+      document.documentElement.classList.remove("app-modal-open-html");
+    };
+  }, [isOpen, isMinimized]);
 
   useEffect(() => {
     const local = Array.isArray(myProfile?.friends) ? myProfile.friends : [];
@@ -306,11 +332,18 @@ const AIAgentModal = ({ isOpen, onClose }) => {
     if (!isOpen) {
       pendingIntentRef.current = null;
       setSettingsOpen(false);
+      setIsMinimized(false);
       streamAbortRef.current?.abort();
       setLiveTalkOn(false);
       cancelSpeech();
     }
   }, [isOpen, cancelSpeech]);
+
+  useEffect(() => {
+    const expandAgent = () => setIsMinimized(false);
+    window.addEventListener("openAIAgent", expandAgent);
+    return () => window.removeEventListener("openAIAgent", expandAgent);
+  }, []);
 
   useEffect(() => {
     setLlmInfo(getResolvedAgentSettings());
@@ -338,7 +371,41 @@ const AIAgentModal = ({ isOpen, onClose }) => {
     ]);
   }, []);
 
-  // Save messages to database whenever messages change (debounced)
+  const announceUpcomingAction = useCallback(
+    async (intent, friend = null, langHint = "") => {
+      if (!liveTalkOnRef.current) return;
+      const line = describeUpcomingAction(intent, {
+        friendName: getFriendDisplayName(friend) || intent?.targetName || "",
+        lang: detectAgentLanguage(langHint),
+      });
+      if (!line) return;
+      addMessage({
+        type: "agent",
+        content: line,
+        skipSpeech: true,
+      });
+      await speakText(line);
+    },
+    [addMessage, speakText],
+  );
+
+  const handleMinimize = useCallback(() => {
+    setSettingsOpen(false);
+    setIsSidebarOpen(false);
+    setIsMinimized(true);
+  }, []);
+
+  const handleExpand = useCallback(() => {
+    setIsMinimized(false);
+  }, []);
+
+  const handleClose = useCallback(() => {
+    setIsMinimized(false);
+    setLiveTalkOn(false);
+    cancelSpeech();
+    onClose?.();
+  }, [cancelSpeech, onClose]);
+
   useEffect(() => {
     // Skip saving if still loading or only initial message
     if (
@@ -363,12 +430,67 @@ const AIAgentModal = ({ isOpen, onClose }) => {
 
   // ── Execute after friend resolved ───────────────────────────────────────────
   const handlePlayVideo = useCallback(
-    (video) => {
+    async (video) => {
       if (!video?._id) return;
+      const lastUser = [...(messagesRef.current || [])]
+        .reverse()
+        .find((item) => item?.type === "user");
+      await announceUpcomingAction(
+        {
+          action: "PLAY_VIDEO",
+          searchQuery: video.title || video.name || "",
+        },
+        null,
+        lastUser?.content || "",
+      );
       navigate(`/watch/${video._id}`, { state: { autoplay: true } });
-      if (onClose) onClose();
+      handleMinimize();
     },
-    [navigate, onClose],
+    [announceUpcomingAction, handleMinimize, navigate],
+  );
+
+  const handleDownloadYoutube = useCallback(
+    async (
+      video,
+      { postAsWatch = true, audioOnly = false, quality } = {},
+    ) => {
+      const url = video?.url;
+      if (!url) return;
+      const lastUser = [...(messagesRef.current || [])]
+        .reverse()
+        .find((item) => item?.type === "user");
+      await announceUpcomingAction(
+        {
+          action: "DOWNLOAD_YOUTUBE",
+          searchQuery: url,
+        },
+        null,
+        lastUser?.content || "",
+      );
+      const result = await executeAction({
+        action: "DOWNLOAD_YOUTUBE",
+        searchQuery: url,
+        postAsWatch,
+        audioOnly,
+        quality,
+        sourceText: lastUser?.content || "",
+        myProfile,
+        navigate,
+        onClose: handleMinimize,
+      });
+      addMessage({
+        type: "action-result",
+        content: result.message,
+        success: result.success,
+        skipSpeech: liveTalkOnRef.current,
+      });
+      rememberActionResult(myProfile?._id, {
+        action: "DOWNLOAD_YOUTUBE",
+        result,
+        userText: lastUser?.content,
+      });
+    },
+    [addMessage, announceUpcomingAction, handleMinimize, myProfile, navigate],
   );
 
   const handleFriendAction = useCallback(
@@ -387,13 +509,14 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         sourceText: intent?.sourceText ?? null,
         myProfile,
         navigate,
-        onClose,
+        onClose: handleMinimize,
       });
       addMessage({
         type: "action-result",
         content: result.message,
         success: result.success,
         location: result.location || null,
+        skipSpeech: liveTalkOnRef.current,
       });
       rememberActionResult(myProfile?._id, {
         action,
@@ -401,7 +524,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         result,
       });
     },
-    [myProfile, navigate, onClose, addMessage],
+    [myProfile, navigate, handleMinimize, addMessage],
   );
 
   // ── Core send handler ───────────────────────────────────────────────────────
@@ -439,12 +562,22 @@ const AIAgentModal = ({ isOpen, onClose }) => {
 
       const history = toLlmHistory(
         messagesRef.current,
-        liveTalkOnRef.current ? 8 : 6,
+        liveTalkOnRef.current ? 4 : 5,
       );
 
+      let streamPrimed = false;
       const flushStreamMessage = (id, content, streaming) => {
         streamPendingRef.current = { id, content, streaming };
         if (streaming) {
+          if (!streamPrimed) {
+            streamPrimed = true;
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === id ? { ...msg, content, streaming: true } : msg,
+              ),
+            );
+            return;
+          }
           if (streamRafRef.current) return;
           streamRafRef.current = requestAnimationFrame(() => {
             streamRafRef.current = 0;
@@ -499,6 +632,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
                 return;
               }
               flushStreamMessage(streamId, next, true);
+              if (liveTalkOnRef.current) feedSpeech(streamId, next);
             },
             signal: abort.signal,
             voice: liveTalkOnRef.current,
@@ -575,8 +709,19 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             type: "video-results",
             content: replyOverride || result.message,
             videos: result.videos,
+            query: result.query,
+            source: result.source,
+            defaultPostAsWatch: result.defaultPostAsWatch !== false,
+            audioOnly: result.audioOnly,
+            quality: result.quality,
             success: result.success,
             onPlay: handlePlayVideo,
+            onDownload: (video, opts) =>
+              handleDownloadYoutube(video, {
+                ...opts,
+                audioOnly: result.audioOnly,
+                quality: result.quality,
+              }),
           });
           return;
         }
@@ -590,14 +735,19 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             videos: result.videos || [],
             success: result.success,
             onPlay: handlePlayVideo,
-            onOpenUser: (user) =>
+            onOpenUser: async (user) => {
+              await speakUpcomingAction(
+                { action: "VIEW_PROFILE" },
+                user,
+              );
               handleFriendAction(user, "VIEW_PROFILE", {
                 action: "VIEW_PROFILE",
-              }),
+              });
+            },
             onOpenPost: (post) => {
               if (post?._id) {
                 navigate(`/post/${post._id}`);
-                if (onClose) onClose();
+                handleMinimize();
               }
             },
           });
@@ -651,6 +801,11 @@ const AIAgentModal = ({ isOpen, onClose }) => {
           type: "agent",
           content: question,
         });
+      };
+
+      const speakUpcomingAction = async (intent, friend = null) => {
+        if (!stillCurrent()) return;
+        await announceUpcomingAction(intent, friend, originalText);
       };
 
       const runIntent = async (intent, replyOverride = "", options = {}) => {
@@ -731,8 +886,12 @@ const AIAgentModal = ({ isOpen, onClose }) => {
               action: "VIEW_PROFILE",
               actionLabel: "View Profile",
               intent: { ...nextIntent, action: "VIEW_PROFILE" },
-              onAction: (friend) => {
+              onAction: async (friend) => {
                 pendingIntentRef.current = null;
+                await speakUpcomingAction(
+                  { ...nextIntent, action: "VIEW_PROFILE" },
+                  friend,
+                );
                 handleFriendAction(friend, "VIEW_PROFILE", {
                   ...nextIntent,
                   action: "VIEW_PROFILE",
@@ -749,6 +908,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
 
           if (isMultiLudoInvite) {
             pendingIntentRef.current = null;
+            await speakUpcomingAction(nextIntent, matched[0]);
             const result = await executeAction({
               ...nextIntent,
               friend: matched[0],
@@ -757,7 +917,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
               sourceText: originalText,
               myProfile,
               navigate,
-              onClose,
+              onClose: handleMinimize,
             });
             await presentResult(result, replyOverride, nextIntent);
             return true;
@@ -769,6 +929,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
 
           if (shouldAutoExecuteSingleMatch) {
             pendingIntentRef.current = null;
+            await speakUpcomingAction(nextIntent, matched[0]);
             if (LOOKUP_ACTIONS.has(nextIntent.action)) {
               const result = await executeAction({
                 ...nextIntent,
@@ -777,7 +938,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
                 sourceText: originalText,
                 myProfile,
                 navigate,
-                onClose,
+                onClose: handleMinimize,
               });
               await presentResult(result, replyOverride, nextIntent);
               return true;
@@ -822,8 +983,9 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             action: nextIntent.action,
             actionLabel: cardLabel,
             intent: nextIntent,
-            onAction: (friend) => {
+            onAction: async (friend) => {
               pendingIntentRef.current = null;
+              await speakUpcomingAction(nextIntent, friend);
               handleFriendAction(friend, nextIntent.action, nextIntent);
             },
           });
@@ -832,6 +994,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
 
         if (NO_FRIEND_ACTIONS.has(nextIntent.action)) {
           pendingIntentRef.current = null;
+          await speakUpcomingAction(nextIntent);
           const result = await executeAction({
             ...nextIntent,
             friend: null,
@@ -839,7 +1002,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             sourceText: originalText,
             myProfile,
             navigate,
-            onClose,
+            onClose: handleMinimize,
           });
           await presentResult(result, replyOverride, nextIntent);
           return true;
@@ -1035,11 +1198,14 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       inputValue,
       myProfile,
       navigate,
-      onClose,
+      handleMinimize,
       addMessage,
       handleFriendAction,
       handlePlayVideo,
+      handleDownloadYoutube,
       cancelSpeech,
+      feedSpeech,
+      announceUpcomingAction,
     ],
   );
 
@@ -1067,6 +1233,10 @@ const AIAgentModal = ({ isOpen, onClose }) => {
     const content = String(latest.content || "").trim();
     if (!content) return;
 
+    if (latest.skipSpeech) {
+      spokenMessageIdsRef.current.add(latest.id);
+      return;
+    }
     if (latest.streaming) {
       feedSpeech(latest.id, content);
       return;
@@ -1135,6 +1305,24 @@ const AIAgentModal = ({ isOpen, onClose }) => {
     }
   }, [isLoading, messages, myProfile?._id, cancelSpeech]);
 
+  const lastStreaming = Boolean(messages[messages.length - 1]?.streaming);
+  const miniStatus =
+    lastStreaming || isLoading
+      ? "Thinking…"
+      : isAgentSpeaking
+        ? "Speaking…"
+        : liveTalkOn
+          ? "Listening…"
+          : "AI Agent";
+  const miniPhase =
+    lastStreaming || isLoading
+      ? "thinking"
+      : isAgentSpeaking
+        ? "speaking"
+        : liveTalkOn
+          ? "listening"
+          : "idle";
+
   const toggleSidebar = () => setIsSidebarOpen((v) => !v);
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -1142,11 +1330,11 @@ const AIAgentModal = ({ isOpen, onClose }) => {
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          className="ai-agent-modal-backdrop"
+          className={`ai-agent-modal-backdrop${isMinimized ? " is-minimized" : ""}`}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          onClick={onClose}
+          onClick={isMinimized ? undefined : handleMinimize}
         >
           <motion.div
             className="ai-agent-modal-container"
@@ -1159,9 +1347,59 @@ const AIAgentModal = ({ isOpen, onClose }) => {
               setModalInteractionVersion((value) => value + 1)
             }
           >
+            <div
+              className={`ai-agent-mini-bar phase-${miniPhase}`}
+              role="button"
+              tabIndex={isMinimized ? 0 : -1}
+              onClick={handleExpand}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  handleExpand();
+                }
+              }}
+              aria-label={`AI Agent ${miniStatus}. Tap to expand.`}
+            >
+              <span className="ai-agent-mini-icon" aria-hidden="true">
+                <i className="fas fa-brain" />
+              </span>
+              <span className="ai-agent-mini-copy">
+                <span className="ai-agent-mini-title">AI Agent</span>
+                <span className="ai-agent-mini-status">
+                  <span className="ai-agent-mini-dot" aria-hidden="true" />
+                  {miniStatus}
+                </span>
+              </span>
+              <button
+                type="button"
+                className="ai-agent-mini-expand"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleExpand();
+                }}
+                aria-label="Expand AI Agent"
+                title="Expand"
+              >
+                <i className="fas fa-expand" />
+              </button>
+              <button
+                type="button"
+                className="ai-agent-mini-close"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleClose();
+                }}
+                aria-label="Close AI Agent"
+                title="Close"
+              >
+                <i className="fas fa-times" />
+              </button>
+            </div>
+
             {/* Header — contains mobile hamburger */}
             <ModalHeader
-              onClose={onClose}
+              onClose={handleClose}
+              onMinimize={handleMinimize}
               onMenuToggle={toggleSidebar}
               isSidebarOpen={isSidebarOpen}
               autoRunActions={autoRunActions}
@@ -1227,8 +1465,11 @@ const AIAgentModal = ({ isOpen, onClose }) => {
                   modalInteractionVersion={modalInteractionVersion}
                   liveTalkOn={liveTalkOn}
                   onToggleLiveTalk={handleToggleLiveTalk}
+                  onInterruptSpeech={cancelSpeech}
                   isSpeaking={isAgentSpeaking}
                   speechSupported={speechSupported}
+                  onPlayVideo={handlePlayVideo}
+                  onDownloadYoutube={handleDownloadYoutube}
                 />
               </div>
             </div>

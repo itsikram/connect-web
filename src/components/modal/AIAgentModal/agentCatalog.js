@@ -68,6 +68,7 @@ export const AGENT_ACTIONS = {
   DELETE_HABIT: "DELETE_HABIT",
   DELETE_POST: "DELETE_POST",
   DOWNLOAD_YOUTUBE: "DOWNLOAD_YOUTUBE",
+  SEARCH_YOUTUBE: "SEARCH_YOUTUBE",
   OPEN_VIDEO_PLAYER: "OPEN_VIDEO_PLAYER",
   UPDATE_SETTINGS: "UPDATE_SETTINGS",
   LOG_HEALTH: "LOG_HEALTH",
@@ -150,6 +151,7 @@ export const NO_FRIEND_ACTIONS = new Set([
   AGENT_ACTIONS.DELETE_POST,
   AGENT_ACTIONS.CREATE_STORY,
   AGENT_ACTIONS.DOWNLOAD_YOUTUBE,
+  AGENT_ACTIONS.SEARCH_YOUTUBE,
   AGENT_ACTIONS.OPEN_VIDEO_PLAYER,
   AGENT_ACTIONS.UPDATE_SETTINGS,
   AGENT_ACTIONS.LOG_HEALTH,
@@ -174,6 +176,7 @@ export const LOOKUP_ACTIONS = new Set([
   AGENT_ACTIONS.SEARCH_USERS,
   AGENT_ACTIONS.SEARCH_POSTS,
   AGENT_ACTIONS.SEARCH_VIDEO,
+  AGENT_ACTIONS.SEARCH_YOUTUBE,
   AGENT_ACTIONS.LIST_NOTES,
   AGENT_ACTIONS.LIST_TASKS,
   AGENT_ACTIONS.LIST_NOTIFICATIONS,
@@ -246,6 +249,10 @@ export const normalizeAgentAction = (action) => {
     CHAT: "SEND_MESSAGE",
     PLAY_VIDEO: "SEARCH_VIDEO",
     FIND_VIDEO: "SEARCH_VIDEO",
+    YOUTUBE_SEARCH: "SEARCH_YOUTUBE",
+    SEARCH_YT: "SEARCH_YOUTUBE",
+    FIND_YOUTUBE: "SEARCH_YOUTUBE",
+    FIND_YOUTUBE_VIDEO: "SEARCH_YOUTUBE",
     FIND_USER: "SEARCH_USERS",
     FIND_USERS: "SEARCH_USERS",
     SEARCH: "SEARCH_APP",
@@ -479,6 +486,7 @@ const CONTENT_SLOT_ACTIONS = new Set([
   AGENT_ACTIONS.CREATE_HABIT,
   AGENT_ACTIONS.EDIT_HABIT,
   AGENT_ACTIONS.SEARCH_VIDEO,
+  AGENT_ACTIONS.SEARCH_YOUTUBE,
   AGENT_ACTIONS.SEARCH_USERS,
   AGENT_ACTIONS.SEARCH_POSTS,
   AGENT_ACTIONS.SEARCH_APP,
@@ -536,10 +544,10 @@ export const looksLikeQuestion = (text = "") => {
   if (!value) return false;
   return (
     /\?/.test(value) ||
-    /^(who|which|what|whom|whose|where|kothay|kothai|koi|kemon|কাকে|কার|কি|কোন)\b/i.test(
+    /^(who|which|what|whom|whose|where|why|how|kothay|kothai|koi|kemon|ki|keno|kobe|koto|tumi kothay|ami ki|কাকে|কার|কি|কোন|কেন|কবে|কত|কোথায়|কোথায়|কেমন)\b/i.test(
       value,
     ) ||
-    /\b(who|which|what)\b.+\??$/i.test(value)
+    /\b(who|which|what|kothay|kothai)\b.+\??$/i.test(value)
   );
 };
 
@@ -624,7 +632,10 @@ export const getSlotQuestion = (intent, slots = []) => {
     if (action === "CREATE_HABIT") return "What habit should I add?";
     if (action === "EDIT_HABIT") return "Which habit should I update, and what should it be called?";
     if (action === "DOWNLOAD_YOUTUBE") {
-      return "Paste the YouTube link you want me to download.";
+      return "Paste a YouTube link, or tell me the video name to search.";
+    }
+    if (action === "SEARCH_YOUTUBE") {
+      return "What YouTube video should I search for?";
     }
     if (action === "UPDATE_SETTINGS") {
       return "What should I change? Theme, privacy, location sharing, or notifications?";

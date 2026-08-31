@@ -1,4 +1,4 @@
-import { extractYouTubeUrl } from "./agentActionHelpers";
+import { extractYouTubeUrl, isVagueYoutubeRef } from "./agentActionHelpers";
 
 const memoryKey = (profileId) =>
   `connect_ai_agent_memory_${profileId || "anon"}`;
@@ -130,6 +130,9 @@ export const applyMemoryToIntent = (intent, profileId) => {
   if (
     (next.action === "DOWNLOAD_YOUTUBE" || next.action === "OPEN_VIDEO_PLAYER") &&
     !extractYouTubeUrl(next.searchQuery, next.label, next.messageText) &&
+    isVagueYoutubeRef(next.searchQuery) &&
+    isVagueYoutubeRef(next.label) &&
+    isVagueYoutubeRef(next.messageText) &&
     (memory.lastYoutubeUrl || memory.lastVideoUrl)
   ) {
     next.searchQuery = memory.lastYoutubeUrl || memory.lastVideoUrl;

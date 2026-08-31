@@ -366,6 +366,24 @@ describe("agent action parsing", () => {
     });
   });
 
+  test("parses youtube download by keyword", () => {
+    expect(parseIntent("download despacito")).toMatchObject({
+      action: "DOWNLOAD_YOUTUBE",
+      searchQuery: "despacito",
+    });
+  });
+
+  test("parses youtube search by keyword", () => {
+    expect(parseIntent("search youtube for lo-fi beats")).toMatchObject({
+      action: "SEARCH_YOUTUBE",
+      searchQuery: "lo-fi beats",
+    });
+    expect(parseIntent("find despacito on youtube")).toMatchObject({
+      action: "SEARCH_YOUTUBE",
+      searchQuery: "despacito",
+    });
+  });
+
   test("parses delete post", () => {
     expect(parseIntent("delete my latest post")).toMatchObject({
       action: "DELETE_POST",
