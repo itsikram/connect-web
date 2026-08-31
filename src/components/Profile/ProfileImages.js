@@ -1,64 +1,108 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../api/api';
-import { useParams, useLocation } from 'react-router-dom';
-import SingleImage from './SingleImage';
-import Masonry, { ResponsiveMasonry } from "react-responsive-masonry"
-import Lightbox from '../Message/Lightbox';
+import { useParams } from 'react-router-dom';
+import { ProfileMediaSkeleton } from '../../skletons/profile/ProfilePageSkeleton';
+
 const ProfileImages = () => {
-
-    let [profileImages, setProfileImages] = useState([])
-    let { profile } = useParams()
-    let location = useLocation()
-    let [images, setImages] = useState([])
-    let [isLightBox, setIsLightbox] = useState(false);
-    let [imageIndex, setImageIndex] = useState(0);
-
+    const [images, setImages] = useState([]);
+    const [imagesLoading, setImagesLoading] = useState(true);
+    const [isLightBox, setIsLightbox] = useState(false);
+    const [imageIndex, setImageIndex] = useState(0);
+    const { profile } = useParams();
 
     useEffect(() => {
+        if (!profile) return;
+        let active = true;
+        setImagesLoading(true);
+
         api.get('profile/getImages', {
-            params: {
-                profileId: profile
-            }
-        }).then(res => {
-            setProfileImages(res.data)
-            setImages([...res.data.map((imagedata) => imagedata.photos)])
-
+            params: { profileId: profile },
         })
-    }, [location])
+            .then((res) => {
+                if (!active) return;
+                const list = Array.isArray(res.data)
+                    ? res.data.map((item) => item?.photos).filter(Boolean)
+                    : [];
+                setImages(list);
+            })
+            .catch(() => {
+                if (active) setImages([]);
+            })
+            .finally(() => {
+                if (active) setImagesLoading(false);
+            });
 
-    // columnsCountBreakPoints={{350: 1, 750: 2, 900: 3}}
-    //                 gutterBreakpoints={{350: "12px", 750: "16px", 900: "24px"}}
+        return () => {
+            active = false;
+        };
+    }, [profile]);
+
+    const closeViewer = () => setIsLightbox(false);
+
     return (
-        <div id='profile-images-container'>
-            {isLightBox && <Lightbox setIsLightbox={setIsLightbox} setImageIndex={setImageIndex} imageIndex={imageIndex} images={images} index={imageIndex} />}
+        <div id="profile-images-container">
+            {imagesLoading && (
+                <ProfileMediaSkeleton count={2} />
+            )}
+            {!imagesLoading && images.length === 0 && (
+                <div className="profile-placeholder-card">No images found.</div>
+            )}
+            {!imagesLoading && images.length > 0 && (
+                <div className="profile-media-list">
+                    {images.map((uri, index) => (
+                        <button
+                            type="button"
+                            key={`${uri}-${index}`}
+                            className="profile-media-card"
+                            onClick={() => {
+                                setImageIndex(index);
+                                setIsLightbox(true);
+                            }}
+                        >
+                            <img src={uri} alt="" />
+                        </button>
+                    ))}
+                </div>
+            )}
 
-            <div className='section-title'>
-                Profile Images
-            </div>
-            <div className='image-items-container mt-3'>
-                <ResponsiveMasonry >
-                    <Masonry columnsCount={2} gutter='10px'>
-                        {
-                            profileImages && profileImages.length > 1 ?
-                                profileImages.map((ImageData, index) => {
-
-                                    return <>
-                                        <SingleImage setImageIndex={setImageIndex} setIsLightbox={setIsLightbox} key={index} imageIndex={index} imageData={ImageData} />
-                                    </>
-
-
-                                })
-
-                                :
-
-                                <p>No Images To Show</p>
-                        }
-                    </Masonry>
-                </ResponsiveMasonry>
-
-            </div>
+            {isLightBox && images.length > 0 && (
+                <div
+                    className="profile-image-viewer"
+                    role="dialog"
+                    aria-modal="true"
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) closeViewer();
+                    }}
+                >
+                    <button type="button" className="viewer-close" onClick={closeViewer} aria-label="Close">
+                        <i className="fas fa-times" />
+                    </button>
+                    <div className="viewer-body">
+                        <button
+                            type="button"
+                            className="viewer-nav"
+                            onClick={() => setImageIndex((i) => Math.max(0, i - 1))}
+                            aria-label="Previous"
+                        >
+                            <i className="fas fa-chevron-left" />
+                        </button>
+                        <img src={images[imageIndex]} alt="" />
+                        <button
+                            type="button"
+                            className="viewer-nav"
+                            onClick={() => setImageIndex((i) => Math.min(images.length - 1, i + 1))}
+                            aria-label="Next"
+                        >
+                            <i className="fas fa-chevron-right" />
+                        </button>
+                    </div>
+                    <div className="viewer-counter">
+                        {imageIndex + 1} / {images.length}
+                    </div>
+                </div>
+            )}
         </div>
     );
-}
+};
 
 export default ProfileImages;

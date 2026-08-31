@@ -1,12 +1,30 @@
-import React, { useCallback, useState, useEffect } from "react";
-import { useSelector } from "react-redux";
-import api from "../../api/api";
+import React, { useCallback, useState, useEffect, useRef } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import api, { invalidateGetCache } from "../../api/api";
 import { showSuccessToast, showErrorToast } from "../../utils/toastUtils";
+import { getProfileSuccess } from "../../services/actions/profileActions";
+import { fetchProfileCached } from "../../utils/requestCache";
+import {
+  getUserFromStorage,
+  setUserInStorage,
+} from "../../utils/storageUtils";
+
+const getProfileEmail = (profile) => {
+  const user = profile?.user;
+  if (!user || typeof user === "string") return "";
+  return user.email || "";
+};
+
+const isValidEmail = (email) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
 
 const AccountSetting = () => {
+  const dispatch = useDispatch();
   const myProfile = useSelector((state) => state.profile);
+  const currentEmail = getProfileEmail(myProfile);
+  const emailFetchAttempted = useRef(false);
   const [data, setData] = useState({
-    userEmail: myProfile?.user?.email || "",
+    userEmail: currentEmail,
     currentPassword: "",
     newPassword: "",
     confirmPassword: "",
@@ -21,10 +39,60 @@ const AccountSetting = () => {
   const [showVoiceConfirmation, setShowVoiceConfirmation] = useState(false);
   const [pendingVoiceTranscript, setPendingVoiceTranscript] = useState("");
 
-  // Update benglaName when profile changes
   useEffect(() => {
     setBanglaName(myProfile?.banglaName || "");
-  }, [myProfile?.banglaName]);
+    if (!editEmail) {
+      setData((prev) => ({ ...prev, userEmail: getProfileEmail(myProfile) }));
+    }
+  }, [myProfile?.banglaName, currentEmail, editEmail]);
+
+  useEffect(() => {
+    if (currentEmail || !myProfile?._id || emailFetchAttempted.current) return;
+    emailFetchAttempted.current = true;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        invalidateGetCache("/profile");
+        const profileData = await fetchProfileCached(myProfile._id, {
+          forceRefresh: true,
+        });
+        if (!cancelled && profileData) {
+          dispatch(getProfileSuccess(profileData));
+        }
+      } catch (error) {
+        console.error("Error loading account email:", error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentEmail, dispatch, myProfile?._id]);
+
+  const applyEmailToProfile = useCallback(
+    (email, authPayload) => {
+      dispatch(
+        getProfileSuccess({
+          ...myProfile,
+          user: {
+            ...(typeof myProfile?.user === "object" ? myProfile.user : {}),
+            email,
+          },
+        }),
+      );
+
+      const storedUser = getUserFromStorage() || {};
+      setUserInStorage({
+        ...storedUser,
+        email,
+        ...(authPayload?.accessToken
+          ? { accessToken: authPayload.accessToken }
+          : {}),
+      });
+    },
+    [dispatch, myProfile],
+  );
 
   const handleInputChange = useCallback((e) => {
     const { id, value } = e.target;
@@ -209,15 +277,23 @@ const AccountSetting = () => {
       setIsSaving(true);
 
       try {
-        if (data.userEmail && data.userEmail !== myProfile?.user?.email) {
+        const nextEmail = String(data.userEmail || "").trim().toLowerCase();
+        if (nextEmail && nextEmail !== currentEmail.toLowerCase()) {
+          if (!isValidEmail(nextEmail)) {
+            showErrorToast("Please enter a valid email address");
+            return;
+          }
+
           const emailChangeRes = await api.post("auth/changeEmail", {
-            email: data.userEmail,
+            email: nextEmail,
           });
 
           if (emailChangeRes.status === 200) {
-            localStorage.setItem("user", JSON.stringify(emailChangeRes.data));
+            const savedEmail = emailChangeRes.data?.email || nextEmail;
+            applyEmailToProfile(savedEmail, emailChangeRes.data);
+            setData((prev) => ({ ...prev, userEmail: savedEmail }));
+            setEditEmail(false);
             showSuccessToast("Email updated successfully");
-            window.location.reload();
             return;
           }
         }
@@ -275,7 +351,7 @@ const AccountSetting = () => {
         setIsSaving(false);
       }
     },
-    [data, myProfile?.user?.email, showVoiceConfirmation],
+    [applyEmailToProfile, currentEmail, data, showVoiceConfirmation],
   );
 
   const deleteAccount = useCallback(async (e) => {
@@ -303,10 +379,23 @@ const AccountSetting = () => {
     }
   }, []);
 
-  const handleEditEmailClick = useCallback((e) => {
-    e.preventDefault();
-    setEditEmail((prev) => !prev);
-  }, []);
+  const handleEditEmailClick = useCallback(
+    (e) => {
+      e.preventDefault();
+      setEditEmail((prev) => {
+        if (!prev) {
+          setData((current) => ({
+            ...current,
+            userEmail: current.userEmail || currentEmail,
+          }));
+        } else {
+          setData((current) => ({ ...current, userEmail: currentEmail }));
+        }
+        return !prev;
+      });
+    },
+    [currentEmail],
+  );
 
   return (
     <div className="profile-setting">
@@ -526,27 +615,29 @@ const AccountSetting = () => {
           <h3 className="fs-4">Change Password & Email</h3>
           <div className="form-group mb-2">
             <label htmlFor="userEmail">Email</label>
-            <div className="input-group">
+            <div className="input-group email-input-group">
               <input
                 onChange={handleInputChange}
                 type="email"
                 className="form-control"
                 id="userEmail"
-                disabled={!editEmail}
-                value={
-                  editEmail ? data.userEmail : myProfile?.user?.email || ""
-                }
+                readOnly={!editEmail}
+                value={data.userEmail}
                 placeholder="Email"
+                autoComplete="email"
               />
-              <div className="input-group-append">
-                <button
-                  type="button"
-                  onClick={handleEditEmailClick}
-                  className="btn btn-danger"
-                >
-                  <i className="fas fa-pen" aria-hidden="true" />
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={handleEditEmailClick}
+                className="btn btn-danger email-edit-btn"
+                aria-label={editEmail ? "Cancel email edit" : "Edit email"}
+                title={editEmail ? "Cancel" : "Edit email"}
+              >
+                <i
+                  className={`fas ${editEmail ? "fa-times" : "fa-pen"}`}
+                  aria-hidden="true"
+                />
+              </button>
             </div>
           </div>
           <div className="form-group mb-2">

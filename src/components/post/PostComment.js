@@ -244,7 +244,12 @@ const PostComment = ({
   }, []);
 
   const commentsList = Array.isArray(comments)
-    ? comments.filter((comment) => comment && typeof comment === "object")
+    ? comments.filter(
+        (comment) =>
+          comment &&
+          typeof comment === "object" &&
+          (comment.body || comment.text || comment.author),
+      )
     : [];
 
   const commentsToRender = (() => {

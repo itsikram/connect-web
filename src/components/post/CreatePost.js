@@ -448,8 +448,8 @@ let CreatePost = ({ setPosts = null }) => {
                         <div className="modal-title">
                             Create a Post
                         </div>
-                        <div onClick={closeCreatePostModal} className="modal-close-btn">
-                            <i className="far fa-times"></i>
+                        <div onClick={closeCreatePostModal} className="modal-close-btn" role="button" aria-label="Close">
+                            <i className="fas fa-times"></i>
                         </div>
                     </div>
                     <div className="modal-body">

@@ -13,6 +13,10 @@ const ChatArea = ({
   userProfilePic,
   autoRunActions,
   modalInteractionVersion,
+  liveTalkOn = false,
+  onToggleLiveTalk,
+  isSpeaking = false,
+  speechSupported = true,
 }) => {
   const lastStreaming = Boolean(messages[messages.length - 1]?.streaming);
 
@@ -50,8 +54,13 @@ const ChatArea = ({
         onChange={onInputChange}
         onSend={onSendMessage}
         isLoading={isLoading && !lastStreaming}
+        isStreaming={lastStreaming}
         autoRunActions={autoRunActions}
         modalInteractionVersion={modalInteractionVersion}
+        liveTalkOn={liveTalkOn}
+        onToggleLiveTalk={onToggleLiveTalk}
+        isSpeaking={isSpeaking}
+        speechSupported={speechSupported}
       />
     </div>
   );

@@ -1283,14 +1283,6 @@ const VideoPlayer = () => {
             <span>{stats.watches} watches</span>
             <span>{stats.saved} saved</span>
             <span>{stats.custom} custom</span>
-            <button
-              type="button"
-              className="btn btn-sm btn-secondary"
-              onClick={() => refreshLibrary({ showSpinner: true })}
-              disabled={libraryLoading}
-            >
-              {libraryLoading ? "Refreshing…" : "Refresh library"}
-            </button>
           </div>
 
           {libraryError ? (
@@ -1359,6 +1351,17 @@ const VideoPlayer = () => {
                 <button
                   type="button"
                   className="video-tool-btn"
+                  onClick={() => refreshLibrary({ showSpinner: true })}
+                  disabled={libraryLoading}
+                  title="Refresh library"
+                >
+                  <i
+                    className={`fas fa-sync-alt${libraryLoading ? " fa-spin" : ""}`}
+                  />
+                </button>
+                <button
+                  type="button"
+                  className="video-tool-btn"
                   onClick={handlePrev}
                   disabled={playbackList.length <= 1}
                   title="Previous"
@@ -1422,6 +1425,14 @@ const VideoPlayer = () => {
                 Add a URL, upload a file, or save/download videos to populate
                 your playlist
               </p>
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                onClick={() => refreshLibrary({ showSpinner: true })}
+                disabled={libraryLoading}
+              >
+                {libraryLoading ? "Refreshing…" : "Refresh library"}
+              </button>
             </div>
           )}
         </div>

@@ -39,6 +39,24 @@
     --fb-bg: var(--fb-bg-dark);
 }
 
+html[data-theme="light"] .comments,
+[data-theme="light"] .comments,
+html[data-theme="light"] .nf-post .comments,
+[data-theme="light"] .nf-post .comments {
+    --fb-bg: #ffffff;
+    --fb-bg-dark: #f8f9fa;
+    --fb-comment-bg: #f1f3f4;
+    --fb-comment-bg-dark: #e8eaed;
+    --fb-text: #1a1a1a;
+    --fb-text-dark: #1a1a1a;
+    --fb-secondary-text: #5f6368;
+    --fb-secondary-text-dark: #5f6368;
+    --fb-hover: #e8eaed;
+    --fb-hover-dark: #e8eaed;
+    --fb-border: #e8eaed;
+    --fb-border-dark: #dadce0;
+}
+
 /* ===== COMMENTS CONTAINER ===== */
 
 .footer .comments,

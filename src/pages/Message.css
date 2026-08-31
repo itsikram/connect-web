@@ -2151,7 +2151,7 @@
     .chat-message-container
     .chat-message.has-attachment {
     padding: 7px 8px 8px !important;
-    overflow: hidden;
+    overflow: visible;
 }
 
 .modern-message-container
@@ -2279,6 +2279,239 @@
     margin: 0;
 }
 
+/* Voice notes — compact player that can shrink on mobile / sticky chat */
+.voice-message-container {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.voice-message {
+    --voice-accent: #00d4ff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.voice-message audio {
+    display: none;
+}
+
+.voice-play-btn {
+    flex: 0 0 32px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: var(--voice-accent);
+    color: #041018;
+    -webkit-text-fill-color: #041018;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 10px color-mix(in srgb, var(--voice-accent) 35%, transparent);
+    transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.voice-play-btn:hover {
+    filter: brightness(1.08);
+    transform: scale(1.05);
+}
+
+.voice-play-btn:active {
+    transform: scale(0.96);
+}
+
+.voice-play-btn .fa-play {
+    margin-left: 1px;
+    font-size: 12px;
+}
+
+.voice-play-btn .fa-pause {
+    font-size: 12px;
+}
+
+.voice-message-track {
+    position: relative;
+    flex: 1 1 0%;
+    min-width: 0;
+    height: 28px;
+    display: flex;
+    align-items: center;
+}
+
+.voice-waveform {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    width: 100%;
+    height: 22px;
+    pointer-events: none;
+}
+
+.voice-waveform span {
+    flex: 1 1 0%;
+    min-width: 0;
+    max-width: 3px;
+    height: 38%;
+    border-radius: 99px;
+    background: currentColor;
+    opacity: 0.32;
+    transform-origin: center;
+}
+
+.voice-waveform span:nth-child(4n + 1) { height: 32%; }
+.voice-waveform span:nth-child(4n + 2) { height: 72%; }
+.voice-waveform span:nth-child(4n + 3) { height: 50%; }
+.voice-waveform span:nth-child(4n + 4) { height: 92%; }
+.voice-waveform span:nth-child(3n) { height: 64%; }
+
+.voice-message-track::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: var(--voice-progress, 0%);
+    height: 22px;
+    background: color-mix(in srgb, var(--voice-accent) 28%, transparent);
+    border-radius: 6px;
+    pointer-events: none;
+}
+
+.voice-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    height: 100%;
+    margin: 0;
+    background: transparent;
+    cursor: pointer;
+}
+
+.voice-slider::-webkit-slider-runnable-track {
+    height: 4px;
+    background: transparent;
+    border: 0;
+}
+
+.voice-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    margin-top: -4px;
+    border: 0;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 0 3px var(--voice-accent);
+}
+
+.voice-slider::-moz-range-track {
+    height: 4px;
+    background: transparent;
+    border: 0;
+}
+
+.voice-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border: 0;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 0 3px var(--voice-accent);
+}
+
+.voice-time {
+    flex: 0 0 auto;
+    min-width: 2.35em;
+    font-size: 11px;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+    text-align: right;
+    white-space: nowrap;
+    opacity: 0.88;
+    line-height: 1;
+}
+
+.message-sent .voice-message {
+    --voice-accent: #ffffff;
+}
+
+.message-receive .voice-message {
+    --voice-accent: #00d4ff;
+}
+
+.message-sent .voice-play-btn {
+    background: rgba(255, 255, 255, 0.94);
+    color: #0b1220;
+    -webkit-text-fill-color: #0b1220;
+}
+
+.message-receive .voice-play-btn {
+    background: #00d4ff;
+    color: #041018;
+    -webkit-text-fill-color: #041018;
+}
+
+.chat-message.is-voice,
+.modern-message-container
+    #chatBox
+    .chat-body
+    .chat-message-list
+    .chat-message-container
+    .chat-message.is-voice {
+    width: min(252px, 100%) !important;
+    max-width: calc(100% - 52px) !important;
+    min-width: 0 !important;
+    padding: 10px 12px !important;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.chat-message.is-voice .message-container {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.voice-message.is-playing .voice-waveform span {
+    animation: voice-bar 0.9s ease-in-out infinite;
+}
+
+.voice-message.is-playing .voice-waveform span:nth-child(odd) {
+    animation-delay: 0.14s;
+}
+
+.voice-message.is-playing .voice-waveform span:nth-child(3n) {
+    animation-delay: 0.28s;
+}
+
+@keyframes voice-bar {
+    0%,
+    100% {
+        transform: scaleY(0.55);
+    }
+    50% {
+        transform: scaleY(1);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .voice-message.is-playing .voice-waveform span {
+        animation: none;
+    }
+}
+
 .message-text {
     font-size: 0.9375rem;
     line-height: 1.5;
@@ -2375,7 +2608,7 @@
 
 .chat-message.has-attachment {
     padding: 7px 8px 8px !important;
-    overflow: hidden;
+    overflow: visible;
 }
 
 .chat-message.has-attachment.media-only {
@@ -2513,6 +2746,10 @@
 }
 
 /* Message Options */
+.chat-message-container:hover {
+    z-index: 4;
+}
+
 .chat-message-options {
     position: absolute;
     top: 50%;
@@ -2526,7 +2763,7 @@
     gap: var(--msg-spacing-xs);
     box-shadow: var(--msg-glass-shadow);
     backdrop-filter: blur(20px);
-    z-index: 10;
+    z-index: 20;
 }
 
 .message-receive .chat-message-options {

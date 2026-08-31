@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import useComposerLiveTranscribe from "../../../hooks/useComposerLiveTranscribe";
+import { isVoiceFiller } from "./agentFastPath";
 
 const SUGGESTIONS = [
   "Go to settings",
@@ -39,15 +40,21 @@ const SUGGESTIONS = [
   "Call [friend name]",
 ];
 
-const AUTO_SEND_DELAY_MS = 3000;
+const AUTO_SEND_DELAY_MS = 1200;
+const LIVE_TALK_SEND_DELAY_MS = 700;
 
 const ChatInput = ({
   value,
   onChange,
   onSend,
   isLoading,
+  isStreaming = false,
   autoRunActions = false,
   modalInteractionVersion = 0,
+  liveTalkOn = false,
+  onToggleLiveTalk,
+  isSpeaking = false,
+  speechSupported = true,
 }) => {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
@@ -61,6 +68,9 @@ const ChatInput = ({
   const autoSendTimeoutRef = useRef(null);
   const autoRunActionsRef = useRef(autoRunActions);
   const modalInteractionVersionRef = useRef(modalInteractionVersion);
+  const liveTalkOnRef = useRef(liveTalkOn);
+  const resumeTalkRef = useRef(false);
+  const [holdListen, setHoldListen] = useState(false);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -79,6 +89,10 @@ const ChatInput = ({
     modalInteractionVersionRef.current = modalInteractionVersion;
   }, [modalInteractionVersion]);
 
+  useEffect(() => {
+    liveTalkOnRef.current = liveTalkOn;
+  }, [liveTalkOn]);
+
   const clearAutoSendTimeout = useCallback(() => {
     if (autoSendTimeoutRef.current) {
       clearTimeout(autoSendTimeoutRef.current);
@@ -89,32 +103,38 @@ const ChatInput = ({
   useEffect(() => () => clearAutoSendTimeout(), [clearAutoSendTimeout]);
 
   useEffect(() => {
-    if (!autoRunActions) clearAutoSendTimeout();
-  }, [autoRunActions, clearAutoSendTimeout]);
+    if (!autoRunActions && !liveTalkOn) clearAutoSendTimeout();
+  }, [autoRunActions, liveTalkOn, clearAutoSendTimeout]);
 
   useEffect(() => {
-    if (isLoading) clearAutoSendTimeout();
-  }, [isLoading, clearAutoSendTimeout]);
+    if (isLoading || isSpeaking) clearAutoSendTimeout();
+  }, [isLoading, isSpeaking, clearAutoSendTimeout]);
 
   useEffect(() => {
-    clearAutoSendTimeout();
-  }, [modalInteractionVersion, clearAutoSendTimeout]);
+    if (!liveTalkOn) clearAutoSendTimeout();
+  }, [modalInteractionVersion, liveTalkOn, clearAutoSendTimeout]);
 
   const scheduleAutoSend = useCallback(
-    (finalText) => {
+    (finalText, delayMs = AUTO_SEND_DELAY_MS) => {
       const nextText = typeof finalText === "string" ? finalText.trim() : "";
-      if (!autoRunActionsRef.current || !nextText) return;
+      if (!nextText || isVoiceFiller(nextText)) return;
+      if (!liveTalkOnRef.current && !autoRunActionsRef.current) return;
 
       clearAutoSendTimeout();
       const scheduledInteractionVersion = modalInteractionVersionRef.current;
       autoSendTimeoutRef.current = setTimeout(() => {
         autoSendTimeoutRef.current = null;
-        if (modalInteractionVersionRef.current !== scheduledInteractionVersion) {
+        if (
+          !liveTalkOnRef.current &&
+          modalInteractionVersionRef.current !== scheduledInteractionVersion
+        ) {
           return;
         }
-        if (!autoRunActionsRef.current) return;
+        if (!liveTalkOnRef.current && !autoRunActionsRef.current) return;
+        transcribeBaseRef.current = "";
+        setHoldListen(true);
         onSendRef.current(nextText);
-      }, AUTO_SEND_DELAY_MS);
+      }, delayMs);
     },
     [clearAutoSendTimeout],
   );
@@ -131,6 +151,10 @@ const ChatInput = ({
       const next = [transcribeBaseRef.current, text].filter(Boolean).join(" ");
       transcribeBaseRef.current = next;
       onChangeRef.current(next);
+      if (liveTalkOnRef.current) {
+        scheduleAutoSend(next, LIVE_TALK_SEND_DELAY_MS);
+        return;
+      }
       if (autoRunActionsRef.current) scheduleAutoSend(next);
     },
     [scheduleAutoSend],
@@ -146,18 +170,65 @@ const ChatInput = ({
     onInterim: handleTranscriptInterim,
   });
 
+  const langCode = voiceMode === "bn" ? "bn-BD" : "en-US";
+  const isBusy = isLoading || isStreaming || isSpeaking || holdListen;
+
   useEffect(() => {
-    if (isLoading && isListening) {
+    if (isLoading || isStreaming || isSpeaking) {
+      setHoldListen(true);
+      return undefined;
+    }
+    if (!holdListen) return undefined;
+    const timer = setTimeout(() => setHoldListen(false), 320);
+    return () => clearTimeout(timer);
+  }, [isLoading, isStreaming, isSpeaking, holdListen]);
+
+  useEffect(() => {
+    if (isLoading && isListening && !liveTalkOn) {
       stopTranscription();
     }
-  }, [isLoading, isListening, stopTranscription]);
+  }, [isLoading, isListening, liveTalkOn, stopTranscription]);
+
+  useEffect(() => {
+    if (!liveTalkOn) {
+      resumeTalkRef.current = false;
+      if (isListening) stopTranscription();
+      return undefined;
+    }
+
+    if (isBusy) {
+      resumeTalkRef.current = true;
+      if (isListening) stopTranscription();
+      return undefined;
+    }
+
+    if (isListening) return undefined;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (cancelled || !liveTalkOnRef.current || isListening) return;
+      transcribeBaseRef.current = String(valueRef.current || "").trim();
+      startTranscription(langCode);
+    }, resumeTalkRef.current ? 280 : 80);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    liveTalkOn,
+    isBusy,
+    isListening,
+    langCode,
+    startTranscription,
+    stopTranscription,
+  ]);
 
   const handleKeyPress = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (value.trim()) {
         clearAutoSendTimeout();
-        stopTranscription();
+        if (!liveTalkOn) stopTranscription();
+        if (liveTalkOn) setHoldListen(true);
         onSend();
       }
     }
@@ -179,17 +250,20 @@ const ChatInput = ({
   };
 
   const toggleVoiceInput = async () => {
+    if (liveTalkOn) {
+      onToggleLiveTalk?.();
+      return;
+    }
     if (isListening) {
       stopTranscription();
       return;
     }
 
-    if (!isSpeechSupported || isLoading) return;
+    if (!isSpeechSupported || isBusy) return;
 
     clearAutoSendTimeout();
     transcribeBaseRef.current = String(valueRef.current || "").trim();
     setShowSuggestions(false);
-    const langCode = voiceMode === "bn" ? "bn-BD" : "en-US";
     const started = await startTranscription(langCode);
     if (started) {
       requestAnimationFrame(() => {
@@ -199,18 +273,43 @@ const ChatInput = ({
   };
 
   const toggleVoiceMode = () => {
-    if (isListening || isLoading) return;
+    if (isListening || isBusy) return;
     setVoiceMode((mode) => (mode === "bn" ? "en" : "bn"));
   };
 
   const handleTextChange = (nextValue) => {
     clearAutoSendTimeout();
-    if (isListening) {
+    if (isListening && !liveTalkOn) {
       stopTranscription();
     }
     transcribeBaseRef.current = String(nextValue || "").trim();
     onChange(nextValue);
   };
+
+  const talkPhase = liveTalkOn
+    ? isSpeaking
+      ? "speaking"
+      : isLoading || isStreaming || holdListen
+        ? "thinking"
+        : isListening
+          ? "listening"
+          : "connecting"
+    : isListening
+      ? "dictating"
+      : null;
+
+  const talkLabel =
+    talkPhase === "speaking"
+      ? "Speaking…"
+      : talkPhase === "thinking"
+        ? "Thinking…"
+        : talkPhase === "connecting"
+          ? "Starting mic…"
+          : talkPhase === "listening"
+            ? `Listening · ${voiceMode === "bn" ? "Bangla" : "English"} — speak, I'll answer out loud`
+            : talkPhase === "dictating"
+              ? `Live ${voiceMode === "bn" ? "Bangla" : "English"}`
+              : "";
 
   return (
     <motion.div
@@ -219,7 +318,7 @@ const ChatInput = ({
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.15 }}
     >
-      {showSuggestions && !value && (
+      {showSuggestions && !value && !liveTalkOn && (
         <motion.div
           className="ai-agent-suggestions"
           initial={{ opacity: 0, y: 8 }}
@@ -249,27 +348,28 @@ const ChatInput = ({
         </motion.div>
       )}
 
-      {isListening && (
-        <div className="ai-agent-transcribe-bar" aria-live="polite">
+      {talkPhase && (
+        <div
+          className={`ai-agent-transcribe-bar ${liveTalkOn ? `phase-${talkPhase}` : ""}`}
+          aria-live="polite"
+        >
           <span className="ai-agent-transcribe-dot" aria-hidden="true" />
-          <span className="ai-agent-transcribe-label">
-            Live {voiceMode === "bn" ? "Bangla" : "English"}
-          </span>
+          <span className="ai-agent-transcribe-label">{talkLabel}</span>
         </div>
       )}
 
-      <div className={`ai-agent-input-wrapper ${isFocused ? "focused" : ""}`}>
+      <div className={`ai-agent-input-wrapper ${isFocused ? "focused" : ""} ${liveTalkOn ? "live-talk" : ""}`}>
         <motion.button
           className="ai-agent-voice-lang-toggle"
           onClick={toggleVoiceMode}
-          disabled={isListening || isLoading}
+          disabled={isListening || isBusy}
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           type="button"
           title={
             voiceMode === "bn"
-              ? "Voice input language: Bangla (tap to switch to English)"
-              : "Voice input language: English (tap to switch to Bangla)"
+              ? "Voice language: Bangla (tap for English)"
+              : "Voice language: English (tap for Bangla)"
           }
           aria-label="Toggle voice input language"
         >
@@ -277,30 +377,45 @@ const ChatInput = ({
         </motion.button>
 
         <motion.button
-          className={`ai-agent-voice-btn ${isListening ? "listening" : ""}`}
+          className={`ai-agent-voice-btn ${isListening && !liveTalkOn ? "listening" : ""}`}
           onClick={toggleVoiceInput}
-          disabled={!isSpeechSupported || isLoading}
+          disabled={!isSpeechSupported || liveTalkOn || (isBusy && !liveTalkOn)}
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           type="button"
           title={
             isSpeechSupported
-              ? isListening
+              ? isListening && !liveTalkOn
                 ? "Stop live transcription"
                 : voiceMode === "bn"
-                  ? "Start Bangla live transcription"
-                  : "Start English live transcription"
+                  ? "Dictate in Bangla"
+                  : "Dictate in English"
               : "Voice input is not supported in this browser"
           }
           aria-label={
-            isListening
+            isListening && !liveTalkOn
               ? "Stop live transcription"
-              : voiceMode === "bn"
-                ? "Start Bangla live transcription"
-                : "Start English live transcription"
+              : "Start dictation"
           }
         >
-          <i className={`fas ${isListening ? "fa-stop" : "fa-microphone"}`} />
+          <i className={`fas ${isListening && !liveTalkOn ? "fa-stop" : "fa-microphone"}`} />
+        </motion.button>
+
+        <motion.button
+          className={`ai-agent-talk-btn ${liveTalkOn ? "live" : ""}`}
+          onClick={() => onToggleLiveTalk?.()}
+          disabled={!isSpeechSupported}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          type="button"
+          title={
+            liveTalkOn
+              ? "Stop live talk"
+              : "Talk with the AI — you speak, it speaks back and can run actions"
+          }
+          aria-label={liveTalkOn ? "Stop live talk" : "Start live talk"}
+        >
+          <i className={`fas ${liveTalkOn ? "fa-phone-slash" : "fa-headset"}`} />
         </motion.button>
 
         <textarea
@@ -310,22 +425,28 @@ const ChatInput = ({
           onKeyPress={handleKeyPress}
           onFocus={() => {
             setIsFocused(true);
-            setShowSuggestions(true);
+            if (!liveTalkOn) setShowSuggestions(true);
           }}
           onBlur={() => {
             setIsFocused(false);
             setTimeout(() => setShowSuggestions(false), 200);
           }}
           placeholder={
-            isListening
-              ? voiceMode === "bn"
-                ? "Listening in Bangla… speak naturally"
-                : "Listening in English… speak naturally"
-              : "Try: 'go to settings', 'call John', 'open my profile'…"
+            liveTalkOn
+              ? isSpeaking
+                ? "AI is speaking…"
+                : isLoading
+                  ? "Thinking…"
+                  : "Listening… ask anything or give a command"
+              : isListening
+                ? voiceMode === "bn"
+                  ? "Listening in Bangla… speak naturally"
+                  : "Listening in English… speak naturally"
+                : "Talk live, or type: 'go to settings', 'how do I handle stress?'…"
           }
           className="ai-agent-input"
           rows="1"
-          disabled={isLoading}
+          disabled={isLoading && !liveTalkOn}
         />
 
         <div className="ai-agent-input-actions">
@@ -334,10 +455,11 @@ const ChatInput = ({
             onClick={() => {
               if (!value.trim()) return;
               clearAutoSendTimeout();
-              stopTranscription();
+              if (!liveTalkOn) stopTranscription();
+              if (liveTalkOn) setHoldListen(true);
               onSend();
             }}
-            disabled={!value.trim() || isLoading}
+            disabled={!value.trim() || (isLoading && !liveTalkOn)}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             type="button"

@@ -227,9 +227,30 @@
     border-radius: 12px 0 0 12px !important;
 }
 
-.setting-page .input-group .form-control {
+.setting-page .input-group > .input-group-text + .form-control {
     border-top-left-radius: 0 !important;
     border-bottom-left-radius: 0 !important;
+}
+
+.setting-page .email-input-group .form-control {
+    border-top-right-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+}
+
+.setting-page .email-input-group .email-edit-btn {
+    flex: 0 0 auto;
+    width: 48px;
+    min-width: 48px;
+    min-height: 44px;
+    border-top-left-radius: 0 !important;
+    border-bottom-left-radius: 0 !important;
+    border-top-right-radius: 12px !important;
+    border-bottom-right-radius: 12px !important;
+}
+
+.setting-page .form-control[readonly] {
+    opacity: 0.92;
+    cursor: default;
 }
 
 .setting-page .form-check.form-switch {
@@ -511,6 +532,11 @@
     .setting-page .btn-primary,
     .setting-page .btn-danger {
         width: 100%;
+    }
+
+    .setting-page .email-input-group .email-edit-btn,
+    .setting-page .input-group > .btn {
+        width: auto;
     }
 }
 

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ModalContainer from './ModalContainer';
 import { downloadFileWithProgress, formatBytes } from '../../utils/downloadFileWithProgress';
-import { showErrorToast, showSuccessToast } from '../../utils/toastUtils';
+import { showErrorToast } from '../../utils/toastUtils';
 import './VideoDownloadModal.css';
 
 const VideoDownloadModal = ({ isOpen, onClose, downloadInfo, autoStart = true }) => {
@@ -61,7 +61,6 @@ const VideoDownloadModal = ({ isOpen, onClose, downloadInfo, autoStart = true })
             });
             setProgress(100);
             setDownloadDone(true);
-            showSuccessToast('Video saved to your device', { title: 'Download Complete', autoClose: 2500 });
         } catch (err) {
             if (err?.name === 'AbortError') {
                 setDownloadError('Download cancelled');
@@ -79,7 +78,6 @@ const VideoDownloadModal = ({ isOpen, onClose, downloadInfo, autoStart = true })
                     setProgress(100);
                     setDownloadDone(true);
                     setDownloadError('');
-                    showSuccessToast('Download started in your browser', { title: 'Download', autoClose: 2500 });
                 } catch (_) {
                     const message = err?.message || 'Failed to download video';
                     setDownloadError(message);

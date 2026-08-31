@@ -287,18 +287,27 @@ const Video = () => {
         .watch-feed-skeleton {
             pointer-events: none;
             animation: watchFeedSkeletonPulse 1.6s ease-in-out infinite;
+            --watch-skel: rgba(148, 163, 184, 0.38);
+            --watch-skel-mid: rgba(148, 163, 184, 0.28);
+            --watch-skel-media: linear-gradient(120deg, rgba(30,41,59,0.65), rgba(51,65,85,0.75), rgba(30,41,59,0.65));
+        }
+        html[data-theme="light"] .watch-feed-skeleton,
+        [data-theme="light"] .watch-feed-skeleton {
+            --watch-skel: rgba(0, 0, 0, 0.08);
+            --watch-skel-mid: rgba(0, 0, 0, 0.05);
+            --watch-skel-media: linear-gradient(120deg, #f1f3f4, #e8eaed, #f1f3f4);
         }
         .watch-feed-skeleton .watch-feed-skeleton-avatar {
             width: 48px;
             height: 48px;
             border-radius: 50%;
-            background: rgba(148, 163, 184, 0.35);
+            background: var(--watch-skel);
         }
         .watch-feed-skeleton .watch-feed-skeleton-line {
             display: block;
             height: 11px;
             border-radius: 999px;
-            background: rgba(148, 163, 184, 0.38);
+            background: var(--watch-skel);
             margin-bottom: 8px;
         }
         .watch-feed-skeleton .watch-feed-skeleton-line.name { width: 160px; }
@@ -307,7 +316,7 @@ const Video = () => {
             width: 28px;
             height: 28px;
             border-radius: 50%;
-            background: rgba(148, 163, 184, 0.3);
+            background: var(--watch-skel-mid);
             margin-left: 8px;
         }
         .watch-feed-skeleton .watch-feed-skeleton-line.caption { width: 88%; margin-left: 10px !important }
@@ -316,7 +325,7 @@ const Video = () => {
             width: 100%;
             aspect-ratio: 16 / 9;
             border-radius: 12px;
-            background: linear-gradient(120deg, rgba(30,41,59,0.65), rgba(51,65,85,0.75), rgba(30,41,59,0.65));
+            background: var(--watch-skel-media);
             background-size: 200% 100%;
         }
         .watch-feed-skeleton .watch-feed-skeleton-meta {
@@ -328,7 +337,7 @@ const Video = () => {
             width: 74px;
             height: 10px;
             border-radius: 999px;
-            background: rgba(148, 163, 184, 0.36);
+            background: var(--watch-skel);
             display: inline-block;
         }
         .watch-feed-skeleton .watch-feed-skeleton-actions {
@@ -340,7 +349,7 @@ const Video = () => {
         .watch-feed-skeleton .watch-feed-skeleton-btn {
             height: 34px;
             border-radius: 10px;
-            background: rgba(148, 163, 184, 0.3);
+            background: var(--watch-skel-mid);
             display: block;
         }
         @keyframes watchFeedSkeletonPulse {
@@ -353,18 +362,31 @@ const Video = () => {
         .watch-album-card-skeleton {
             pointer-events: none;
             animation: watchAlbumSkeletonPulse 1.6s ease-in-out infinite;
+            --watch-skel: rgba(148, 163, 184, 0.42);
+            --watch-skel-thumb: linear-gradient(120deg, rgba(30,41,59,0.65), rgba(51,65,85,0.75), rgba(30,41,59,0.65));
+            --watch-skel-play: rgba(15, 23, 42, 0.72);
+        }
+        html[data-theme="light"] .watch-album-card-skeleton,
+        [data-theme="light"] .watch-album-card-skeleton {
+            --watch-skel: rgba(0, 0, 0, 0.08);
+            --watch-skel-thumb: linear-gradient(120deg, #f1f3f4, #e8eaed, #f1f3f4);
+            --watch-skel-play: rgba(255, 255, 255, 0.92);
         }
         .watch-album-card-skeleton .watch-album-thumb {
-            background: linear-gradient(120deg, rgba(30,41,59,0.65), rgba(51,65,85,0.75), rgba(30,41,59,0.65));
+            background: var(--watch-skel-thumb);
             background-size: 200% 100%;
         }
         .watch-album-card-skeleton .watch-album-thumb::after {
             background: linear-gradient(180deg, rgba(0,0,0,0.02) 35%, rgba(0,0,0,0.18) 100%);
         }
+        html[data-theme="light"] .watch-album-card-skeleton .watch-album-thumb::after,
+        [data-theme="light"] .watch-album-card-skeleton .watch-album-thumb::after {
+            background: linear-gradient(180deg, rgba(255,255,255,0.04) 35%, rgba(0,0,0,0.06) 100%);
+        }
         .watch-album-card-skeleton .watch-album-play {
             width: 54px;
             height: 54px;
-            background: rgba(15, 23, 42, 0.72);
+            background: var(--watch-skel-play);
             border: 1px solid rgba(148, 163, 184, 0.24);
             box-shadow: none;
         }
@@ -372,17 +394,22 @@ const Video = () => {
             background: rgba(15,23,42,0.45);
             border: 1px solid rgba(148,163,184,0.16);
         }
+        html[data-theme="light"] .watch-album-overlay-skeleton,
+        [data-theme="light"] .watch-album-overlay-skeleton {
+            background: rgba(255,255,255,0.78);
+            border: 1px solid rgba(0,0,0,0.08);
+        }
         .watch-album-pill {
             width: 42px;
             height: 10px;
             border-radius: 999px;
-            background: rgba(203, 213, 225, 0.5);
+            background: var(--watch-skel);
             display: inline-block;
         }
         .watch-album-line {
             height: 11px;
             border-radius: 999px;
-            background: rgba(148, 163, 184, 0.42);
+            background: var(--watch-skel);
             display: block;
             margin-bottom: 8px;
         }

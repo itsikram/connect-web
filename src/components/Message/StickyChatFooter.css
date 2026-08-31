@@ -168,6 +168,21 @@
 
 .sticky-chat-footer-container .composer-mic-wrap {
     position: relative;
+    z-index: 5;
+}
+
+/* Portaled above the sticky chat so overflow/backdrop-filter cannot bury it
+   under the message list. */
+.sticky-chat-mic-menu-portal {
+    position: fixed;
+    z-index: 100000;
+}
+
+.sticky-chat-mic-menu-portal .composer-mic-menu {
+    position: relative;
+    left: auto;
+    right: auto;
+    bottom: auto;
 }
 
 .sticky-chat-attachment-btn {

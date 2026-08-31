@@ -1,6 +1,9 @@
 import {
   getInstantAgentReply,
+  isVoiceFiller,
   looksLikeAppCommand,
+  looksLikeConnectCommand,
+  looksLikePersonalChat,
   normalizeBanglaCommand,
 } from "./agentFastPath";
 
@@ -20,6 +23,20 @@ describe("agent fast path", () => {
     expect(looksLikeAppCommand("সেটিংসে যাও")).toBe(true);
     expect(looksLikeAppCommand("kemon acho")).toBe(false);
     expect(looksLikeAppCommand("কেমন আছো")).toBe(false);
+  });
+
+  test("routes personal chat away from app commands", () => {
+    expect(looksLikePersonalChat("I feel sad today")).toBe(true);
+    expect(looksLikePersonalChat("what should I do about my job")).toBe(true);
+    expect(looksLikePersonalChat("tell me a joke")).toBe(true);
+    expect(looksLikePersonalChat("আমি খারাপ লাগছে")).toBe(true);
+    expect(looksLikePersonalChat("invite atik to ludo")).toBe(false);
+    expect(looksLikeConnectCommand("open settings")).toBe(true);
+    expect(looksLikeConnectCommand("call John")).toBe(true);
+    expect(looksLikeConnectCommand("find a chicken recipe")).toBe(false);
+    expect(looksLikeConnectCommand("how do I handle stress")).toBe(false);
+    expect(isVoiceFiller("um")).toBe(true);
+    expect(isVoiceFiller("open settings")).toBe(false);
   });
 
   test("rewrites bangla script commands to english", () => {

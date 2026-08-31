@@ -366,7 +366,9 @@ self.addEventListener("push", (event) => {
     requireInteraction: isCall ? true : data.requireInteraction || false,
     // Play ringtone where the platform allows a custom notification sound
     silent: isCall ? false : data.silent || false,
-    sound: isCall ? data.sound || DEFAULT_CALL_RINGTONE : data.sound,
+    sound: isCall
+      ? data.sound || payloadData.ringtoneSrc || payloadData.sound || DEFAULT_CALL_RINGTONE
+      : data.sound,
     timestamp: data.timestamp || Date.now(),
     vibrate: isCall
       ? [300, 100, 300, 100, 300]

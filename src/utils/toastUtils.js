@@ -29,7 +29,7 @@ const scheduleAutoDismiss = (toastId, delayMs) => {
 
 // Success toast
 export const showSuccessToast = (message, options = {}) => {
-  const { title, avatar, link, autoClose = 5000 } = options;
+  const { title, avatar, link, autoClose = 5000, toastId } = options;
 
   const id = toast.success(
     ({ closeToast, ...toastProps }) => (
@@ -47,6 +47,7 @@ export const showSuccessToast = (message, options = {}) => {
     { 
       ...toastConfig, 
       autoClose,
+      toastId,
       className: 'custom-toast-success'
     }
   );
@@ -55,7 +56,7 @@ export const showSuccessToast = (message, options = {}) => {
 
 // Error toast
 export const showErrorToast = (message, options = {}) => {
-  const { title, avatar, link, autoClose = 5000 } = options;
+  const { title, avatar, link, autoClose = 5000, toastId } = options;
 
   const id = toast.error(
     <CustomToast 
@@ -69,6 +70,7 @@ export const showErrorToast = (message, options = {}) => {
     { 
       ...toastConfig, 
       autoClose,
+      toastId,
       className: 'custom-toast-error'
     }
   );
@@ -99,7 +101,7 @@ export const showWarningToast = (message, options = {}) => {
 
 // Info toast
 export const showInfoToast = (message, options = {}) => {
-  const { title, avatar, link, autoClose = 5000 } = options;
+  const { title, avatar, link, autoClose = 5000, toastId } = options;
 
   const id = toast.info(
     <CustomToast 
@@ -113,6 +115,7 @@ export const showInfoToast = (message, options = {}) => {
     { 
       ...toastConfig, 
       autoClose,
+      toastId,
       className: 'custom-toast-info'
     }
   );
@@ -176,7 +179,7 @@ export const showProfileUpdateToast = (message, profileName, profileAvatar, link
 
 // Video saved toast
 export const showVideoSavedToast = (caption, authorAvatar, link, options = {}) => {
-  const { autoClose = 5000 } = options;
+  const { autoClose = 5000, toastId } = options;
 
   const id = toast.success(
     <CustomToast 
@@ -191,6 +194,7 @@ export const showVideoSavedToast = (caption, authorAvatar, link, options = {}) =
     { 
       ...toastConfig, 
       autoClose,
+      toastId,
       className: 'custom-toast-video-saved'
     }
   );

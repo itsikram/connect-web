@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import api from "../../api/api";
 import { useSelector } from "react-redux";
@@ -55,10 +55,13 @@ const StickyChatFooter = ({
   const emojiContainerRef = useRef(null);
   const emojiButtonRef = useRef(null);
   const micMenuRef = useRef(null);
+  const micButtonRef = useRef(null);
+  const micMenuPanelRef = useRef(null);
   const transcribeBaseRef = useRef("");
   const inputValueRef = useRef("");
   const messageInput = useRef(null);
   const [emojiPosition, setEmojiPosition] = useState({ top: 0, right: 0 });
+  const [micMenuPosition, setMicMenuPosition] = useState({ left: 0, bottom: 0 });
 
   useEffect(() => {
     setActionEmoji(chatAppearance?.actionEmoji || "👍");
@@ -174,7 +177,9 @@ const StickyChatFooter = ({
 
   useEffect(() => {
     const onDown = (event) => {
-      if (micMenuRef.current && !micMenuRef.current.contains(event.target)) {
+      const inWrap = micMenuRef.current?.contains(event.target);
+      const inPanel = micMenuPanelRef.current?.contains(event.target);
+      if (!inWrap && !inPanel) {
         setShowMicMenu(false);
         setMicMenuView("main");
       }
@@ -182,6 +187,33 @@ const StickyChatFooter = ({
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, []);
+
+  useLayoutEffect(() => {
+    if (!showMicMenu) return undefined;
+
+    const updatePosition = () => {
+      const button = micButtonRef.current;
+      if (!button) return;
+      const rect = button.getBoundingClientRect();
+      const menuWidth = Math.min(268, window.innerWidth - 24);
+      const left = Math.min(
+        Math.max(8, rect.left),
+        Math.max(8, window.innerWidth - menuWidth - 8),
+      );
+      setMicMenuPosition({
+        left,
+        bottom: Math.max(8, window.innerHeight - rect.top + 10),
+      });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [showMicMenu, micMenuView]);
 
   const handleSendMessage = useCallback(
     (e) => {
@@ -690,6 +722,7 @@ const StickyChatFooter = ({
 
             <div className="composer-mic-wrap" ref={micMenuRef}>
               <button
+                ref={micButtonRef}
                 className={`sticky-chat-attachment-btn ${isRecording ? "recording" : ""} ${isUploadingAudio ? "loading" : ""} ${isTranscribing || showMicMenu ? "recording" : ""}`}
                 onClick={handleMicButtonClick}
                 disabled={isUploadingAudio}
@@ -713,15 +746,27 @@ const StickyChatFooter = ({
                   }
                 ></i>
               </button>
-              {showMicMenu ? (
-                <ComposerMicMenu
-                  view={micMenuView}
-                  onOpenTranscribe={() => setMicMenuView("transcribe")}
-                  onBack={() => setMicMenuView("main")}
-                  onSelectLang={startLiveTranscribe}
-                  onVoiceMessage={startVoiceMessage}
-                />
-              ) : null}
+              {showMicMenu
+                ? createPortal(
+                    <div
+                      ref={micMenuPanelRef}
+                      className="sticky-chat-mic-menu-portal"
+                      style={{
+                        left: `${micMenuPosition.left}px`,
+                        bottom: `${micMenuPosition.bottom}px`,
+                      }}
+                    >
+                      <ComposerMicMenu
+                        view={micMenuView}
+                        onOpenTranscribe={() => setMicMenuView("transcribe")}
+                        onBack={() => setMicMenuView("main")}
+                        onSelectLang={startLiveTranscribe}
+                        onVoiceMessage={startVoiceMessage}
+                      />
+                    </div>,
+                    document.body,
+                  )
+                : null}
             </div>
           </div>
         )}

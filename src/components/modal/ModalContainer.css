@@ -156,19 +156,30 @@
     width: 36px;
     height: 36px;
     padding: 0;
-    border: none;
+    border: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.06);
-    color: #e4e6eb;
+    background: rgba(255, 255, 255, 0.12);
+    color: #f2f4f7;
     cursor: pointer;
     transition:
         background 0.15s ease,
         color 0.15s ease;
 }
 
+.app-modal-content .modal-close-btn i,
+.app-modal-content .app-modal-close i,
+.app-modal-content .modal-close-btn svg,
+.app-modal-content .app-modal-close svg {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    color: inherit;
+    fill: currentColor;
+}
+
 .app-modal-content .modal-close-btn:hover,
 .app-modal-content .app-modal-close:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.2);
     color: #fff;
 }
 

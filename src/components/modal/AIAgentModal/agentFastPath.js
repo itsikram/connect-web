@@ -83,6 +83,9 @@ export const normalizeBanglaCommand = (text = "") => {
   return source;
 };
 
+const CONNECT_NOUNS =
+  /\b(settings?|profile|account|privacy|notification|inbox|messages?|friends?|watch|notes?|tasks?|calendar|health|rehab|youtube|ludo|chess|post|story|video player|yt-download)\b/i;
+
 export const looksLikeAppCommand = (text = "") => {
   const source = String(text || "").trim();
   if (!source) return false;
@@ -106,6 +109,58 @@ export const looksLikeAppCommand = (text = "") => {
       source,
     )
   );
+};
+
+export const looksLikeConnectCommand = (text = "") => {
+  const source = String(text || "").trim();
+  if (!source || !looksLikeAppCommand(source)) return false;
+  if (CONNECT_NOUNS.test(source)) return true;
+  if (
+    /\b(call|video call|invite|bump|block|unblock|navigate|go to|open|message|send|download|create post|create note|create task|create event)\b/i.test(
+      source,
+    )
+  ) {
+    return true;
+  }
+  if (
+    /\b(koro|korun|jao|pathao|pathan|bolo|bolun)\b.+\b(atik|profile|ludo|chess|mesej|settings?)\b/i.test(
+      source,
+    )
+  ) {
+    return true;
+  }
+  return (
+    /[\u0980-\u09FF]/.test(source) &&
+    /(যাও|পাঠাও|খোল|ডাক|কল কর|মেসেজ|বার্তা|প্রোফাইল|সেটিং|লুডো|ইনভাইট)/.test(source)
+  );
+};
+
+export const looksLikePersonalChat = (text = "") => {
+  const source = String(text || "").trim();
+  if (!source) return false;
+  if (
+    /^(please\s+)?(tell me|talk (to|with) me|chat with me|advise|advice|explain|describe|write(?: me)?|give me|help me (with|think|decide|understand)|can you help me)\b/i.test(
+      source,
+    )
+  ) {
+    return true;
+  }
+  if (
+    /\b(i (feel|felt|am|i'?m|think|need advice|need help|don'?t know|do not know|want to talk|want your opinion)|i'?m (sad|happy|anxious|stressed|lonely|tired|confused|angry|depressed|bored)|my (life|day|mood|girlfriend|boyfriend|wife|husband|job|boss|exam|school|family|parents|friend)|why (do|does|is|are|can'?t|did)|how (do i|can i|should i|would you)|what should i|what would you|meaning of|joke|story|opinion|advice)\b/i.test(
+      source,
+    )
+  ) {
+    return true;
+  }
+  return /(কেমন লাগে|আমি দুঃখিত|আমি খারাপ|পরামর্শ|কী করব|কি করব|বলো তো|একটা জোক্স|মজার|আমার মন)/u.test(
+    source,
+  );
+};
+
+export const isVoiceFiller = (text = "") => {
+  const source = String(text || "").trim();
+  if (!source) return true;
+  return /^(u+m+|u+h+|er+|ah+|oh+|hmm+|mm+|হুম|আহ|ওহ|অ্যা)$/i.test(source);
 };
 
 export const getInstantAgentReply = (text = "") => {

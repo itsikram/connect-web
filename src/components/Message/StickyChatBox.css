@@ -63,6 +63,8 @@
     justify-content: space-between;
     flex-shrink: 0;
     cursor: move;
+    position: relative;
+    z-index: 3;
 }
 
 .sticky-chat-header-info {
@@ -461,10 +463,14 @@
     }
 }
 
-/* Chat Footer */
+/* Chat Footer — above the message list so composer menus (mic dropdown)
+   are not painted under bubbles. Body is z-index 1. */
 .sticky-chat-footer {
     flex-shrink: 0;
     border-top: 1px solid rgba(47, 48, 49, 0.8);
+    position: relative;
+    z-index: 4;
+    overflow: visible;
 }
 
 .sticky-chat-blocked-message {

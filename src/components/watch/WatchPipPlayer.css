@@ -131,7 +131,7 @@
 .watch-pip-media-cover img {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
 }
 
 .watch-pip-video-wrap.is-loading .watch-pip-video {
@@ -158,7 +158,7 @@
 .watch-pip-video {
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
   display: block;
   background: #000;
   cursor: default;
@@ -202,6 +202,12 @@
   width: 34px;
   height: 34px;
   background: rgba(59, 130, 246, 0.45);
+}
+
+.watch-pip-mini .watch-pip-btn-primary {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .watch-pip-btn.is-active {

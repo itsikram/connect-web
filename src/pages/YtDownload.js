@@ -246,9 +246,11 @@ const YtDownload = () => {
         youtubeUrl: sourceUrl,
       };
 
-      saveVideoFromUrl(saveId, fileUrl, savedMetadata).catch((err) => {
-        console.error("Failed to save to Saved Videos:", err);
-      });
+      saveVideoFromUrl(saveId, fileUrl, savedMetadata, { silent: true }).catch(
+        (err) => {
+          console.error("Failed to save to Saved Videos:", err);
+        },
+      );
 
       const toastTitle =
         finalTitle.length > 48 ? `${finalTitle.slice(0, 45)}…` : finalTitle;
@@ -256,11 +258,13 @@ const YtDownload = () => {
         showSuccessToast(`Posted to Watch: ${toastTitle}`, {
           title: "Download complete",
           autoClose: 4000,
+          toastId: `yt-complete-${saveId}`,
         });
       } else {
         showSuccessToast(`Saved: ${toastTitle}`, {
           title: "Download complete",
           autoClose: 3500,
+          toastId: `yt-complete-${saveId}`,
         });
       }
 
@@ -612,12 +616,13 @@ const YtDownload = () => {
           : postAsWatch
             ? "Downloading and posting to Watch…"
             : "Downloading video…",
-        { title: "Download started", autoClose: 2500 },
+        { title: "Download started", autoClose: 2500, toastId: "yt-download-start" },
       );
     } else {
       showInfoToast(`Started ${urlsToStart.length} downloads`, {
         title: "Batch download",
         autoClose: 3000,
+        toastId: "yt-download-start",
       });
     }
 

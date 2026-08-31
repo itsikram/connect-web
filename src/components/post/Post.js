@@ -36,6 +36,8 @@ import "./PostCard.css";
 import "./SharePostModal.css";
 import {
   uniquePlacedReacts,
+  uniqueReactCount,
+  sameProfileId,
   getReactLabel,
 } from "../../utils/reactTypes";
 import {
@@ -93,7 +95,7 @@ const Post = React.memo(
     let myProfile = useSelector((state) => state.profile);
     let myProfileId = myProfile._id;
     let postAuthorProfileId = post?.author._id;
-    let [totalReacts, setTotalReacts] = useState(post.reacts.length);
+    let [totalReacts, setTotalReacts] = useState(uniqueReactCount(post.reacts));
     let [totalShares, setTotalShares] = useState(post.shares.length);
 
     let [totalComments, setTotalComments] = useState(post.comments.length);
@@ -124,6 +126,7 @@ const Post = React.memo(
     let nfPosts = useRef([]);
     let displayedPost = useRef();
     let reactButtonsRef = useRef(null);
+    let reactLockRef = useRef(false);
     let longPressTimerRef = useRef(null);
     let longPressTriggeredRef = useRef(false);
     let pressStartRef = useRef({ x: 0, y: 0 });
@@ -168,15 +171,18 @@ const Post = React.memo(
     var pp_url = post.author.profilePic;
 
     useEffect(() => {
-      let storedReacts = uniquePlacedReacts(post.reacts || []);
-      (post.reacts || []).forEach((react) => {
-        if (react.profile === myProfileId) {
-          setReactType(react.type);
-          setIsReacted(true);
-        }
-      });
-      setPlacedReacts(storedReacts);
-    }, []);
+      const reacts = post.reacts || [];
+      setPlacedReacts(uniquePlacedReacts(reacts));
+      setTotalReacts(uniqueReactCount(reacts));
+      const mine = reacts.find((react) => sameProfileId(react?.profile, myProfileId));
+      if (mine?.type) {
+        setReactType(mine.type);
+        setIsReacted(true);
+      } else {
+        setReactType(false);
+        setIsReacted(false);
+      }
+    }, [post._id, post.reacts, myProfileId]);
 
     let postPhoto = post.photos;
     let type = post.type || "post";
@@ -227,50 +233,88 @@ const Post = React.memo(
 
     let removeReact = useCallback(
       async (postType = "post", target = null) => {
-        setTotalReacts((state) => state - 1);
+        if (reactLockRef.current) return;
+        reactLockRef.current = true;
+        const prevType = reactType;
+        const prevCount = totalReacts;
+        setTotalReacts((state) => Math.max(0, state - 1));
         setReactType(false);
+        setIsReacted(false);
 
-        let res = await api.post("/react/removeReact", {
-          id: post._id,
-          postType: "post",
-          reactor: myProfileId,
-        });
-        if (res.status === 200) {
-          setIsReacted(false);
-          return true;
-        } else {
-          setTotalReacts((state) => state + 1);
+        try {
+          let res = await api.post("/react/removeReact", {
+            id: post._id,
+            postType: "post",
+            reactor: myProfileId,
+          });
+          if (res.status === 200) {
+            if (Array.isArray(res.data?.reacts)) {
+              setTotalReacts(uniqueReactCount(res.data.reacts));
+              setPlacedReacts(uniquePlacedReacts(res.data.reacts));
+            }
+            return true;
+          }
+          setTotalReacts(prevCount);
+          setReactType(prevType);
+          setIsReacted(!!prevType);
+        } catch (e) {
+          setTotalReacts(prevCount);
+          setReactType(prevType);
+          setIsReacted(!!prevType);
+        } finally {
+          reactLockRef.current = false;
         }
       },
-      [post._id, myProfileId],
+      [post._id, myProfileId, reactType, totalReacts],
     );
 
     let placeReact = useCallback(
-      async (reactType, postType = "post", target = null) => {
-        if (!isReacted) {
+      async (nextType, postType = "post", target = null) => {
+        if (reactLockRef.current) return;
+        reactLockRef.current = true;
+        const prevType = reactType;
+        const prevCount = totalReacts;
+        const alreadyReacted = isReacted;
+        if (!alreadyReacted) {
           setTotalReacts((state) => state + 1);
         }
-        // setTotalReacts(state => state + 1)
-
-        setPlacedReacts((prev) => [...prev, reactType]);
-        setReactType(reactType);
-
-        let placeRes = await api.post("/react/addReact", {
-          id: post._id,
-          postType,
-          reactType,
+        setPlacedReacts((prev) => {
+          const next = prev.filter((item) => item !== prevType);
+          return next.includes(nextType) ? next : [...next, nextType];
         });
-        if (placeRes.status === 200) {
-          setIsReacted(true);
+        setReactType(nextType);
+        setIsReacted(true);
 
-          return true;
-        } else {
-          setTotalReacts(post.reacts.length);
-          setPlacedReacts((prev) => prev);
-          setReactType(false);
+        try {
+          let placeRes = await api.post("/react/addReact", {
+            id: post._id,
+            postType,
+            reactType: nextType,
+          });
+          if (placeRes.status === 200) {
+            if (Array.isArray(placeRes.data?.reacts)) {
+              setTotalReacts(uniqueReactCount(placeRes.data.reacts));
+              setPlacedReacts(uniquePlacedReacts(placeRes.data.reacts));
+              const mine = placeRes.data.reacts.find((react) =>
+                sameProfileId(react?.profile, myProfileId),
+              );
+              if (mine?.type) setReactType(mine.type);
+            }
+            return true;
+          }
+          setTotalReacts(prevCount);
+          setPlacedReacts(uniquePlacedReacts(post.reacts || []));
+          setReactType(prevType);
+          setIsReacted(!!prevType);
+        } catch (e) {
+          setTotalReacts(prevCount);
+          setReactType(prevType);
+          setIsReacted(!!prevType);
+        } finally {
+          reactLockRef.current = false;
         }
       },
-      [isReacted, post._id, post.reacts.length],
+      [isReacted, post._id, post.reacts, reactType, totalReacts, myProfileId],
     );
 
     let hideReactContainer = useCallback(() => {
@@ -359,7 +403,7 @@ const Post = React.memo(
         }
         let target = e.currentTarget;
         hideReactContainer();
-        if ($(target).parent().hasClass("reacted")) {
+        if (isReacted && (reactType === "like" || !reactType)) {
           removeReact("post");
           $(target).parent().removeClass("reacted");
         } else {
@@ -367,14 +411,14 @@ const Post = React.memo(
           $(target).parent().addClass("reacted");
         }
       },
-      [removeReact, placeReact, hideReactContainer],
+      [removeReact, placeReact, hideReactContainer, isReacted, reactType],
     );
 
     let pickerReactOnClick = useCallback(
       (type, e) => {
         const target = e.currentTarget;
         hideReactContainer();
-        if ($(target).hasClass("reacted")) {
+        if (isReacted && reactType === type) {
           removeReact("post");
           $(target).removeClass("reacted");
         } else {
@@ -383,7 +427,7 @@ const Post = React.memo(
           $(target).addClass("reacted");
         }
       },
-      [removeReact, placeReact, hideReactContainer],
+      [removeReact, placeReact, hideReactContainer, isReacted, reactType],
     );
 
     let likeMouseOver = useCallback((e) => {

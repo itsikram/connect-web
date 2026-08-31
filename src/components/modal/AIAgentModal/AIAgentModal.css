@@ -1035,6 +1035,30 @@
     color: #00d4ff;
 }
 
+.ai-agent-transcribe-bar.phase-thinking {
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.28);
+}
+.ai-agent-transcribe-bar.phase-thinking .ai-agent-transcribe-dot {
+    background: #f59e0b;
+}
+.ai-agent-transcribe-bar.phase-thinking .ai-agent-transcribe-label {
+    color: #f59e0b;
+}
+.ai-agent-transcribe-bar.phase-speaking {
+    background: rgba(0, 200, 81, 0.1);
+    border-color: rgba(0, 200, 81, 0.28);
+}
+.ai-agent-transcribe-bar.phase-speaking .ai-agent-transcribe-dot {
+    background: #00c851;
+}
+.ai-agent-transcribe-bar.phase-speaking .ai-agent-transcribe-label {
+    color: #00c851;
+}
+.ai-agent-transcribe-bar.phase-connecting .ai-agent-transcribe-label {
+    color: var(--ai-muted);
+}
+
 @keyframes ai-agent-transcribe-pulse {
     0%,
     100% {
@@ -1253,6 +1277,61 @@
 .ai-agent-voice-btn:disabled {
     opacity: 0.45;
     cursor: not-allowed;
+}
+
+.ai-agent-talk-btn {
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: var(--ai-surface);
+    color: var(--ai-muted);
+    border-radius: 10px;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition:
+        transform 0.15s,
+        box-shadow 0.15s,
+        color 0.15s,
+        background 0.15s,
+        border-color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+}
+.ai-agent-talk-btn:hover:not(:disabled) {
+    color: var(--ai-accent);
+    border-color: rgba(0, 212, 255, 0.45);
+    box-shadow: 0 3px 10px rgba(0, 212, 255, 0.18);
+}
+.ai-agent-talk-btn:active:not(:disabled) {
+    transform: scale(0.95);
+}
+.ai-agent-talk-btn.live {
+    border-color: rgba(0, 200, 81, 0.6);
+    background: rgba(0, 200, 81, 0.16);
+    color: #00c851;
+    animation: aiTalkPulse 1.6s ease-in-out infinite;
+}
+.ai-agent-talk-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.ai-agent-input-wrapper.live-talk {
+    border-color: rgba(0, 200, 81, 0.45);
+    box-shadow: 0 0 0 3px rgba(0, 200, 81, 0.1);
+}
+
+@keyframes aiTalkPulse {
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(0, 200, 81, 0.28);
+    }
+    50% {
+        box-shadow: 0 0 0 6px rgba(0, 200, 81, 0);
+    }
 }
 
 @keyframes aiMicPulse {

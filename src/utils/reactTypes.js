@@ -36,6 +36,18 @@ export const uniquePlacedReacts = (reacts = []) => {
   return seen;
 };
 
+export const sameProfileId = (a, b) =>
+  String(a?._id || a || "") === String(b?._id || b || "");
+
+export const uniqueReactCount = (reacts = []) => {
+  const seen = new Set();
+  reacts.forEach((react) => {
+    const id = String(react?.profile?._id || react?.profile || "");
+    if (id) seen.add(id);
+  });
+  return seen.size;
+};
+
 export const emptyReactCounts = () =>
   REACT_TYPES.reduce((acc, key) => {
     acc[key] = 0;

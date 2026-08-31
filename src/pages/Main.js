@@ -2411,8 +2411,9 @@ const Main = () => {
                 </ProtectedRoute>
               }
             >
-              <Route index element={<PorfilePosts />} />
+              <Route index element={<ProfileAbout />} />
               <Route path="about" element={<ProfileAbout />} />
+              <Route path="posts" element={<PorfilePosts />} />
               <Route path="friends" element={<ProfileFriends />}></Route>
               <Route path="images" element={<ProfileImages />}></Route>
               <Route path="videos" element={<ProfileVideos />}></Route>

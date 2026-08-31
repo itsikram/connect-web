@@ -336,13 +336,10 @@ const SingleMessage = ({
   const isMediaOnly = hasMedia && !hasCaption && !isCallMessage && !isAudioMessage();
 
   const formatTime = (secs) => {
-    if (!isFinite(secs)) return "00:00";
-    const s = Math.floor(secs % 60)
-      .toString()
-      .padStart(2, "0");
-    const m = Math.floor(secs / 60)
-      .toString()
-      .padStart(2, "0");
+    if (!isFinite(secs) || secs < 0) return "0:00";
+    const total = Math.floor(secs);
+    const s = (total % 60).toString().padStart(2, "0");
+    const m = Math.floor(total / 60);
     return `${m}:${s}`;
   };
 
@@ -407,12 +404,18 @@ const SingleMessage = ({
 
   const renderAudioContent = () => {
     const src = msg.attachment;
+    const duration = audioDuration > 0 ? audioDuration : 0;
+    const current = audioCurrent > 0 ? audioCurrent : 0;
+    const progressPct =
+      duration > 0 ? Math.min(100, (current / duration) * 100) : 0;
+    const shownTime =
+      isPlaying || current > 0.25
+        ? Math.max(0, duration - current)
+        : duration;
+
     return (
-      <div className="message-container mb-0">
-        <div
-          className="voice-message"
-          style={{ display: "flex", alignItems: "center", gap: 10 }}
-        >
+      <div className="message-container mb-0 voice-message-container">
+        <div className={`voice-message${isPlaying ? " is-playing" : ""}`}>
           <button
             type="button"
             onClick={togglePlay}
@@ -426,49 +429,29 @@ const SingleMessage = ({
               isPlaying ? "Pause voice message" : "Play voice message"
             }
             className="voice-play-btn"
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 18,
-              border: "1px solid rgba(255,255,255,0.15)",
-              background: "rgba(255,255,255,0.06)",
-              color: "#1DB954",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
           >
             <i className={`fa ${isPlaying ? "fa-pause" : "fa-play"}`}></i>
           </button>
-          <input
-            type="range"
-            min={0}
-            max={Math.max(1, Math.floor(audioDuration))}
-            value={Math.floor(audioCurrent)}
-            onChange={onSeek}
-            aria-label="Seek voice message"
-            style={{ flex: 1, accentColor: "#1DB954" }}
-          />
-          <span
-            className="voice-time"
-            style={{
-              color: "#cbd5e1",
-              fontSize: 12,
-              minWidth: 52,
-              textAlign: "right",
-            }}
+          <div
+            className="voice-message-track"
+            style={{ "--voice-progress": `${progressPct}%` }}
           >
-            {formatTime(audioCurrent)} / {formatTime(audioDuration)}
-          </span>
-          <a
-            href={src}
-            target="_blank"
-            rel="noreferrer"
-            aria-label="Open in new tab"
-            style={{ color: "#94a3b8" }}
-          >
-            <i className="fa fa-external-link"></i>
-          </a>
+            <div className="voice-waveform" aria-hidden="true">
+              {Array.from({ length: 16 }, (_, i) => (
+                <span key={i} />
+              ))}
+            </div>
+            <input
+              type="range"
+              className="voice-slider"
+              min={0}
+              max={Math.max(1, Math.floor(duration))}
+              value={Math.floor(current)}
+              onChange={onSeek}
+              aria-label="Seek voice message"
+            />
+          </div>
+          <span className="voice-time">{formatTime(shownTime)}</span>
           <audio
             ref={audioRef}
             src={src}
@@ -476,7 +459,6 @@ const SingleMessage = ({
             onLoadedMetadata={onAudioLoaded}
             onTimeUpdate={onAudioTimeUpdate}
             onEnded={onAudioEnded}
-            style={{ display: "none" }}
           />
         </div>
       </div>
@@ -589,6 +571,7 @@ const SingleMessage = ({
     "chat-message",
     hasMedia ? "has-attachment" : "",
     isMediaOnly ? "media-only" : "",
+    isAudioMessage() ? "is-voice" : "",
   ]
     .filter(Boolean)
     .join(" ");

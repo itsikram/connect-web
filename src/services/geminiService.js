@@ -20,9 +20,15 @@ import {
 
 export { parseGeminiApiKeys, isGeminiQuotaError, extractGeminiText };
 
-const SYSTEM_PROMPT = `Connect in-app assistant. Reply in the user's language. Use prior turns. 1-2 short sentences. Confirm app actions; do not list steps.`;
+const SYSTEM_PROMPT = `You are Connect's AI companion inside a social app. Chat naturally and also help with in-app actions.
 
-const toChatMessages = (conversationHistory = [], message, limit = 6, clip = 240) => {
+Answer personal and general questions for real — advice, feelings, knowledge, jokes, plans, explanations, opinions. Be warm, direct, and logical. Do not dodge with app features unless the user asked for one.
+
+For in-app actions, confirm in one short sentence. Never invent that you already did something the app must still run.
+Reply in the user's language (English, Bangla, or Banglish).
+Keep answers tight and spoken-friendly: 1–5 short sentences. No markdown, no bullet walls, no emoji spam.`;
+
+const toChatMessages = (conversationHistory = [], message, limit = 8, clip = 320) => {
   const messages = [];
   let foundFirstUser = false;
   const history = conversationHistory.slice(-limit);
@@ -286,7 +292,7 @@ export const answerFromAppData = async ({
 export const sendToGeminiStream = async (
   message,
   conversationHistory = [],
-  { onDelta, signal } = {},
+  { onDelta, signal, voice = false, userName = "", memory = null } = {},
 ) => {
   if (!hasConfiguredApiKey()) {
     const missing = missingKeyResult();
@@ -294,12 +300,28 @@ export const sendToGeminiStream = async (
     return missing;
   }
 
+  const extra = [];
+  if (userName) extra.push(`The user's name is ${userName}.`);
+  if (memory && typeof memory === "object") {
+    extra.push(`Recent session context: ${JSON.stringify(memory)}`);
+  }
+  if (voice) {
+    extra.push(
+      "The user is talking live. Answer as spoken dialogue: concise, natural, no lists unless asked.",
+    );
+  }
+
   try {
     const responseText = await streamChat({
-      system: SYSTEM_PROMPT,
-      messages: toChatMessages(conversationHistory, message, 4, 160),
-      temperature: 0.4,
-      maxTokens: 180,
+      system: extra.length ? `${SYSTEM_PROMPT}\n${extra.join(" ")}` : SYSTEM_PROMPT,
+      messages: toChatMessages(
+        conversationHistory,
+        message,
+        voice ? 8 : 6,
+        voice ? 220 : 280,
+      ),
+      temperature: voice ? 0.55 : 0.6,
+      maxTokens: voice ? 220 : 360,
       operationLabel: "Chat request",
       onDelta,
       signal,

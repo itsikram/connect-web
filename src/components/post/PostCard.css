@@ -10,8 +10,27 @@
   --post-accent-soft: rgba(0, 212, 255, 0.14);
   --post-divider: rgba(255, 255, 255, 0.07);
   --post-hover: rgba(255, 255, 255, 0.06);
+  --post-input-bg: rgba(255, 255, 255, 0.05);
+  --post-shadow: 0.22;
+  --post-cta-text: #04222a;
   --post-radius: 16px;
   --post-pad-x: 16px;
+}
+
+html[data-theme="light"],
+[data-theme="light"] {
+  --post-bg: #ffffff;
+  --post-bg-elevated: #f8f9fa;
+  --post-border: #e8eaed;
+  --post-text: #1a1a1a;
+  --post-text-muted: #5f6368;
+  --post-accent: #00d4ff;
+  --post-accent-soft: rgba(0, 212, 255, 0.14);
+  --post-divider: rgba(0, 0, 0, 0.08);
+  --post-hover: rgba(0, 0, 0, 0.04);
+  --post-input-bg: #f1f3f4;
+  --post-shadow: 0.08;
+  --post-cta-text: #04222a;
 }
 
 #nf-post-container .nf-post,
@@ -21,7 +40,7 @@
   border: 1px solid var(--post-border) !important;
   border-radius: var(--post-radius) !important;
   margin-bottom: 14px !important;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.22) !important;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, var(--post-shadow, 0.22)) !important;
   backdrop-filter: blur(16px);
   overflow: visible;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
@@ -38,8 +57,8 @@
 #nf-post-container .nf-post:hover,
 .nf-post:hover {
   transform: none !important;
-  border-color: rgba(255, 255, 255, 0.12) !important;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28) !important;
+  border-color: var(--post-border) !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, calc(var(--post-shadow, 0.22) + 0.06)) !important;
 }
 
 /* Header */
@@ -206,10 +225,10 @@
 }
 
 .nf-post .header .post-option-menu {
-  background: #1a1d22 !important;
+  background: var(--post-bg-elevated, #1a1d22) !important;
   border: 1px solid var(--post-border);
   border-radius: 12px !important;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, calc(var(--post-shadow, 0.22) + 0.23));
   overflow: hidden;
   z-index: 40;
   position: absolute;
@@ -270,7 +289,7 @@
   border-radius: 50% !important;
   margin: 0 auto !important;
   overflow: hidden;
-  border: 2px solid rgba(255, 255, 255, 0.1);
+  border: 2px solid var(--post-border);
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
 }
 
@@ -452,7 +471,7 @@
 .nf-post .footer .new-comment .comment-field {
   min-height: 40px !important;
   border-radius: 22px !important;
-  background: rgba(255, 255, 255, 0.05) !important;
+  background: var(--post-input-bg, rgba(255, 255, 255, 0.05)) !important;
   border: 1px solid var(--post-border) !important;
   padding-right: 8px !important;
 }
@@ -460,6 +479,7 @@
 .nf-post .footer .new-comment .field-comment-text {
   font-size: 0.92rem !important;
   min-height: 38px !important;
+  color: var(--post-text) !important;
 }
 
 .nf-post .footer .new-comment .comment-attachment {

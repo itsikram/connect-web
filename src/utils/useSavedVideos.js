@@ -1,4 +1,4 @@
-import { showVideoSavedToast, showInfoToast, showErrorToast, showSuccessToast } from "./toastUtils";
+import { showVideoSavedToast, showInfoToast, showErrorToast } from "./toastUtils";
 import { downloadFileWithProgress } from "./downloadFileWithProgress";
 import {
   startWatchDownload,
@@ -101,28 +101,37 @@ const saveVideoToBackend = async (id, metadata, sourceUrl) => {
  * Also saves metadata to backend for persistent history.
  * Immediately shows a "Downloading…" alert/toast.
  */
-export const saveVideoFromUrl = async (id, url, metadata) => {
+export const saveVideoFromUrl = async (id, url, metadata, options = {}) => {
+  const { silent = false } = options;
+
   if (!id || !url) {
-    showErrorToast('Missing video URL', { title: 'Download Error' });
+    if (!silent) {
+      showErrorToast('Missing video URL', { title: 'Download Error' });
+    }
     return false;
   }
 
   const existing = getWatchDownload(id);
   if (existing && existing.status === 'downloading') {
-    showInfoToast('This video is already downloading…', {
-      title: 'Download in progress',
-      autoClose: 2500,
-    });
+    if (!silent) {
+      showInfoToast('This video is already downloading…', {
+        title: 'Download in progress',
+        autoClose: 2500,
+        toastId: `video-download-${id}`,
+      });
+    }
     return false;
   }
 
   const title = metadata?.caption || 'Watch video';
 
-  // Instant feedback
-  showInfoToast(`Downloading "${title}"…`, {
-    title: 'Downloading',
-    autoClose: 3500,
-  });
+  if (!silent) {
+    showInfoToast(`Downloading "${title}"…`, {
+      title: 'Downloading',
+      autoClose: 3500,
+      toastId: `video-download-${id}`,
+    });
+  }
   startWatchDownload(id, metadata);
 
   try {
@@ -148,22 +157,23 @@ export const saveVideoFromUrl = async (id, url, metadata) => {
     await saveVideoToBackend(id, metadata, url);
 
     completeWatchDownload(id);
-    showSuccessToast('Video saved to Saved Videos', {
-      title: 'Download Complete',
-      autoClose: 2500,
-    });
-    showVideoSavedToast(
-      title,
-      metadata?.author?.profilePic,
-      `/downloads/${metadata?._id || id}`
-    );
+    if (!silent) {
+      showVideoSavedToast(
+        title,
+        metadata?.author?.profilePic,
+        `/downloads/${metadata?._id || id}`,
+        { toastId: `video-saved-${id}`, autoClose: 3500 }
+      );
+    }
     console.log('[saveVideoFromUrl] ✓ Complete!');
     return true;
   } catch (err) {
     console.error('[saveVideoFromUrl] ❌ Failed:', err);
     const message = err?.message || 'Failed to download video';
     failWatchDownload(id, message);
-    showErrorToast(message, { title: 'Download Error' });
+    if (!silent) {
+      showErrorToast(message, { title: 'Download Error', toastId: `video-error-${id}` });
+    }
     return false;
   }
 };

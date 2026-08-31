@@ -1,151 +1,88 @@
 import React, { Fragment, useCallback, useEffect, useState, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { useSelector } from "react-redux";
 import CreatePost from "../post/CreatePost";
 import Post from "../post/Post";
-import ProfileDetails from "./ProfileDetails";
-import api from "../../api/api";
-import $ from 'jquery'
 import PostSkeleton from "../../skletons/post/PostSkeleton";
-import { fetchProfileCached, fetchProfilePostsCached, primeCachedResource } from "../../utils/requestCache";
+import { fetchProfilePostsCached, primeCachedResource } from "../../utils/requestCache";
 
-
-let PorfilePosts = () => {
-    let { profile } = useParams()
-    let myProfileData = useSelector(state => state.profile) || {}
-    let isAuth = myProfileData._id === profile
-    let [profileData, setProfileData] = useState(false)
-    const [posts, setPosts] = useState([])
-    const [bio, setBio] = useState(myProfileData.bio)
-    let navigate = useNavigate()
-    let postContainer = useRef(null)
-    const [hasLoadedPosts, setHasLoadedPosts] = useState(false)
+const PorfilePosts = () => {
+    const { profile } = useParams();
+    const myProfileData = useSelector((state) => state.profile) || {};
+    const isAuth = myProfileData._id === profile || myProfileData.username === profile;
+    const [posts, setPosts] = useState([]);
+    const postContainer = useRef(null);
+    const [hasLoadedPosts, setHasLoadedPosts] = useState(false);
+    const [postsLoading, setPostsLoading] = useState(true);
 
     useEffect(() => {
         if (!profile) return;
 
-        setHasLoadedPosts(false)
+        setHasLoadedPosts(false);
+        setPostsLoading(true);
 
-        Promise.all([
-            fetchProfilePostsCached(profile, { ttlMs: 60000, storageTtlMs: 180000 }),
-            fetchProfileCached(profile, { ttlMs: 60000, storageTtlMs: 300000 }),
-        ]).then(([postsResponse, profileResponse]) => {
-            setPosts(Array.isArray(postsResponse) ? postsResponse : [])
-            setProfileData(profileResponse)
-            setBio(profileResponse?.bio || myProfileData.bio || '')
-        }).catch(e => {
-            console.log(e)
-            setPosts([])
-        }).finally(() => {
-            setHasLoadedPosts(true)
-        })
-
-    }, [profile, myProfileData.bio])
-
-
+        fetchProfilePostsCached(profile, { ttlMs: 60000, storageTtlMs: 180000 })
+            .then((postsResponse) => {
+                setPosts(Array.isArray(postsResponse) ? postsResponse : []);
+            })
+            .catch((e) => {
+                console.log(e);
+                setPosts([]);
+            })
+            .finally(() => {
+                setHasLoadedPosts(true);
+                setPostsLoading(false);
+            });
+    }, [profile]);
 
     useEffect(() => {
-        if (!profile || !hasLoadedPosts) return
-
-        primeCachedResource(`profilePosts:${profile}`, posts)
-    }, [hasLoadedPosts, posts, profile])
+        if (!profile || !hasLoadedPosts) return;
+        primeCachedResource(`profilePosts:${profile}`, posts);
+    }, [hasLoadedPosts, posts, profile]);
 
     const handlePostDeleted = useCallback((postId) => {
-        setPosts(currentPosts => currentPosts.filter(post => post?._id !== postId))
-    }, [])
+        setPosts((currentPosts) => currentPosts.filter((post) => post?._id !== postId));
+    }, []);
 
     const handlePostUpdated = useCallback((updatedPost) => {
-        if (!updatedPost?._id) return
-
-        setPosts(currentPosts => currentPosts.map(post =>
-            post?._id === updatedPost._id ? { ...post, ...updatedPost } : post
-        ))
-    }, [])
-
-    // handle edit bio functions
-    let updateBioData = (e) => {
-        setBio(e.target.value)
-    }
-    let handleEditBio = async (e) => {
-        try {
-            let target = e.currentTarget
-
-            if ($(target).hasClass('edit-button')) {
-                $(target).siblings('.bio-text').hide()
-                $(target).siblings('.bio-text-textarea').show()
-                $(target).siblings('.bio-text-textarea').val(bio)
-                $(target).removeClass('edit-button')
-                $(target).addClass('save-button')
-                $(target).text('Save Bio')
-            } else {
-                let res = await api.post('/profile/update/bio', { bio })
-                $(target).text('Edit Bio')
-                $(target).siblings('.bio-text').show()
-                $(target).removeClass('save-button')
-                $(target).siblings('.bio-text-textarea').hide()
-                $(target).addClass('edit-button')
-
-            }
-
-
-        } catch (e) {
-            console.log(e)
-        }
-    }
-
-    let handleEditProfileDetails = useCallback(e => {
-        navigate('/settings/')
-    }, [navigate])
-
-
+        if (!updatedPost?._id) return;
+        setPosts((currentPosts) =>
+            currentPosts.map((post) =>
+                post?._id === updatedPost._id ? { ...post, ...updatedPost } : post
+            )
+        );
+    }, []);
 
     return (
         <Fragment>
             <div id="profile-post-content">
-                <div className="intro">
-                    <h4 className="section-title">Intro</h4>
-                    <div className="profile-bio">
-                        <p className="bio-text">
-                            {bio}
-                        </p>
-                        <textarea onChange={updateBioData} value={bio} className={"bio-text-textarea"}>
-
-                        </textarea>
-                        {
-                            isAuth && <div onClick={handleEditBio} className="edit-button"> Edit bio</div>
-                        }
-
-                    </div>
-                    <div className="details">
-                        <ProfileDetails />
-                        {
-                            isAuth && <div onClick={handleEditProfileDetails} className="edit-button"> Edit Details</div>
-
-                        }
-                    </div>
-                </div>
                 <div ref={postContainer} className="posts-container">
-                    {
-                        isAuth && <CreatePost setPosts={setPosts} posts={posts}></CreatePost>
-                    }
+                    {isAuth && <CreatePost setPosts={setPosts} posts={posts}></CreatePost>}
 
-                    {posts.length > 0 ? posts.map((data, index) => {
-                        return <Post key={data._id} myProfile={myProfileData} postContainer={postContainer} data={data} index={index} onPostDeleted={handlePostDeleted} onPostUpdated={handlePostUpdated}></Post>
-                    })
-                        : hasLoadedPosts ? (
-                            <div className="no-posts-message text-center py-4">
-                                <h4>No posts yet</h4>
-                                <p>{isAuth ? "Share your first post to get started." : "This user hasn't posted anything yet."}</p>
-                            </div>
-                        ) : (
-                            <PostSkeleton count={3} />
-                        )
-                    }
+                    {postsLoading && <PostSkeleton count={3} />}
 
+                    {!postsLoading && posts.length === 0 && (
+                        <div className="profile-placeholder-card no-posts-message">
+                            {isAuth ? "No posts yet." : "No posts yet."}
+                        </div>
+                    )}
+
+                    {!postsLoading &&
+                        posts.map((data, index) => (
+                            <Post
+                                key={data._id}
+                                myProfile={myProfileData}
+                                postContainer={postContainer}
+                                data={data}
+                                index={index}
+                                onPostDeleted={handlePostDeleted}
+                                onPostUpdated={handlePostUpdated}
+                            ></Post>
+                        ))}
                 </div>
             </div>
         </Fragment>
-    )
-}
+    );
+};
 
 export default PorfilePosts;

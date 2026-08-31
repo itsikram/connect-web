@@ -14,6 +14,8 @@ import { getPipPlaylistIndex } from "../../utils/watchPipHelpers";
 import "./WatchPipPlayer.css";
 
 const EDGE_PAD = 8;
+const CLOSE_LONG_PRESS_MS = 500;
+const CLOSE_LONG_PRESS_MOVE_PX = 12;
 
 const clampPos = (x, y, width, height) => {
   const maxX = Math.max(EDGE_PAD, window.innerWidth - width - EDGE_PAD);
@@ -71,6 +73,9 @@ const WatchPipPlayer = () => {
   const [minimized, setMinimized] = useState(false);
   const [dock, setDock] = useState("right");
   const dragState = useRef(null);
+  const closeLongPressTimerRef = useRef(null);
+  const closeLongPressTriggeredRef = useRef(false);
+  const closeLongPressStartRef = useRef({ x: 0, y: 0 });
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
@@ -570,6 +575,15 @@ const WatchPipPlayer = () => {
     return () => window.removeEventListener("resize", onResize);
   }, [pos]);
 
+  const clearCloseLongPress = useCallback(() => {
+    if (closeLongPressTimerRef.current) {
+      window.clearTimeout(closeLongPressTimerRef.current);
+      closeLongPressTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => clearCloseLongPress(), [clearCloseLongPress]);
+
   if (!pip) return null;
 
   const togglePlay = (e) => {
@@ -632,9 +646,50 @@ const WatchPipPlayer = () => {
   };
 
   const handleClose = (e) => {
-    e.stopPropagation();
+    e?.stopPropagation?.();
     pauseCurrent();
     closePip();
+  };
+
+  const handleMiniPlayPointerDown = (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    e.stopPropagation();
+    closeLongPressTriggeredRef.current = false;
+    closeLongPressStartRef.current = { x: e.clientX, y: e.clientY };
+    clearCloseLongPress();
+    closeLongPressTimerRef.current = window.setTimeout(() => {
+      closeLongPressTriggeredRef.current = true;
+      closeLongPressTimerRef.current = null;
+      handleClose(e);
+    }, CLOSE_LONG_PRESS_MS);
+  };
+
+  const handleMiniPlayPointerMove = (e) => {
+    if (!closeLongPressTimerRef.current) return;
+    const dx = Math.abs(e.clientX - closeLongPressStartRef.current.x);
+    const dy = Math.abs(e.clientY - closeLongPressStartRef.current.y);
+    if (dx > CLOSE_LONG_PRESS_MOVE_PX || dy > CLOSE_LONG_PRESS_MOVE_PX) {
+      clearCloseLongPress();
+    }
+  };
+
+  const handleMiniPlayPointerUp = () => {
+    clearCloseLongPress();
+  };
+
+  const handleMiniPlayClick = (e) => {
+    if (closeLongPressTriggeredRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      closeLongPressTriggeredRef.current = false;
+      return;
+    }
+    togglePlay(e);
+  };
+
+  const handleMiniPlayContextMenu = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
   };
 
   const onPointerDown = (e) => {
@@ -761,9 +816,22 @@ const WatchPipPlayer = () => {
           <button
             type="button"
             className="watch-pip-btn watch-pip-btn-primary"
-            onClick={togglePlay}
-            title={paused ? "Play" : "Pause"}
-            aria-label={paused ? "Play" : "Pause"}
+            onClick={handleMiniPlayClick}
+            onPointerDown={handleMiniPlayPointerDown}
+            onPointerMove={handleMiniPlayPointerMove}
+            onPointerUp={handleMiniPlayPointerUp}
+            onPointerCancel={handleMiniPlayPointerUp}
+            onContextMenu={handleMiniPlayContextMenu}
+            title={
+              paused
+                ? "Play (long-press to close)"
+                : "Pause (long-press to close)"
+            }
+            aria-label={
+              paused
+                ? "Play. Long press to close player"
+                : "Pause. Long press to close player"
+            }
           >
             <i className={`fas ${paused ? "fa-play" : "fa-pause"}`} />
           </button>

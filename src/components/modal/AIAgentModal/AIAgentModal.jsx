@@ -54,8 +54,10 @@ import { fetchAiProviderStatus, warmupCursorProvider } from "../../../services/l
 import AgentSettingsPanel from "./AgentSettingsPanel";
 import {
   getInstantAgentReply,
-  looksLikeAppCommand,
+  looksLikeConnectCommand,
+  looksLikePersonalChat,
 } from "./agentFastPath";
+import useAgentSpeech from "../../../hooks/useAgentSpeech";
 
 const createId = () => Date.now() + Math.random();
 
@@ -64,7 +66,7 @@ const INITIAL_MESSAGE = {
   type: "agent",
   meta: "welcome",
   content:
-    'Hi! I\'m your AI Agent 🤖 I remember this chat, so you can say "that video" or "invite him". I can download YouTube videos, start Ludo and invite friends, publish or delete posts, manage notes, tasks, and calendar, open the video player, log health and recovery, and update settings.\n\nTry: "download this YouTube link", "invite Atik to Ludo", "post I am feeling good", "add an event tomorrow at 5pm".',
+    'Hi! I\'m your AI Agent 🤖 Tap the headset to talk with me live — I\'ll listen, speak answers, and run app actions. I remember this chat, so you can say "that video" or "invite him". Ask me anything, or try: "download this YouTube link", "invite Atik to Ludo", "post I am feeling good".',
   timestamp: new Date(),
 };
 
@@ -73,7 +75,7 @@ const isWelcomeMessage = (message) =>
   (message?.type === "agent" &&
     String(message.content || "").startsWith("Hi! I'm your AI Agent"));
 
-const toLlmHistory = (messages = [], limit = 6) =>
+const toLlmHistory = (messages = [], limit = 8) =>
   messages
     .filter((item) => {
       if (isWelcomeMessage(item)) return false;
@@ -84,7 +86,7 @@ const toLlmHistory = (messages = [], limit = 6) =>
     .map((item) => ({
       role: item.type === "user" ? "user" : "assistant",
       content:
-        item.content.length > 240 ? `${item.content.slice(0, 239)}…` : item.content,
+        item.content.length > 320 ? `${item.content.slice(0, 319)}…` : item.content,
     }));
 
 const buildAppContext = (myProfile) => {
@@ -187,6 +189,17 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   const [isFetchingHistory, setIsFetchingHistory] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [llmInfo, setLlmInfo] = useState(() => getResolvedAgentSettings());
+  const [liveTalkOn, setLiveTalkOn] = useState(false);
+  const {
+    supported: speechSupported,
+    speaking: isAgentSpeaking,
+    speak: speakText,
+    feed: feedSpeech,
+    flush: flushSpeech,
+    cancel: cancelSpeech,
+  } = useAgentSpeech();
+  const liveTalkOnRef = useRef(false);
+  const spokenMessageIdsRef = useRef(new Set());
 
   // Fetch chat history from database
   const fetchChatHistory = useCallback(async () => {
@@ -218,6 +231,10 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  useEffect(() => {
+    liveTalkOnRef.current = liveTalkOn;
+  }, [liveTalkOn]);
 
   useEffect(() => {
     return () => {
@@ -290,8 +307,10 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       pendingIntentRef.current = null;
       setSettingsOpen(false);
       streamAbortRef.current?.abort();
+      setLiveTalkOn(false);
+      cancelSpeech();
     }
-  }, [isOpen]);
+  }, [isOpen, cancelSpeech]);
 
   useEffect(() => {
     setLlmInfo(getResolvedAgentSettings());
@@ -397,6 +416,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         streamRafRef.current = 0;
       }
       streamPendingRef.current = null;
+      cancelSpeech();
       setMessages((prev) => [
         ...prev
           .filter((msg) => !(msg.streaming && !String(msg.content || "").trim()))
@@ -411,12 +431,16 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         },
       ]);
       setInputValue("");
+      setIsLoading(true);
       const generation = ++sendGenerationRef.current;
       const originalText = text.trim();
       rememberUserText(myProfile?._id, originalText);
       const stillCurrent = () => generation === sendGenerationRef.current;
 
-      const history = toLlmHistory(messagesRef.current, 4);
+      const history = toLlmHistory(
+        messagesRef.current,
+        liveTalkOnRef.current ? 8 : 6,
+      );
 
       const flushStreamMessage = (id, content, streaming) => {
         streamPendingRef.current = { id, content, streaming };
@@ -477,6 +501,9 @@ const AIAgentModal = ({ isOpen, onClose }) => {
               flushStreamMessage(streamId, next, true);
             },
             signal: abort.signal,
+            voice: liveTalkOnRef.current,
+            userName: getFriendDisplayName(myProfile),
+            memory: getMemoryPromptBlock(myProfile?._id),
           });
           if (!stillCurrent()) return;
           flushStreamMessage(
@@ -637,7 +664,9 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         if (!nextIntent?.action) return false;
 
         const autoRun = Boolean(
-          options.forceExecute || autoRunActionsRef.current,
+          options.forceExecute ||
+            autoRunActionsRef.current ||
+            liveTalkOnRef.current,
         );
         const missingSlots = getMissingIntentSlots(nextIntent);
         if (missingSlots.length > 0) {
@@ -885,15 +914,15 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         setIsLoading(true);
 
         const providerId = getResolvedAgentSettings().provider;
-        if (
-          providerId === "cursor" ||
-          (!pendingSnapshot &&
-            (!looksLikeAppCommand(originalText) ||
-              looksLikeQuestion(originalText) ||
-              /^(please\s+)?(tell me|send me|give me|write|explain)\b/i.test(
-                originalText,
-              )))
-        ) {
+        const wantsConversation =
+          !pendingSnapshot &&
+          (looksLikePersonalChat(originalText) ||
+            looksLikeQuestion(originalText) ||
+            /^(please\s+)?(tell me|send me|give me|write|explain)\b/i.test(
+              originalText,
+            ) ||
+            !looksLikeConnectCommand(originalText));
+        if (wantsConversation || providerId === "cursor") {
           await streamAgentReply(originalText, history);
           return;
         }
@@ -1010,11 +1039,14 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       addMessage,
       handleFriendAction,
       handlePlayVideo,
+      cancelSpeech,
     ],
   );
 
   useEffect(() => {
-    if (!isOpen || !autoRunActions || messages.length === 0) return;
+    if (!isOpen || (!autoRunActions && !liveTalkOn) || messages.length === 0) {
+      return;
+    }
 
     const latestMessage = messages[messages.length - 1];
     if (autoRunMessageIdsRef.current.has(latestMessage.id)) return;
@@ -1026,7 +1058,39 @@ const AIAgentModal = ({ isOpen, onClose }) => {
     Promise.resolve(action()).catch((error) => {
       console.error("[AIAgentModal] Auto-run action failed:", error);
     });
-  }, [messages, autoRunActions, isOpen]);
+  }, [messages, autoRunActions, liveTalkOn, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !liveTalkOn) return;
+    const latest = messages[messages.length - 1];
+    if (!latest || latest.type === "user" || isWelcomeMessage(latest)) return;
+    const content = String(latest.content || "").trim();
+    if (!content) return;
+
+    if (latest.streaming) {
+      feedSpeech(latest.id, content);
+      return;
+    }
+
+    if (spokenMessageIdsRef.current.has(latest.id)) return;
+    spokenMessageIdsRef.current.add(latest.id);
+    flushSpeech(latest.id, content);
+  }, [messages, liveTalkOn, isOpen, feedSpeech, flushSpeech]);
+
+  const handleToggleLiveTalk = useCallback(() => {
+    setLiveTalkOn((on) => {
+      const next = !on;
+      if (next) {
+        messagesRef.current.forEach((item) => {
+          if (item?.id != null) spokenMessageIdsRef.current.add(item.id);
+        });
+        speakText("I'm listening.");
+      } else {
+        cancelSpeech();
+      }
+      return next;
+    });
+  }, [speakText, cancelSpeech]);
 
   // ── Sidebar action panel clicks ─────────────────────────────────────────────
   const handleActionClick = useCallback(
@@ -1056,6 +1120,8 @@ const AIAgentModal = ({ isOpen, onClose }) => {
     skipSaveRef.current = true;
     pendingIntentRef.current = null;
     setSettingsOpen(false);
+    setLiveTalkOn(false);
+    cancelSpeech();
     setMessages([
       { ...INITIAL_MESSAGE, id: createId(), timestamp: new Date() },
     ]);
@@ -1067,7 +1133,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
     } finally {
       skipSaveRef.current = false;
     }
-  }, [isLoading, messages, myProfile?._id]);
+  }, [isLoading, messages, myProfile?._id, cancelSpeech]);
 
   const toggleSidebar = () => setIsSidebarOpen((v) => !v);
 
@@ -1159,6 +1225,10 @@ const AIAgentModal = ({ isOpen, onClose }) => {
                   userProfilePic={myProfile?.profilePic}
                   autoRunActions={autoRunActions}
                   modalInteractionVersion={modalInteractionVersion}
+                  liveTalkOn={liveTalkOn}
+                  onToggleLiveTalk={handleToggleLiveTalk}
+                  isSpeaking={isAgentSpeaking}
+                  speechSupported={speechSupported}
                 />
               </div>
             </div>
