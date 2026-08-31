@@ -250,10 +250,8 @@ api.interceptors.request.use(
       }
 
       if (String(requestConfig.url || "").includes("ai-chat/complete")) {
-        requestConfig.timeout = Math.max(
-          Number(requestConfig.timeout) || 0,
-          180000,
-        );
+        const requested = Number(requestConfig.timeout) || 0;
+        requestConfig.timeout = Math.max(requested, 25000);
       }
 
       if (token) {

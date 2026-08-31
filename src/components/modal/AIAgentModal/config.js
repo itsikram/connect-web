@@ -39,15 +39,15 @@ export const AIAgentConfig = {
   UI: {
     // Colors
     COLORS: {
-      PRIMARY_GRADIENT_START: "#6366f1",
-      PRIMARY_GRADIENT_END: "#8b5cf6",
-      SECONDARY_GRADIENT_START: "#3b82f6",
-      SECONDARY_GRADIENT_END: "#0ea5e9",
-      TEXT_PRIMARY: "#1f2937",
-      TEXT_SECONDARY: "#6b7280",
-      BORDER: "#e5e7eb",
-      BACKGROUND: "#ffffff",
-      BACKGROUND_SECONDARY: "#f8f9fa",
+      PRIMARY_GRADIENT_START: "#00d4ff",
+      PRIMARY_GRADIENT_END: "#0099cc",
+      SECONDARY_GRADIENT_START: "#33e0ff",
+      SECONDARY_GRADIENT_END: "#00d4ff",
+      TEXT_PRIMARY: "#e4e6eb",
+      TEXT_SECONDARY: "#b0b3b8",
+      BORDER: "rgba(255, 255, 255, 0.08)",
+      BACKGROUND: "#1c1e21",
+      BACKGROUND_SECONDARY: "#161718",
     },
 
     // Sizes

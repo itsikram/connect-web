@@ -4,16 +4,19 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #f8f4ff;
-  border: 1px solid #e8e0ff;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
   padding: 8px 10px;
   margin-top: 6px;
-  transition: background 0.18s;
+  transition: background 0.18s, border-color 0.18s;
   -webkit-tap-highlight-color: transparent;
 }
 
-.vrc-card:hover  { background: #f0e8ff; }
+.vrc-card:hover  {
+  background: rgba(0, 212, 255, 0.08);
+  border-color: rgba(0, 212, 255, 0.22);
+}
 .vrc-card.compact { padding: 6px 8px; }
 
 /* Thumbnail */
@@ -24,7 +27,7 @@
   border-radius: 8px;
   overflow: hidden;
   position: relative;
-  background: #ddd;
+  background: #3a3b3c;
 }
 
 .vrc-card.compact .vrc-thumb { width: 50px; height: 36px; }
@@ -38,12 +41,12 @@
 .vrc-thumb-placeholder {
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+  background: linear-gradient(135deg, #00d4ff, #0099cc);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: #0a0a0b;
   font-size: 11px;
   gap: 2px;
 }
@@ -78,7 +81,7 @@
   margin: 0;
   font-size: 13px;
   font-weight: 600;
-  color: #1f2937;
+  color: #e4e6eb;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -87,7 +90,7 @@
 
 .vrc-author {
   font-size: 11px;
-  color: #6b7280;
+  color: #b0b3b8;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -101,8 +104,8 @@
   padding: 7px 13px;
   border: none;
   border-radius: 8px;
-  background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
-  color: #fff;
+  background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+  color: #0a0a0b;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -112,7 +115,7 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-.vrc-play-btn:hover { box-shadow: 0 4px 12px rgba(99, 102, 241, 0.45); }
+.vrc-play-btn:hover { box-shadow: 0 4px 12px rgba(0, 212, 255, 0.45); }
 .vrc-play-btn i { font-size: 11px; }
 
 /* Very small screens */
@@ -125,12 +128,4 @@
     width: 100%;
     justify-content: center;
   }
-}
-
-/* Dark mode */
-@media (prefers-color-scheme: dark) {
-  .vrc-card  { background: #1e1a2e; border-color: #2d2848; }
-  .vrc-card:hover { background: #251f3d; }
-  .vrc-title { color: #e8e4f8; }
-  .vrc-author { color: #7a6fa6; }
 }

@@ -59,6 +59,28 @@ const VideoPlayer = () => {
   }, []);
 
   const [customVideos, setCustomVideos] = useState(() => loadCustomPlaylist());
+  const playUrlHandledRef = useRef(false);
+
+  useEffect(() => {
+    const playUrl = String(location.state?.playUrl || "").trim();
+    if (!playUrl || playUrlHandledRef.current) return;
+    playUrlHandledRef.current = true;
+    const newVideo = normalizePlaylistItem({
+      id: `agent-${Date.now()}`,
+      url: playUrl,
+      title: location.state?.playTitle || "Video",
+      type: "url",
+      online: true,
+    });
+    if (!newVideo) return;
+    setCustomVideos((prev) => {
+      if (prev.some((video) => video.url === playUrl || video.id === newVideo.id)) {
+        return prev;
+      }
+      return [...prev, newVideo];
+    });
+  }, [location.state]);
+
   const [watchVideos, setWatchVideos] = useState(() =>
     watchesToPlaylistItems(
       WatchCacheManager.getCachedFeed(myProfileId) || [],
@@ -352,6 +374,15 @@ const VideoPlayer = () => {
       urls.clear();
     };
   }, []);
+
+  useEffect(() => {
+    const playUrl = String(location.state?.playUrl || "").trim();
+    if (!playUrl || filteredVideos.length === 0) return;
+    const idx = filteredVideos.findIndex((video) => video.url === playUrl);
+    if (idx >= 0 && idx !== currentVideoIndex) {
+      setCurrentVideoIndex(idx);
+    }
+  }, [location.state, filteredVideos, currentVideoIndex]);
 
   useEffect(() => {
     const resumeState = location.state;

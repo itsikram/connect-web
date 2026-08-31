@@ -3,6 +3,7 @@ import {
   getCursorServerConfigured,
   setCursorServerConfigured,
   setCursorLiveModels,
+  applyPlatformAiDefaults,
 } from "./aiAgentSettings";
 
 const extractGeminiText = (data) =>
@@ -39,6 +40,17 @@ const toGeminiContents = (messages = []) => {
   return contents;
 };
 
+const supportsGeminiThinkingOff = (model = "") =>
+  /gemini-(2\.5|3)/i.test(String(model));
+
+const withGeminiSpeedConfig = (model, generationConfig) => {
+  if (!supportsGeminiThinkingOff(model)) return generationConfig;
+  return {
+    ...generationConfig,
+    thinkingConfig: { thinkingBudget: 0 },
+  };
+};
+
 const requestGemini = async ({
   model,
   apiKeys,
@@ -70,6 +82,28 @@ const requestGemini = async ({
     if (response.ok) {
       activeGeminiKeyIndex = keyIndex;
       return data;
+    }
+
+    if (
+      response.status === 400 &&
+      requestBody?.generationConfig?.thinkingConfig
+    ) {
+      delete requestBody.generationConfig.thinkingConfig;
+      const retry = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+          model,
+        )}:generateContent?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+        },
+      );
+      const retryData = await retry.json().catch(() => null);
+      if (retry.ok) {
+        activeGeminiKeyIndex = keyIndex;
+        return retryData;
+      }
     }
 
     const errorMessage =
@@ -111,13 +145,13 @@ const completeGemini = async ({
   const requestBody = {
     systemInstruction: system ? { parts: [{ text: system }] } : undefined,
     contents: toGeminiContents(messages),
-    generationConfig: {
+    generationConfig: withGeminiSpeedConfig(settings.model, {
       temperature,
-      topK: 32,
-      topP: 0.9,
+      topK: 20,
+      topP: 0.85,
       maxOutputTokens: maxTokens,
       ...(json ? { responseMimeType: "application/json" } : {}),
-    },
+    }),
   };
 
   let data;
@@ -132,12 +166,12 @@ const completeGemini = async ({
     if (!json) throw error;
     const fallbackBody = {
       ...requestBody,
-      generationConfig: {
+      generationConfig: withGeminiSpeedConfig(settings.model, {
         temperature,
-        topK: 32,
-        topP: 0.9,
+        topK: 20,
+        topP: 0.85,
         maxOutputTokens: maxTokens,
-      },
+      }),
     };
     data = await requestGemini({
       model: settings.model,
@@ -154,6 +188,14 @@ const completeGemini = async ({
   return text;
 };
 
+let apiClientPromise = null;
+const getApiClient = () => {
+  if (!apiClientPromise) {
+    apiClientPromise = import("../api/api").then((mod) => mod.default);
+  }
+  return apiClientPromise;
+};
+
 const completeViaServer = async ({
   settings,
   system,
@@ -163,7 +205,7 @@ const completeViaServer = async ({
   maxTokens,
 }) => {
   try {
-    const { default: api } = await import("../api/api");
+    const api = await getApiClient();
     const payload = {
       provider: settings.provider,
       model: settings.model,
@@ -173,11 +215,15 @@ const completeViaServer = async ({
       temperature,
       maxTokens,
     };
-    if (settings.provider === "openai" && settings.apiKey) {
+    if (settings.provider === "openai" && settings.usingUserKey && settings.apiKey) {
       payload.apiKey = settings.apiKey;
     }
+    if (settings.provider === "gemini" && settings.usingUserKey && settings.apiKey) {
+      payload.apiKey = settings.apiKey;
+    }
+    const timeout = settings.provider === "cursor" ? 120000 : 25000;
     const response = await api.post("/ai-chat/complete", payload, {
-      timeout: settings.provider === "cursor" ? 180000 : 60000,
+      timeout,
     });
     const text = String(response.data?.text || "").trim();
     if (!text) {
@@ -199,6 +245,7 @@ export const fetchAiProviderStatus = async () => {
   try {
     const { default: api } = await import("../api/api");
     const response = await api.get("/ai-chat/providers");
+    applyPlatformAiDefaults(response.data || {});
     if (typeof response.data?.cursor?.configured === "boolean") {
       setCursorServerConfigured(response.data.cursor.configured);
     }
@@ -222,18 +269,18 @@ export const completeChat = async ({
   operationLabel = "AI request",
 } = {}) => {
   const settings = getResolvedAgentSettings();
-  if (settings.provider !== "cursor" && !settings.hasKey) {
+  if (!settings.hasKey) {
     throw new Error(
-      `No API key configured for ${settings.meta.shortLabel}. Open AI Agent settings and add a key.`,
+      `No API key configured for ${settings.meta.shortLabel}. Add it in Connect Admin → Settings → AI, or paste a personal key here.`,
     );
   }
-  if (settings.provider === "cursor" && settings.cursorServerConfigured === false) {
+  if (settings.providerEnabled === false) {
     throw new Error(
-      "CURSOR_API_KEY is not set on the server. Add it to server/.env and restart Node.",
+      `${settings.meta.shortLabel} is disabled in Connect Admin AI settings.`,
     );
   }
 
-  if (settings.provider === "gemini") {
+  if (settings.provider === "gemini" && settings.apiKey) {
     return completeGemini({
       settings,
       system,

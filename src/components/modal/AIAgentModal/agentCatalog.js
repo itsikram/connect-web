@@ -61,7 +61,18 @@ export const AGENT_ACTIONS = {
   EDIT_TASK: "EDIT_TASK",
   DELETE_TASK: "DELETE_TASK",
   CREATE_EVENT: "CREATE_EVENT",
+  EDIT_EVENT: "EDIT_EVENT",
+  DELETE_EVENT: "DELETE_EVENT",
   CREATE_HABIT: "CREATE_HABIT",
+  EDIT_HABIT: "EDIT_HABIT",
+  DELETE_HABIT: "DELETE_HABIT",
+  DELETE_POST: "DELETE_POST",
+  DOWNLOAD_YOUTUBE: "DOWNLOAD_YOUTUBE",
+  OPEN_VIDEO_PLAYER: "OPEN_VIDEO_PLAYER",
+  UPDATE_SETTINGS: "UPDATE_SETTINGS",
+  LOG_HEALTH: "LOG_HEALTH",
+  LOG_RECOVERY: "LOG_RECOVERY",
+  RECOVERY_SUPPORT: "RECOVERY_SUPPORT",
   ADD_RECOVERY_DATA: "ADD_RECOVERY_DATA",
   UPDATE_LANGUAGE_SETTINGS: "UPDATE_LANGUAGE_SETTINGS",
 
@@ -121,9 +132,20 @@ export const NO_FRIEND_ACTIONS = new Set([
   AGENT_ACTIONS.EDIT_TASK,
   AGENT_ACTIONS.DELETE_TASK,
   AGENT_ACTIONS.CREATE_EVENT,
+  AGENT_ACTIONS.EDIT_EVENT,
+  AGENT_ACTIONS.DELETE_EVENT,
   AGENT_ACTIONS.CREATE_HABIT,
+  AGENT_ACTIONS.EDIT_HABIT,
+  AGENT_ACTIONS.DELETE_HABIT,
   AGENT_ACTIONS.CREATE_POST,
+  AGENT_ACTIONS.DELETE_POST,
   AGENT_ACTIONS.CREATE_STORY,
+  AGENT_ACTIONS.DOWNLOAD_YOUTUBE,
+  AGENT_ACTIONS.OPEN_VIDEO_PLAYER,
+  AGENT_ACTIONS.UPDATE_SETTINGS,
+  AGENT_ACTIONS.LOG_HEALTH,
+  AGENT_ACTIONS.LOG_RECOVERY,
+  AGENT_ACTIONS.RECOVERY_SUPPORT,
   AGENT_ACTIONS.ACCEPT_FRIEND,
   AGENT_ACTIONS.DECLINE_FRIEND,
   AGENT_ACTIONS.ADD_RECOVERY_DATA,
@@ -239,6 +261,32 @@ export const normalizeAgentAction = (action) => {
     ADD_HABIT: "CREATE_HABIT",
     ADD_EVENT: "CREATE_EVENT",
     ADD_CALENDAR: "CREATE_EVENT",
+    UPDATE_EVENT: "EDIT_EVENT",
+    UPDATE_CALENDAR: "EDIT_EVENT",
+    REMOVE_EVENT: "DELETE_EVENT",
+    DELETE_CALENDAR: "DELETE_EVENT",
+    ADD_HABIT: "CREATE_HABIT",
+    UPDATE_HABIT: "EDIT_HABIT",
+    REMOVE_HABIT: "DELETE_HABIT",
+    REMOVE_POST: "DELETE_POST",
+    DELETE_MY_POST: "DELETE_POST",
+    DOWNLOAD_YT: "DOWNLOAD_YOUTUBE",
+    DOWNLOAD_VIDEO: "DOWNLOAD_YOUTUBE",
+    YOUTUBE_DOWNLOAD: "DOWNLOAD_YOUTUBE",
+    PLAY_VIDEO_PLAYER: "OPEN_VIDEO_PLAYER",
+    OPEN_PLAYER: "OPEN_VIDEO_PLAYER",
+    PLAY_IN_PLAYER: "OPEN_VIDEO_PLAYER",
+    UPDATE_PRIVACY: "UPDATE_SETTINGS",
+    UPDATE_THEME: "UPDATE_SETTINGS",
+    CHANGE_THEME: "UPDATE_SETTINGS",
+    CHANGE_LANGUAGE: "UPDATE_LANGUAGE_SETTINGS",
+    LOG_WEIGHT: "LOG_HEALTH",
+    LOG_MEAL: "LOG_HEALTH",
+    LOG_WORKOUT: "LOG_HEALTH",
+    FITNESS_LOG: "LOG_HEALTH",
+    LOG_CRAVING: "LOG_RECOVERY",
+    RECOVERY_LOG: "LOG_RECOVERY",
+    REHAB_SUPPORT: "RECOVERY_SUPPORT",
     FRIEND_REQUESTS: "LIST_FRIENDS",
   };
 
@@ -418,13 +466,18 @@ const CONTENT_SLOT_ACTIONS = new Set([
   AGENT_ACTIONS.CREATE_TASK,
   AGENT_ACTIONS.EDIT_TASK,
   AGENT_ACTIONS.CREATE_EVENT,
+  AGENT_ACTIONS.EDIT_EVENT,
   AGENT_ACTIONS.CREATE_HABIT,
+  AGENT_ACTIONS.EDIT_HABIT,
   AGENT_ACTIONS.SEARCH_VIDEO,
   AGENT_ACTIONS.SEARCH_USERS,
   AGENT_ACTIONS.SEARCH_POSTS,
   AGENT_ACTIONS.SEARCH_APP,
   AGENT_ACTIONS.ADD_RECOVERY_DATA,
   AGENT_ACTIONS.UPDATE_LANGUAGE_SETTINGS,
+  AGENT_ACTIONS.LOG_HEALTH,
+  AGENT_ACTIONS.LOG_RECOVERY,
+  AGENT_ACTIONS.DOWNLOAD_YOUTUBE,
 ]);
 
 const ASK_FIELD_ALIASES = {
@@ -477,6 +530,13 @@ export const looksLikeQuestion = (text = "") => {
     /^(who|which|what|whom|whose|where|কাকে|কার|কি|কোন)\b/i.test(value) ||
     /\b(who|which|what)\b.+\??$/i.test(value)
   );
+};
+
+export const isFastLocalIntent = (intent, userText = "") => {
+  if (!intent?.action) return false;
+  const text = String(userText || "").trim();
+  if (text.length > 180 && looksLikeQuestion(text)) return false;
+  return true;
 };
 
 const hasValue = (value) => {
@@ -542,8 +602,22 @@ export const getSlotQuestion = (intent, slots = []) => {
     if (action === "EDIT_NOTE") return "What should I change the note to?";
     if (action === "CREATE_TASK") return "What task should I add?";
     if (action === "EDIT_TASK") return "What should the task say?";
-    if (action === "CREATE_EVENT") return "What event should I add?";
+    if (action === "CREATE_EVENT") return "What event should I add, and for which day?";
+    if (action === "EDIT_EVENT") return "Which event should I update, and what should it say?";
     if (action === "CREATE_HABIT") return "What habit should I add?";
+    if (action === "EDIT_HABIT") return "Which habit should I update, and what should it be called?";
+    if (action === "DOWNLOAD_YOUTUBE") {
+      return "Paste the YouTube link you want me to download.";
+    }
+    if (action === "UPDATE_SETTINGS") {
+      return "What should I change? Theme, privacy, location sharing, or notifications?";
+    }
+    if (action === "LOG_HEALTH") {
+      return "What should I log — weight, a meal with calories, or a workout?";
+    }
+    if (action === "LOG_RECOVERY" || action === "RECOVERY_SUPPORT") {
+      return "Tell me how you're feeling, a craving level (1–10), or how many days clean.";
+    }
     if (action === "SEARCH_VIDEO") return "Which video should I search for?";
     if (action === "SEARCH_USERS") return "Who are you looking for?";
     if (action === "SEARCH_POSTS" || action === "SEARCH_APP") {

@@ -3,12 +3,7 @@
  * Provider, model, and API keys always come from live AI Agent settings.
  */
 
-import {
-  ALLOWED_ACTIONS,
-  CONNECT_ROUTES,
-  QUERY_TYPES,
-  normalizeAskField,
-} from "../components/modal/AIAgentModal/agentCatalog";
+import { normalizeAskField } from "../components/modal/AIAgentModal/agentCatalog";
 import {
   completeChat,
   extractGeminiText,
@@ -22,49 +17,36 @@ import {
 
 export { parseGeminiApiKeys, isGeminiQuotaError, extractGeminiText };
 
-const SYSTEM_PROMPT = `You are a smart AI Agent embedded in "Connect", a social media app.
+const SYSTEM_PROMPT = `Connect in-app assistant. Use prior chat turns. Be brief (2-4 sentences). Confirm app actions; do not list steps.`;
 
-You can help users perform these actions directly in the app:
-• VIDEO_CALL / AUDIO_CALL – Call a friend
-• SEND_MESSAGE – Open a chat conversation
-• BUMP – Send a bump/poke to a friend
-• CREATE_LUDO / INVITE_LUDO – Play or invite to a Ludo game
-• BLOCK / UNBLOCK – Block or unblock someone
-• VIEW_PROFILE – Open someone's profile page
-• GET_LOCATION – Get a friend's last known location
-• ADD_FRIEND / UNFRIEND – Manage friend connections
-• LIST_FRIENDS / OPEN_MESSAGES / OPEN_FRIENDS – Navigate pages
-
-When users ask for information about a friend, such as their bio or location, answer in a short direct text style.
-
-When users ask to open, go to, or view something in the app, respond with a short navigation-style confirmation.
-
-When users ask to send, call, block, invite, or otherwise perform an action on someone, respond with a short friendly action-style confirmation. The action will be handled automatically by the app — you don't need to describe steps or buttons.
-
-For general conversation, content creation, captions, translations, or questions, respond helpfully and concisely (2-4 sentences max).
-
-Always be warm, direct, and helpful. Match the response type to what the user wants: direct answer for information, confirmation for navigation, and concise confirmation for app actions. Never list steps for app actions.`;
-
-const toChatMessages = (conversationHistory = [], message) => {
+const toChatMessages = (conversationHistory = [], message, limit = 10, clip = 400) => {
   const messages = [];
   let foundFirstUser = false;
-  for (const msg of conversationHistory) {
+  const history = conversationHistory.slice(-limit);
+  for (const msg of history) {
     const role = msg.role === "assistant" ? "assistant" : "user";
     if (!foundFirstUser && role !== "user") continue;
     foundFirstUser = true;
     const content = typeof msg.content === "string" ? msg.content : "";
     if (!content.trim()) continue;
-    messages.push({ role, content });
+    messages.push({
+      role,
+      content: content.length > clip ? `${content.slice(0, clip - 1)}…` : content,
+    });
   }
   if (message != null) {
-    messages.push({ role: "user", content: String(message) });
+    const content = String(message);
+    messages.push({
+      role: "user",
+      content: content.length > 500 ? `${content.slice(0, 499)}…` : content,
+    });
   }
   return messages;
 };
 
 const missingKeyResult = () => ({
   response:
-    "No API key is configured for the selected provider. Open AI Agent settings (gear icon) and add a key, or keep Gemini selected to use the app default.",
+    "No API key is configured for the selected provider. Add it in Connect Admin → Settings → AI, or paste a personal key in the agent gear menu.",
   suggestedAction: null,
   success: false,
 });
@@ -112,44 +94,51 @@ const extractJsonObject = (text = "") => {
   }
 };
 
-const AGENT_JSON_PROMPT = `You are the command interpreter for "Connect", a social app.
-Read the user's message (Bangla or English) and return ONLY JSON:
+const AGENT_JSON_PROMPT = `Connect interpreter. Use the conversation and memory. Return ONLY JSON:
+{"reply":"short","actions":[{"action":"NAME","targetName":null,"targetRoute":null,"subPath":"","label":"","searchQuery":"","messageText":"","queryType":null}],"ask":{"field":null,"question":null}}
+Follow-ups like him/her/that/it/yes continue the previous request. Never guess names.
+1 action or none for chat. Missing name/field -> ask.
+NAVIGATE targetRoute: / /message /friends /watch /notes /tasks /calendar /health /rehab /yt-download /settings /ludo-game /chess-game /video-player
+CREATE_POST caption=searchQuery. DOWNLOAD_YOUTUBE url=searchQuery. INVITE_LUDO/CHESS need targetName. JSON only. No tools.`;
 
-{
-  "reply": "short user-facing reply in the same language as the user",
-  "actions": [
-    {
-      "action": "ACTION_NAME",
-      "targetName": "person name or null",
-      "targetRoute": "route token or path or null",
-      "subPath": "profile subpath like /friends /images /videos /about or empty",
-      "label": "human label",
-      "searchQuery": "search or content text",
-      "messageText": "message body if sending a chat message",
-      "queryType": "search|friends|posts|videos|notes|tasks|notifications|profile|feed|habits|calendar|user|requests|suggestions|watch|null"
-    }
-  ],
-  "ask": {
-    "field": "targetName|messageText|searchQuery|targetRoute|null",
-    "question": "one short clarifying question or null"
+const omitEmpty = (value) => {
+  if (Array.isArray(value)) {
+    const items = value.map(omitEmpty).filter((item) => item != null && item !== "");
+    return items.length ? items : undefined;
   }
-}
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const [key, nested] of Object.entries(value)) {
+      const next = omitEmpty(nested);
+      if (next == null || next === "") continue;
+      if (Array.isArray(next) && next.length === 0) continue;
+      out[key] = next;
+    }
+    return Object.keys(out).length ? out : undefined;
+  }
+  return value == null || value === "" ? undefined : value;
+};
 
-Rules:
-- actions may be empty for pure conversation.
-- If you cannot complete an action because a required field is missing, STILL emit the action with nulls and set ask.field + ask.question. Put that question in reply too. Never guess a person's name.
-- If pendingAction is in context, the user is answering you. Fill the missing fields and return the completed action. Do not ask again unless it is still unclear. Only switch to a different action if they clearly asked for something else.
-- Use QUERY_CONTENT when the user asks for details, lists, summaries, "what is", "show my", "how many", or any app content.
-- Use NAVIGATE (with targetRoute from the route list) to open a page.
-- Use friend actions only when a person is involved. Put their name in targetName.
-- For "send X to Y" use SEND_MESSAGE_TO_USER with messageText and targetName.
-- For posting text use CREATE_POST. Put the EXACT caption in searchQuery. The client opens a draft — the user must tap Post. Never claim it is already published.
-- If they ask for a funny/witty/random caption, invent one and put that caption in searchQuery. Never claim you posted without including CREATE_POST.
-- Only omit searchQuery when they asked to open the composer and write it themselves.
-- Never invent private data. If you need live app data, emit QUERY_CONTENT / SEARCH_* / LIST_* and put a brief reply.
-- Prefer one clear action. Use multiple only when the user asked for more than one thing.
-- Match Bangla commands to the same action names.
-- Never claim you already did something that still needs a clarifying answer.`;
+const compactInterpreterContext = (appContext = {}, slim = false) => {
+  const friends = Array.isArray(appContext.friends) ? appContext.friends : [];
+  const memory = appContext.memory && typeof appContext.memory === "object"
+    ? {
+        ...appContext.memory,
+        facts: Array.isArray(appContext.memory.facts)
+          ? appContext.memory.facts.slice(0, slim ? 6 : 10)
+          : undefined,
+      }
+    : undefined;
+  return omitEmpty({
+    me: appContext.user?.name || undefined,
+    friends: friends
+      .slice(0, slim ? 8 : 12)
+      .map((friend) => friend?.name || friend)
+      .filter(Boolean),
+    pending: appContext.pendingIntent || undefined,
+    mem: memory,
+  }) || {};
+};
 
 export const interpretAgentCommand = async ({
   message,
@@ -165,25 +154,19 @@ export const interpretAgentCommand = async ({
     return { reply: "", actions: [], success: false };
   }
 
-  const contextBlock = JSON.stringify(
-    {
-      currentUser: appContext.user || null,
-      friends: appContext.friends || [],
-      pendingAction: appContext.pendingIntent || null,
-      availableActions: Array.from(ALLOWED_ACTIONS),
-      routes: CONNECT_ROUTES,
-      queryTypes: QUERY_TYPES,
-    },
-    null,
-    0,
-  );
-
+  const cursorChat = getResolvedAgentSettings().provider === "cursor";
+  const context = JSON.stringify(compactInterpreterContext(appContext, cursorChat));
   const rawText = await completeChat({
-    system: `${AGENT_JSON_PROMPT}\n\nLive app context:\n${contextBlock}`,
-    messages: toChatMessages(conversationHistory, sourceText),
+    system: `${AGENT_JSON_PROMPT}\nC:${context}`,
+    messages: toChatMessages(
+      conversationHistory,
+      sourceText,
+      cursorChat ? 8 : 10,
+      cursorChat ? 320 : 400,
+    ),
     json: true,
-    temperature: 0.15,
-    maxTokens: 1024,
+    temperature: 0,
+    maxTokens: cursorChat ? 320 : 512,
     operationLabel: "Agent interpreter",
   });
 
@@ -304,7 +287,7 @@ export const answerFromAppData = async ({
       `Question:\n${question}\n\nApp data JSON:\n${payload}`,
     ),
     temperature: 0.2,
-    maxTokens: 700,
+    maxTokens: 320,
     operationLabel: "App data answer",
   });
   if (!response) {
@@ -322,8 +305,8 @@ export const sendToGemini = async (message, conversationHistory = []) => {
     const responseText = await completeChat({
       system: SYSTEM_PROMPT,
       messages: toChatMessages(conversationHistory, message),
-      temperature: 0.7,
-      maxTokens: 1024,
+      temperature: 0.6,
+      maxTokens: 480,
       operationLabel: "Chat request",
     });
 

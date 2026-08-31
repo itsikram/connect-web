@@ -119,29 +119,19 @@ const AgentSettingsPanel = ({ onClose }) => {
   };
 
   const keyHint = useMemo(() => {
-    if (resolved.keySource === "server") {
-      if (resolved.cursorServerConfigured === true) {
-        return "The server has CURSOR_API_KEY";
+    if (resolved.keySource === "admin" || resolved.keySource === "server") {
+      if (resolved.hasKey) {
+        return "Using the key saved in Connect Admin → Settings → AI";
       }
-      if (resolved.cursorServerConfigured === false) {
-        return "Add CURSOR_API_KEY to server/.env and restart Node";
-      }
-      return "Checking the server for CURSOR_API_KEY";
+      return "No key yet — add it in Connect Admin → Settings → AI";
     }
     if (resolved.usingUserKey) return "Using your key from these settings";
     if (resolved.keySource === "env") return "Using the app default key";
-    return "No key yet — paste one to enable this provider";
-  }, [
-    resolved.cursorServerConfigured,
-    resolved.keySource,
-    resolved.usingUserKey,
-  ]);
+    return "No key yet — paste one here or set it in Connect Admin";
+  }, [resolved.hasKey, resolved.keySource, resolved.usingUserKey]);
 
   const testDisabled =
-    testState.status === "loading" ||
-    (usesServerKey
-      ? resolved.cursorServerConfigured === false
-      : !resolved.hasKey);
+    testState.status === "loading" || !resolved.hasKey;
 
   return (
     <div className="ai-agent-settings" role="dialog" aria-label="AI Agent settings">
@@ -237,16 +227,15 @@ const AgentSettingsPanel = ({ onClose }) => {
               resolved.cursorServerConfigured === false ? "missing" : ""
             }`}
           >
-            <strong>Server-only Cursor key</strong>
+            <strong>Admin-managed Cursor key</strong>
             <p>
-              React never talks to Cursor. The Express backend calls{" "}
-              <code>POST https://api.cursor.com/v1/agents</code> with{" "}
-              <code>CURSOR_API_KEY</code> from <code>server/.env</code>.
+              React never talks to Cursor. The Express backend uses the Cursor
+              key saved in Connect Admin → Settings → AI.
             </p>
             <p>{keyHint}.</p>
             <p>
-              Settings loads every model available to this API key. The first
-              cloud-agent reply can take 1–2 minutes.
+              Connect chat uses a no-repo Composer 2.5 Fast agent and reuses it
+              for later messages in the same session.
             </p>
           </div>
         ) : (
@@ -261,11 +250,12 @@ const AgentSettingsPanel = ({ onClose }) => {
                 type={showKey ? "text" : "password"}
                 value={draft.keys?.[provider] || ""}
                 onChange={(event) => handleKey(event.target.value)}
-                placeholder={
-                  resolved.keySource === "env" && !draft.keys?.[provider]
-                    ? "Leave blank to keep the app default"
-                    : meta.keyPlaceholder
-                }
+            placeholder={
+              (resolved.keySource === "env" || resolved.keySource === "admin") &&
+              !draft.keys?.[provider]
+                ? "Leave blank to use the Admin / default key"
+                : meta.keyPlaceholder
+            }
                 autoComplete="off"
                 spellCheck={false}
               />

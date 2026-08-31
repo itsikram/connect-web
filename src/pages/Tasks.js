@@ -12,6 +12,9 @@ const Tasks = () => {
     // Load tasks from API
     useEffect(() => {
         loadTasks();
+        const reload = () => loadTasks();
+        window.addEventListener('connect:tasks-changed', reload);
+        return () => window.removeEventListener('connect:tasks-changed', reload);
     }, []);
 
     const loadTasks = async () => {

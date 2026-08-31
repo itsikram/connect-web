@@ -33,8 +33,15 @@ export const ACTION_RESPONSE_MODE = {
   OPEN_FRIENDS: "navigate",
   LIST_FRIENDS: "navigate",
   CREATE_POST: "navigate",
+  DELETE_POST: "navigate",
   CREATE_STORY: "navigate",
-  SEND_MESSAGE_TO_USER: "confirm",
+  DOWNLOAD_YOUTUBE: "navigate",
+  OPEN_VIDEO_PLAYER: "navigate",
+  UPDATE_SETTINGS: "navigate",
+  LOG_HEALTH: "navigate",
+  LOG_RECOVERY: "navigate",
+  RECOVERY_SUPPORT: "navigate",
+  SEND_MESSAGE_TO_USER: "navigate",
   SEND_MESSAGE: "confirm",
   VIDEO_CALL: "confirm",
   AUDIO_CALL: "confirm",
@@ -481,10 +488,47 @@ const cleanCapturedSegment = (value = "") =>
     .replace(/[?.!,;:।]+$/, "")
     .trim();
 
+const toOutgoingChatText = (value = "") => {
+  const text = cleanCapturedSegment(value);
+  if (!text) return "";
+  const lower = text.toLowerCase();
+  if (
+    /^(where(?:'s|\s+is|\s+are)\s+(?:he|she|they|him|her)(?:\s+at)?|where\s+(?:he|she|they)\s+(?:is|are)(?:\s+at)?)$/i.test(
+      lower,
+    )
+  ) {
+    return "Where are you?";
+  }
+  if (
+    /^(how(?:'s|\s+is|\s+are)\s+(?:he|she|they)|how\s+(?:he|she|they)\s+(?:is|are))$/i.test(
+      lower,
+    )
+  ) {
+    return "How are you?";
+  }
+  if (
+    /^(what(?:'s|\s+is)\s+(?:he|she|they)\s+doing|what\s+(?:he|she|they)\s+(?:is|are)\s+doing)$/i.test(
+      lower,
+    )
+  ) {
+    return "What are you doing?";
+  }
+  const capped = text.charAt(0).toUpperCase() + text.slice(1);
+  if (
+    /^(where|what|why|how|when|who|which|is|are|do|did|can|could|would)\b/i.test(
+      capped,
+    ) &&
+    !/[?؟]$/.test(capped)
+  ) {
+    return `${capped}?`;
+  }
+  return capped;
+};
+
 const buildSendMessageIntent = ({ targetName, messageText }) => ({
   action: "SEND_MESSAGE_TO_USER",
   targetName: cleanCapturedSegment(targetName) || null,
-  messageText: cleanCapturedSegment(messageText) || null,
+  messageText: toOutgoingChatText(messageText) || null,
   searchQuery: null,
   targetRoute: null,
   subPath: null,
@@ -497,6 +541,30 @@ const isGenericMessageText = (value = "") =>
 
 const parseDirectSendMessageIntent = (message) => {
   const patterns = [
+    {
+      regex:
+        /^(?:please\s+)?(?:send\s+(?:a\s+)?(?:message|dm|text)\s+to|message|text|dm)\s+(.+?)\s+and\s+(?:then\s+)?(?:ask|tell|say)\s+(?:him|her|them\s+)?(.+)$/i,
+      messageIndex: 2,
+      targetIndex: 1,
+    },
+    {
+      regex:
+        /^(?:please\s+)?(?:send|text)\s+(.+?)\s+a\s+message\s+(?:and\s+)?(?:ask|tell|say)\s+(?:him|her|them\s+)?(.+)$/i,
+      messageIndex: 2,
+      targetIndex: 1,
+    },
+    {
+      regex:
+        /^(?:please\s+)?(?:message|text|dm)\s+(.+?)\s+(?:asking|saying|telling)\s+(?:him|her|them\s+)?(.+)$/i,
+      messageIndex: 2,
+      targetIndex: 1,
+    },
+    {
+      regex:
+        /^(?:please\s+)?(?:message|text|dm)\s+(.+?)\s+(?:to\s+)?(?:ask|tell|say)\s+(?:him|her|them\s+)?(.+)$/i,
+      messageIndex: 2,
+      targetIndex: 1,
+    },
     {
       regex:
         /^(?:send|text|message)\s+(?:a\s+)?message\s+to\s+(.+?)\s+(?:and\s+)?(?:saying|say)\s+["'`“”‘’]?(.+?)["'`“”‘’]?$/i,
@@ -619,11 +687,10 @@ const INTENT_PATTERNS = [
     action: "EDIT_NOTE",
     searchCapture: true,
     patterns: [
+      /(?:edit|update|modify)\s+(?:my\s+)?note(?:\s+(?:called|titled|named|about))?\s+(.+?)\s+to\s+(.+)/i,
       /(?:edit|update|modify)\s+(?:my\s+)?note(?:\s+to|\s+saying)?\s+(.+)/i,
       /(?:change|update)\s+note\s+(?:to|containing)\s+(.+)/i,
-      // Bengali patterns
       /(?:নোট|টিপস)\s+(?:আপডেট|সম্পাদনা|বদল)\s+করুন\s+(.+)/,
-      /(.+)\s+এ\s+নোট\s+পরিবর্তন\s+করুন/,
     ],
   },
 
@@ -812,6 +879,94 @@ const INTENT_PATTERNS = [
       /^ludo\s+game$/i,
       /^play\s+ludo$/i,
       /^open\s+ludo$/i,
+    ],
+  },
+
+  {
+    action: "DELETE_POST",
+    searchCapture: true,
+    patterns: [
+      /(?:delete|remove)\s+(?:my\s+)?(?:latest\s+|last\s+|recent\s+)?post(?:\s+(?:about|saying|with))?\s*(.*)/i,
+      /(?:পোস্ট)\s+(?:মুছুন|ডিলিট)/,
+    ],
+  },
+  {
+    action: "DOWNLOAD_YOUTUBE",
+    searchCapture: true,
+    patterns: [
+      /download\s+(?:this\s+|that\s+|the\s+)?(?:youtube\s+)?(?:video|audio|mp3)\s*(.*)/i,
+      /(?:download|save)\s+(?:from\s+)?youtube\s*(.*)/i,
+      /youtube\s+download\s*(.*)/i,
+      /(?:download|save)\s+((?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\S*)/i,
+      /(?:ডাউনলোড).*(youtu\S*)/i,
+    ],
+  },
+  {
+    action: "OPEN_VIDEO_PLAYER",
+    searchCapture: true,
+    patterns: [
+      /(?:open|start|play)\s+(?:the\s+)?video\s+player(?:\s+(?:with|and play))?\s*(.*)/i,
+      /^video\s+player$/i,
+    ],
+  },
+  {
+    action: "CREATE_EVENT",
+    searchCapture: true,
+    patterns: [
+      /(?:add|create|schedule|make)\s+(?:an?\s+)?(?:event|calendar(?:\s+event)?|appointment|meeting)\s*(?:for|on|at|called)?\s*(.+)/i,
+      /(?:calendar)\s+(?:add|event)\s+(.+)/i,
+    ],
+  },
+  {
+    action: "EDIT_EVENT",
+    searchCapture: true,
+    patterns: [
+      /(?:edit|update|change)\s+(?:my\s+)?(?:event|calendar event|appointment)(?:\s+(?:called|named))?\s+(.+?)(?:\s+to\s+(.+))?$/i,
+    ],
+  },
+  {
+    action: "DELETE_EVENT",
+    searchCapture: true,
+    patterns: [
+      /(?:delete|remove|cancel)\s+(?:my\s+)?(?:event|appointment|meeting)(?:\s+(?:called|named|about))?\s*(.*)/i,
+    ],
+  },
+  {
+    action: "UPDATE_SETTINGS",
+    searchCapture: true,
+    patterns: [
+      /(?:set|change|switch|turn(?:\s+on)?|update)\s+(?:to\s+)?(?:dark|light)\s+(?:mode|theme)/i,
+      /(?:enable|disable|turn\s+on|turn\s+off|mute)\s+(?:my\s+)?(?:notifications?|location(?:\s+sharing)?)/i,
+      /(?:hide|share|stop sharing)\s+(?:my\s+)?location/i,
+      /(?:make\s+)?(?:my\s+)?posts?\s+(?:public|private|friends?\s+only)/i,
+      /(?:update|change|open)\s+(?:my\s+)?settings(?:\s+to|\s+for)?\s*(.*)/i,
+    ],
+  },
+  {
+    action: "LOG_HEALTH",
+    searchCapture: true,
+    patterns: [
+      /(?:log|record|track|add)\s+(?:my\s+)?(?:weight|meal|calories|workout|exercise)\s*(.*)/i,
+      /(?:i\s+weigh|weight\s+is|ate|workout)\s+(.+)/i,
+      /(?:health|fitness)\s+(?:log|track)\s*(.*)/i,
+    ],
+  },
+  {
+    action: "LOG_RECOVERY",
+    searchCapture: true,
+    patterns: [
+      /(?:log|record)\s+(?:a\s+)?(?:craving|urge|days?\s+clean)\s*(.*)/i,
+      /(?:i(?:'m| am)\s+)?(\d+)\s+days?\s+(?:clean|sober)/i,
+      /(?:recovery|rehab)\s+(?:log|update)\s*(.*)/i,
+    ],
+  },
+  {
+    action: "RECOVERY_SUPPORT",
+    noCapture: true,
+    patterns: [
+      /(?:need|want|give me)\s+(?:recovery\s+)?support/i,
+      /(?:help|support)\s+(?:me\s+)?(?:with\s+)?(?:recovery|craving|rehab|relapse)/i,
+      /(?:open|go to)\s+(?:rehab|recovery)/i,
     ],
   },
 
@@ -1034,7 +1189,12 @@ export const parseIntent = (message) => {
           return {
             action,
             targetName: null,
-            messageText: null,
+            messageText: match[2]
+              ? match[2]
+                  .trim()
+                  .replace(/[?.!,;:]+$/, "")
+                  .trim()
+              : null,
             searchQuery: searchQuery || null,
             targetRoute: null,
             subPath: null,
@@ -1051,6 +1211,14 @@ export const parseIntent = (message) => {
             .replace(/\s+(now|please|for\s+me)$/i, "")
             .trim();
           if (!targetName) targetName = null;
+        }
+        if (action === "SEND_MESSAGE" && targetName) {
+          const promoted = parseDirectSendMessageIntent(
+            `message ${targetName}`,
+          );
+          if (promoted?.messageText) {
+            return promoted;
+          }
         }
         return {
           action,

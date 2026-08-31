@@ -4,18 +4,19 @@
     display: flex;
     align-items: center;
     gap: 9px;
-    background: #f0f4ff;
-    border: 1px solid #e0e7ff;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 12px;
     padding: 9px 11px;
     margin-top: 5px;
-    transition: background 0.18s;
+    transition: background 0.18s, border-color 0.18s;
     -webkit-tap-highlight-color: transparent;
 }
 
 .friend-result-card:hover,
 .friend-result-card:active {
-    background: #e8eeff;
+    background: rgba(0, 212, 255, 0.08);
+    border-color: rgba(0, 212, 255, 0.22);
 }
 .friend-result-card.compact {
     padding: 7px 9px;
@@ -63,7 +64,7 @@
 .frc-name {
     font-size: 13px;
     font-weight: 600;
-    color: #1f2937;
+    color: #e4e6eb;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -71,7 +72,7 @@
 
 .frc-nickname {
     font-size: 11px;
-    color: #6b7280;
+    color: #b0b3b8;
     margin-top: 1px;
 }
 
@@ -83,7 +84,7 @@
     padding: 7px 12px;
     border: none;
     border-radius: 8px;
-    background: var(--btn-color, #6366f1);
+    background: var(--btn-color, #00d4ff);
     color: #fff;
     font-size: 12px;
     font-weight: 600;
@@ -116,22 +117,5 @@
     .frc-action-btn {
         width: 100%;
         justify-content: center;
-    }
-}
-
-/* Dark mode */
-@media (prefers-color-scheme: dark) {
-    .friend-result-card {
-        background: #1e2540;
-        border-color: #2d3560;
-    }
-    .friend-result-card:hover {
-        background: #252c4f;
-    }
-    .frc-name {
-        color: #e8eaf6;
-    }
-    .frc-nickname {
-        color: #7a83a6;
     }
 }

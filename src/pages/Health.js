@@ -103,6 +103,24 @@ const Health = () => {
     }, [todayKey]);
 
     useEffect(() => {
+        const reload = () => {
+            try {
+                const targetData = localStorage.getItem(WEIGHT_TARGET_KEY);
+                if (targetData) setWeightTarget(JSON.parse(targetData));
+                const logData = localStorage.getItem(WEIGHT_LOG_KEY);
+                if (logData) setWeightLog(JSON.parse(logData));
+                const mealData = localStorage.getItem(MEAL_LOG_KEY);
+                if (mealData) {
+                    const allMeals = JSON.parse(mealData);
+                    setMealLog(allMeals[todayKey] || []);
+                }
+            } catch (_) {}
+        };
+        window.addEventListener('connect:health-updated', reload);
+        return () => window.removeEventListener('connect:health-updated', reload);
+    }, [todayKey]);
+
+    useEffect(() => {
         const dayIndex = new Date().getDate() % QUICK_TIPS.length;
         setTipIndex(dayIndex);
     }, []);

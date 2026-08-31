@@ -26,6 +26,9 @@ const Notes = () => {
     // Load notes from API
     useEffect(() => {
         loadNotes();
+        const reload = () => loadNotes();
+        window.addEventListener('connect:notes-changed', reload);
+        return () => window.removeEventListener('connect:notes-changed', reload);
     }, []);
 
     const loadNotes = async () => {

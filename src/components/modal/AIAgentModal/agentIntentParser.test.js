@@ -7,6 +7,7 @@ import {
   mergeFollowUpIntent,
   isAffirmativeFollowUp,
   isCancelFollowUp,
+  isFastLocalIntent,
 } from "./agentCatalog";
 
 const atikProfile = {
@@ -76,7 +77,7 @@ describe("direct send message parsing", () => {
       {
         action: "SEND_MESSAGE_TO_USER",
         targetName: "atik",
-        messageText: "where are you",
+        messageText: "Where are you?",
       },
     );
   });
@@ -87,7 +88,7 @@ describe("direct send message parsing", () => {
     ).toMatchObject({
       action: "SEND_MESSAGE_TO_USER",
       targetName: "atik",
-      messageText: "where are you",
+      messageText: "Where are you?",
     });
   });
 
@@ -108,6 +109,32 @@ describe("direct send message parsing", () => {
       action: "SEND_MESSAGE_TO_USER",
       targetName: "আতিক",
       messageText: "তুমি কোথায় আছো",
+    });
+  });
+
+  test("parses message X and ask Y as a real send", () => {
+    expect(parseIntent("message atik and ask where is he")).toMatchObject({
+      action: "SEND_MESSAGE_TO_USER",
+      targetName: "atik",
+      messageText: "Where are you?",
+    });
+  });
+
+  test("parses message X asking Y", () => {
+    expect(parseIntent("message atik asking where he is")).toMatchObject({
+      action: "SEND_MESSAGE_TO_USER",
+      targetName: "atik",
+      messageText: "Where are you?",
+    });
+  });
+
+  test("parses send atik a message and ask where he is", () => {
+    expect(
+      parseIntent("send atik a message and ask where he is"),
+    ).toMatchObject({
+      action: "SEND_MESSAGE_TO_USER",
+      targetName: "atik",
+      messageText: "Where are you?",
     });
   });
 
@@ -200,5 +227,58 @@ describe("pending follow-up slots", () => {
     expect(merged.targetName).toBe("John");
     expect(isAffirmativeFollowUp("yes")).toBe(true);
     expect(isCancelFollowUp("never mind")).toBe(true);
+  });
+});
+
+describe("agent action parsing", () => {
+  test("parses youtube download with a url", () => {
+    expect(
+      parseIntent("download this youtube video https://youtu.be/dQw4w9WgXcQ"),
+    ).toMatchObject({
+      action: "DOWNLOAD_YOUTUBE",
+    });
+  });
+
+  test("parses delete post", () => {
+    expect(parseIntent("delete my latest post")).toMatchObject({
+      action: "DELETE_POST",
+    });
+  });
+
+  test("parses ludo invite", () => {
+    expect(parseIntent("invite Atik to ludo")).toMatchObject({
+      action: "INVITE_LUDO",
+      targetName: "Atik",
+    });
+  });
+
+  test("parses calendar event with a day", () => {
+    expect(parseIntent("add an event tomorrow dentist")).toMatchObject({
+      action: "CREATE_EVENT",
+    });
+  });
+
+  test("parses dark mode settings", () => {
+    expect(parseIntent("set dark mode")).toMatchObject({
+      action: "UPDATE_SETTINGS",
+    });
+  });
+
+  test("parses health weight log", () => {
+    expect(parseIntent("log weight 72")).toMatchObject({
+      action: "LOG_HEALTH",
+    });
+  });
+
+  test("parses video player", () => {
+    expect(parseIntent("open the video player")).toMatchObject({
+      action: "OPEN_VIDEO_PLAYER",
+    });
+  });
+
+  test("treats parsed commands as fast local intents", () => {
+    const intent = parseIntent("set dark mode");
+    expect(isFastLocalIntent(intent, "set dark mode")).toBe(true);
+    expect(isFastLocalIntent(null, "how are you")).toBe(false);
   });
 });

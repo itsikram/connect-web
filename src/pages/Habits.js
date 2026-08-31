@@ -29,6 +29,14 @@ const Habits = () => {
                 console.error('Error loading habits:', e);
             }
         }
+        const reload = () => {
+            try {
+                const raw = localStorage.getItem('habitsApp');
+                if (raw) setHabits(JSON.parse(raw));
+            } catch (_) {}
+        };
+        window.addEventListener('connect:habits-changed', reload);
+        return () => window.removeEventListener('connect:habits-changed', reload);
     }, []);
 
     // Save habits to localStorage

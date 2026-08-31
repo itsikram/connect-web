@@ -7,10 +7,7 @@ import ChatArea from "./ChatArea";
 import ActionPanel from "./ActionPanel";
 import ModalHeader from "./ModalHeader";
 import {
-  sendToGemini,
-  translateBanglaToEnglish,
   interpretAgentCommand,
-  answerFromAppData,
 } from "../../../services/geminiService";
 import {
   parseIntent,
@@ -27,8 +24,6 @@ import {
   toAgentIntent,
   resolveCatalogRoute,
   recoverAgentActions,
-  extractCaptionFromText,
-  isPlaceholderCaption,
   getMissingIntentSlots,
   getSlotQuestion,
   mergeFollowUpIntent,
@@ -36,9 +31,17 @@ import {
   isAffirmativeFollowUp,
   looksLikeQuestion,
   normalizeAskField,
+  isFastLocalIntent,
 } from "./agentCatalog";
+import {
+  rememberUserText,
+  rememberActionResult,
+  applyMemoryToIntent,
+  getMemoryPromptBlock,
+  clearAgentMemory,
+} from "./agentMemory";
 import api from "../../../api/api";
-import { fetchLatestAIChat, saveAIChat } from "../../../services/aiChatService";
+import { fetchLatestAIChat, saveAIChat, deleteAIChat } from "../../../services/aiChatService";
 import {
   getResolvedAgentSettings,
   subscribeAgentSettings,
@@ -51,10 +54,30 @@ const createId = () => Date.now() + Math.random();
 const INITIAL_MESSAGE = {
   id: 1,
   type: "agent",
+  meta: "welcome",
   content:
-    'Hi! I\'m your AI Agent 🤖 Speak or type in Bangla or English. I can open any page, call or message friends, search posts and videos, create notes/tasks/posts, and answer questions about your Connect data.\n\nTry: "go to settings", "what are my latest notes?", "call John", "post I am feeling good"',
+    'Hi! I\'m your AI Agent 🤖 I remember this chat, so you can say "that video" or "invite him". I can download YouTube videos, start Ludo and invite friends, publish or delete posts, manage notes, tasks, and calendar, open the video player, log health and recovery, and update settings.\n\nTry: "download this YouTube link", "invite Atik to Ludo", "post I am feeling good", "add an event tomorrow at 5pm".',
   timestamp: new Date(),
 };
+
+const isWelcomeMessage = (message) =>
+  message?.meta === "welcome" ||
+  (message?.type === "agent" &&
+    String(message.content || "").startsWith("Hi! I'm your AI Agent"));
+
+const toLlmHistory = (messages = [], limit = 12) =>
+  messages
+    .filter((item) => {
+      if (isWelcomeMessage(item)) return false;
+      if (!["user", "agent", "action-result"].includes(item?.type)) return false;
+      return typeof item.content === "string" && item.content.trim();
+    })
+    .slice(-limit)
+    .map((item) => ({
+      role: item.type === "user" ? "user" : "assistant",
+      content:
+        item.content.length > 400 ? `${item.content.slice(0, 399)}…` : item.content,
+    }));
 
 const buildAppContext = (myProfile) => {
   const friendsRaw = Array.isArray(myProfile?.friends) ? myProfile.friends : [];
@@ -146,6 +169,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   const autoRunMessageIdsRef = useRef(new Set());
   const autoRunActionsRef = useRef(autoRunActions);
   const pendingIntentRef = useRef(null);
+  const skipSaveRef = useRef(false);
   const [isFetchingHistory, setIsFetchingHistory] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [llmInfo, setLlmInfo] = useState(() => getResolvedAgentSettings());
@@ -243,7 +267,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   // Save messages to database whenever messages change (debounced)
   useEffect(() => {
     // Skip saving if still loading or only initial message
-    if (isFetchingHistory || messages.length <= 1) return;
+    if (isFetchingHistory || skipSaveRef.current || messages.length <= 1) return;
     
     const timer = setTimeout(async () => {
       try {
@@ -277,6 +301,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         messageText: intent?.messageText ?? null,
         searchQuery: intent?.searchQuery ?? null,
         queryType: intent?.queryType ?? null,
+        sourceText: intent?.sourceText ?? null,
         myProfile,
         navigate,
         onClose,
@@ -286,6 +311,11 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         content: result.message,
         success: result.success,
         location: result.location || null,
+      });
+      rememberActionResult(myProfile?._id, {
+        action,
+        friendName: getFriendDisplayName(friend),
+        result,
       });
     },
     [myProfile, navigate, onClose, addMessage],
@@ -302,11 +332,8 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       setIsLoading(true);
 
       const originalText = text.trim();
-      const hasBanglaText = /[\u0980-\u09FF]/.test(originalText);
-      const history = messages.map((m) => ({
-        role: m.type === "user" ? "user" : "assistant",
-        content: typeof m.content === "string" ? m.content : "",
-      }));
+      rememberUserText(myProfile?._id, originalText);
+      const history = toLlmHistory(messages, 12);
 
       if (pendingIntentRef.current && isCancelFollowUp(originalText)) {
         pendingIntentRef.current = null;
@@ -318,8 +345,14 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         return;
       }
 
-      const presentResult = async (result, replyOverride) => {
+      const presentResult = async (result, replyOverride, intent = null) => {
         if (!result) return;
+        rememberActionResult(myProfile?._id, {
+          action: intent?.action,
+          friendName: intent?.targetName,
+          result,
+          userText: originalText,
+        });
 
         if (result.type === "created-post") {
           addMessage({
@@ -331,22 +364,9 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         }
 
         if (result.type === "query-data") {
-          let content = replyOverride || result.message;
-          try {
-            content = await answerFromAppData({
-              question: originalText,
-              data: result.data,
-              conversationHistory: history,
-            });
-          } catch (groundingError) {
-            console.warn(
-              "[AIAgentModal] Grounded answer failed; using summary.",
-              groundingError,
-            );
-          }
           addMessage({
             type: "action-result",
-            content,
+            content: replyOverride || result.message,
             success: result.success,
           });
           return;
@@ -436,7 +456,10 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       };
 
       const runIntent = async (intent, replyOverride = "", options = {}) => {
-        const nextIntent = hydrateIntent(intent);
+        const nextIntent = applyMemoryToIntent(
+          hydrateIntent(intent),
+          myProfile?._id,
+        );
         if (!nextIntent?.action) return false;
 
         const autoRun = Boolean(
@@ -483,7 +506,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
                 navigate,
                 onClose,
               });
-              await presentResult(result, replyOverride);
+              await presentResult(result, replyOverride, nextIntent);
               return true;
             }
             await handleFriendAction(
@@ -545,7 +568,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             navigate,
             onClose,
           });
-          await presentResult(result, replyOverride);
+          await presentResult(result, replyOverride, nextIntent);
           return true;
         }
 
@@ -554,28 +577,58 @@ const AIAgentModal = ({ isOpen, onClose }) => {
 
       try {
         const pendingSnapshot = pendingIntentRef.current;
-        let geminiPlan = null;
-        const interpreterMessage = pendingSnapshot
-          ? `The user is answering your previous question for this pending action:\n${JSON.stringify(
-              {
-                action: pendingSnapshot.intent?.action,
-                missing: pendingSnapshot.missing,
-                current: {
-                  targetName: pendingSnapshot.intent?.targetName,
-                  messageText: pendingSnapshot.intent?.messageText,
-                  searchQuery: pendingSnapshot.intent?.searchQuery,
-                  targetRoute: pendingSnapshot.intent?.targetRoute,
-                },
-              },
-            )}\n\nUser answer: ${originalText}\n\nComplete the pending action unless they clearly asked for something else.`
-          : originalText;
+        const autoRun = autoRunActionsRef.current;
 
+        if (pendingSnapshot) {
+          const switched = parseIntent(originalText);
+          const switchedIntent = switched
+            ? applyMemoryToIntent(hydrateIntent(switched), myProfile?._id)
+            : null;
+          const switchedTopics =
+            switchedIntent?.action &&
+            switchedIntent.action !== pendingSnapshot.intent?.action &&
+            !isAffirmativeFollowUp(originalText) &&
+            getMissingIntentSlots(switchedIntent).length === 0;
+
+          if (switchedTopics) {
+            pendingIntentRef.current = null;
+            const handled = await runIntent(switchedIntent, "", {
+              forceExecute: autoRun,
+            });
+            if (handled) return;
+          }
+
+          const merged = mergeFollowUpIntent({
+            pending: pendingSnapshot,
+            followUpText: originalText,
+            geminiIntents: switchedIntent ? [switchedIntent] : [],
+          });
+          if (merged) {
+            const handled = await runIntent(merged, "", {
+              forceExecute: autoRun || isAffirmativeFollowUp(originalText),
+            });
+            if (handled) return;
+          }
+        }
+
+        const localIntent = parseIntent(originalText);
+        if (localIntent && isFastLocalIntent(localIntent, originalText)) {
+          const handled = await runIntent(hydrateIntent(localIntent), "", {
+            forceExecute: autoRun,
+          });
+          if (handled) return;
+        }
+
+        let geminiPlan = null;
         try {
           geminiPlan = await interpretAgentCommand({
-            message: interpreterMessage,
+            message: pendingSnapshot
+              ? `Pending action ${pendingSnapshot.intent?.action}. Missing: ${(pendingSnapshot.missing || []).join(", ") || "none"}. User answer: ${originalText}`
+              : originalText,
             conversationHistory: history,
             appContext: {
               ...buildAppContext(myProfile),
+              memory: getMemoryPromptBlock(myProfile?._id),
               pendingIntent: pendingSnapshot
                 ? {
                     action: pendingSnapshot.intent?.action,
@@ -585,7 +638,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             },
           });
         } catch (interpreterError) {
-          console.warn("[AIAgentModal] Gemini interpreter failed:", interpreterError);
+          console.warn("[AIAgentModal] Interpreter failed:", interpreterError);
         }
 
         const geminiIntents = recoverAgentActions({
@@ -603,15 +656,9 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             geminiIntents,
           });
           if (merged) {
-            const handled = await runIntent(
-              merged,
-              geminiPlan?.reply || "",
-              {
-                forceExecute:
-                  autoRunActionsRef.current ||
-                  isAffirmativeFollowUp(originalText),
-              },
-            );
+            const handled = await runIntent(merged, geminiPlan?.reply || "", {
+              forceExecute: autoRun || isAffirmativeFollowUp(originalText),
+            });
             if (handled) return;
           }
         }
@@ -630,12 +677,8 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         if (geminiPlan?.ask?.field || looksLikeQuestion(geminiPlan?.reply)) {
           const stub =
             pendingSnapshot?.intent ||
-            parseIntent(originalText) ||
-            (geminiPlan?.ask?.field
-              ? {
-                  action: null,
-                }
-              : null);
+            localIntent ||
+            (geminiPlan?.ask?.field ? { action: null } : null);
           const parsedStub = stub?.action ? hydrateIntent(stub) : null;
           if (parsedStub) {
             const slots = geminiPlan?.ask?.field
@@ -654,47 +697,15 @@ const AIAgentModal = ({ isOpen, onClose }) => {
           }
         }
 
-        let intent = parseIntent(originalText);
-        if (!intent && hasBanglaText) {
-          try {
-            const translatedText = await translateBanglaToEnglish(originalText);
-            intent = parseIntent(translatedText);
-          } catch (translationError) {
-            console.warn(
-              "[AIAgentModal] Bangla translation failed:",
-              translationError,
-            );
-          }
-        }
-
-        if (intent) {
-          if (
-            intent.action === "CREATE_POST" &&
-            isPlaceholderCaption(intent.searchQuery)
-          ) {
-            intent = {
-              ...intent,
-              searchQuery:
-                extractCaptionFromText(geminiPlan?.reply) || intent.searchQuery,
-            };
-          }
-          const handled = await runIntent(
-            hydrateIntent(intent),
-            geminiPlan?.reply || "",
-          );
-          if (handled) return;
-        }
-
         if (geminiPlan?.reply) {
           addMessage({ type: "agent", content: geminiPlan.reply });
           return;
         }
 
-        const result = await sendToGemini(originalText, history);
         addMessage({
           type: "agent",
-          content: result.response,
-          action: result.suggestedAction,
+          content:
+            "I didn't catch a command. Try something like “open settings”, “invite Atik to Ludo”, or ask a question.",
         });
       } catch (err) {
         console.error("[AIAgentModal]", err);
@@ -747,6 +758,33 @@ const AIAgentModal = ({ isOpen, onClose }) => {
     [handleSendMessage],
   );
 
+  const handleClearChat = useCallback(async () => {
+    if (isLoading) return;
+    const hasChat = messages.some(
+      (item) => item?.type === "user" || (item?.type === "agent" && !isWelcomeMessage(item)),
+    );
+    if (!hasChat) return;
+    const confirmed =
+      typeof window === "undefined" ||
+      window.confirm("Clear this AI chat? Saved history on this account will be deleted.");
+    if (!confirmed) return;
+
+    skipSaveRef.current = true;
+    pendingIntentRef.current = null;
+    setSettingsOpen(false);
+    setMessages([
+      { ...INITIAL_MESSAGE, id: createId(), timestamp: new Date() },
+    ]);
+    clearAgentMemory(myProfile?._id);
+    try {
+      await deleteAIChat();
+    } catch (error) {
+      console.error("Failed to delete saved AI chat:", error);
+    } finally {
+      skipSaveRef.current = false;
+    }
+  }, [isLoading, messages, myProfile?._id]);
+
   const toggleSidebar = () => setIsSidebarOpen((v) => !v);
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -779,6 +817,15 @@ const AIAgentModal = ({ isOpen, onClose }) => {
               autoRunActions={autoRunActions}
               onToggleAutoRun={() => setAutoRunActions((value) => !value)}
               onOpenSettings={() => setSettingsOpen((value) => !value)}
+              onClearChat={handleClearChat}
+              canClearChat={
+                !isLoading &&
+                messages.some(
+                  (item) =>
+                    item?.type === "user" ||
+                    (item?.type === "agent" && !isWelcomeMessage(item)),
+                )
+              }
               settingsOpen={settingsOpen}
               providerLabel={llmInfo.meta?.shortLabel || "AI"}
               modelLabel={String(llmInfo.model || "").split("/").pop()}
@@ -842,11 +889,11 @@ const AIAgentModal = ({ isOpen, onClose }) => {
               >
                 <span
                   className="ai-agent-sidebar-toggle-icon-wrap"
-                  style={{ boxShadow: "inset 0 0 0 1px #7C3AED22" }}
+                  style={{ boxShadow: "inset 0 0 0 1px #00D4FF22" }}
                 >
                   <i
                     className="fas fa-robot"
-                    style={{ color: "#7C3AED" }}
+                    style={{ color: "#00D4FF" }}
                     aria-hidden="true"
                   />
                 </span>

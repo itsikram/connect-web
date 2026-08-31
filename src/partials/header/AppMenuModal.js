@@ -119,11 +119,11 @@ const AppMenuModal = ({ isOpen, onRequestClose, onAIAgentOpen }) => {
             >
               <span
                 className="app-menu-icon-wrap"
-                style={{ boxShadow: "inset 0 0 0 1px #7C3AED22" }}
+                style={{ boxShadow: "inset 0 0 0 1px #00D4FF22" }}
               >
                 <i
                   className="fas fa-robot"
-                  style={{ color: "#7C3AED" }}
+                  style={{ color: "#00D4FF" }}
                   aria-hidden="true"
                 />
               </span>

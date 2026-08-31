@@ -29,6 +29,14 @@ const Calendar = () => {
                 console.error('Error loading calendar events:', e);
             }
         }
+        const reload = () => {
+            try {
+                const raw = localStorage.getItem('calendarApp');
+                if (raw) setEvents(JSON.parse(raw));
+            } catch (_) {}
+        };
+        window.addEventListener('connect:calendar-changed', reload);
+        return () => window.removeEventListener('connect:calendar-changed', reload);
     }, []);
 
     // Save events to localStorage

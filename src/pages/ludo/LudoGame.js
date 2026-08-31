@@ -3668,6 +3668,38 @@ const LudoGame = () => {
     ],
   );
 
+  useEffect(() => {
+    if (!myProfile?._id) return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const urlGameId = params.get("gameId");
+      if (urlGameId && !gameIdRef.current) {
+        gameIdRef.current = urlGameId;
+        newGameDraftIdRef.current = urlGameId;
+        setGameId(urlGameId);
+        setOnlineMode(true);
+      }
+    } catch (_) {}
+    try {
+      const raw = localStorage.getItem("ludo_invite_target");
+      if (!raw) return;
+      localStorage.removeItem("ludo_invite_target");
+      const target = JSON.parse(raw);
+      if (!target?.friendId) return;
+      if (target.gameId) {
+        gameIdRef.current = target.gameId;
+        newGameDraftIdRef.current = target.gameId;
+        setGameId(target.gameId);
+        setOnlineMode(true);
+      }
+      inviteFriend({
+        _id: target.friendId,
+        fullName: target.friendName,
+        profilePic: target.friendAvatar,
+      });
+    } catch (_) {}
+  }, [myProfile?._id, inviteFriend]);
+
   // Offline: assign a searched friend/profile to the next open local seat (no socket)
   const assignFriendOffline = useCallback(
     (friend) => {

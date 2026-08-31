@@ -43,6 +43,6 @@ test("Cursor never stores an API key in the browser", () => {
   const resolved = getResolvedAgentSettings();
   expect(resolved.provider).toBe("cursor");
   expect(resolved.apiKey).toBe("");
-  expect(resolved.keySource).toBe("server");
+  expect(resolved.keySource).toBe("admin");
   expect(resolved.model).toBe("composer-2.5");
 });

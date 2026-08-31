@@ -2918,11 +2918,23 @@ const ChatHeader = ({
         {isUserInfoModalOpen && (
         <ModalContainer
           title="User Information"
-          size="sm"
           isOpen
           onRequestClose={() => setIsUserInfoModalOpen(false)}
           id="userInfoModal"
+          className="is-flush"
         >
+          <div className="modal-header">
+            <h3 className="modal-title">User Information</h3>
+            <button
+              type="button"
+              className="modal-close-btn"
+              onClick={() => setIsUserInfoModalOpen(false)}
+              aria-label="Close"
+            >
+              <i className="far fa-times" aria-hidden="true" />
+            </button>
+          </div>
+          <div className="modal-body">
           <div className="user-info-modal-content">
             {loadingUserInfo ? (
               <div className="user-info-loading">
@@ -2931,7 +2943,6 @@ const ChatHeader = ({
               </div>
             ) : (
               <>
-                {/* Header Section */}
                 <div className="user-info-header">
                   <div className="user-info-avatar-container">
                     <img
@@ -2955,20 +2966,9 @@ const ChatHeader = ({
                   )}
                 </div>
 
-                {/* Info Cards Section */}
                 <div className="user-info-cards">
-                  {/* Last Location Card */}
-                  <div
-                    className="user-info-card"
-                    style={{ padding: 0, overflow: "hidden" }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        padding: "18px",
-                      }}
-                    >
+                  <div className="user-info-card user-info-card--map">
+                    <div className="user-info-card-row">
                       <div className="user-info-card-icon location">
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
@@ -2985,10 +2985,7 @@ const ChatHeader = ({
                           <circle cx="12" cy="10" r="3"></circle>
                         </svg>
                       </div>
-                      <div
-                        className="user-info-card-content"
-                        style={{ flex: 1 }}
-                      >
+                      <div className="user-info-card-content">
                         <h3 className="user-info-card-label">
                           {friendLocation ||
                           userInfoData?.lastLocation ||
@@ -3003,6 +3000,8 @@ const ChatHeader = ({
                           userInfoData?.lastLocation ||
                           friendProfile?.lastLocation) && (
                           <button
+                            type="button"
+                            className="user-info-maps-btn"
                             onClick={() => {
                               const loc =
                                 friendLocation ||
@@ -3014,17 +3013,6 @@ const ChatHeader = ({
                                   "_blank",
                                 );
                               }
-                            }}
-                            style={{
-                              marginTop: "8px",
-                              padding: "6px 12px",
-                              backgroundColor: "#2196F3",
-                              color: "#FFFFFF",
-                              border: "none",
-                              borderRadius: "6px",
-                              cursor: "pointer",
-                              fontSize: "12px",
-                              fontWeight: "600",
                             }}
                           >
                             Open in Maps
@@ -3129,28 +3117,31 @@ const ChatHeader = ({
                     </div>
                   </div>
                 </div>
-
-                {/* Footer Actions */}
-                <div className="user-info-footer">
-                  <button
-                    className="user-info-action-btn primary"
-                    onClick={() => {
-                      setIsUserInfoModalOpen(false);
-                      handleViewProfile();
-                    }}
-                  >
-                    View Full Profile
-                  </button>
-                  <button
-                    className="user-info-action-btn secondary"
-                    onClick={() => setIsUserInfoModalOpen(false)}
-                  >
-                    Close
-                  </button>
-                </div>
               </>
             )}
           </div>
+          </div>
+          {!loadingUserInfo && (
+            <div className="user-info-footer">
+              <button
+                type="button"
+                className="user-info-action-btn primary"
+                onClick={() => {
+                  setIsUserInfoModalOpen(false);
+                  handleViewProfile();
+                }}
+              >
+                View Full Profile
+              </button>
+              <button
+                type="button"
+                className="user-info-action-btn secondary"
+                onClick={() => setIsUserInfoModalOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+          )}
         </ModalContainer>
         )}
 

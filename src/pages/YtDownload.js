@@ -12,6 +12,7 @@ import {
 } from "../utils/offlineUtils";
 import { saveVideoFromUrl } from "../utils/useSavedVideos";
 import { useAuth } from "../hooks/useAuth";
+import { useLocation } from "react-router-dom";
 import VideoDownloadModal from "../components/modal/VideoDownloadModal";
 import "./YtDownload.css";
 
@@ -52,6 +53,7 @@ const parseYoutubeUrls = (text) =>
 
 const YtDownload = () => {
   const { isAuthenticated, token } = useAuth();
+  const location = useLocation();
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [selectedQuality, setSelectedQuality] = useState(2160);
   const [postAsWatch, setPostAsWatch] = useState(true);
@@ -482,6 +484,63 @@ const YtDownload = () => {
       updateJob,
     ],
   );
+
+  const agentJobHandledRef = useRef(false);
+
+  const attachAgentJob = useCallback(
+    (agentJob) => {
+      if (!agentJob?.url) return;
+      if (agentJob.waitForUser) {
+        setYoutubeUrl(agentJob.url);
+        return;
+      }
+      const clientId = createClientJobId();
+      const job = {
+        clientId,
+        url: agentJob.url,
+        quality: agentJob.quality || selectedQuality,
+        postAsWatch: agentJob.postAsWatch !== false,
+        audioOnly: !!agentJob.audioOnly,
+        title: agentJob.title || "YouTube download",
+        progress: agentJob.progressId ? 5 : 0,
+        stage: agentJob.progressId ? "downloading" : "starting",
+        status: "running",
+        progressId: agentJob.progressId || null,
+      };
+      setActiveJobs((prev) => {
+        if (
+          prev.some(
+            (item) =>
+              (item.progressId && item.progressId === job.progressId) ||
+              item.url === job.url,
+          )
+        ) {
+          return prev;
+        }
+        return [job, ...prev];
+      });
+      if (agentJob.progressId) {
+        const progressUrl =
+          agentJob.progressUrl ||
+          `${getYTDownloadAPI()}/progress/${agentJob.progressId}`;
+        pollProgress(job, toSecureProgressUrl(progressUrl), true);
+        return;
+      }
+      startDownloadJob(job, true);
+    },
+    [pollProgress, selectedQuality, startDownloadJob],
+  );
+
+  useEffect(() => {
+    const fromState = location.state?.agentJob;
+    if (fromState && !agentJobHandledRef.current) {
+      agentJobHandledRef.current = true;
+      attachAgentJob(fromState);
+    }
+    const onAgentJob = (event) => attachAgentJob(event.detail);
+    window.addEventListener("connect:yt-download-job", onAgentJob);
+    return () => window.removeEventListener("connect:yt-download-job", onAgentJob);
+  }, [attachAgentJob, location.state]);
 
   const handleDownload = async () => {
     const rawUrls = parseYoutubeUrls(youtubeUrl);

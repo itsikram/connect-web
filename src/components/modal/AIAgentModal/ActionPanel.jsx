@@ -7,7 +7,7 @@ const ACTIONS = [
     category: "social",
     icon: "fa-users",
     label: "Social Actions",
-    color: "#6366f1",
+    color: "#00d4ff",
     items: [
       {
         id: "ac_video_call",
@@ -53,7 +53,7 @@ const ACTIONS = [
     category: "navigate",
     icon: "fa-compass",
     label: "Navigate",
-    color: "#10b981",
+    color: "#00c851",
     items: [
       { id: "nav_home", label: "Home", icon: "fa-home", prompt: "go to home" },
       {
@@ -178,7 +178,7 @@ const ACTIONS = [
     category: "settings",
     icon: "fa-cog",
     label: "Settings",
-    color: "#6b7280",
+    color: "#b0b3b8",
     items: [
       {
         id: "st_main",
@@ -236,7 +236,7 @@ const ACTIONS = [
     category: "friends",
     icon: "fa-user-friends",
     label: "Friend Management",
-    color: "#3b82f6",
+    color: "#33e0ff",
     items: [
       {
         id: "ac_add_friend",
@@ -276,7 +276,7 @@ const ACTIONS = [
     category: "games",
     icon: "fa-gamepad",
     label: "Games",
-    color: "#8b5cf6",
+    color: "#29b1a9",
     items: [
       {
         id: "ac_create_ludo",
@@ -387,7 +387,7 @@ const ActionPanel = ({ onActionClick }) => {
     <div className="ai-agent-action-panel">
       <div className="action-panel-header">
         <h3>Quick Actions</h3>
-        <p style={{ fontSize: 11, color: "#6b7280", margin: "2px 0 0" }}>
+        <p style={{ fontSize: 11, color: "#b0b3b8", margin: "2px 0 0" }}>
           Click to fill the chat or start a task
         </p>
       </div>
@@ -410,7 +410,7 @@ const ActionPanel = ({ onActionClick }) => {
               <motion.button
                 className={`category-header ${isOpen ? "expanded" : ""}`}
                 onClick={() => toggle(category.category)}
-                whileHover={{ backgroundColor: "rgba(0,0,0,0.04)" }}
+                whileHover={{ backgroundColor: "rgba(255,255,255,0.06)" }}
                 whileTap={{ scale: 0.98 }}
                 style={{
                   borderLeft: isOpen
@@ -481,7 +481,7 @@ const ActionPanel = ({ onActionClick }) => {
         <p className="footer-hint">
           <i
             className="fas fa-keyboard"
-            style={{ marginRight: 4, color: "#6366f1" }}
+            style={{ marginRight: 4, color: "#00d4ff" }}
           />
           Or just type naturally — I understand plain language!
         </p>

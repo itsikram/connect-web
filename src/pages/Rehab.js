@@ -94,6 +94,24 @@ const Rehab = () => {
         }
     }, [todayKey]);
 
+    useEffect(() => {
+        const reload = () => {
+            try {
+                const profileData = localStorage.getItem(REHAB_PROFILE_KEY);
+                if (profileData) setProfile(JSON.parse(profileData));
+                const cravingData = localStorage.getItem(CRAVING_LOG_KEY);
+                if (cravingData) {
+                    const allCravings = JSON.parse(cravingData);
+                    setCravingLog(allCravings[todayKey] || []);
+                }
+                const chatData = localStorage.getItem(SUPPORT_CHAT_KEY);
+                if (chatData) setChatMessages(JSON.parse(chatData) || []);
+            } catch (_) {}
+        };
+        window.addEventListener('connect:rehab-updated', reload);
+        return () => window.removeEventListener('connect:rehab-updated', reload);
+    }, [todayKey]);
+
     // Setup profile
     const setupProfile = () => {
         if (!startDate) {

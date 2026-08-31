@@ -1640,11 +1640,23 @@ const StickyChatBox = ({
       {isUserInfoModalOpen && (
       <ModalContainer
         title="User Information"
-        size="lg"
         isOpen
         onRequestClose={() => setIsUserInfoModalOpen(false)}
         id="stickyUserInfoModal"
+        className="is-flush"
       >
+        <div className="modal-header">
+          <h3 className="modal-title">User Information</h3>
+          <button
+            type="button"
+            className="modal-close-btn"
+            onClick={() => setIsUserInfoModalOpen(false)}
+            aria-label="Close"
+          >
+            <i className="far fa-times" aria-hidden="true" />
+          </button>
+        </div>
+        <div className="modal-body">
         <div className="user-info-modal-content">
           {loadingUserInfo ? (
             <div className="user-info-loading">
@@ -1680,64 +1692,11 @@ const StickyChatBox = ({
                 {(friendLocation ||
                   userInfoData?.lastLocation ||
                   friendProfile?.lastLocation) && (
-                  <div
-                    className="user-info-card"
-                    style={{ padding: 0, overflow: "hidden", width: "100%" }}
-                  >
+                  <div className="user-info-card user-info-card--map">
                     <div
-                      style={{
-                        width: "100%",
-                        height: "400px",
-                        position: "relative",
-                        overflow: "hidden",
-                      }}
-                    >
-                      {mapLoading && (
-                        <div
-                          style={{
-                            position: "absolute",
-                            top: 0,
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            display: "flex",
-                            justifyContent: "center",
-                            alignItems: "center",
-                            backgroundColor: "rgba(0,0,0,0.1)",
-                            zIndex: 1,
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              alignItems: "center",
-                              gap: "10px",
-                            }}
-                          >
-                            <div
-                              className="spinner-border text-primary"
-                              role="status"
-                            >
-                              <span className="visually-hidden">
-                                Loading...
-                              </span>
-                            </div>
-                            <p style={{ color: "#666", margin: 0 }}>
-                              Loading map...
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                      <div
-                        ref={mapRef}
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          minHeight: "400px",
-                        }}
-                      />
-                    </div>
+                      ref={mapRef}
+                      className="user-info-map"
+                    />
                   </div>
                 )}
 
@@ -1815,27 +1774,31 @@ const StickyChatBox = ({
                   </div>
                 </div>
               </div>
-
-              <div className="user-info-footer">
-                <button
-                  className="user-info-action-btn primary"
-                  onClick={() => {
-                    setIsUserInfoModalOpen(false);
-                    window.location.href = `/profile/${friendId}`;
-                  }}
-                >
-                  View Full Profile
-                </button>
-                <button
-                  className="user-info-action-btn secondary"
-                  onClick={() => setIsUserInfoModalOpen(false)}
-                >
-                  Close
-                </button>
-              </div>
             </>
           )}
         </div>
+        </div>
+        {!loadingUserInfo && (
+          <div className="user-info-footer">
+            <button
+              type="button"
+              className="user-info-action-btn primary"
+              onClick={() => {
+                setIsUserInfoModalOpen(false);
+                window.location.href = `/profile/${friendId}`;
+              }}
+            >
+              View Full Profile
+            </button>
+            <button
+              type="button"
+              className="user-info-action-btn secondary"
+              onClick={() => setIsUserInfoModalOpen(false)}
+            >
+              Close
+            </button>
+          </div>
+        )}
       </ModalContainer>
       )}
 

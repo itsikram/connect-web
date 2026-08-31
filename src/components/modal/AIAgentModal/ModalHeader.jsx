@@ -8,6 +8,8 @@ const ModalHeader = ({
   autoRunActions,
   onToggleAutoRun,
   onOpenSettings,
+  onClearChat,
+  canClearChat = false,
   settingsOpen = false,
   providerLabel = "Gemini",
   modelLabel = "",
@@ -55,6 +57,17 @@ const ModalHeader = ({
           <span className="ai-agent-auto-run-slider" />
           <span className="ai-agent-auto-run-label">Auto-run</span>
         </label>
+
+        <button
+          className="ai-agent-settings-btn-header"
+          onClick={onClearChat}
+          aria-label="Clear chat"
+          title="Clear chat"
+          type="button"
+          disabled={!canClearChat}
+        >
+          <i className="fas fa-trash-alt" />
+        </button>
 
         <button
           className={`ai-agent-settings-btn-header ${settingsOpen ? "active" : ""}`}

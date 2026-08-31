@@ -8,7 +8,7 @@
 .app-modal-overlay {
     position: fixed;
     inset: 0;
-    z-index: 1004;
+    z-index: 4000;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -104,7 +104,7 @@
     box-sizing: border-box;
 }
 
-.app-modal-content img,
+.app-modal-content img:not(.leaflet-tile):not(.leaflet-marker-icon):not(.leaflet-marker-shadow),
 .app-modal-content video {
     max-width: 100%;
     height: auto;

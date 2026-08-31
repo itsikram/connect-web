@@ -11,6 +11,56 @@ import {
   extractCaptionFromText,
   isPlaceholderCaption,
 } from "./agentCatalog";
+import store from "../../../store";
+import { addPost, removePost } from "../../../services/actions/postActions";
+import { newMessage } from "../../../services/actions/messageActions";
+import { loadSettings } from "../../../services/actions/settingsActions";
+import { applyThemeMode } from "../../../utils/applyThemeMode";
+import CacheManager from "../../../utils/cacheManager";
+import { getUserFromStorage } from "../../../utils/storageUtils";
+import {
+  getYtDownloadApiUrl,
+  isOffline,
+  normalizeServerUrl,
+} from "../../../utils/offlineUtils";
+import { generateGameId, emitSocket } from "../../../pages/ludo/utils/socketHelpers";
+import { getRecoverySupportMessage } from "../../../utils/rehabApi";
+import {
+  extractYouTubeUrl,
+  extractMediaUrl,
+  looksLikeAudioDownload,
+  shouldSkipWatchPost,
+  parseQualityFromText,
+  parseCalendarWhen,
+  stripDatePhrases,
+  matchByText,
+  parseSettingsPatch,
+  parseHealthLog,
+  parseRecoveryLog,
+  readJsonStorage,
+  writeJsonStorage,
+  emitConnectEvent,
+  todayKey,
+} from "./agentActionHelpers";
+
+const CALENDAR_STORAGE_KEY = "calendarApp";
+const HABITS_STORAGE_KEY = "habitsApp";
+const HEALTH_WEIGHT_LOG_KEY = "connectWeightLog";
+const HEALTH_MEAL_LOG_KEY = "connectMealLog";
+const HEALTH_WELLNESS_KEY = "connectHealthWellness";
+const REHAB_PROFILE_KEY = "connectRehabProfile";
+const CRAVING_LOG_KEY = "connectCravingLog";
+const SUPPORT_CHAT_KEY = "connectSupportChat";
+
+const loadLocalList = (key) => {
+  const value = readJsonStorage(key, []);
+  return Array.isArray(value) ? value : [];
+};
+
+const saveLocalList = (key, items, eventName) => {
+  writeJsonStorage(key, items);
+  emitConnectEvent(eventName, { items });
+};
 
 const clipText = (value, max = 180) => {
   const text = String(value || "")
@@ -52,6 +102,67 @@ const matchProfileByName = (profiles, name) => {
       .join(" ")
       .toLowerCase();
     return haystack.includes(query);
+  });
+};
+
+const getAccessToken = () => getUserFromStorage()?.accessToken || "";
+
+const startYoutubeDownloadJob = async ({
+  url,
+  audioOnly = false,
+  postAsWatch = true,
+  quality = 2160,
+}) => {
+  if (isOffline()) {
+    throw new Error("YouTube download needs an internet connection.");
+  }
+  const apiUrl = normalizeServerUrl(getYtDownloadApiUrl());
+  const encoded = encodeURIComponent(
+    String(url || "").replace("m.youtube.com", "www.youtube.com"),
+  );
+  const heightParam = !audioOnly && quality ? `&height=${quality}` : "";
+  const watchParam = `&post_as_watch=${postAsWatch && !audioOnly ? "true" : "false"}`;
+  const audioParam = audioOnly ? "&audio_only=true" : "";
+  const ext = audioOnly ? "mp3" : "mp4";
+  const requestUrl = `${apiUrl}/download?url=${encoded}&ext=${ext}${heightParam}&disposition=inline&link_only=true&async_job=true${watchParam}${audioParam}`;
+  const token = getAccessToken();
+  const response = await fetch(`${requestUrl}&_ts=${Date.now()}`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      ...(token ? { Authorization: token } : {}),
+    },
+    cache: "no-store",
+  });
+  const json = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(json?.error || json?.message || `Download failed (${response.status})`);
+  }
+  return json;
+};
+
+const sendGameInviteNotification = async ({
+  friend,
+  myProfile,
+  game,
+  gameId,
+}) => {
+  const isLudo = game === "ludo";
+  await api.post("/web-notification/send-to-all-browsers", {
+    profileId: friend._id,
+    notificationData: {
+      title: isLudo ? "Ludo Invitation" : "Chess Invitation",
+      text: `${myProfile?.fullName || "A friend"} invited you to play ${isLudo ? "Ludo" : "Chess"}`,
+      icon: myProfile?.profilePic,
+      link: `/${isLudo ? "ludo-game" : "chess-game"}?gameId=${encodeURIComponent(gameId)}`,
+      type: isLudo ? "ludo_invite" : "chess_invite",
+      data: {
+        gameId,
+        inviterId: myProfile?._id,
+        inviterName: myProfile?.fullName,
+        inviterAvatar: myProfile?.profilePic,
+      },
+    },
   });
 };
 
@@ -125,38 +236,65 @@ const loadQueryData = async ({
   }
 
   if (type === "habits") {
+    const habits = loadLocalList(HABITS_STORAGE_KEY);
+    if (habits.length) {
+      return {
+        queryType: type,
+        payload: {
+          habits: habits.slice(0, 20).map((habit) => ({
+            name: habit.name,
+            streak: habit.streak,
+          })),
+        },
+        summary: `You are tracking ${habits.length} habits.`,
+      };
+    }
     const res = await api.get("/habits");
-    const habits = unwrapList(res.data, ["habits"]);
+    const apiHabits = unwrapList(res.data, ["habits"]);
     return {
       queryType: type,
       payload: {
-        habits: habits.slice(0, 20).map((habit) => ({
+        habits: apiHabits.slice(0, 20).map((habit) => ({
           name: habit.name,
           streak: habit.streak,
         })),
       },
       summary:
-        habits.length > 0
-          ? `You are tracking ${habits.length} habits.`
+        apiHabits.length > 0
+          ? `You are tracking ${apiHabits.length} habits.`
           : "You have no habits yet.",
     };
   }
 
   if (type === "calendar") {
+    const events = loadLocalList(CALENDAR_STORAGE_KEY);
+    if (events.length) {
+      return {
+        queryType: type,
+        payload: {
+          events: events.slice(0, 20).map((event) => ({
+            title: event.title,
+            date: event.date,
+            time: event.time,
+          })),
+        },
+        summary: `You have ${events.length} calendar events.`,
+      };
+    }
     const res = await api.get("/calendar");
-    const events = unwrapList(res.data, ["events"]);
+    const apiEvents = unwrapList(res.data, ["events"]);
     return {
       queryType: type,
       payload: {
-        events: events.slice(0, 20).map((event) => ({
+        events: apiEvents.slice(0, 20).map((event) => ({
           title: event.title,
           date: event.date,
           time: event.time,
         })),
       },
       summary:
-        events.length > 0
-          ? `You have ${events.length} calendar events.`
+        apiEvents.length > 0
+          ? `You have ${apiEvents.length} calendar events.`
           : "You have no calendar events.",
     };
   }
@@ -355,8 +493,8 @@ export const executeAction = async ({
 }) => {
   const friendName = friend ? getFriendDisplayName(friend) : null;
 
-  const go = (path) => {
-    navigate(path);
+  const go = (path, options) => {
+    navigate(path, options);
     if (onClose) onClose();
   };
 
@@ -529,25 +667,52 @@ export const executeAction = async ({
       // ── Create Ludo ────────────────────────────────────────────────────────
       case "CREATE_LUDO": {
         go("/ludo-game");
-        return { success: true, message: "🎮 Opening Ludo game…" };
+        return { success: true, message: "🎮 Starting Ludo…" };
       }
 
-      // ── Invite to Ludo ─────────────────────────────────────────────────────
       case "INVITE_LUDO": {
+        const gid = generateGameId();
         try {
           localStorage.setItem(
             "ludo_invite_target",
-            JSON.stringify({ friendId: friend._id, friendName }),
+            JSON.stringify({
+              friendId: friend._id,
+              friendName,
+              friendAvatar: friend.profilePic,
+              gameId: gid,
+            }),
           );
         } catch (_) {}
-        go("/ludo-game");
+        emitSocket(socket, "ludo:join", { gameId: gid });
+        emitSocket(socket, "ludo:invite", {
+          to: friend._id,
+          by: myProfile?._id,
+          name: myProfile?.fullName || "Player",
+          avatar: myProfile?.profilePic,
+          cover: myProfile?.coverPic,
+          gameId: gid,
+          slotIndex: 1,
+          playerCount: 4,
+          ts: Date.now(),
+        });
+        try {
+          await sendGameInviteNotification({
+            friend,
+            myProfile,
+            game: "ludo",
+            gameId: gid,
+          });
+        } catch (_) {}
+        go(`/ludo-game?gameId=${encodeURIComponent(gid)}`);
         return {
           success: true,
-          message: `🎮 Navigating to Ludo to invite ${friendName}…`,
+          message: `🎮 Ludo started and invitation sent to ${friendName}.`,
+          memory: { lastFriendName: friendName },
         };
       }
 
       case "INVITE_CHESS": {
+        const gid = generateGameId();
         try {
           localStorage.setItem(
             "chess_invite_target",
@@ -555,13 +720,37 @@ export const executeAction = async ({
               friendId: friend._id,
               friendName,
               friendAvatar: friend.profilePic,
+              gameId: gid,
             }),
           );
         } catch (_) {}
-        go("/chess-game");
+        emitSocket(socket, "chess:join", {
+          gameId: gid,
+          name: myProfile?.fullName || "Player",
+          avatar: myProfile?.profilePic,
+        });
+        emitSocket(socket, "chess:invite", {
+          to: friend._id,
+          by: myProfile?._id,
+          name: myProfile?.fullName || "Player",
+          avatar: myProfile?.profilePic,
+          cover: myProfile?.coverPic,
+          gameId: gid,
+          ts: Date.now(),
+        });
+        try {
+          await sendGameInviteNotification({
+            friend,
+            myProfile,
+            game: "chess",
+            gameId: gid,
+          });
+        } catch (_) {}
+        go(`/chess-game?gameId=${encodeURIComponent(gid)}`);
         return {
           success: true,
-          message: `♟️ Navigating to Chess to invite ${friendName}…`,
+          message: `♟️ Chess started and invitation sent to ${friendName}.`,
+          memory: { lastFriendName: friendName },
         };
       }
 
@@ -699,6 +888,9 @@ export const executeAction = async ({
       }
 
       case "CREATE_POST": {
+        const wantDraft = /\b(draft|composer|don't post|dont post|preview)\b/i.test(
+          String(sourceText || ""),
+        );
         let caption = [searchQuery, label, messageText]
           .map((value) => String(value || "").trim())
           .find((value) => value && !isPlaceholderCaption(value));
@@ -719,29 +911,85 @@ export const executeAction = async ({
           .trim()
           .slice(0, 500);
 
-        navigate("/");
-        window.setTimeout(() => {
-          window.dispatchEvent(
-            new CustomEvent("openCreatePost", {
-              detail: { caption, audience: 1 },
-            }),
-          );
-          if (onClose) onClose();
-        }, 350);
+        const openDraft = (draftCaption) => {
+          navigate("/");
+          window.setTimeout(() => {
+            window.dispatchEvent(
+              new CustomEvent("openCreatePost", {
+                detail: { caption: draftCaption, audience: 3 },
+              }),
+            );
+            if (onClose) onClose();
+          }, 350);
+        };
 
-        if (!caption) {
+        if (!caption || wantDraft) {
+          openDraft(caption);
           return {
             success: true,
             type: "draft-post",
-            message:
-              "Opening the post composer so you can write the caption, then tap Post.",
+            message: caption
+              ? `📝 Draft ready — review it and tap Post: "${clipText(caption, 120)}"`
+              : "Opening the post composer so you can write the caption, then tap Post.",
+            memory: caption ? { lastCaption: caption } : {},
           };
         }
 
+        try {
+          const postFormData = new FormData();
+          postFormData.append("caption", caption);
+          postFormData.append("photos", "");
+          postFormData.append("feelings", "");
+          postFormData.append("location", "");
+          postFormData.append("audience", "3");
+          const res = await api.post("/post/create/", postFormData, {
+            headers: { "content-type": "multipart/form-data" },
+          });
+          const post = res.data?.post;
+          if (post) {
+            store.dispatch(addPost(post));
+            CacheManager.prependCachedPost(post);
+          }
+          go("/");
+          return {
+            success: true,
+            type: "created-post",
+            message: `📝 Posted: "${clipText(caption, 120)}"`,
+            memory: {
+              lastCaption: caption,
+              lastPost: { id: post?._id, caption },
+            },
+          };
+        } catch (postError) {
+          openDraft(caption);
+          return {
+            success: true,
+            type: "draft-post",
+            message: `I couldn't publish automatically, so I opened a draft: "${clipText(caption, 120)}"`,
+            memory: { lastCaption: caption },
+          };
+        }
+      }
+
+      case "DELETE_POST": {
+        const query = (searchQuery || label || messageText || "").trim();
+        const res = await api.get("/post/myPosts", {
+          params: { profile: myProfile?._id },
+        });
+        const posts = unwrapList(res.data, ["posts"]);
+        if (!posts.length) {
+          return { success: false, message: "You don't have any posts to delete." };
+        }
+        const target =
+          matchByText(posts, query, (post) => post.caption || "") || posts[0];
+        await api.post("/post/delete", {
+          postId: target._id,
+          authorId: target.author?._id || myProfile._id,
+        });
+        store.dispatch(removePost(target._id));
         return {
           success: true,
-          type: "draft-post",
-          message: `📝 Draft ready — review it and tap Post to publish: "${clipText(caption, 120)}"`,
+          message: `🗑️ Deleted post: "${clipText(target.caption || "your post", 80)}"`,
         };
       }
 
@@ -752,16 +1000,20 @@ export const executeAction = async ({
           return { success: true, message: "📝 Opening Notes…" };
         }
         const title = noteContent.substring(0, 80);
-        await api.post("/notes", { title, content: noteContent });
+        const created = await api.post("/notes", { title, content: noteContent });
+        emitConnectEvent("connect:notes-changed");
+        const note = created.data?.note || created.data;
         return {
           success: true,
           message: `📝 Note saved: "${clipText(title, 60)}"`,
+          memory: { lastNote: { id: note?._id, title } },
         };
       }
 
       case "EDIT_NOTE": {
-        const newContent = (label || searchQuery || messageText || "").trim();
-        if (!newContent.trim()) {
+        const matchQuery = (searchQuery || label || "").trim();
+        const newContent = (messageText || (!searchQuery ? label : "") || matchQuery).trim();
+        if (!newContent) {
           return { success: false, message: "What should the note say?" };
         }
         const notesRes = await api.get("/notes");
@@ -769,14 +1021,23 @@ export const executeAction = async ({
         if (!notes.length) {
           return { success: false, message: "You don't have any notes yet." };
         }
-        const latest = notes[0];
-        await api.put(`/notes/${latest._id}`, {
-          title: newContent.substring(0, 80),
-          content: newContent,
+        const target =
+          matchByText(
+            notes,
+            messageText ? matchQuery : matchQuery,
+            (note) => `${note.title || ""} ${note.content || ""}`,
+          ) || notes[0];
+        const nextTitle = (messageText || newContent).substring(0, 80);
+        const nextBody = messageText || newContent;
+        await api.put(`/notes/${target._id}`, {
+          title: nextTitle,
+          content: nextBody,
         });
+        emitConnectEvent("connect:notes-changed");
         return {
           success: true,
-          message: `📝 Updated your latest note: "${clipText(newContent, 60)}"`,
+          message: `📝 Updated note: "${clipText(nextTitle, 60)}"`,
+          memory: { lastNote: { id: target._id, title: nextTitle } },
         };
       }
 
@@ -786,8 +1047,16 @@ export const executeAction = async ({
         if (!notes.length) {
           return { success: false, message: "You don't have any notes to delete." };
         }
-        await api.delete(`/notes/${notes[0]._id}`);
-        return { success: true, message: "🗑️ Deleted your latest note." };
+        const query = (searchQuery || label || messageText || "").trim();
+        const target =
+          matchByText(notes, query, (note) => `${note.title || ""} ${note.content || ""}`) ||
+          notes[0];
+        await api.delete(`/notes/${target._id}`);
+        emitConnectEvent("connect:notes-changed");
+        return {
+          success: true,
+          message: `🗑️ Deleted note: "${clipText(target.title || target.content, 60)}"`,
+        };
       }
 
       case "CREATE_TASK": {
@@ -796,15 +1065,19 @@ export const executeAction = async ({
           go("/tasks");
           return { success: true, message: "✓ Opening Tasks…" };
         }
-        await api.post("/tasks", { text: taskContent });
+        const created = await api.post("/tasks", { text: taskContent });
+        emitConnectEvent("connect:tasks-changed");
+        const task = created.data?.task || created.data;
         return {
           success: true,
           message: `✓ Task added: "${clipText(taskContent, 60)}"`,
+          memory: { lastTask: { id: task?._id, text: taskContent } },
         };
       }
 
       case "EDIT_TASK": {
-        const newTaskContent = (label || searchQuery || messageText || "").trim();
+        const matchQuery = (searchQuery || label || "").trim();
+        const newTaskContent = (messageText || matchQuery).trim();
         if (!newTaskContent) {
           return { success: false, message: "What should the task be?" };
         }
@@ -813,10 +1086,14 @@ export const executeAction = async ({
         if (!tasks.length) {
           return { success: false, message: "You don't have any tasks yet." };
         }
-        await api.put(`/tasks/${tasks[0]._id}`, { text: newTaskContent });
+        const target =
+          matchByText(tasks, matchQuery, (task) => task.text || "") || tasks[0];
+        await api.put(`/tasks/${target._id}`, { text: newTaskContent });
+        emitConnectEvent("connect:tasks-changed");
         return {
           success: true,
-          message: `✓ Updated your latest task: "${clipText(newTaskContent, 60)}"`,
+          message: `✓ Updated task: "${clipText(newTaskContent, 60)}"`,
+          memory: { lastTask: { id: target._id, text: newTaskContent } },
         };
       }
 
@@ -826,21 +1103,102 @@ export const executeAction = async ({
         if (!tasks.length) {
           return { success: false, message: "You don't have any tasks to delete." };
         }
-        await api.delete(`/tasks/${tasks[0]._id}`);
-        return { success: true, message: "🗑️ Deleted your latest task." };
+        const query = (searchQuery || label || messageText || "").trim();
+        const target = matchByText(tasks, query, (task) => task.text || "") || tasks[0];
+        await api.delete(`/tasks/${target._id}`);
+        emitConnectEvent("connect:tasks-changed");
+        return {
+          success: true,
+          message: `🗑️ Deleted task: "${clipText(target.text, 60)}"`,
+        };
       }
 
-      case "CREATE_EVENT": {
-        const title = (label || searchQuery || messageText || "").trim();
+      case "CREATE_EVENT":
+      case "EDIT_EVENT": {
+        const rawText = [label, searchQuery, messageText, sourceText]
+          .filter(Boolean)
+          .join(" ");
+        const when = parseCalendarWhen(rawText);
+        const title = stripDatePhrases(searchQuery || label || messageText || "").trim();
         if (!title) {
           go("/calendar");
           return { success: true, message: "📅 Opening Calendar…" };
         }
-        const today = new Date().toISOString().slice(0, 10);
-        await api.post("/calendar", { title, date: today });
+        const events = loadLocalList(CALENDAR_STORAGE_KEY);
+        if (action === "EDIT_EVENT" && events.length) {
+          const target =
+            matchByText(events, title, (event) => event.title || "") || events[0];
+          const nextTitle = (messageText || title).trim();
+          const next = events.map((event) =>
+            event.id === target.id
+              ? {
+                  ...event,
+                  title: nextTitle,
+                  time: when.time || event.time,
+                  date: when.foundDate ? when.iso : event.date,
+                }
+              : event,
+          );
+          saveLocalList(CALENDAR_STORAGE_KEY, next, "connect:calendar-changed");
+          try {
+            if (target._id) {
+              await api.put(`/calendar/${target._id}`, {
+                title: nextTitle,
+                date: when.dateKey,
+                time: when.time || undefined,
+              });
+            }
+          } catch (_) {}
+          return {
+            success: true,
+            message: `📅 Updated event: "${clipText(nextTitle, 60)}"`,
+            memory: { lastEvent: { id: target.id, title: nextTitle, date: when.dateKey } },
+          };
+        }
+        const event = {
+          id: Date.now(),
+          title,
+          time: when.time || "",
+          date: when.iso,
+          createdAt: new Date().toISOString(),
+        };
+        saveLocalList(
+          CALENDAR_STORAGE_KEY,
+          [event, ...events],
+          "connect:calendar-changed",
+        );
+        try {
+          await api.post("/calendar", {
+            title,
+            date: when.dateKey,
+            time: when.time || undefined,
+          });
+        } catch (_) {}
         return {
           success: true,
-          message: `📅 Event added for today: "${clipText(title, 60)}"`,
+          message: `📅 Event added for ${when.dateKey}${when.time ? ` at ${when.time}` : ""}: "${clipText(title, 60)}"`,
+          memory: { lastEvent: { id: event.id, title, date: when.dateKey } },
+        };
+      }
+
+      case "DELETE_EVENT": {
+        const query = (searchQuery || label || messageText || "").trim();
+        const events = loadLocalList(CALENDAR_STORAGE_KEY);
+        if (!events.length) {
+          return { success: false, message: "You don't have any calendar events to delete." };
+        }
+        const target = matchByText(events, query, (event) => event.title || "") || events[0];
+        saveLocalList(
+          CALENDAR_STORAGE_KEY,
+          events.filter((event) => event.id !== target.id),
+          "connect:calendar-changed",
+        );
+        try {
+          if (target._id) await api.delete(`/calendar/${target._id}`);
+        } catch (_) {}
+        return {
+          success: true,
+          message: `🗑️ Deleted event: "${clipText(target.title, 60)}"`,
         };
       }
 
@@ -850,10 +1208,314 @@ export const executeAction = async ({
           go("/habits");
           return { success: true, message: "🔥 Opening Habits…" };
         }
-        await api.post("/habits", { name });
+        const habits = loadLocalList(HABITS_STORAGE_KEY);
+        const habit = {
+          id: Date.now(),
+          name,
+          color: "#22C55E",
+          streak: 0,
+          longestStreak: 0,
+          records: {},
+          createdAt: new Date().toISOString(),
+        };
+        saveLocalList(HABITS_STORAGE_KEY, [...habits, habit], "connect:habits-changed");
+        try {
+          await api.post("/habits", { name });
+        } catch (_) {}
         return {
           success: true,
           message: `🔥 Habit created: "${clipText(name, 60)}"`,
+          memory: { lastHabit: { id: habit.id, name } },
+        };
+      }
+
+      case "EDIT_HABIT": {
+        const matchQuery = (searchQuery || label || "").trim();
+        const newName = (messageText || matchQuery).trim();
+        if (!newName) {
+          return { success: false, message: "What should the habit be called?" };
+        }
+        const habits = loadLocalList(HABITS_STORAGE_KEY);
+        if (!habits.length) {
+          return { success: false, message: "You don't have any habits yet." };
+        }
+        const target = matchByText(habits, matchQuery, (habit) => habit.name || "") || habits[0];
+        saveLocalList(
+          HABITS_STORAGE_KEY,
+          habits.map((habit) =>
+            habit.id === target.id ? { ...habit, name: newName } : habit,
+          ),
+          "connect:habits-changed",
+        );
+        return {
+          success: true,
+          message: `🔥 Updated habit: "${clipText(newName, 60)}"`,
+          memory: { lastHabit: { id: target.id, name: newName } },
+        };
+      }
+
+      case "DELETE_HABIT": {
+        const habits = loadLocalList(HABITS_STORAGE_KEY);
+        if (!habits.length) {
+          return { success: false, message: "You don't have any habits to delete." };
+        }
+        const query = (searchQuery || label || messageText || "").trim();
+        const target = matchByText(habits, query, (habit) => habit.name || "") || habits[0];
+        saveLocalList(
+          HABITS_STORAGE_KEY,
+          habits.filter((habit) => habit.id !== target.id),
+          "connect:habits-changed",
+        );
+        return {
+          success: true,
+          message: `🗑️ Deleted habit: "${clipText(target.name, 60)}"`,
+        };
+      }
+
+      case "DOWNLOAD_YOUTUBE": {
+        const combined = [searchQuery, label, messageText, sourceText, hintText]
+          .filter(Boolean)
+          .join(" ");
+        const url = extractYouTubeUrl(combined);
+        if (!url) {
+          return {
+            success: false,
+            message: "Paste the YouTube link you want me to download.",
+          };
+        }
+        const audioOnly =
+          looksLikeAudioDownload(combined) || String(label || "").toLowerCase() === "audio";
+        const postAsWatch = !audioOnly && !shouldSkipWatchPost(combined);
+        const quality = parseQualityFromText(combined);
+        try {
+          const job = await startYoutubeDownloadJob({
+            url,
+            audioOnly,
+            postAsWatch,
+            quality,
+          });
+          const agentJob = {
+            url,
+            audioOnly,
+            postAsWatch,
+            quality,
+            progressId: job?.progress_id,
+            progressUrl: job?.progress_url,
+            title: job?.title || job?.download_title,
+          };
+          emitConnectEvent("connect:yt-download-job", agentJob);
+          go("/yt-download", { state: { agentJob } });
+          return {
+            success: true,
+            message: audioOnly
+              ? "🎵 Download started — saving audio, I'll keep it in Downloads when it's ready."
+              : postAsWatch
+                ? "⬇️ Download started — I'll save it and post it to Watch when it's ready."
+                : "⬇️ Download started. Open YouTube Download to watch progress.",
+            memory: { lastYoutubeUrl: url },
+          };
+        } catch (downloadError) {
+          return {
+            success: false,
+            message: downloadError?.message || "Couldn't start the YouTube download.",
+          };
+        }
+      }
+
+      case "OPEN_VIDEO_PLAYER": {
+        const url = extractMediaUrl(searchQuery, label, messageText, sourceText);
+        if (url && /youtu(\.be|be\.com)/i.test(url)) {
+          go("/yt-download", { state: { agentJob: { url, waitForUser: true } } });
+          return {
+            success: true,
+            message:
+              "YouTube links play after download. I opened the downloader — say download if you want me to save it.",
+            memory: { lastYoutubeUrl: url },
+          };
+        }
+        go("/video-player", {
+          state: url ? { playUrl: url, playTitle: label || "Video", autoplay: true } : undefined,
+        });
+        return {
+          success: true,
+          message: url
+            ? "🎬 Opening the video player with that file."
+            : "🎬 Opening the video player.",
+          memory: url ? { lastVideoUrl: url } : {},
+        };
+      }
+
+      case "UPDATE_SETTINGS": {
+        const combined = [searchQuery, label, messageText, sourceText]
+          .filter(Boolean)
+          .join(" ");
+        const { patch, notes } = parseSettingsPatch(combined);
+        if (!Object.keys(patch).length) {
+          go("/settings");
+          return {
+            success: false,
+            message:
+              "What should I change? Try dark mode, light mode, hide location, mute notifications, or friends-only posts.",
+          };
+        }
+        const language = patch.preferredLanguage;
+        delete patch.preferredLanguage;
+        if (Object.keys(patch).length) {
+          const res = await api.post("/setting/update", patch);
+          if (res.data) store.dispatch(loadSettings(res.data));
+          if (patch.themeMode) applyThemeMode(patch.themeMode);
+        }
+        if (language) {
+          try {
+            await api.put("/profile/language-settings", {
+              preferredLanguage: language,
+              userId: myProfile._id,
+            });
+          } catch (_) {}
+        }
+        return {
+          success: true,
+          message: `⚙️ Updated settings: ${notes.join(", ")}.`,
+        };
+      }
+
+      case "LOG_HEALTH": {
+        const combined = [searchQuery, label, messageText, sourceText]
+          .filter(Boolean)
+          .join(" ");
+        const parsed = parseHealthLog(combined);
+        const day = todayKey();
+        if (parsed.kind === "weight") {
+          const log = loadLocalList(HEALTH_WEIGHT_LOG_KEY);
+          const entry = {
+            weight: parsed.weight,
+            date: day,
+            timestamp: new Date().toISOString(),
+          };
+          const next = [entry, ...log.filter((item) => item.date !== day)];
+          writeJsonStorage(HEALTH_WEIGHT_LOG_KEY, next);
+          emitConnectEvent("connect:health-updated");
+          go("/health");
+          return {
+            success: true,
+            message: `💪 Logged weight ${parsed.weight} kg for today.`,
+          };
+        }
+        if (parsed.kind === "meal") {
+          const allMeals = readJsonStorage(HEALTH_MEAL_LOG_KEY, {}) || {};
+          const todayMeals = Array.isArray(allMeals[day]) ? allMeals[day] : [];
+          todayMeals.push({
+            name: parsed.name,
+            calories: parsed.calories,
+            protein: 0,
+            carbs: 0,
+            fat: 0,
+            type: "snack",
+            timestamp: new Date().toISOString(),
+          });
+          allMeals[day] = todayMeals;
+          writeJsonStorage(HEALTH_MEAL_LOG_KEY, allMeals);
+          emitConnectEvent("connect:health-updated");
+          go("/health");
+          return {
+            success: true,
+            message: parsed.calories
+              ? `🥗 Logged ${parsed.name} (${parsed.calories} cal).`
+              : `🥗 Logged meal: ${parsed.name}.`,
+          };
+        }
+        if (parsed.kind === "workout") {
+          const all = readJsonStorage(HEALTH_WELLNESS_KEY, {}) || {};
+          all[day] = { ...(all[day] || {}), workout: true, note: parsed.name };
+          writeJsonStorage(HEALTH_WELLNESS_KEY, all);
+          emitConnectEvent("connect:health-updated");
+          go("/health");
+          return {
+            success: true,
+            message: `🏃 Logged workout: ${clipText(parsed.name, 80)}`,
+          };
+        }
+        go("/health");
+        return {
+          success: true,
+          message: "Opening Health & Fitness. Tell me a weight, meal, or workout to log.",
+        };
+      }
+
+      case "ADD_RECOVERY_DATA":
+      case "LOG_RECOVERY":
+      case "RECOVERY_SUPPORT": {
+        const combined = [searchQuery, label, messageText, sourceText]
+          .filter(Boolean)
+          .join(" ");
+        const parsed = parseRecoveryLog(combined || "support");
+        const day = todayKey();
+        if (parsed.kind === "craving") {
+          const all = readJsonStorage(CRAVING_LOG_KEY, {}) || {};
+          const todayLog = Array.isArray(all[day]) ? all[day] : [];
+          todayLog.push({
+            intensity: parsed.intensity,
+            trigger: parsed.trigger,
+            mood: parsed.mood,
+            notes: combined,
+            timestamp: new Date().toISOString(),
+          });
+          all[day] = todayLog;
+          writeJsonStorage(CRAVING_LOG_KEY, all);
+          emitConnectEvent("connect:rehab-updated");
+        }
+        if (parsed.kind === "days" && parsed.days != null) {
+          const start = new Date();
+          start.setDate(start.getDate() - parsed.days);
+          const profile = {
+            ...(readJsonStorage(REHAB_PROFILE_KEY, {}) || {}),
+            startDate: start.toISOString(),
+            createdAt: new Date().toISOString(),
+          };
+          writeJsonStorage(REHAB_PROFILE_KEY, profile);
+          emitConnectEvent("connect:rehab-updated");
+        }
+        let support = "";
+        try {
+          const rehabProfile = readJsonStorage(REHAB_PROFILE_KEY, {}) || {};
+          const reply = await getRecoverySupportMessage({
+            substanceType: rehabProfile.substanceType || "recovery",
+            daysClean: parsed.days || 0,
+            currentMood: parsed.mood || "mixed",
+            craving: parsed.intensity || 0,
+            message: combined || "I could use some support.",
+            triggers: [],
+          });
+          support = reply?.message || "";
+          if (support) {
+            const chat = loadLocalList(SUPPORT_CHAT_KEY);
+            writeJsonStorage(SUPPORT_CHAT_KEY, [
+              ...chat,
+              { role: "user", text: combined, timestamp: new Date().toISOString() },
+              { role: "assistant", text: support, timestamp: new Date().toISOString() },
+            ]);
+          }
+        } catch (_) {}
+        go("/rehab");
+        if (parsed.kind === "craving") {
+          return {
+            success: true,
+            message:
+              support ||
+              `Logged a craving at ${parsed.intensity}/10. I opened Recovery Support.`,
+          };
+        }
+        if (parsed.kind === "days") {
+          return {
+            success: true,
+            message:
+              support ||
+              `Updated your recovery streak${parsed.days != null ? ` to ${parsed.days} days` : ""}.`,
+          };
+        }
+        return {
+          success: true,
+          message: support || "Opening Recovery Support. I'm here with you.",
         };
       }
 
@@ -886,33 +1548,6 @@ export const executeAction = async ({
         };
       }
 
-      case "ADD_RECOVERY_DATA": {
-        const recoveryData = label || searchQuery || "";
-        if (!recoveryData.trim()) {
-          return {
-            success: false,
-            message: "Please provide recovery data or code.",
-          };
-        }
-        try {
-          await api.post("/profile/recovery-data", {
-            recoveryCode: recoveryData,
-            userId: myProfile._id,
-            addedAt: new Date(),
-          });
-          return {
-            success: true,
-            message: `🔐 Recovery data saved securely.`,
-          };
-        } catch (err) {
-          return {
-            success: false,
-            message: `Failed to save recovery data: ${err?.message || "Unknown error"}`,
-          };
-        }
-      }
-
-      // ── Update Language Settings ────────────────────────────────────────
       case "UPDATE_LANGUAGE_SETTINGS": {
         const language = (label || searchQuery || "").trim().toLowerCase();
         const supportedLanguages = [
@@ -974,8 +1609,13 @@ export const executeAction = async ({
           };
         }
         try {
-          const room = [myProfile._id, friend._id].sort().join("_");
-          await api.post("/message/send", {
+          const room = [String(myProfile._id), String(friend._id)]
+            .sort()
+            .join("_");
+          try {
+            socket.emit("joinRoom", room);
+          } catch (_) {}
+          const response = await api.post("/message/send", {
             room,
             senderId: myProfile._id,
             receiverId: friend._id,
@@ -984,15 +1624,19 @@ export const executeAction = async ({
             parent: false,
             messageType: "text",
           });
+          const sent = response.data?.data;
+          if (sent?._id) {
+            try {
+              store.dispatch(newMessage(sent, myProfile._id));
+            } catch (_) {}
+          }
 
-          // Add a small delay to ensure the message is processed on the backend
-          // before opening the chat, so the message appears immediately when chat opens
-          await new Promise((resolve) => setTimeout(resolve, 300));
+          await new Promise((resolve) => setTimeout(resolve, 200));
 
           openStickyChat(friend._id);
           return {
             success: true,
-            message: `✅ Message sent to ${friendName}. Opening chat…`,
+            message: `✅ Message sent to ${friendName}: “${clipText(messageContent, 80)}”. Opening chat…`,
           };
         } catch (err) {
           return {
@@ -1109,39 +1753,58 @@ export const executeAction = async ({
  */
 export const getActionMeta = (action) => {
   const map = {
-    VIDEO_CALL: { label: "Video Call", icon: "fa-video", color: "#6366f1" },
-    AUDIO_CALL: { label: "Audio Call", icon: "fa-phone-alt", color: "#10b981" },
+    VIDEO_CALL: { label: "Video Call", icon: "fa-video", color: "#00d4ff" },
+    AUDIO_CALL: { label: "Audio Call", icon: "fa-phone-alt", color: "#00c851" },
     SEND_MESSAGE: {
       label: "Message",
       icon: "fa-comment-dots",
-      color: "#3b82f6",
+      color: "#00d4ff",
     },
     BUMP: { label: "Bump", icon: "fa-hand-rock", color: "#f59e0b" },
-    INVITE_LUDO: { label: "Invite to Ludo", icon: "fa-dice", color: "#8b5cf6" },
+    INVITE_LUDO: { label: "Invite to Ludo", icon: "fa-dice", color: "#29b1a9" },
     INVITE_CHESS: { label: "Invite to Chess", icon: "fa-chess", color: "#2E7D32" },
-    CREATE_LUDO: { label: "Play Ludo", icon: "fa-gamepad", color: "#8b5cf6" },
-    CREATE_CHESS: { label: "Play Chess", icon: "fa-chess", color: "#8b5cf6" },
-    CREATE_POST: { label: "Create Post", icon: "fa-pen", color: "#6366f1" },
+    CREATE_LUDO: { label: "Play Ludo", icon: "fa-gamepad", color: "#29b1a9" },
+    CREATE_CHESS: { label: "Play Chess", icon: "fa-chess", color: "#29b1a9" },
+    CREATE_POST: { label: "Create Post", icon: "fa-pen", color: "#00d4ff" },
+    DELETE_POST: { label: "Delete Post", icon: "fa-trash", color: "#ef4444" },
+    DOWNLOAD_YOUTUBE: {
+      label: "YouTube Download",
+      icon: "fa-download",
+      color: "#ef4444",
+    },
+    OPEN_VIDEO_PLAYER: {
+      label: "Video Player",
+      icon: "fa-play-circle",
+      color: "#29b1a9",
+    },
+    UPDATE_SETTINGS: { label: "Update Settings", icon: "fa-cog", color: "#00d4ff" },
+    LOG_HEALTH: { label: "Health Log", icon: "fa-heartbeat", color: "#00c851" },
+    LOG_RECOVERY: { label: "Recovery Log", icon: "fa-shield-alt", color: "#00c851" },
+    RECOVERY_SUPPORT: {
+      label: "Recovery Support",
+      icon: "fa-hands-helping",
+      color: "#00c851",
+    },
     CREATE_STORY: { label: "Create Story", icon: "fa-camera", color: "#f59e0b" },
-    SEARCH_APP: { label: "Search", icon: "fa-search", color: "#6366f1" },
-    SEARCH_USERS: { label: "Find People", icon: "fa-user", color: "#3b82f6" },
-    SEARCH_POSTS: { label: "Search Posts", icon: "fa-file-alt", color: "#3b82f6" },
+    SEARCH_APP: { label: "Search", icon: "fa-search", color: "#00d4ff" },
+    SEARCH_USERS: { label: "Find People", icon: "fa-user", color: "#00d4ff" },
+    SEARCH_POSTS: { label: "Search Posts", icon: "fa-file-alt", color: "#00d4ff" },
     QUERY_CONTENT: { label: "Look Up", icon: "fa-info-circle", color: "#0ea5e9" },
     LIST_NOTES: { label: "Notes", icon: "fa-sticky-note", color: "#f59e0b" },
-    LIST_TASKS: { label: "Tasks", icon: "fa-tasks", color: "#3b82f6" },
+    LIST_TASKS: { label: "Tasks", icon: "fa-tasks", color: "#00d4ff" },
     LIST_NOTIFICATIONS: {
       label: "Notifications",
       icon: "fa-bell",
       color: "#f59e0b",
     },
-    LIST_HABITS: { label: "Habits", icon: "fa-check-double", color: "#10b981" },
-    LIST_EVENTS: { label: "Calendar", icon: "fa-calendar-alt", color: "#6366f1" },
-    LIST_FRIENDS_INFO: { label: "Friends", icon: "fa-users", color: "#6366f1" },
-    GET_MY_DETAILS: { label: "My Details", icon: "fa-id-card", color: "#6366f1" },
+    LIST_HABITS: { label: "Habits", icon: "fa-check-double", color: "#00c851" },
+    LIST_EVENTS: { label: "Calendar", icon: "fa-calendar-alt", color: "#00d4ff" },
+    LIST_FRIENDS_INFO: { label: "Friends", icon: "fa-users", color: "#00d4ff" },
+    GET_MY_DETAILS: { label: "My Details", icon: "fa-id-card", color: "#00d4ff" },
     ACCEPT_FRIEND: {
       label: "Accept Request",
       icon: "fa-user-check",
-      color: "#10b981",
+      color: "#00c851",
     },
     DECLINE_FRIEND: {
       label: "Decline Request",
@@ -1153,16 +1816,20 @@ export const getActionMeta = (action) => {
       icon: "fa-bell",
       color: "#f59e0b",
     },
-    CREATE_EVENT: { label: "Add Event", icon: "fa-calendar-plus", color: "#6366f1" },
-    CREATE_HABIT: { label: "Add Habit", icon: "fa-plus", color: "#10b981" },
-    SEARCH_VIDEO: { label: "Find Video", icon: "fa-play", color: "#8b5cf6" },
+    CREATE_EVENT: { label: "Add Event", icon: "fa-calendar-plus", color: "#00d4ff" },
+    EDIT_EVENT: { label: "Edit Event", icon: "fa-calendar-alt", color: "#00d4ff" },
+    DELETE_EVENT: { label: "Delete Event", icon: "fa-trash", color: "#ef4444" },
+    CREATE_HABIT: { label: "Add Habit", icon: "fa-plus", color: "#00c851" },
+    EDIT_HABIT: { label: "Edit Habit", icon: "fa-edit", color: "#00c851" },
+    DELETE_HABIT: { label: "Delete Habit", icon: "fa-trash", color: "#ef4444" },
+    SEARCH_VIDEO: { label: "Find Video", icon: "fa-play", color: "#29b1a9" },
     BLOCK: { label: "Block", icon: "fa-ban", color: "#ef4444" },
-    UNBLOCK: { label: "Unblock", icon: "fa-check-circle", color: "#10b981" },
-    VIEW_PROFILE: { label: "View Profile", icon: "fa-user", color: "#6366f1" },
+    UNBLOCK: { label: "Unblock", icon: "fa-check-circle", color: "#00c851" },
+    VIEW_PROFILE: { label: "View Profile", icon: "fa-user", color: "#00d4ff" },
     NAVIGATE_PROFILE: {
       label: "Go to Profile",
       icon: "fa-external-link-alt",
-      color: "#6366f1",
+      color: "#00d4ff",
     },
     GET_LOCATION: {
       label: "Get Location",
@@ -1172,14 +1839,14 @@ export const getActionMeta = (action) => {
     GET_BIO: {
       label: "Get Bio",
       icon: "fa-file-alt",
-      color: "#8b5cf6",
+      color: "#29b1a9",
     },
-    ADD_FRIEND: { label: "Add Friend", icon: "fa-user-plus", color: "#3b82f6" },
+    ADD_FRIEND: { label: "Add Friend", icon: "fa-user-plus", color: "#00d4ff" },
     UNFRIEND: { label: "Unfriend", icon: "fa-user-times", color: "#ef4444" },
-    NAVIGATE: { label: "Go", icon: "fa-arrow-right", color: "#6366f1" },
-    LIST_FRIENDS: { label: "Friends Page", icon: "fa-users", color: "#6366f1" },
-    OPEN_MESSAGES: { label: "Messages", icon: "fa-envelope", color: "#3b82f6" },
-    OPEN_FRIENDS: { label: "Friends Page", icon: "fa-users", color: "#6366f1" },
+    NAVIGATE: { label: "Go", icon: "fa-arrow-right", color: "#00d4ff" },
+    LIST_FRIENDS: { label: "Friends Page", icon: "fa-users", color: "#00d4ff" },
+    OPEN_MESSAGES: { label: "Messages", icon: "fa-envelope", color: "#00d4ff" },
+    OPEN_FRIENDS: { label: "Friends Page", icon: "fa-users", color: "#00d4ff" },
     CREATE_NOTE: {
       label: "Create Note",
       icon: "fa-sticky-note",
@@ -1187,26 +1854,26 @@ export const getActionMeta = (action) => {
     },
     EDIT_NOTE: { label: "Edit Note", icon: "fa-edit", color: "#f59e0b" },
     DELETE_NOTE: { label: "Delete Note", icon: "fa-trash", color: "#ef4444" },
-    CREATE_TASK: { label: "Create Task", icon: "fa-tasks", color: "#3b82f6" },
-    EDIT_TASK: { label: "Edit Task", icon: "fa-edit", color: "#3b82f6" },
+    CREATE_TASK: { label: "Create Task", icon: "fa-tasks", color: "#00d4ff" },
+    EDIT_TASK: { label: "Edit Task", icon: "fa-edit", color: "#00d4ff" },
     DELETE_TASK: { label: "Delete Task", icon: "fa-trash", color: "#ef4444" },
     ADD_RECOVERY_DATA: {
       label: "Add Recovery Data",
       icon: "fa-shield-alt",
-      color: "#10b981",
+      color: "#00c851",
     },
     UPDATE_LANGUAGE_SETTINGS: {
       label: "Change Language",
       icon: "fa-globe",
-      color: "#6366f1",
+      color: "#00d4ff",
     },
     SEND_MESSAGE_TO_USER: {
       label: "Send Message",
       icon: "fa-paper-plane",
-      color: "#3b82f6",
+      color: "#00d4ff",
     },
   };
-  return map[action] || { label: action, icon: "fa-bolt", color: "#6366f1" };
+  return map[action] || { label: action, icon: "fa-bolt", color: "#00d4ff" };
 };
 
 const agentActions = { executeAction, getActionMeta };

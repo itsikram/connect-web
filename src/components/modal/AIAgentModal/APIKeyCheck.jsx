@@ -31,11 +31,11 @@ const APIKeyCheck = () => {
       style={{
         padding: '12px',
         marginBottom: '12px',
-        background: apiKeyStatus.hasKey ? '#ecfdf5' : '#fef2f2',
-        border: `1px solid ${apiKeyStatus.hasKey ? '#d1fae5' : '#fecaca'}`,
+        background: apiKeyStatus.hasKey ? 'rgba(0, 200, 81, 0.16)' : 'rgba(255, 68, 68, 0.16)',
+        border: `1px solid ${apiKeyStatus.hasKey ? 'rgba(0, 200, 81, 0.35)' : 'rgba(255, 68, 68, 0.35)'}`,
         borderRadius: '8px',
         fontSize: '12px',
-        color: apiKeyStatus.hasKey ? '#065f46' : '#7f1d1d',
+        color: apiKeyStatus.hasKey ? '#6ee7b7' : '#ff8a8a',
         fontFamily: 'monospace',
       }}
     >

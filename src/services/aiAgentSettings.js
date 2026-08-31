@@ -46,17 +46,17 @@ export const AI_PROVIDERS = {
     id: "cursor",
     label: "Cursor API",
     shortLabel: "Cursor",
-    description: "Cloud Agents via the Connect server",
+    description: "Cloud Agents via the Connect server (Composer 2.5 Fast)",
     brandColor: "#f54e00",
     serverKey: true,
     keyLabel: "Cursor API key",
     keyHelp:
       "Stored only on the Node server as CURSOR_API_KEY (Cursor Dashboard → API Keys, starts with crsr_). The browser never sends this key.",
     keyPlaceholder: "",
-    defaultModel: "default",
+    defaultModel: "composer-2.5",
     models: [
-      { id: "default", label: "Auto" },
-      { id: "composer-2.5", label: "Composer 2.5" },
+      { id: "composer-2.5", label: "Composer 2.5 Fast" },
+      { id: "default", label: "Auto (Composer 2.5 Fast)" },
       { id: "grok-4.6", label: "Cursor Grok 4.6" },
       { id: "grok-4.5", label: "Cursor Grok 4.5" },
       { id: "claude-opus-5", label: "Claude Opus 5" },
@@ -91,11 +91,14 @@ const envKeysFor = (provider) => {
 };
 
 const emptyState = () => ({
-  provider: "gemini",
+  provider: platformDefaults.defaultProvider || "gemini",
   models: {
-    gemini: AI_PROVIDERS.gemini.defaultModel,
-    openai: AI_PROVIDERS.openai.defaultModel,
-    cursor: AI_PROVIDERS.cursor.defaultModel,
+    gemini:
+      platformDefaults.models?.gemini || AI_PROVIDERS.gemini.defaultModel,
+    openai:
+      platformDefaults.models?.openai || AI_PROVIDERS.openai.defaultModel,
+    cursor:
+      platformDefaults.models?.cursor || AI_PROVIDERS.cursor.defaultModel,
   },
   customModels: {
     gemini: "",
@@ -136,6 +139,24 @@ const readStored = () => {
 const listeners = new Set();
 let cursorServerConfigured = null;
 let cursorLiveModels = null;
+let platformDefaults = {
+  defaultProvider: "gemini",
+  models: {
+    gemini: AI_PROVIDERS.gemini.defaultModel,
+    openai: AI_PROVIDERS.openai.defaultModel,
+    cursor: AI_PROVIDERS.cursor.defaultModel,
+  },
+  configured: {
+    gemini: false,
+    openai: false,
+    cursor: null,
+  },
+  enabled: {
+    gemini: true,
+    openai: true,
+    cursor: true,
+  },
+};
 
 const CURSOR_LEGACY_MODELS = {
   auto: "default",
@@ -177,6 +198,44 @@ export const setCursorLiveModels = (models = []) => {
 
 export const getCursorModelOptions = () =>
   cursorLiveModels?.length ? cursorLiveModels : AI_PROVIDERS.cursor.models;
+
+export const applyPlatformAiDefaults = (payload = {}) => {
+  const nextConfigured = {
+    ...platformDefaults.configured,
+    ...(payload.configured || {}),
+  };
+  if (payload.gemini && typeof payload.gemini.configured === "boolean") {
+    nextConfigured.gemini = payload.gemini.configured;
+  }
+  if (payload.openai && typeof payload.openai.configured === "boolean") {
+    nextConfigured.openai = payload.openai.configured;
+  }
+  if (payload.cursor && typeof payload.cursor.configured === "boolean") {
+    nextConfigured.cursor = payload.cursor.configured;
+    cursorServerConfigured = payload.cursor.configured;
+  } else if (typeof payload.configured?.cursor === "boolean") {
+    cursorServerConfigured = payload.configured.cursor;
+  }
+
+  platformDefaults = {
+    defaultProvider: payload.defaultProvider || platformDefaults.defaultProvider,
+    models: {
+      ...platformDefaults.models,
+      ...(payload.models || {}),
+    },
+    configured: nextConfigured,
+    enabled: {
+      ...platformDefaults.enabled,
+      ...(payload.enabled || {}),
+    },
+  };
+
+  if (typeof window !== "undefined" && !window.localStorage.getItem(STORAGE_KEY)) {
+    notify(emptyState());
+  } else {
+    notify(readStored());
+  }
+};
 
 export const getAgentSettings = () => readStored();
 
@@ -260,6 +319,8 @@ export const getResolvedAgentSettings = () => {
   const provider = normalizeProvider(stored.provider);
   const meta = getProviderMeta(provider);
   const model = resolveModelId(stored);
+  const platformConfigured = Boolean(platformDefaults.configured?.[provider]);
+  const providerEnabled = platformDefaults.enabled?.[provider] !== false;
 
   if (provider === "cursor") {
     return {
@@ -269,9 +330,10 @@ export const getResolvedAgentSettings = () => {
       apiKey: "",
       apiKeys: [],
       usingUserKey: false,
-      hasKey: cursorServerConfigured !== false,
-      keySource: "server",
+      hasKey: cursorServerConfigured !== false && providerEnabled,
+      keySource: "admin",
       cursorServerConfigured,
+      providerEnabled,
       baseUrl: "",
       stored,
     };
@@ -288,8 +350,15 @@ export const getResolvedAgentSettings = () => {
     apiKey,
     apiKeys: parseApiKeys(apiKey),
     usingUserKey: Boolean(userKey),
-    hasKey: Boolean(apiKey),
-    keySource: userKey ? "user" : envKey ? "env" : "none",
+    hasKey: (Boolean(apiKey) || platformConfigured) && providerEnabled,
+    keySource: userKey
+      ? "user"
+      : envKey
+        ? "env"
+        : platformConfigured
+          ? "admin"
+          : "none",
+    providerEnabled,
     baseUrl: "",
     stored,
   };

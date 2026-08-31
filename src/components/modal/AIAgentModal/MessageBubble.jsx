@@ -226,7 +226,7 @@ const MessageBubble = ({ message, userProfilePic }) => {
 
   // ── Action result bubble ────────────────────────────────────────────────────
   if (isActionResult) {
-    const successColor = message.success ? "#10b981" : "#ef4444";
+    const successColor = message.success ? "#00c851" : "#ff4444";
     return (
       <motion.div
         className="ai-agent-message agent-message"
@@ -244,7 +244,9 @@ const MessageBubble = ({ message, userProfilePic }) => {
                 alignItems: "center",
                 gap: 6,
                 padding: "8px 12px",
-                background: message.success ? "#ecfdf5" : "#fef2f2",
+                background: message.success
+                  ? "rgba(0, 200, 81, 0.16)"
+                  : "rgba(255, 68, 68, 0.16)",
                 border: `1px solid ${successColor}30`,
                 borderRadius: 10,
                 color: successColor,
@@ -272,7 +274,7 @@ const MessageBubble = ({ message, userProfilePic }) => {
                   alignItems: "center",
                   gap: 5,
                   fontSize: 12,
-                  color: "#6366f1",
+                  color: "#00d4ff",
                   textDecoration: "none",
                   marginTop: 4,
                 }}

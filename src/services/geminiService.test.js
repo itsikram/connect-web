@@ -1,3 +1,7 @@
+/**
+ * @jest-environment jsdom
+ */
+
 const originalApiKeys = process.env.REACT_APP_GEMINI_API_KEY;
 
 const quotaResponse = () => ({
@@ -28,6 +32,13 @@ const successResponse = () => ({
 const loadService = (keys) => {
   jest.resetModules();
   process.env.REACT_APP_GEMINI_API_KEY = keys;
+  const { saveAgentSettings, resetAgentSettings } = require("./aiAgentSettings");
+  resetAgentSettings();
+  saveAgentSettings({
+    provider: "gemini",
+    keys: { gemini: keys, openai: "", cursor: "" },
+    models: { gemini: "gemini-2.0-flash" },
+  });
   return require("./geminiService");
 };
 
@@ -35,6 +46,11 @@ afterEach(() => {
   process.env.REACT_APP_GEMINI_API_KEY = originalApiKeys;
   jest.restoreAllMocks();
   delete global.fetch;
+  try {
+    require("./aiAgentSettings").resetAgentSettings();
+  } catch (_) {
+    /* ignore */
+  }
 });
 
 test("uses the next configured key when the active key exceeds quota", async () => {

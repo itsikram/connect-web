@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-const LocationMap = ({ latitude, longitude, userName = 'User Location', isLoading = false }) => {
+const LocationMap = ({ latitude, longitude, userName = 'User Location', isLoading = false, className = '' }) => {
     const mapRef = useRef(null);
     const mapInstanceRef = useRef(null);
     const markerRef = useRef(null);
@@ -19,10 +19,10 @@ const LocationMap = ({ latitude, longitude, userName = 'User Location', isLoadin
             mapInstanceRef.current = null;
         }
 
+        let resizeMap = null;
         try {
             const mapLocation = { lat: latitude, lng: longitude };
 
-            // Initialize map with Leaflet
             const mapInstance = L.map(mapRef.current, {
                 center: mapLocation,
                 zoom: 15,
@@ -34,14 +34,12 @@ const LocationMap = ({ latitude, longitude, userName = 'User Location', isLoadin
                 attributionControl: true,
             });
 
-            // Add OpenStreetMap tile layer
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '© OpenStreetMap contributors',
                 maxZoom: 19,
                 minZoom: 2,
             }).addTo(mapInstance);
 
-            // Add marker at location
             const marker = L.marker(mapLocation, {
                 title: userName,
                 riseOnHover: true,
@@ -60,34 +58,35 @@ const LocationMap = ({ latitude, longitude, userName = 'User Location', isLoadin
             markerRef.current = marker;
             mapInstanceRef.current = mapInstance;
 
-            // Trigger map resize to ensure proper rendering
-            setTimeout(() => {
+            resizeMap = () => {
                 if (mapInstanceRef.current) {
                     mapInstanceRef.current.invalidateSize();
                 }
-            }, 100);
+            };
+            setTimeout(resizeMap, 80);
+            setTimeout(resizeMap, 320);
+            window.addEventListener('resize', resizeMap);
+            window.visualViewport?.addEventListener('resize', resizeMap);
         } catch (error) {
             console.error('Error initializing Leaflet map:', error);
         }
 
-        // Cleanup function
         return () => {
-            // Don't remove map on unmount, just on dependency change
+            if (resizeMap) {
+                window.removeEventListener('resize', resizeMap);
+                window.visualViewport?.removeEventListener('resize', resizeMap);
+            }
+            if (mapInstanceRef.current) {
+                mapInstanceRef.current.remove();
+                mapInstanceRef.current = null;
+            }
         };
     }, [latitude, longitude, userName]);
 
     return (
         <div
             ref={mapRef}
-            style={{
-                width: '100%',
-                height: '400px',
-                minHeight: '400px',
-                borderRadius: '8px',
-                position: 'relative',
-                overflow: 'hidden',
-                backgroundColor: '#e0e0e0',
-            }}
+            className={`user-info-map ${className}`.trim()}
         >
             {isLoading && (
                 <div
