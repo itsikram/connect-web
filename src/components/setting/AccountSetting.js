@@ -4,6 +4,7 @@ import api, { invalidateGetCache } from "../../api/api";
 import { showSuccessToast, showErrorToast } from "../../utils/toastUtils";
 import { getProfileSuccess } from "../../services/actions/profileActions";
 import { fetchProfileCached } from "../../utils/requestCache";
+import FaceCapture from "../face/FaceCapture";
 import {
   getUserFromStorage,
   setUserInStorage,
@@ -38,6 +39,7 @@ const AccountSetting = () => {
   const [voiceConfidence, setVoiceConfidence] = useState(null);
   const [showVoiceConfirmation, setShowVoiceConfirmation] = useState(false);
   const [pendingVoiceTranscript, setPendingVoiceTranscript] = useState("");
+  const [isRegisteringFace, setIsRegisteringFace] = useState(false);
 
   useEffect(() => {
     setBanglaName(myProfile?.banglaName || "");
@@ -97,6 +99,27 @@ const AccountSetting = () => {
   const handleInputChange = useCallback((e) => {
     const { id, value } = e.target;
     setData((prev) => ({ ...prev, [id]: value }));
+  }, []);
+
+  const handleFaceCapture = useCallback(async (frames) => {
+    setIsRegisteringFace(true);
+    try {
+      // A failed face/liveness check must not be mistaken for an expired app
+      // session by the global 401 interceptor.
+      await api.post(
+        "auth/face/register",
+        { frames },
+        { skipAuthRefresh: true },
+      );
+      showSuccessToast("Face login registered successfully");
+    } catch (error) {
+      showErrorToast(
+        error?.response?.data?.message ||
+          "Couldn't register your face. Please blink naturally and try again.",
+      );
+    } finally {
+      setIsRegisteringFace(false);
+    }
   }, []);
 
   const handleBanglaNameChange = useCallback((e) => {
@@ -404,6 +427,14 @@ const AccountSetting = () => {
         <p className="setting-section-desc">
           Manage your email, password, and Bengali name.
         </p>
+
+        <div className="mb-4 pb-4" style={{ borderBottom: "1px solid #e0e0e0" }}>
+          <h3 className="fs-4">Face Login</h3>
+          <p className="text-muted small">
+            Register your face to sign in without a password. Look at the camera and blink naturally during capture.
+          </p>
+          <FaceCapture onCapture={handleFaceCapture} disabled={isRegisteringFace} />
+        </div>
 
         {/* Bengali Name Section */}
         <div

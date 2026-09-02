@@ -373,7 +373,11 @@ api.interceptors.response.use(
     }
 
     // Handle 401 Unauthorized errors
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (
+      error.response?.status === 401 &&
+      !originalRequest?.skipAuthRefresh &&
+      !originalRequest._retry
+    ) {
       originalRequest._retry = true;
 
       console.warn("Unauthorized request, token may be invalid or expired");

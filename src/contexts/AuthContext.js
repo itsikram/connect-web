@@ -214,6 +214,41 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
+  const handleFaceLogin = useCallback(async (frames) => {
+    setLoading(true);
+    setAuthError(null);
+
+    try {
+      const response = await axios.post(
+        `${getServerAddress()}/api/auth/face/login`,
+        { frames },
+      );
+
+      if (response.status === 202 && response.data.accessToken) {
+        const userData = response.data;
+        setUserInStorage(userData);
+        setToken(userData.accessToken);
+        setRefreshToken(userData.refreshToken);
+        setUser(userData);
+        setIsAuthenticated(true);
+        scheduleTokenRefresh(userData.accessToken);
+        return { success: true, data: userData };
+      }
+
+      const errorMsg = response.data.message || "Face login failed";
+      setAuthError(errorMsg);
+      return { success: false, error: errorMsg };
+    } catch (error) {
+      const errorMsg =
+        error.response?.data?.message ||
+        "Couldn't verify — please make sure you're a live person in front of the camera and try again";
+      setAuthError(errorMsg);
+      return { success: false, error: errorMsg };
+    } finally {
+      setLoading(false);
+    }
+  }, [scheduleTokenRefresh]);
+
   // Handle Google OAuth login
   const handleGoogleLogin = useCallback(async (googleData) => {
     setLoading(true);
@@ -457,6 +492,7 @@ export const AuthProvider = ({ children }) => {
 
     // Methods
     login: handleLogin,
+    faceLogin: handleFaceLogin,
     googleLogin: handleGoogleLogin,
     signup: handleSignup,
     forgotPassword: handleForgotPassword,

@@ -342,6 +342,7 @@ self.addEventListener("push", (event) => {
 
   const payloadData = data.data || {};
   const isCall = payloadData.type === "incoming_call";
+  const isBump = payloadData.type === "bump";
 
   const callActions =
     Array.isArray(data.actions) && data.actions.length > 0
@@ -357,17 +358,23 @@ self.addEventListener("push", (event) => {
       data.tag ||
       (isCall
         ? `incoming-call-${payloadData.channelName || "ring"}`
-        : "default"),
+        : isBump
+          ? `bump-${payloadData.senderId || "user"}`
+          : "default"),
     data: payloadData,
     actions: isCall ? callActions : data.actions || [],
     requireInteraction: isCall ? true : data.requireInteraction || false,
     // Play ringtone where the platform allows a custom notification sound
     silent: isCall ? false : data.silent || false,
-    sound: isCall ? data.sound || DEFAULT_CALL_RINGTONE : data.sound,
+    sound: isCall
+      ? data.sound || payloadData.ringtoneSrc || payloadData.sound || DEFAULT_CALL_RINGTONE
+      : data.sound,
     timestamp: data.timestamp || Date.now(),
     vibrate: isCall
       ? [300, 100, 300, 100, 300]
-      : data.vibrate || [200, 100, 200],
+      : isBump
+        ? [80, 40, 140, 40, 80]
+        : data.vibrate || [200, 100, 200],
     dir: "ltr",
     lang: "en",
     renotify: true,
@@ -378,6 +385,30 @@ self.addEventListener("push", (event) => {
     (async () => {
       // Best-effort: focus an existing app tab first so in-page ringtone can start sooner.
       // Browsers may still ignore this when there is no user activation.
+      if (isBump) {
+        try {
+          const clientList = await clients.matchAll({
+            type: "window",
+            includeUncontrolled: true,
+          });
+          const visibleClients = clientList.filter(
+            (client) => client.visibilityState === "visible",
+          );
+          // Visible tab already handles bumpUser over the socket — don't
+          // also PLAY_BUMP + show a second OS notification.
+          if (visibleClients.length > 0) {
+            return;
+          }
+          const target = clientList[0];
+          if (target) {
+            target.postMessage({
+              type: "PLAY_BUMP",
+              data: payloadData,
+            });
+          }
+        } catch (_) {}
+      }
+
       if (isCall) {
         try {
           await focusExistingCallClient();

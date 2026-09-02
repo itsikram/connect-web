@@ -4,10 +4,11 @@ import $ from 'jquery'
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate } from "react-router-dom";
 import config from '../config/config.json';
+import FaceCapture from "../components/face/FaceCapture";
 let Login = (props) => {
 
     let navigate = useNavigate();
-    const { login, googleLogin, isAuthenticated, authError, clearError } = useAuth();
+    const { login, faceLogin, googleLogin, isAuthenticated, authError, clearError } = useAuth();
 
     useEffect(() => {
         // Redirect if already authenticated
@@ -23,8 +24,20 @@ let Login = (props) => {
     let [inputs, setInputs] = useState({})
     let [isLoggingIn, setIsLoggingIn] = useState(false)
     let [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false)
+    let [showFaceLogin, setShowFaceLogin] = useState(false)
     const googleButtonRef = useRef(null)
     let [error, setError] = useState({})
+
+    const handleFaceCapture = useCallback(async (frames) => {
+        setError({});
+        clearError();
+        const result = await faceLogin(frames);
+        if (result.success) {
+            navigate('/');
+        } else {
+            setError({ message: result.error });
+        }
+    }, [clearError, faceLogin, navigate]);
     
     let handleChange = (e) => {
         let name = e.target.name;
@@ -246,6 +259,21 @@ let Login = (props) => {
 
                             {/* Google Sign In Button (rendered via GIS) */}
                             <div ref={googleButtonRef} style={{ display: 'inline-block' }} />
+
+                            <button
+                                type="button"
+                                className="btn btn-outline-secondary mt-3"
+                                onClick={() => setShowFaceLogin((value) => !value)}
+                                disabled={isLoggingIn || isGoogleSigningIn}
+                            >
+                                <i className="fas fa-camera me-2"></i>
+                                {showFaceLogin ? "Hide face login" : "Log in with Face"}
+                            </button>
+                            {showFaceLogin && (
+                                <div className="mt-3">
+                                    <FaceCapture onCapture={handleFaceCapture} disabled={isLoggingIn || isGoogleSigningIn} />
+                                </div>
+                            )}
 
 
                         </div>
