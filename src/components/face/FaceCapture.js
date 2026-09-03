@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as faceapi from "@vladmandic/face-api";
 
-const MAX_CAPTURE_FRAMES = 60;
+const MAX_CAPTURE_ATTEMPTS = 90;
+const MIN_CAPTURE_FRAMES = 20;
 const FRAME_INTERVAL_MS = 100;
 const BLINK_MIN_CLOSED_FRAMES = 2;
 const BLINK_CLOSED_RATIO = 0.72;
@@ -39,6 +40,20 @@ const getEyeRatio = (landmarks) => {
   return (eyeAspectRatio(left) + eyeAspectRatio(right)) / 2;
 };
 
+const waitForVideoReady = async (video) => {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (
+      video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+      video.videoWidth > 0 &&
+      video.videoHeight > 0
+    ) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("Camera video did not provide usable frames");
+};
+
 const FaceCapture = ({ onCapture, disabled = false }) => {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
@@ -58,8 +73,11 @@ const FaceCapture = ({ onCapture, disabled = false }) => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       streamRef.current = stream;
-      videoRef.current.srcObject = stream;
-      await videoRef.current.play();
+      const video = videoRef.current;
+      if (!video) throw new Error("Camera preview is unavailable");
+      video.srcObject = stream;
+      await video.play();
+      await waitForVideoReady(video);
       setCameraStarted(true);
       try {
         await loadBlinkModels();
@@ -88,16 +106,16 @@ const FaceCapture = ({ onCapture, disabled = false }) => {
     setProgress(0);
     setStatus("Look at the camera and blink naturally...");
     const video = videoRef.current;
-    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext("2d");
+    if (!context || canvas.width === 0 || canvas.height === 0) {
       setStatus("Camera is still starting. Please try Capture again in a moment.");
       setCapturing(false);
       return;
     }
-
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-    const context = canvas.getContext("2d");
     const frames = [];
     const eyeRatios = [];
     const openSamples = [];
@@ -106,12 +124,15 @@ const FaceCapture = ({ onCapture, disabled = false }) => {
     let openBaseline = null;
 
     try {
-      for (let index = 0; index < MAX_CAPTURE_FRAMES; index += 1) {
+      for (let index = 0; index < MAX_CAPTURE_ATTEMPTS; index += 1) {
+        if (videoTrack.readyState !== "live") {
+          throw new Error("Camera stream stopped during capture");
+        }
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
         const detection = await faceapi
           .detectSingleFace(canvas, new faceapi.TinyFaceDetectorOptions({
             inputSize: 320,
-            scoreThreshold: 0.6,
+            scoreThreshold: 0.5,
           }))
           .withFaceLandmarks();
 
@@ -145,8 +166,8 @@ const FaceCapture = ({ onCapture, disabled = false }) => {
         }
 
         frames.push(canvas.toDataURL("image/jpeg", 0.7));
-        setProgress(blinkDetected ? 100 : Math.min(95, Math.round(((index + 1) / MAX_CAPTURE_FRAMES) * 100)));
-        if (blinkDetected && frames.length >= 20) break;
+        setProgress(blinkDetected ? 100 : Math.min(95, Math.round(((index + 1) / MAX_CAPTURE_ATTEMPTS) * 100)));
+        if (blinkDetected && frames.length >= MIN_CAPTURE_FRAMES) break;
         await new Promise((resolve) => setTimeout(resolve, FRAME_INTERVAL_MS));
       }
     } catch (error) {
@@ -155,7 +176,7 @@ const FaceCapture = ({ onCapture, disabled = false }) => {
       return;
     }
 
-    if (frames.length < 20) {
+    if (frames.length < MIN_CAPTURE_FRAMES) {
       setStatus("Could not capture enough live camera frames. Please try again.");
       setCapturing(false);
       return;
