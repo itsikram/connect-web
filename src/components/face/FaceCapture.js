@@ -100,6 +100,7 @@ const FaceCapture = ({ onCapture, disabled = false }) => {
     const context = canvas.getContext("2d");
     const frames = [];
     const eyeRatios = [];
+    const openSamples = [];
     let blinkDetected = false;
     let closedFrames = 0;
     let openBaseline = null;
@@ -122,10 +123,12 @@ const FaceCapture = ({ onCapture, disabled = false }) => {
 
         const ratio = getEyeRatio(detection.landmarks);
         eyeRatios.push(ratio);
-        if (eyeRatios.length <= OPEN_CALIBRATION_FRAMES) {
-          openBaseline = Math.max(openBaseline || 0, ratio);
-          setStatus(`Hold still, calibrating eyes… ${eyeRatios.length}/${OPEN_CALIBRATION_FRAMES}`);
-        } else {
+        if (openSamples.length < OPEN_CALIBRATION_FRAMES && ratio > 0.15) {
+          openSamples.push(ratio);
+          const sortedSamples = [...openSamples].sort((a, b) => a - b);
+          openBaseline = sortedSamples[Math.floor(sortedSamples.length * 0.75)];
+          setStatus(`Hold eyes open, calibrating… ${openSamples.length}/${OPEN_CALIBRATION_FRAMES}`);
+        } else if (openSamples.length >= OPEN_CALIBRATION_FRAMES && openBaseline > 0) {
           const closedThreshold = Math.max(0.12, openBaseline * BLINK_CLOSED_RATIO);
           const openThreshold = openBaseline * BLINK_OPEN_RATIO;
           if (ratio < closedThreshold) {
@@ -135,14 +138,14 @@ const FaceCapture = ({ onCapture, disabled = false }) => {
             blinkDetected = true;
             closedFrames = 0;
             setStatus("Blink detected. Preparing verification…");
-          } else {
+          } else if (ratio >= openThreshold) {
             closedFrames = 0;
             setStatus("Blink once naturally while keeping your face centered.");
           }
         }
 
         frames.push(canvas.toDataURL("image/jpeg", 0.7));
-        setProgress(Math.min(100, Math.round((frames.length / 20) * 100)));
+        setProgress(blinkDetected ? 100 : Math.min(95, Math.round(((index + 1) / MAX_CAPTURE_FRAMES) * 100)));
         if (blinkDetected && frames.length >= 20) break;
         await new Promise((resolve) => setTimeout(resolve, FRAME_INTERVAL_MS));
       }
