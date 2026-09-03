@@ -128,6 +128,7 @@ const VideoPlayer = () => {
   const pipReturnRef = useRef(null);
   const currentPlaybackRef = useRef(null);
   const resumeHandledRef = useRef(false);
+  const libraryRefreshRef = useRef(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
@@ -264,26 +265,34 @@ const VideoPlayer = () => {
 
   const refreshLibrary = useCallback(
     async ({ showSpinner = false } = {}) => {
+      if (libraryRefreshRef.current) {
+        return libraryRefreshRef.current;
+      }
       if (showSpinner) setLibraryLoading(true);
       setLibraryError("");
-      try {
-        const savedPromise = loadSavedPlaylistItems();
-        if (!myProfileId) {
-          setSavedVideos(await savedPromise);
-          return;
+      const refreshPromise = (async () => {
+        try {
+          const savedPromise = loadSavedPlaylistItems();
+          if (!myProfileId) {
+            setSavedVideos(await savedPromise);
+            return;
+          }
+          const [watches, saved] = await Promise.all([
+            loadWatchPlaylistItems(myProfileId),
+            savedPromise,
+          ]);
+          setWatchVideos(watches);
+          setSavedVideos(saved);
+        } catch (err) {
+          console.error(err);
+          setLibraryError("Could not refresh some video sources.");
+        } finally {
+          setLibraryLoading(false);
+          libraryRefreshRef.current = null;
         }
-        const [watches, saved] = await Promise.all([
-          loadWatchPlaylistItems(myProfileId),
-          savedPromise,
-        ]);
-        setWatchVideos(watches);
-        setSavedVideos(saved);
-      } catch (err) {
-        console.error(err);
-        setLibraryError("Could not refresh some video sources.");
-      } finally {
-        setLibraryLoading(false);
-      }
+      })();
+      libraryRefreshRef.current = refreshPromise;
+      return refreshPromise;
     },
     [myProfileId],
   );
@@ -776,7 +785,7 @@ const VideoPlayer = () => {
 
   const addToPlayQueue = useCallback((video, playCount = MIN_PLAY_COUNT) => {
     const item = videoToQueueItem(video, playCount);
-    if (!item) return;
+    if (!item) return null;
     setPlayQueue((prev) => {
       const wasEmpty = prev.length === 0;
       if (wasEmpty) {
@@ -785,6 +794,7 @@ const VideoPlayer = () => {
       }
       return [...prev, item];
     });
+    return item.queueId;
   }, []);
 
   const updateQueuePlayCount = useCallback((queueId, nextCount) => {
@@ -907,10 +917,13 @@ const VideoPlayer = () => {
     }
     setFilter("all");
     setSearchQuery("");
-    addToPlayQueue(selectedVideo);
+    const downloadQueueId = addToPlayQueue(selectedVideo);
     focusVideoInList(selectedVideo.id, existing ? customVideos : [...customVideos, newVideo]);
     try {
-      setYoutubeDownload({ title: result.title || "YouTube video", percent: 2, stage: "Starting download…" });
+      if (!downloadQueueId) {
+        throw new Error("Could not add the video to the playlist.");
+      }
+      setYoutubeDownload({ queueId: downloadQueueId, title: result.title || "YouTube video", percent: 2, stage: "Starting download…" });
       const base = normalizeServerUrl(getYtDownloadApiUrl());
       const started = await api.get(`${base}/download`, {
         params: {
@@ -926,26 +939,28 @@ const VideoPlayer = () => {
       });
       const progressId = started.data?.progress_id;
       const replaceWithWatch = (data) => {
-        if (!data?.watch_id || !data?.file_url) return;
+        if (!data?.file_url) return;
         const watchItem = normalizePlaylistItem({
-          id: `watch-${data.watch_id}`,
-          sourceId: data.watch_id,
+          id: data.watch_id ? `watch-${data.watch_id}` : selectedVideo.id,
+          sourceId: data.watch_id || selectedVideo.sourceId,
           url: data.file_url,
           title: data.title || result.title || "YouTube video",
           thumbnail: result.thumbnail || "",
-          type: "watch",
+          type: data.watch_id ? "watch" : selectedVideo.type,
           online: true,
           youtubeId,
         });
         if (!watchItem) return;
         setCustomVideos((prev) => prev.filter((video) => video.id !== newVideo.id));
         setPlayQueue((prev) => prev.map((item) =>
-          item.videoId === newVideo.id ? { ...item, videoId: watchItem.id, url: watchItem.url, title: watchItem.title, thumbnail: watchItem.thumbnail, type: watchItem.type } : item
+          item.videoId === selectedVideo.id ? { ...item, videoId: watchItem.id, url: watchItem.url, title: watchItem.title, thumbnail: watchItem.thumbnail, type: watchItem.type } : item
         ));
       };
       if (started.data?.status === "completed") {
         replaceWithWatch(started.data);
+        setYoutubeDownload((prev) => ({ ...(prev || { queueId: downloadQueueId, title: result.title || "YouTube video" }), percent: 100, stage: "Complete" }));
         await refreshLibrary({ showSpinner: false });
+        setTimeout(() => setYoutubeDownload(null), 2500);
         return;
       }
       if (!progressId) throw new Error(started.data?.error || "Could not start download");
@@ -956,14 +971,14 @@ const VideoPlayer = () => {
         });
         const data = response.data || {};
         setYoutubeDownload((prev) => ({
-          ...(prev || {}),
+          ...(prev || { queueId: downloadQueueId }),
           title: data.title || prev?.title || result.title || "YouTube video",
           percent: Math.max(Number(prev?.percent) || 0, Math.round(Number(data.pct) || 0)),
           stage: data.stage || "Downloading…",
         }));
         if (data.status === "completed") {
           replaceWithWatch(data);
-          setYoutubeDownload((prev) => ({ ...(prev || {}), percent: 100, stage: "Complete" }));
+          setYoutubeDownload((prev) => ({ ...(prev || { queueId: downloadQueueId }), percent: 100, stage: "Complete" }));
           await refreshLibrary({ showSpinner: false });
           setTimeout(() => setYoutubeDownload(null), 2500);
           return;
@@ -978,7 +993,7 @@ const VideoPlayer = () => {
         showErrorToast(error.message || "YouTube download failed.");
       });
     } catch (error) {
-      setYoutubeDownload({ title: result.title || "YouTube video", percent: 0, stage: "Failed", error: error.message });
+      setYoutubeDownload({ queueId: downloadQueueId || "", title: result.title || "YouTube video", percent: 0, stage: "Failed", error: error.message });
       showErrorToast(error?.response?.data?.error || error.message || "Could not start YouTube download.");
     }
   };
@@ -1437,19 +1452,6 @@ const VideoPlayer = () => {
           {libraryError ? (
             <p className="video-player-error">{libraryError}</p>
           ) : null}
-          {youtubeDownload ? (
-            <div className="video-player-download-progress" role="status">
-              <div className="video-player-download-progress-header">
-                <span>{youtubeDownload.title}</span>
-                <strong>{youtubeDownload.percent}%</strong>
-              </div>
-              <div className="video-player-download-track">
-                <span style={{ width: `${Math.min(100, Math.max(0, youtubeDownload.percent))}%` }} />
-              </div>
-              <small>{youtubeDownload.error || youtubeDownload.stage}</small>
-            </div>
-          ) : null}
-
           {currentVideo ? (
             <div className="video-stage">
               <div className="video-stage-header">
@@ -1690,6 +1692,17 @@ const VideoPlayer = () => {
                           ? `Playing ${playPass} of ${clampPlayCount(item.playCount)}`
                           : `Play ${clampPlayCount(item.playCount)} time${clampPlayCount(item.playCount) === 1 ? "" : "s"}`}
                       </div>
+                      {youtubeDownload?.queueId === item.queueId ? (
+                        <div className="video-player-download-progress" role="status">
+                          <div className="video-player-download-progress-header">
+                            <strong>{youtubeDownload.percent}%</strong>
+                            <small>{youtubeDownload.error || youtubeDownload.stage}</small>
+                          </div>
+                          <div className="video-player-download-track">
+                            <span style={{ width: `${Math.min(100, Math.max(0, youtubeDownload.percent))}%` }} />
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                     <div
                       className="playlist-repeat-control"
