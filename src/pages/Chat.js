@@ -694,9 +694,9 @@ const Chat = () => {
       // Try to get online status from localStorage or Redux store if available
       try {
         const scopedContactsKey = userId ? `contactsData_${userId}` : null;
-        const contactsData =
-          (scopedContactsKey && localStorage.getItem(scopedContactsKey)) ||
-          localStorage.getItem("contactsData");
+        const contactsData = scopedContactsKey
+          ? localStorage.getItem(scopedContactsKey)
+          : null;
 
         if (contactsData) {
           const contacts = JSON.parse(contactsData);

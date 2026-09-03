@@ -4,47 +4,6 @@ import useComposerLiveTranscribe from "../../../hooks/useComposerLiveTranscribe"
 import { mergeTranscriptChunk } from "../../../hooks/transcriptText";
 import { isVoiceFiller } from "./agentFastPath";
 
-const SUGGESTIONS = [
-  "Go to settings",
-  "Open my profile",
-  "Go to messages",
-  "Go to friends page",
-  "Open watch page",
-  "Go to notes",
-  "Go to tasks",
-  "Open calendar",
-  "Call [friend name]",
-  "Video call [friend name]",
-  "Message [friend name]",
-  "Bump [friend name]",
-  "Go to [friend]'s profile",
-  "View [friend]'s friends",
-  "See [friend]'s photos",
-  "Where is [friend name]?",
-  "Open account settings",
-  "Go to privacy settings",
-  "Open notification settings",
-  "Play Ludo",
-  "Invite [friend name] to Ludo",
-  "Play Chess",
-  "Play [video name]",
-  "Play action",
-  "Find videos about music",
-  "Search for comedy video",
-  "Block [name]",
-  "Unblock [name]",
-  "What can you help with?",
-  "Create a post with a funny caption",
-  "Upload a post with caption Hello from Connect",
-  "Set dark mode",
-  "Make my posts only me",
-  "Set my nickname to [name]",
-  "What are my notes?",
-  "Who are my friends?",
-  "Search posts about music",
-  "Call [friend name]",
-];
-
 const AUTO_SEND_DELAY_MS = 800;
 const LIVE_TALK_SILENCE_MS = 2000;
 
@@ -62,7 +21,6 @@ const ChatInput = ({
   isSpeaking = false,
   speechSupported = true,
 }) => {
-  const [showSuggestions, setShowSuggestions] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [voiceMode, setVoiceMode] = useState("bn");
   const [transcribeLang, setTranscribeLang] = useState("bn-BD");
@@ -248,7 +206,6 @@ const ChatInput = ({
       }
       setTranscribeLang(nextLangCode);
       transcribeBaseRef.current = String(valueRef.current || "").trim();
-      setShowSuggestions(false);
       let started = false;
       try {
         started = await startTranscription(nextLangCode);
@@ -372,13 +329,6 @@ const ChatInput = ({
     }
   }, [value]);
 
-  const handleSuggestionClick = (s) => {
-    clearAutoSendTimeout();
-    onChange(s.replace(/\[.*?\]/g, ""));
-    setShowSuggestions(false);
-    setTimeout(() => inputRef.current?.focus(), 50);
-  };
-
   const toggleVoiceInput = async () => {
     if (liveTalkOn) {
       onToggleLiveTalk?.();
@@ -439,36 +389,6 @@ const ChatInput = ({
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.15 }}
     >
-      {showSuggestions && !value && !liveTalkOn && (
-        <motion.div
-          className="ai-agent-suggestions"
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 8 }}
-        >
-          <p className="suggestions-label">
-            <i
-              className="fas fa-bolt"
-              style={{ marginRight: 5, color: "#f59e0b" }}
-            />
-            Quick examples:
-          </p>
-          <div className="suggestions-grid">
-            {SUGGESTIONS.map((s, i) => (
-              <motion.button
-                key={i}
-                className="suggestion-chip"
-                onClick={() => handleSuggestionClick(s)}
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.97 }}
-              >
-                {s}
-              </motion.button>
-            ))}
-          </div>
-        </motion.div>
-      )}
-
       {isListening && !liveTalkOn ? (
         <div className="ai-agent-transcribe-bar" aria-live="polite">
           <span className="ai-agent-transcribe-dot" aria-hidden="true" />
@@ -586,12 +506,8 @@ const ChatInput = ({
           onKeyPress={handleKeyPress}
           onFocus={() => {
             setIsFocused(true);
-            if (!liveTalkOn) setShowSuggestions(true);
           }}
-          onBlur={() => {
-            setIsFocused(false);
-            setTimeout(() => setShowSuggestions(false), 200);
-          }}
+          onBlur={() => setIsFocused(false)}
           placeholder={
             liveTalkOn
               ? isSpeaking

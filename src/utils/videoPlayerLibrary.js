@@ -147,6 +147,7 @@ export const watchesToPlaylistItems = (watches) => {
                 type: 'watch',
                 thumbnail: w.thumbnail || '',
                 sourceId: w._id,
+                youtubeId: w.youtubeId,
                 online: true,
             })
         )

@@ -25,12 +25,12 @@ function idStr(value) {
 }
 
 function getDisplayName(person) {
-  if (!person) return "Unknown User";
+  if (!person) return "";
   if (person.fullName) return person.fullName;
   const first = person.user?.firstName || "";
   const last = person.user?.surname || "";
   const combined = `${first} ${last}`.trim();
-  return combined || person.displayName || person.username || "Unknown User";
+  return combined || person.displayName || person.username || "";
 }
 
 function isAudioAttachmentUrl(url) {
@@ -161,6 +161,7 @@ const HeaderMessageMenu = ({ menuStyle, onChatSelect }) => {
       const messages = contact.messages;
       const last = messages?.[0] || null;
       const name = getDisplayName(person);
+      if (!name) continue;
       if (needle) {
         const lastText = String(last?.message || "").toLowerCase();
         if (!name.toLowerCase().includes(needle) && !lastText.includes(needle)) {

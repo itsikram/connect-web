@@ -1268,11 +1268,60 @@ export const executeAction = async ({
 
       // ── Unfriend ───────────────────────────────────────────────────────────
       case "UNFRIEND": {
-        await api.post("/friend/removeFriend", { profile: friend._id });
-        return {
-          success: true,
-          message: `❌ ${friendName} removed from your friends.`,
-        };
+        const profileId = toProfileId(friend);
+        const myId = toProfileId(myProfile);
+        if (!profileId) {
+          return {
+            success: false,
+            message: "I couldn't identify that friend. Please choose the profile again.",
+          };
+        }
+
+        try {
+          const response = await api.post("/friend/removeFriend", {
+            profile: profileId,
+          });
+          if (response?.data?.message !== "Friend removed From your profile") {
+            return {
+              success: false,
+              message: `I couldn't confirm removing ${friendName} from your friends.`,
+            };
+          }
+
+          invalidateGetCache("/profile");
+          const refreshed = myId
+            ? await api.get("/profile", {
+                params: { profileId: myId, lite: 1, _ts: Date.now() },
+              })
+            : null;
+          const stillFriend = listHasProfileId(
+            refreshed?.data?.friends,
+            profileId,
+          );
+          if (stillFriend) {
+            return {
+              success: false,
+              message: `The server did not confirm removing ${friendName}. Please try again.`,
+            };
+          }
+
+          if (refreshed?.data) {
+            store.dispatch(getProfileSuccess(refreshed.data));
+          }
+          return {
+            success: true,
+            message: `❌ ${friendName} removed from your friends.`,
+          };
+        } catch (error) {
+          const reason =
+            error?.response?.data?.message || error?.message || "";
+          return {
+            success: false,
+            message: reason
+              ? `Couldn't remove ${friendName} from your friends: ${reason}`
+              : `Couldn't remove ${friendName} from your friends.`,
+          };
+        }
       }
 
       // ── List Friends / Open Friends ────────────────────────────────────────

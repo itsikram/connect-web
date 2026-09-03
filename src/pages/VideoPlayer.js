@@ -42,6 +42,9 @@ import WatchCacheManager, {
 } from "../utils/watchCacheManager";
 import useMediaSession from "../hooks/useMediaSession";
 import useBackgroundAudioHandoff from "../hooks/useBackgroundAudioHandoff";
+import api from "../api/api";
+import { getYtDownloadApiUrl, normalizeServerUrl } from "../utils/offlineUtils";
+import { showErrorToast, showSuccessToast } from "../utils/toastUtils";
 
 const VideoPlayer = () => {
   const myProfileId = useSelector((state) => state.profile?._id);
@@ -104,6 +107,10 @@ const VideoPlayer = () => {
   const [filter, setFilter] = useState("all");
   const [sortMode, setSortMode] = useState("custom");
   const [searchQuery, setSearchQuery] = useState("");
+  const [youtubeResults, setYoutubeResults] = useState([]);
+  const [youtubeSearching, setYoutubeSearching] = useState(false);
+  const [youtubeSearchError, setYoutubeSearchError] = useState("");
+  const [youtubeDownload, setYoutubeDownload] = useState(null);
   const [playlistOrder, setPlaylistOrder] = useState(() => loadPlaylistOrder());
   const [playQueue, setPlayQueue] = useState(() => loadPlayQueue());
   const [queueIndex, setQueueIndex] = useState(0);
@@ -126,6 +133,38 @@ const VideoPlayer = () => {
   const [playbackRate, setPlaybackRate] = useState(1);
   const [mediaReady, setMediaReady] = useState(false);
   const [mediaElement, setMediaElement] = useState(null);
+
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (!query) {
+      setYoutubeResults([]);
+      setYoutubeSearchError("");
+      return undefined;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setYoutubeSearching(true);
+      setYoutubeSearchError("");
+      try {
+        const response = await api.get(
+          `${normalizeServerUrl(getYtDownloadApiUrl())}/youtube/search`,
+          { params: { q: query, maxResults: 8, _ts: Date.now() }, signal: controller.signal },
+        );
+        setYoutubeResults(response.data?.items || []);
+      } catch (error) {
+        if (error?.name !== "CanceledError" && error?.name !== "AbortError") {
+          setYoutubeSearchError(error?.response?.data?.error || "YouTube search failed.");
+          setYoutubeResults([]);
+        }
+      } finally {
+        if (!controller.signal.aborted) setYoutubeSearching(false);
+      }
+    }, 350);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [searchQuery]);
 
   const setVideoElementRef = useCallback((node) => {
     videoRef.current = node;
@@ -834,6 +873,116 @@ const VideoPlayer = () => {
     setVideoTitle("");
   };
 
+  const handleSelectYoutubeResult = async (result) => {
+    if (!result?.url) return;
+    const youtubeId = result.videoId;
+    const existingWatch = watchVideos.find((video) => video.youtubeId === youtubeId);
+    if (existingWatch) {
+      addToPlayQueue(existingWatch);
+      setSearchQuery("");
+      return;
+    }
+    const existing = allVideos.find((video) => video.url === result.url);
+    const newVideo = normalizePlaylistItem({
+      id: `youtube-${result.videoId || Date.now()}`,
+      url: result.url,
+      title: result.title || "YouTube video",
+      thumbnail: result.thumbnail || "",
+      type: "url",
+      online: true,
+    });
+    if (!newVideo) return;
+    const selectedVideo = existing || newVideo;
+    if (!existing) {
+      const nextCustom = [...customVideos, newVideo];
+      setCustomVideos(nextCustom);
+      setPlaylistOrder((prev) => {
+        const next = syncPlaylistOrder(
+          [...prev, newVideo.id],
+          mergePlaylist(watchVideos, savedVideos, nextCustom),
+        );
+        savePlaylistOrder(next);
+        return next;
+      });
+    }
+    setFilter("all");
+    setSearchQuery("");
+    addToPlayQueue(selectedVideo);
+    focusVideoInList(selectedVideo.id, existing ? customVideos : [...customVideos, newVideo]);
+    try {
+      setYoutubeDownload({ title: result.title || "YouTube video", percent: 2, stage: "Starting download…" });
+      const base = normalizeServerUrl(getYtDownloadApiUrl());
+      const started = await api.get(`${base}/download`, {
+        params: {
+          url: result.url,
+          ext: "mp4",
+          height: 1080,
+          disposition: "inline",
+          link_only: true,
+          async_job: true,
+          post_as_watch: true,
+          _ts: Date.now(),
+        },
+      });
+      const progressId = started.data?.progress_id;
+      const replaceWithWatch = (data) => {
+        if (!data?.watch_id || !data?.file_url) return;
+        const watchItem = normalizePlaylistItem({
+          id: `watch-${data.watch_id}`,
+          sourceId: data.watch_id,
+          url: data.file_url,
+          title: data.title || result.title || "YouTube video",
+          thumbnail: result.thumbnail || "",
+          type: "watch",
+          online: true,
+          youtubeId,
+        });
+        if (!watchItem) return;
+        setCustomVideos((prev) => prev.filter((video) => video.id !== newVideo.id));
+        setPlayQueue((prev) => prev.map((item) =>
+          item.videoId === newVideo.id ? { ...item, videoId: watchItem.id, url: watchItem.url, title: watchItem.title, thumbnail: watchItem.thumbnail, type: watchItem.type } : item
+        ));
+      };
+      if (started.data?.status === "completed") {
+        replaceWithWatch(started.data);
+        await refreshLibrary({ showSpinner: false });
+        return;
+      }
+      if (!progressId) throw new Error(started.data?.error || "Could not start download");
+      showSuccessToast("Added to playlist; downloading and posting to Watch.");
+      const poll = async () => {
+        const response = await api.get(`${base}/progress/${progressId}`, {
+          params: { _ts: Date.now() },
+        });
+        const data = response.data || {};
+        setYoutubeDownload((prev) => ({
+          ...(prev || {}),
+          title: data.title || prev?.title || result.title || "YouTube video",
+          percent: Math.max(Number(prev?.percent) || 0, Math.round(Number(data.pct) || 0)),
+          stage: data.stage || "Downloading…",
+        }));
+        if (data.status === "completed") {
+          replaceWithWatch(data);
+          setYoutubeDownload((prev) => ({ ...(prev || {}), percent: 100, stage: "Complete" }));
+          await refreshLibrary({ showSpinner: false });
+          setTimeout(() => setYoutubeDownload(null), 2500);
+          return;
+        }
+        if (data.status === "failed" || data.status === "error") {
+          throw new Error(data.error || "YouTube download failed");
+        }
+        setTimeout(poll, 1200);
+      };
+      poll().catch((error) => {
+        setYoutubeDownload((prev) => ({ ...(prev || {}), stage: "Failed", error: error.message }));
+        showErrorToast(error.message || "YouTube download failed.");
+      });
+    } catch (error) {
+      setYoutubeDownload({ title: result.title || "YouTube video", percent: 0, stage: "Failed", error: error.message });
+      showErrorToast(error?.response?.data?.error || error.message || "Could not start YouTube download.");
+    }
+  };
+
   const handleFileUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file || !file.type.startsWith("video/")) return;
@@ -1288,6 +1437,18 @@ const VideoPlayer = () => {
           {libraryError ? (
             <p className="video-player-error">{libraryError}</p>
           ) : null}
+          {youtubeDownload ? (
+            <div className="video-player-download-progress" role="status">
+              <div className="video-player-download-progress-header">
+                <span>{youtubeDownload.title}</span>
+                <strong>{youtubeDownload.percent}%</strong>
+              </div>
+              <div className="video-player-download-track">
+                <span style={{ width: `${Math.min(100, Math.max(0, youtubeDownload.percent))}%` }} />
+              </div>
+              <small>{youtubeDownload.error || youtubeDownload.stage}</small>
+            </div>
+          ) : null}
 
           {currentVideo ? (
             <div className="video-stage">
@@ -1653,6 +1814,34 @@ const VideoPlayer = () => {
                 </select>
               </label>
             </div>
+            {searchQuery.trim() ? (
+              <div className="video-player-youtube-results">
+                <div className="video-player-youtube-heading">
+                  YouTube {youtubeSearching ? "searching…" : ""}
+                </div>
+                {youtubeSearchError ? (
+                  <p className="video-player-error">{youtubeSearchError}</p>
+                ) : youtubeResults.length ? (
+                  youtubeResults.map((result) => (
+                    <button
+                      type="button"
+                      className="video-player-youtube-result"
+                      key={result.videoId}
+                      onClick={() => handleSelectYoutubeResult(result)}
+                    >
+                      <img src={result.thumbnail} alt="" />
+                      <span>
+                        <strong>{result.title}</strong>
+                        <small>{result.channelTitle}</small>
+                      </span>
+                      <i className="fas fa-plus" aria-hidden="true" />
+                    </button>
+                  ))
+                ) : !youtubeSearching ? (
+                  <p className="video-player-search-hint">No YouTube results</p>
+                ) : null}
+              </div>
+            ) : null}
 
             {sortMode === "custom" && filteredVideos.length > 1 ? (
               <p className="video-player-sort-hint">

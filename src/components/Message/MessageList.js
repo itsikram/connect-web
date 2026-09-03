@@ -129,8 +129,8 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
     if (!effectiveProfileId) return [];
     try {
       const cacheKey = `contactsData_${effectiveProfileId}`;
-      const cached =
-        localStorage.getItem(cacheKey) || localStorage.getItem("contactsData");
+      // Never use the legacy unscoped key: it can belong to a different user.
+      const cached = localStorage.getItem(cacheKey);
       if (!cached) return [];
       const data = JSON.parse(cached);
       return Array.isArray(data) ? data : [];
@@ -164,7 +164,6 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
           try {
             ContactCacheManager.setCachedContacts(effectiveProfileId, merged);
             const cacheKey = `contactsData_${effectiveProfileId}`;
-            localStorage.setItem("contactsData", JSON.stringify(merged));
             localStorage.setItem(cacheKey, JSON.stringify(merged));
           } catch (_e) {
             /* ignore */
@@ -243,7 +242,6 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
       if (!effectiveProfileId || !Array.isArray(nextContacts)) return;
       try {
         const cacheKey = `contactsData_${effectiveProfileId}`;
-        localStorage.setItem("contactsData", JSON.stringify(nextContacts));
         localStorage.setItem(cacheKey, JSON.stringify(nextContacts));
         ContactCacheManager.setCachedContacts(effectiveProfileId, nextContacts);
       } catch (_e) {
@@ -605,7 +603,8 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
                   contactPerson?.fullName ||
                   (contactPerson?.user
                     ? `${contactPerson?.user?.firstName || ""} ${contactPerson?.user?.surname || ""}`.trim()
-                    : "Unknown User");
+                    : "");
+                if (!authorFullName) return null;
                 const isMsgSeen = contactMessages[0]
                   ? contactMessages[0].isSeen &&
                     idOf(contactMessages[0].receiverId) === idOf(myId)
@@ -877,7 +876,8 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
                     contactPerson?.fullName ||
                     (contactPerson?.user
                       ? `${contactPerson?.user?.firstName || ""} ${contactPerson?.user?.surname || ""}`.trim()
-                      : "Unknown User");
+                      : "");
+                  if (!authorFullName) return null;
                   const isMsgSeen = contactMessages[0]
                     ? contactMessages[0].isSeen &&
                       idOf(contactMessages[0].receiverId) === idOf(myId)

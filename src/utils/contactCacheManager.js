@@ -11,7 +11,7 @@ const CACHE_KEYS = {
   CACHE_VERSION: 'contact_cache_version',
 };
 
-const CACHE_VERSION = '1.0';
+const CACHE_VERSION = '1.1';
 const CONTACT_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes in milliseconds
 
 class ContactCacheManager {
@@ -39,6 +39,11 @@ class ContactCacheManager {
       const cachedVersion = localStorage.getItem(CACHE_KEYS.CACHE_VERSION);
       if (cachedVersion !== CACHE_VERSION) {
         this.clearCache();
+        Object.keys(localStorage).forEach((key) => {
+          if (key === 'contactsData' || key.startsWith('contactsData_')) {
+            localStorage.removeItem(key);
+          }
+        });
         localStorage.setItem(CACHE_KEYS.CACHE_VERSION, CACHE_VERSION);
       }
     } catch (error) {

@@ -17,8 +17,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { shallowEqual, useDispatch, useSelector } from "react-redux";
 import config from "../../config/config.json";
 import { sanitizeProfileImageUrl } from "../../utils/profileImage";
-
-const HeaderMessageMenu = lazy(() => import("./HeaderMessageMenu"));
+import HeaderMessageMenu from "./HeaderMessageMenu";
 
 const EMPTY_LIST = [];
 
@@ -169,10 +168,6 @@ let HeaderRight = ({ pendingLudoInvites = [], pendingChessInvites = [] }) => {
     setMessageOption(false);
   }, []);
 
-  const preloadMessageMenu = useCallback(() => {
-    import("./HeaderMessageMenu");
-  }, []);
-
   useEffect(() => {
     const openMenu = () => {
       setIsNotificationMenu(true);
@@ -232,7 +227,6 @@ let HeaderRight = ({ pendingLudoInvites = [], pendingChessInvites = [] }) => {
         <ul className="header-quick-menu">
           <li
             onClick={showMsgList}
-            onMouseEnter={preloadMessageMenu}
             className={`header-quick-menu-item ${isMsgMenu ? "active" : ""}`}
             title="Message"
             aria-expanded={isMsgMenu}
@@ -325,27 +319,10 @@ let HeaderRight = ({ pendingLudoInvites = [], pendingChessInvites = [] }) => {
                       </div>
                     </div>
                   </div>
-                  <Suspense
-                    fallback={
-                      <div
-                        style={{
-                          minHeight: 160,
-                          color: "#b0b3b8",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: 13,
-                        }}
-                      >
-                        Loading…
-                      </div>
-                    }
-                  >
-                    <HeaderMessageMenu
-                      menuStyle={notificationMenuStyle}
-                      onChatSelect={closeMenus}
-                    />
-                  </Suspense>
+                  <HeaderMessageMenu
+                    menuStyle={notificationMenuStyle}
+                    onChatSelect={closeMenus}
+                  />
                 </div>
               </div>
             </MegaMC>
