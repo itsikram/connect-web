@@ -33,6 +33,34 @@ const RINGTONE_STORE_NAME = "ringtones";
 /** Keep full camera frame visible (no crop) */
 const VIDEO_FIT = { fit: "contain" };
 
+const stopMediaTracks = (mediaContainer) => {
+  if (!mediaContainer) return;
+  const mediaElements = [
+    mediaContainer,
+    ...Array.from(mediaContainer.querySelectorAll?.("video, audio") || []),
+  ];
+  mediaElements.forEach((mediaElement) => {
+    const stream = mediaElement.srcObject;
+    if (stream?.getTracks) {
+      stream.getTracks().forEach((track) => track.stop());
+      mediaElement.srcObject = null;
+    }
+  });
+};
+
+const closeAgoraTrack = (track) => {
+  try {
+    track.getMediaStreamTrack?.()?.stop();
+  } catch (error) {
+    console.warn("VideoCall: Error stopping browser media track:", error);
+  }
+  try {
+    track.close();
+  } catch (error) {
+    console.warn("VideoCall: Error closing Agora track:", error);
+  }
+};
+
 const readTrackAspectRatio = (videoTrack) => {
   try {
     const settings = videoTrack?.getMediaStreamTrack?.()?.getSettings?.() || {};
@@ -135,6 +163,7 @@ const VideoCall = ({ myId }) => {
   const remoteContainer = useRef();
   const remoteUserCheckInterval = useRef(null);
   const isCleaningUpRef = useRef(false); // Track if cleanup is in progress
+  const cleanupVideoCallRef = useRef(null);
 
   // Stable numeric UID for Agora (avoids string-UID warning)
   const numericUid = useMemo(() => {
@@ -581,13 +610,7 @@ const VideoCall = ({ myId }) => {
 
     // Close local tracks AFTER unpublishing
     try {
-      localTracks.current.forEach((track) => {
-        try {
-          track.close();
-        } catch (e) {
-          console.log("VideoCall: Error closing track:", e);
-        }
-      });
+      localTracks.current.forEach(closeAgoraTrack);
     } catch (e) {
       console.log("VideoCall: Error closing tracks:", e);
     }
@@ -610,7 +633,8 @@ const VideoCall = ({ myId }) => {
         });
         videoElement.srcObject = null;
       }
-      myVideo.current.innerHTML = "";
+      stopMediaTracks(myVideo.current);
+      myVideo.current.replaceChildren();
     }
     if (userVideo.current) {
       const videoElement = userVideo.current;
@@ -622,7 +646,8 @@ const VideoCall = ({ myId }) => {
         });
         videoElement.srcObject = null;
       }
-      userVideo.current.innerHTML = "";
+      stopMediaTracks(userVideo.current);
+      userVideo.current.replaceChildren();
     }
 
     setCallAccepted(false);
@@ -653,6 +678,16 @@ const VideoCall = ({ myId }) => {
       isCleaningUpRef.current = false;
     }, 1000);
   }, [currentChannel, endMinimizedCall]);
+
+  useEffect(() => {
+    cleanupVideoCallRef.current = cleanupVideoCall;
+  }, [cleanupVideoCall]);
+
+  useEffect(() => {
+    return () => {
+      cleanupVideoCallRef.current?.();
+    };
+  }, []);
 
   const endCall = useCallback(
     async (isCancelled = false) => {

@@ -24,6 +24,17 @@ const tombstones = new Map();
 
 const now = () => Date.now();
 
+const uniqueById = (items) => {
+  if (!Array.isArray(items)) return [];
+  const seen = new Set();
+  return items.filter((item) => {
+    const id = String(item?._id || "");
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+};
+
 const emitUpdate = (profileId, list, items) => {
   if (typeof window === "undefined") return;
   window.dispatchEvent(
@@ -131,7 +142,7 @@ class FriendCacheManager {
     try {
       if (!Array.isArray(items)) return false;
       const current = memoryCache.get(memoryKey)?.data;
-      const next = this.filterTombstones(profileId, list, items);
+      const next = uniqueById(this.filterTombstones(profileId, list, items));
       const timestamp = now();
       localStorage.setItem(storageKey, JSON.stringify(next));
       localStorage.setItem(tsKey, String(timestamp));
@@ -158,7 +169,7 @@ class FriendCacheManager {
       options,
     );
     return Array.isArray(list)
-      ? this.filterTombstones(profileId, "requests", list)
+      ? uniqueById(this.filterTombstones(profileId, "requests", list))
       : null;
   }
 
@@ -183,7 +194,7 @@ class FriendCacheManager {
       options,
     );
     return Array.isArray(list)
-      ? this.filterTombstones(profileId, "suggestions", list)
+      ? uniqueById(this.filterTombstones(profileId, "suggestions", list))
       : null;
   }
 
@@ -224,7 +235,7 @@ class FriendCacheManager {
 
     const request = (async () => {
       const data = await fetcher();
-      const list = Array.isArray(data) ? data : [];
+      const list = uniqueById(data);
       setCached(list);
       return list;
     })();

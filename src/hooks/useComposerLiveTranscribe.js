@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { mergeTranscriptChunk } from "./transcriptText";
 
 const TARGET_SAMPLE_RATE = 16000;
-const PCM_PROCESSOR_BUFFER_SIZE = 2048;
+// Smaller buffers reduce the delay before Deepgram receives each audio frame.
+const PCM_PROCESSOR_BUFFER_SIZE = 1024;
 const AUDIO_TIMESLICE_MS = 80;
 
 const SpeechRecognitionCtor = () =>
@@ -426,13 +427,18 @@ export default function useComposerLiveTranscribe({
         rec.onend = () => {
           if (recRef.current !== rec) return;
           if (wantListenRef.current) {
-            try {
-              rec.start();
-              setListening(true);
-              return;
-            } catch {
-              /* fall through */
-            }
+            window.setTimeout(() => {
+              if (!wantListenRef.current || recRef.current !== rec) return;
+              try {
+                rec.start();
+                setListening(true);
+              } catch {
+                wantListenRef.current = false;
+                setListening(false);
+                recRef.current = null;
+              }
+            }, 60);
+            return;
           }
           wantListenRef.current = false;
           setListening(false);
@@ -645,9 +651,6 @@ export default function useComposerLiveTranscribe({
   const start = useCallback(
     async (langCode) => {
       try {
-        const micRequest = navigator?.mediaDevices?.getUserMedia
-          ? requestMicStream()
-          : null;
         stop();
         lastPartialRef.current = "";
         const requested = String(langCode || "en-US");
@@ -660,9 +663,11 @@ export default function useComposerLiveTranscribe({
           : ["en-US"];
 
         let primedStream = null;
-        if (micRequest) {
+        // Browser recognition is the lowest-latency path for English. Bangla
+        // uses the server recognizer first when available for better coverage.
+        if (isBangla && canUseDeepgram()) {
           try {
-            primedStream = await micRequest;
+            primedStream = await requestMicStream();
           } catch (error) {
             console.warn("Microphone permission failed:", error);
           }
@@ -672,7 +677,6 @@ export default function useComposerLiveTranscribe({
           if (!SpeechRecognitionCtor()) return false;
           stopTracks(primedStream);
           primedStream = null;
-          await new Promise((resolve) => setTimeout(resolve, 80));
           for (const lang of browserLangs) {
             try {
               await startBrowser(lang);

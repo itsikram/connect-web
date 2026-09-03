@@ -24,7 +24,7 @@ import {
 
 export { parseGeminiApiKeys, isGeminiQuotaError, extractGeminiText };
 
-const SYSTEM_PROMPT = `Connect companion. English/Bangla/Banglish. 1–2 short sentences. No markdown.`;
+const SYSTEM_PROMPT = `You are Connect's assistant. Reply in the user's language (English, Bangla, or Banglish) and answer the actual request directly. Be concise: 1–2 short sentences unless the user asks for detail. Do not invent app data, names, actions, or results. If a request is ambiguous, ask one brief clarifying question. Do not use markdown.`;
 
 const toChatMessages = (conversationHistory = [], message, limit = 3, clip = 140) => {
   const messages = [];
@@ -320,7 +320,7 @@ export const sendToGeminiStream = async (
         voice ? 3 : 4,
         voice ? 110 : 140,
       ),
-      temperature: 0.35,
+      temperature: voice ? 0.15 : 0.25,
       maxTokens: voice ? 80 : 120,
       timeoutMs: voice ? 10000 : 12000,
       operationLabel: "Chat request",

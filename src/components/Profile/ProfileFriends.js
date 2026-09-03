@@ -17,7 +17,12 @@ const ProfileFriends = () => {
         let isAuth = params.profile === myProfile._id ? true : false
         setIsAuth(isAuth)
         if (isAuth) {
-            return setFriendsData(myProfile.friends)
+            const seen = new Set()
+            return setFriendsData((myProfile.friends || []).filter((friend) => {
+                if (!friend?._id || seen.has(friend._id)) return false
+                seen.add(friend._id)
+                return true
+            }))
 
         }
 
@@ -28,7 +33,12 @@ const ProfileFriends = () => {
 
         }).then(res => {
             setHasFriendsData(res.data.length > 0 ? true : false)
-            setFriendsData(res.data)
+            const seen = new Set()
+            setFriendsData((Array.isArray(res.data) ? res.data : []).filter((friend) => {
+                if (!friend?._id || seen.has(friend._id)) return false
+                seen.add(friend._id)
+                return true
+            }))
         }).catch(e => console.log(e))
 
     }, [params, myProfile])

@@ -70,7 +70,7 @@ const pickVoice = (lang) => {
 };
 
 const utteranceTimeoutMs = (text = "") =>
-  Math.min(12000, 900 + String(text).length * 70);
+  Math.min(18000, 900 + String(text).length * 70);
 
 export default function useAgentSpeech() {
   const [speaking, setSpeaking] = useState(false);
@@ -141,7 +141,7 @@ export default function useAgentSpeech() {
       const utterance = new SpeechSynthesisUtterance(text);
       const voice = pickVoice(lang);
       utterance.lang = voice ? voice.lang || lang : "en-US";
-      utterance.rate = 1.12;
+      utterance.rate = 1.08;
       utterance.pitch = 1;
       utterance.volume = 1;
       if (voice) utterance.voice = voice;
@@ -244,7 +244,9 @@ export default function useAgentSpeech() {
         };
         onIdleRef.current = finish;
         enqueue(text, lang);
-        const ms = Math.min(2800, 500 + cleaned.length * 45);
+        // Do not cancel normal replies on a short fixed timer. Bengali and
+        // mixed-language speech can naturally take longer than 2.8 seconds.
+        const ms = utteranceTimeoutMs(cleaned) + 1500;
         setTimeout(() => {
           finish();
           if (generationRef.current !== startGeneration) return;

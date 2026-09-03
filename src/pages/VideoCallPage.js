@@ -141,8 +141,15 @@ const VideoCallPage = () => {
 
   // End call
   const endCall = async () => {
-    localTracks.current.forEach((track) => track.close());
-    await client.leave();
+    localTracks.current.forEach((track) => {
+      track.getMediaStreamTrack?.()?.stop();
+      track.close();
+    });
+    localTracks.current = [];
+    if (client.connectionState === "CONNECTED" || client.connectionState === "CONNECTING") {
+      await client.leave();
+    }
+    localContainer.current?.replaceChildren();
     setInCall(false);
     setCurrentChannel(null);
     if (remoteContainer.current) remoteContainer.current.innerHTML = "";

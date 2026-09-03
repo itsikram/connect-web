@@ -1675,14 +1675,39 @@ const StickyChatBox = ({
             </button>
             <button
               className="sticky-chat-option-item danger"
-              onClick={() => {
+              onClick={async () => {
                 if (
                   window.confirm(
                     "Are you sure you want to delete this conversation?",
                   )
                 ) {
-                  // TODO: Implement delete conversation functionality
-                  setShowOptionsMenu(false);
+                  try {
+                    await api.post("/message/deleteConversation", {
+                      profileId: userId,
+                      friendId,
+                    });
+
+                    setMessages([]);
+                    window.dispatchEvent(
+                      new CustomEvent("conversationDeleted", {
+                        detail: { profileId: userId, friendId },
+                      }),
+                    );
+                    socket.emit("deleteConversation", {
+                      profileId: userId,
+                      friendId,
+                    });
+                    setShowOptionsMenu(false);
+                    if (typeof onClose === "function") {
+                      onClose();
+                    }
+                  } catch (error) {
+                    console.error("Error deleting conversation:", error);
+                    window.alert(
+                      error?.response?.data?.message ||
+                        "Failed to delete conversation.",
+                    );
+                  }
                 }
               }}
             >

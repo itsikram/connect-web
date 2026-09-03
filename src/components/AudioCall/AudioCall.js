@@ -30,6 +30,19 @@ const RINGTONE_DB_NAME = "connect-audio-cache";
 const RINGTONE_DB_VERSION = 1;
 const RINGTONE_STORE_NAME = "ringtones";
 
+const closeAgoraTrack = (track) => {
+  try {
+    track.getMediaStreamTrack?.()?.stop();
+  } catch (error) {
+    console.warn("AudioCall: Error stopping browser media track:", error);
+  }
+  try {
+    track.close();
+  } catch (error) {
+    console.warn("AudioCall: Error closing Agora track:", error);
+  }
+};
+
 const AudioCall = ({ myId }) => {
   const mySettings = useSelector((state) => state.setting);
   const [isAudioCall, setIsAudioCall] = useState(false);
@@ -80,6 +93,7 @@ const AudioCall = ({ myId }) => {
   const isJoiningOrJoined = useRef(false);
   const hasBoundClientEvents = useRef(false);
   const remoteUserCheckInterval = useRef(null);
+  const cleanupAudioCallRef = useRef(null);
 
   const isMobile = useIsMobile();
   const { minimizeCall, endMinimizedCall } = useCallMinimize();
@@ -781,13 +795,7 @@ const AudioCall = ({ myId }) => {
 
     // Close local tracks
     try {
-      localTracks.current.forEach((track) => {
-        try {
-          track.close();
-        } catch (closeError) {
-          console.log("AudioCall: Error closing track:", closeError);
-        }
-      });
+      localTracks.current.forEach(closeAgoraTrack);
     } catch (e) {
       console.log("AudioCall: Error closing tracks:", e);
     }
@@ -858,6 +866,16 @@ const AudioCall = ({ myId }) => {
     isTerminating.current = false;
     console.log("AudioCall: Cleanup - reset state variables");
   }, [currentChannel, endMinimizedCall, isTerminating]);
+
+  useEffect(() => {
+    cleanupAudioCallRef.current = cleanupAudioCall;
+  }, [cleanupAudioCall]);
+
+  useEffect(() => {
+    return () => {
+      cleanupAudioCallRef.current?.();
+    };
+  }, []);
 
   // Keep receivingCallRef and callAcceptedRef in sync with state
   useEffect(() => {

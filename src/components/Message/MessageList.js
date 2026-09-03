@@ -307,11 +307,29 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
       });
     };
 
+    const onConversationDeleted = (data) => {
+      const { profileId, friendId } = data || {};
+      if (!profileId || !friendId) return;
+      if (String(profileId) !== String(myId)) return;
+
+      setContacts((prev) => {
+        const next = prev.filter(
+          (contact) => String(contact?.person?._id) !== String(friendId),
+        );
+        if (next.length !== prev.length) {
+          writeContactCache(next);
+          return next;
+        }
+        return prev;
+      });
+    };
+
     socket.on("newMessage", onSocketMessage);
     socket.on("newMessageToUser", onSocketMessage);
     socket.on("messageSent", onSocketMessage);
     socket.on("messageSeen", onMessageSeen);
     socket.on("seenMessage", onMessageSeen);
+    socket.on("conversationDeleted", onConversationDeleted);
     window.addEventListener(CHAT_MESSAGE_EVENT, onLocalMessage);
 
     return () => {
@@ -320,6 +338,7 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
       socket.off("messageSent", onSocketMessage);
       socket.off("messageSeen", onMessageSeen);
       socket.off("seenMessage", onMessageSeen);
+      socket.off("conversationDeleted", onConversationDeleted);
       window.removeEventListener(CHAT_MESSAGE_EVENT, onLocalMessage);
     };
   }, [myId, fetchContacts, writeContactCache]);
