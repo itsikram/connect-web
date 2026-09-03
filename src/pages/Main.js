@@ -76,6 +76,7 @@ import { emitChatMessage, idOf } from "../utils/optimisticMessage";
 import { setBodyHeight, setLoading } from "../services/actions/optionAction";
 import { loadSettings } from "../services/actions/settingsActions.js";
 import { applyThemeMode } from "../utils/applyThemeMode";
+import { prefetchNavigationTarget } from "../utils/routePrefetch";
 
 const Profile = lazy(() => import("./Profile"));
 const Friends = lazy(() => import("./Friends"));
@@ -2284,6 +2285,17 @@ const Main = () => {
 
   useEffect(() => {
     NProgress.configure({ showSpinner: false });
+  }, []);
+
+  // Fetch route chunks before a click whenever the user hovers or touches a link.
+  useEffect(() => {
+    document.addEventListener("pointerover", prefetchNavigationTarget);
+    document.addEventListener("touchstart", prefetchNavigationTarget, { passive: true });
+
+    return () => {
+      document.removeEventListener("pointerover", prefetchNavigationTarget);
+      document.removeEventListener("touchstart", prefetchNavigationTarget);
+    };
   }, []);
 
   useEffect(() => {

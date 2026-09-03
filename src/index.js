@@ -25,7 +25,7 @@ import { BrowserRouter as BR } from 'react-router-dom';
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <Provider store={store}>
-    <BR future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <BR future={{ v7_relativeSplatPath: true }}>
       <App />
     </BR>
   </Provider>
@@ -36,4 +36,3 @@ root.render(
 // to log results (for example: reportWebVitals(console.log))
 // or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
 reportWebVitals();
-
