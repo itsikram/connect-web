@@ -1,101 +1,85 @@
-const CACHE_NAME = 'connect-app-v1';
+const CACHE_NAME = 'connect-app-v2';
 const API_CACHE_NAME = 'connect-api-v1';
 
-// Install event - cache static assets
+const isSameOrigin = (url) => url.origin === self.location.origin;
+const isApiRequest = (url) =>
+  url.pathname.startsWith('/api/') ||
+  url.pathname.startsWith('/socket.io/') ||
+  url.pathname.startsWith('/web-notification/');
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll([
-        '/',
-        '/index.html',
-        '/static/js/main.js',
-        '/static/js/vendor.js',
-        '/static/css/main.css'
-      ]);
-    })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(['/', '/index.html']))
   );
+  self.skipWaiting();
 });
 
-// Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
+    caches.keys().then((cacheNames) =>
+      Promise.all(
         cacheNames
           .filter((name) => name !== CACHE_NAME && name !== API_CACHE_NAME)
           .map((name) => caches.delete(name))
-      );
-    })
+      )
+    )
   );
+  self.clients.claim();
 });
 
-// Fetch event - network-first strategy for API/Socket.IO, cache-first for static assets
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
-  
-  // Skip caching for localhost
-  const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]';
-  if (isLocalhost) {
-    return; // Let browser handle requests directly, no caching
-  }
-  
-  // Pass through Socket.IO requests without intercepting
-  if (url.pathname.startsWith('/socket.io/')) {
+  const request = event.request;
+  if (request.method !== 'GET') return;
+
+  const url = new URL(request.url);
+  if (!isSameOrigin(url) || isApiRequest(url)) {
+    if (isApiRequest(url)) {
+      event.respondWith(
+        fetch(request)
+          .then((response) => {
+            if (response.ok) {
+              const copy = response.clone();
+              event.waitUntil(
+                caches.open(API_CACHE_NAME).then((cache) => cache.put(request, copy))
+              );
+            }
+            return response;
+          })
+          .catch(() => caches.match(request))
+      );
+    }
     return;
   }
 
-  // Network-first strategy for API requests
-  if (url.pathname.startsWith('/api/') || url.hostname === '172.20.10.2') {
+  if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request)
+      fetch(request)
         .then((response) => {
-          // Clone the response before using it
-          const responseToCache = response.clone();
-          
-          // Cache the successful response
-          if (response.status === 200) {
-            caches.open(API_CACHE_NAME)
-              .then((cache) => {
-                cache.put(event.request, responseToCache);
-              });
+          if (response.ok) {
+            const copy = response.clone();
+            event.waitUntil(
+              caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', copy))
+            );
           }
-          
           return response;
         })
-        .catch(() => {
-          // If network request fails, try to get from cache
-          return caches.match(event.request);
-        })
+        .catch(() => caches.match('/index.html'))
     );
     return;
   }
 
-  // Skip audio files to prevent download manager interception
-  if (url.pathname.match(/\.(wav|mp3|ogg|m4a|aac)$/i)) {
-    return; // Let browser handle audio files directly, don't intercept
-  }
-
-  // Cache-first strategy for static assets
   event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        if (response) {
-          return response;
+    caches.match(request).then((cached) => {
+      if (cached) return cached;
+      return fetch(request).then((response) => {
+        if (response.ok) {
+          const copy = response.clone();
+          event.waitUntil(
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy))
+          );
         }
-        return fetch(event.request).then((response) => {
-          // Clone the response before using it
-          const responseToCache = response.clone();
-          
-          // Cache the successful response
-          if (response.status === 200) {
-            caches.open(CACHE_NAME)
-              .then((cache) => {
-                cache.put(event.request, responseToCache);
-              });
-          }
-          
-          return response;
-        });
-      })
+        return response;
+      });
+    })
   );
 });

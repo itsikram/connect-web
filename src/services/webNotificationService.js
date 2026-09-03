@@ -141,7 +141,7 @@ class WebNotificationService {
         } catch (_) {}
       }
 
-      this.registration = await navigator.serviceWorker.register('/sw.js', {
+      this.registration = await navigator.serviceWorker.register('/service-worker.js', {
         scope: '/',
         updateViaCache: 'none',
       });

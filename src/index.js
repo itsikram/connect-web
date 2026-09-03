@@ -6,6 +6,7 @@ import reportWebVitals from './reportWebVitals';
 import {Provider} from 'react-redux'
 import store from './store';
 import { BrowserRouter as BR } from 'react-router-dom';
+import { register as registerServiceWorker } from './serviceWorkerRegistration';
 
 // Mark installed / fullscreen web app so CSS can apply iOS safe-area insets
 (() => {
@@ -36,3 +37,6 @@ root.render(
 // to log results (for example: reportWebVitals(console.log))
 // or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
 reportWebVitals();
+
+// Cache the app shell and loaded bundles so the installed PWA can start offline.
+registerServiceWorker();
