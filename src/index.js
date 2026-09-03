@@ -25,7 +25,7 @@ import { BrowserRouter as BR } from 'react-router-dom';
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <Provider store={store}>
-    <BR future={{ v7_relativeSplatPath: true }}>
+    <BR future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
       <App />
     </BR>
   </Provider>

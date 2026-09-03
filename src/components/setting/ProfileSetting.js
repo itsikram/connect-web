@@ -5,6 +5,7 @@ import { getProfileSuccess } from "../../services/actions/profileActions";
 import { showProfileUpdateToast } from "../../utils/toastUtils";
 import { Link } from "react-router-dom";
 import { loadSettings } from "../../services/actions/settingsActions";
+import BanglaNameField from "./BanglaNameField";
 
 const ProfileSetting = () => {
   let myProfile = useSelector((state) => state.profile);
@@ -263,24 +264,12 @@ const ProfileSetting = () => {
                 placeholder="Enter Display Name"
               />
             </div>
-            <div className="form-group mb-2">
-              <label htmlFor="banglaName">Bengali Name (বাংলা নাম)</label>
-
-              <input
-                type="text"
-                onChange={handleInputChange.bind(this)}
-                value={settings.banglaName || ""}
-                className="form-control"
-                id="banglaName"
-                name="banglaName"
-                placeholder="আপনার বাংলা নাম লিখুন"
-                dir="auto"
-              />
-              <small className="text-muted">
-                Enter your name in Bengali script to help Bengali speakers find
-                you easily.
-              </small>
-            </div>
+            <BanglaNameField
+              value={settings.banglaName}
+              onChange={(banglaName) =>
+                setSetings((prev) => ({ ...prev, banglaName }))
+              }
+            />
 
             <div className="form-group mb-2">
               <label htmlFor="presentAddress">Present Address</label>

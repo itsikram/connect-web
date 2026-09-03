@@ -56,7 +56,7 @@ const AccountSetting = () => {
   }, [myProfile?.user?.faceLoginEnabled]);
 
   useEffect(() => {
-    if (currentEmail || !myProfile?._id || emailFetchAttempted.current) return;
+    if (!myProfile?._id || emailFetchAttempted.current) return;
     emailFetchAttempted.current = true;
 
     let cancelled = false;
@@ -67,6 +67,7 @@ const AccountSetting = () => {
           forceRefresh: true,
         });
         if (!cancelled && profileData) {
+          setIsFaceRegistered(Boolean(profileData?.user?.faceLoginEnabled));
           dispatch(getProfileSuccess(profileData));
         }
       } catch (error) {
