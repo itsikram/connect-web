@@ -15,6 +15,8 @@ import {
   setUserInStorage,
   removeStorageItem,
 } from "../utils/storageUtils";
+import { invalidateCachedResource } from "../utils/requestCache";
+import ProfileCacheManager from "../utils/profileCacheManager";
 import { getServerAddress } from "../utils/offlineUtils";
 // Import socket lazily to avoid circular dependency at module load time
 const getSocket = () => {
@@ -388,6 +390,9 @@ export const AuthProvider = ({ children }) => {
     try {
       const profileId = user?.profile || user?.profileId;
       if (profileId) {
+        invalidateCachedResource(`profile:${profileId}`);
+        invalidateCachedResource(`profileLite:${profileId}`);
+        ProfileCacheManager.clearCache();
         const api = require("../api/api").default;
         const webNotificationService =
           require("../services/webNotificationService").default;

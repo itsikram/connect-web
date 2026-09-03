@@ -1,10 +1,10 @@
-import React, { useCallback, useState, useEffect, useRef } from "react";
+import React, { useCallback, useState, useEffect, useRef, useContext } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import api, { invalidateGetCache } from "../../api/api";
 import { showSuccessToast, showErrorToast } from "../../utils/toastUtils";
 import { getProfileSuccess } from "../../services/actions/profileActions";
-import { fetchProfileCached } from "../../utils/requestCache";
 import FaceCapture from "../face/FaceCapture";
+import { AuthContext } from "../../contexts/AuthContext";
 import {
   getUserFromStorage,
   setUserInStorage,
@@ -22,6 +22,7 @@ const isValidEmail = (email) =>
 const AccountSetting = () => {
   const dispatch = useDispatch();
   const myProfile = useSelector((state) => state.profile);
+  const { user, updateUser } = useContext(AuthContext);
   const currentEmail = getProfileEmail(myProfile);
   const emailFetchAttempted = useRef(false);
   const [data, setData] = useState({
@@ -40,7 +41,9 @@ const AccountSetting = () => {
   const [showVoiceConfirmation, setShowVoiceConfirmation] = useState(false);
   const [pendingVoiceTranscript, setPendingVoiceTranscript] = useState("");
   const [isRegisteringFace, setIsRegisteringFace] = useState(false);
-  const [isFaceRegistered, setIsFaceRegistered] = useState(Boolean(myProfile?.user?.faceLoginEnabled));
+  const [isFaceRegistered, setIsFaceRegistered] = useState(
+    Boolean(myProfile?.user?.faceLoginEnabled || user?.faceLoginEnabled),
+  );
   const [showFaceCapture, setShowFaceCapture] = useState(false);
   const [isRemovingFace, setIsRemovingFace] = useState(false);
 
@@ -52,22 +55,30 @@ const AccountSetting = () => {
   }, [myProfile?.banglaName, currentEmail, editEmail]);
 
   useEffect(() => {
-    setIsFaceRegistered(Boolean(myProfile?.user?.faceLoginEnabled));
-  }, [myProfile?.user?.faceLoginEnabled]);
+    setIsFaceRegistered(
+      Boolean(myProfile?.user?.faceLoginEnabled || user?.faceLoginEnabled),
+    );
+  }, [myProfile?.user?.faceLoginEnabled, user?.faceLoginEnabled]);
 
   useEffect(() => {
-    if (!myProfile?._id || emailFetchAttempted.current) return;
+    const profileId =
+      myProfile?._id ||
+      (typeof user?.profile === "string" ? user.profile : user?.profile?._id);
+    if (!profileId || emailFetchAttempted.current) return;
     emailFetchAttempted.current = true;
 
     let cancelled = false;
     (async () => {
       try {
         invalidateGetCache("/profile");
-        const profileData = await fetchProfileCached(myProfile._id, {
-          forceRefresh: true,
+        const response = await api.get("/profile", {
+          params: { profileId, _ts: Date.now() },
         });
+        const profileData = response.data?.profile || response.data;
         if (!cancelled && profileData) {
-          setIsFaceRegistered(Boolean(profileData?.user?.faceLoginEnabled));
+          setIsFaceRegistered(
+            Boolean(profileData?.user?.faceLoginEnabled || user?.faceLoginEnabled),
+          );
           dispatch(getProfileSuccess(profileData));
         }
       } catch (error) {
@@ -78,7 +89,7 @@ const AccountSetting = () => {
     return () => {
       cancelled = true;
     };
-  }, [currentEmail, dispatch, myProfile?._id]);
+  }, [currentEmail, dispatch, myProfile?._id, user?.faceLoginEnabled, user?.profile]);
 
   const applyEmailToProfile = useCallback(
     (email, authPayload) => {
@@ -120,6 +131,7 @@ const AccountSetting = () => {
         { skipAuthRefresh: true },
       );
       setIsFaceRegistered(true);
+      updateUser({ faceLoginEnabled: true });
       setShowFaceCapture(false);
       dispatch(getProfileSuccess({
         ...myProfile,
@@ -142,6 +154,7 @@ const AccountSetting = () => {
     try {
       await api.post("auth/face/remove", {}, { skipAuthRefresh: true });
       setIsFaceRegistered(false);
+      updateUser({ faceLoginEnabled: false });
       setShowFaceCapture(false);
       dispatch(getProfileSuccess({
         ...myProfile,

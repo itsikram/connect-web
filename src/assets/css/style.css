@@ -100,7 +100,7 @@ body {
   display: flex;
   align-items: center !important;
   justify-content: center;
-  background-color: #18191A;
+  background-color: rgba(24, 25, 26, 0.92);
   z-index: 999999999999;
   top: 0;
   left: 0;
