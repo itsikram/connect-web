@@ -3,9 +3,10 @@ import * as faceapi from "@vladmandic/face-api";
 
 const MAX_CAPTURE_FRAMES = 60;
 const FRAME_INTERVAL_MS = 100;
-const BLINK_MIN_CLOSED_FRAMES = 1;
+const BLINK_MIN_CLOSED_FRAMES = 2;
 const BLINK_CLOSED_RATIO = 0.72;
-const BLINK_OPEN_RATIO = 0.88;
+const BLINK_OPEN_RATIO = 0.86;
+const OPEN_CALIBRATION_FRAMES = 8;
 const MODEL_URL = "/models";
 
 let modelsPromise;
@@ -100,7 +101,7 @@ const FaceCapture = ({ onCapture, disabled = false }) => {
     const frames = [];
     const eyeRatios = [];
     let blinkDetected = false;
-    let closedStart = null;
+    let closedFrames = 0;
     let openBaseline = null;
 
     try {
@@ -113,7 +114,7 @@ const FaceCapture = ({ onCapture, disabled = false }) => {
           }))
           .withFaceLandmarks();
 
-        if (!detection) {
+        if (!detection || !detection.landmarks) {
           setStatus("Keep one face centered in the live camera.");
           await new Promise((resolve) => setTimeout(resolve, FRAME_INTERVAL_MS));
           continue;
@@ -121,18 +122,22 @@ const FaceCapture = ({ onCapture, disabled = false }) => {
 
         const ratio = getEyeRatio(detection.landmarks);
         eyeRatios.push(ratio);
-        if (eyeRatios.length >= 3) {
-          const baseline = eyeRatios.slice(-8).sort((a, b) => a - b)[
-            Math.floor(Math.min(7, eyeRatios.slice(-8).length - 1) * 0.75)
-          ];
-          openBaseline = Math.max(openBaseline || 0, baseline);
+        if (eyeRatios.length <= OPEN_CALIBRATION_FRAMES) {
+          openBaseline = Math.max(openBaseline || 0, ratio);
+          setStatus(`Hold still, calibrating eyes… ${eyeRatios.length}/${OPEN_CALIBRATION_FRAMES}`);
+        } else {
           const closedThreshold = Math.max(0.12, openBaseline * BLINK_CLOSED_RATIO);
           const openThreshold = openBaseline * BLINK_OPEN_RATIO;
           if (ratio < closedThreshold) {
-            closedStart = closedStart === null ? index : closedStart;
-          } else if (closedStart !== null && index - closedStart >= BLINK_MIN_CLOSED_FRAMES && ratio >= openThreshold) {
+            closedFrames += 1;
+            setStatus("Eyes closed detected — open your eyes.");
+          } else if (closedFrames >= BLINK_MIN_CLOSED_FRAMES && ratio >= openThreshold) {
             blinkDetected = true;
-            closedStart = null;
+            closedFrames = 0;
+            setStatus("Blink detected. Preparing verification…");
+          } else {
+            closedFrames = 0;
+            setStatus("Blink once naturally while keeping your face centered.");
           }
         }
 
