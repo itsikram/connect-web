@@ -186,6 +186,48 @@ html[data-theme="light"] .nf-post .comments,
     white-space: pre-wrap;
 }
 
+.expandable-text-button {
+    display: inline-flex;
+    align-items: center;
+    margin-top: 6px;
+    padding: 4px 10px;
+    border: 1px solid color-mix(in srgb, var(--post-accent, #00d4ff) 38%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--post-accent, #00d4ff) 10%, transparent);
+    color: var(--post-accent, #00d4ff);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+
+.expandable-text-button:hover {
+    border-color: var(--post-accent, #00d4ff);
+    background: color-mix(in srgb, var(--post-accent, #00d4ff) 18%, transparent);
+    transform: translateY(-1px);
+}
+
+.expandable-text-button:active {
+    transform: translateY(0);
+}
+
+.comment-text-body,
+.comment-text {
+    display: -webkit-box;
+    overflow: hidden;
+    white-space: pre-wrap;
+    -webkit-box-orient: vertical;
+}
+
+.comment-text-body.is-expanded,
+.comment-text.is-expanded {
+    display: block;
+    overflow: visible;
+}
+
 /* Comment Attachment — sits below the text bubble, not inside it */
 .footer .comments .comment-container .comment-box .comment-attachment-container,
 .nf-post .footer .comments .comment-container .comment-box .comment-attachment-container,
@@ -957,18 +999,28 @@ html[data-theme="light"] .nf-post .comments,
     margin-left: 40px;
 }
 
-.more-comment-button a {
-    color: var(--fb-secondary-text);
+.more-comment-button button {
+    padding: 5px 11px;
+    border: 1px solid color-mix(in srgb, var(--post-accent, #00d4ff) 38%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--post-accent, #00d4ff) 10%, transparent);
+    color: var(--post-accent, #00d4ff);
+    font: inherit;
     font-size: 14px;
-    font-weight: 600;
-    text-decoration: none;
+    font-weight: 700;
+    line-height: 1.2;
     cursor: pointer;
-    transition: var(--fb-transition);
+    transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
 }
 
-.more-comment-button a:hover {
-    text-decoration: underline;
-    color: var(--fb-text);
+.more-comment-button button:hover {
+    border-color: var(--post-accent, #00d4ff);
+    background: color-mix(in srgb, var(--post-accent, #00d4ff) 18%, transparent);
+    transform: translateY(-1px);
+}
+
+.more-comment-button button:active {
+    transform: translateY(0);
 }
 
 .no-comments-yet {

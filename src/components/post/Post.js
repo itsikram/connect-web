@@ -12,6 +12,7 @@ import { Link, useNavigate } from "react-router-dom";
 import Momemt from "react-moment";
 import api from "../../api/api";
 import PostComment from "./PostComment";
+import ExpandableText from "./ExpandableText";
 import { confirmAlert } from "react-confirm-alert";
 import "react-confirm-alert/src/react-confirm-alert.css"; // Import CSS
 import socket from "../../common/socket";
@@ -681,7 +682,9 @@ const Post = React.memo(
                 </div>
               </div>
               <div ref={displayedPost} data-id={post._id} className="body">
-                <p className="caption">{post.caption}</p>
+                <p className="caption">
+                  <ExpandableText>{post.caption}</ExpandableText>
+                </p>
                 <div className={`nf-post ${type} m-3 border overflow-hidden`}>
                   <div className="header">
                     {type === "profilePic" && (
@@ -743,7 +746,9 @@ const Post = React.memo(
                   </div>
 
                   <div className="body">
-                    <p className="caption">{post?.parentPost?.caption}</p>
+                    <p className="caption">
+                      <ExpandableText>{post?.parentPost?.caption}</ExpandableText>
+                    </p>
                     {isLoaded && isValidUrl(postPhoto) ? (
                       <>
                         {" "}
@@ -1049,7 +1054,9 @@ const Post = React.memo(
               </div>
               <div ref={displayedPost} data-id={post._id} className="body">
                 {post.caption ? (
-                  <p className="caption">{post.caption}</p>
+                  <p className="caption">
+                    <ExpandableText>{post.caption}</ExpandableText>
+                  </p>
                 ) : null}
                 {isLoaded && isValidUrl(postPhoto) ? (
                   <>

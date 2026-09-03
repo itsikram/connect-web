@@ -54,6 +54,21 @@ html[data-theme="light"],
   }
 }
 
+.expandable-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+}
+
+.expandable-text.is-expanded {
+  display: inline;
+  overflow: visible;
+}
+
+.caption .expandable-text-button {
+  margin-left: 8px;
+}
+
 #nf-post-container .nf-post:hover,
 .nf-post:hover {
   transform: none !important;

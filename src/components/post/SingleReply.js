@@ -6,6 +6,7 @@ import api from "../../api/api";
 import LoadingSpinner, { TypingIndicator } from "../loading/LoadingSpinner";
 import { getProfileDisplayName, splitMentionBody, buildReplyMessage } from './commentUtils';
 import './CommentStyles.css';
+import ExpandableText from './ExpandableText';
 
 const SingleReply = ({ item, myProfile, setReplies, comment, isEditMode }) => {
     const myId = myProfile?._id;
@@ -138,10 +139,10 @@ const SingleReply = ({ item, myProfile, setReplies, comment, isEditMode }) => {
                         <div className="author-name">
                             <Link to={`/${item.author._id}`}>{authorName}</Link>
                         </div>
-                        <p className="comment-text">
+                        <ExpandableText className="comment-text">
                             {mention && <span className="comment-mention">{mention}</span>}
                             {mention ? ` ${rest}` : rest}
-                        </p>
+                        </ExpandableText>
                     </div>
 
                     {(String(item.author._id) === String(myId) || isEditMode) && (

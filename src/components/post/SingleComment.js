@@ -8,6 +8,7 @@ import { ReplySkeleton } from "../loading/CommentSkeleton";
 import LoadingSpinner, { TypingIndicator } from "../loading/LoadingSpinner";
 import { getProfileDisplayName, splitMentionBody } from './commentUtils';
 import './CommentStyles.css';
+import ExpandableText from './ExpandableText';
 
 const SingleComment = ({ comment, postData, myProfile, isEditMode, parentType = 'post', onRemove }) => {
     const myId = myProfile?._id;
@@ -225,10 +226,10 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode, parentType = 
                                     </div>
                                 </div>
                             ) : (
-                                <p className="comment-text-body mb-0">
+                                <ExpandableText className="comment-text-body mb-0">
                                     {mention && <span className="comment-mention">{mention}</span>}
                                     {mention ? ` ${rest}` : rest}
-                                </p>
+                                </ExpandableText>
                             )}
                         </div>
                         )}

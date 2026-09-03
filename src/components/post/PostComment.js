@@ -9,7 +9,7 @@ import $ from "jquery";
 import UserPP from "../UserPP";
 import api from "../../api/api";
 import SingleComment from "./SingleComment";
-import { Link, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import CommentSkeleton from "../loading/CommentSkeleton";
 import LoadingSpinner, { TypingIndicator } from "../loading/LoadingSpinner";
 import "./CommentStyles.css";
@@ -57,8 +57,9 @@ const PostComment = ({
   const [visibleCommentsCount, setVisibleCommentsCount] = useState(() =>
     isSingle && parsedInitialVisibleCount
       ? parsedInitialVisibleCount
-      : Number.POSITIVE_INFINITY,
+      : 2,
   );
+  const [showAllComments, setShowAllComments] = useState(false);
 
   const [uploadedImageUrl, setUploadedImageUrl] = useState(null);
   const [commentData, setCommentData] = useState({
@@ -111,10 +112,12 @@ const PostComment = ({
   useEffect(() => {
     if (isSingle && parsedInitialVisibleCount) {
       setVisibleCommentsCount(parsedInitialVisibleCount);
+      setShowAllComments(false);
       return;
     }
 
-    setVisibleCommentsCount(Number.POSITIVE_INFINITY);
+    setVisibleCommentsCount(2);
+    setShowAllComments(false);
   }, [postId, isSingle, parsedInitialVisibleCount]);
 
   useEffect(() => {
@@ -259,11 +262,13 @@ const PostComment = ({
 
     if (isSingle) return commentsList;
 
-    const previous3 = commentsList
+    if (showAllComments) return commentsList;
+
+    const previousComments = commentsList
       .slice(0, originalCommentsCount.current)
-      .slice(-3);
+      .slice(0, 2);
     const newer = commentsList.slice(originalCommentsCount.current);
-    return [...previous3, ...newer];
+    return [...previousComments, ...newer].slice(0, 2);
   })();
 
   const canLoadMoreComments =
@@ -357,10 +362,12 @@ const PostComment = ({
         )}
 
         {!isLoadingInitial &&
-          originalCommentsCount.current > 3 &&
+          commentsList.length > 2 &&
           !isSingle && (
             <div className="more-comment-button">
-              <Link to={`/post/${postId}`}>View more comments</Link>
+              <button type="button" onClick={() => setShowAllComments((value) => !value)}>
+                {showAllComments ? "See less comments" : "See more comments"}
+              </button>
             </div>
           )}
 
