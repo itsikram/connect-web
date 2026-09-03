@@ -31,6 +31,8 @@ const LiveVoice = ({ myId }) => {
   const [role, setRole] = useState("sender");
   const [friendName, setFriendName] = useState("Friend");
   const [connectionQuality, setConnectionQuality] = useState(4);
+  const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
+  const [microphonePending, setMicrophonePending] = useState(false);
 
   const clientRef = useRef(null);
   const localTrackRef = useRef(null);
@@ -134,6 +136,8 @@ const LiveVoice = ({ myId }) => {
       setIsOpen(false);
       setDuration(0);
       setConnectionQuality(4);
+      setMicrophoneEnabled(false);
+      setMicrophonePending(false);
 
       broadcastStatus({
         active: false,
@@ -276,13 +280,17 @@ const LiveVoice = ({ myId }) => {
 
         await client.join(data.appId, channelName, data.token, numericUid);
 
-        try {
-          const mic = await AgoraRTC.createMicrophoneAudioTrack();
-          localTrackRef.current = mic;
-          await client.publish([mic]);
-        } catch (micErr) {
-          console.warn("Live voice mic publish failed (receive-only):", micErr);
-          localTrackRef.current = null;
+        if (sessionRole === "sender") {
+          try {
+            const mic = await AgoraRTC.createMicrophoneAudioTrack();
+            localTrackRef.current = mic;
+            await client.publish([mic]);
+            setMicrophoneEnabled(true);
+          } catch (micErr) {
+            console.warn("Live voice mic publish failed:", micErr);
+            localTrackRef.current = null;
+            throw micErr;
+          }
         }
 
         await subscribeExistingRemotes(client);
@@ -345,6 +353,25 @@ const LiveVoice = ({ myId }) => {
       subscribeExistingRemotes,
     ],
   );
+
+  const enableMicrophone = useCallback(async () => {
+    if (roleRef.current !== "receiver" || microphoneEnabled || microphonePending) return;
+    setMicrophonePending(true);
+    let mic = null;
+    try {
+      mic = await AgoraRTC.createMicrophoneAudioTrack();
+      const client = clientRef.current;
+      if (!client) throw new Error("Live voice is not connected");
+      await client.publish([mic]);
+      localTrackRef.current = mic;
+      setMicrophoneEnabled(true);
+    } catch (error) {
+      console.error("Live voice microphone enable failed:", error);
+      mic?.close?.();
+      setMicrophonePending(false);
+      window.alert(error?.message || "Unable to turn on microphone");
+    }
+  }, [microphoneEnabled, microphonePending]);
 
   startSessionRef.current = startSession;
   stopSessionRef.current = stopSession;
@@ -435,6 +462,9 @@ const LiveVoice = ({ myId }) => {
       friendName={friendName}
       connectionQuality={connectionQuality}
       onStop={() => stopSession(true)}
+      onEnableMicrophone={() => enableMicrophone()}
+      microphoneEnabled={microphoneEnabled}
+      microphonePending={microphonePending}
     />
   ) : null;
 };

@@ -1144,13 +1144,16 @@ const AudioCall = ({ myId }) => {
     };
     socket.on("call-not-accepted", onCallNotAccepted);
 
-    const handleUpdatedCallStatus = ({ from, status }) => {
+    const handleUpdatedCallStatus = ({ from, status, channelName }) => {
       // Only for outgoing (caller) side: receivingCall is false
       if (
         !receivingCallRef.current &&
         !callAcceptedRef.current &&
         callerRef.current &&
-        from === callerRef.current
+        String(from) === String(callerRef.current) &&
+        (!channelName ||
+          !currentChannelRef.current ||
+          String(channelName) === String(currentChannelRef.current))
       ) {
         setOutgoingCallStatus(status || "");
       }

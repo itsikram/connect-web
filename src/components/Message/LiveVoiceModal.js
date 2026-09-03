@@ -11,6 +11,9 @@ const LiveVoiceModal = ({
   role,
   friendName,
   onStop,
+  onEnableMicrophone,
+  microphoneEnabled = false,
+  microphonePending = false,
   transcriptionStatus = null,
   connectionQuality = null,
 }) => {
@@ -188,12 +191,8 @@ const LiveVoiceModal = ({
                     className={`fas ${role === "sender" ? "fa-arrow-right" : role === "receiver" ? "fa-arrow-left" : "fa-exchange-alt"}`}
                   ></i>
                   <span>
-                    {role === "sender"
-                      ? "Connected with"
-                      : role === "receiver"
-                        ? "Connected with"
-                        : "Connected with"}
-                    :<strong> {friendName}</strong>
+                    {role === "sender" ? "Sending your voice to" : "Hearing"}:
+                    <strong> {friendName}</strong>
                   </span>
                 </div>
               )}
@@ -298,6 +297,16 @@ const LiveVoiceModal = ({
 
           {(isActive || isConnecting) && typeof onStop === "function" && (
             <div className="live-voice-actions">
+              {role === "receiver" && isActive && !microphoneEnabled && typeof onEnableMicrophone === "function" && (
+                <button
+                  className="live-voice-microphone-btn"
+                  onClick={onEnableMicrophone}
+                  disabled={microphonePending}
+                >
+                  <i className={`fas ${microphonePending ? "fa-circle-notch fa-spin" : "fa-microphone"}`}></i>
+                  <span>{microphonePending ? "Turning on microphone..." : "Turn on microphone"}</span>
+                </button>
+              )}
               <button className="live-voice-stop-btn" onClick={onStop}>
                 <i className="fas fa-stop"></i>
                 <span>

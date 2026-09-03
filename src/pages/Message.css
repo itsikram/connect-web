@@ -2289,7 +2289,8 @@
 }
 
 .voice-message {
-    --voice-accent: #00d4ff;
+    --voice-accent: var(--chat-accent, #00d4ff);
+    --voice-time: var(--chat-recv-text, currentColor);
     --voice-track-h: 28px;
     display: flex;
     align-items: center;
@@ -2451,11 +2452,13 @@
 }
 
 .message-sent .voice-message {
-    --voice-accent: #ffffff;
+    --voice-accent: var(--chat-accent-strong, var(--chat-accent, #00d4ff));
+    --voice-time: var(--chat-sent-text, currentColor);
 }
 
 .message-receive .voice-message {
-    --voice-accent: #00d4ff;
+    --voice-accent: var(--chat-accent, #00d4ff);
+    --voice-time: var(--chat-recv-text, currentColor);
 }
 
 .message-sent .chat-message.is-voice,
@@ -2477,17 +2480,17 @@
 .message-sent .voice-play-btn,
 .modern-message-container .message-sent .voice-play-btn,
 .chat-body.dark-background .message-sent .voice-play-btn {
-    background: #ffffff !important;
-    color: #0b1220 !important;
-    -webkit-text-fill-color: #0b1220 !important;
+    background: var(--chat-sent-text, #ffffff) !important;
+    color: var(--chat-accent-contrast, #0b1220) !important;
+    -webkit-text-fill-color: var(--chat-accent-contrast, #0b1220) !important;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
 }
 
 .message-sent .voice-play-btn i,
 .modern-message-container .message-sent .voice-play-btn i,
 .chat-body.dark-background .message-sent .voice-play-btn i {
-    color: #0b1220 !important;
-    -webkit-text-fill-color: #0b1220 !important;
+    color: var(--chat-accent-contrast, #0b1220) !important;
+    -webkit-text-fill-color: var(--chat-accent-contrast, #0b1220) !important;
 }
 
 .message-receive .voice-play-btn,
@@ -2506,17 +2509,28 @@
 .message-sent .voice-waveform span,
 .modern-message-container .message-sent .voice-waveform span,
 .chat-body.dark-background .message-sent .voice-waveform span {
-    background: #ffffff !important;
+    background: var(--chat-sent-text, #ffffff) !important;
     opacity: 0.88;
 }
 
 .message-sent .voice-time,
 .modern-message-container .message-sent .voice-time,
 .chat-body.dark-background .message-sent .voice-time {
-    color: #ffffff !important;
-    -webkit-text-fill-color: #ffffff !important;
+    color: var(--chat-sent-text, #ffffff) !important;
+    -webkit-text-fill-color: var(--chat-sent-text, #ffffff) !important;
     opacity: 1;
     font-weight: 700;
+}
+
+.message-receive .voice-time,
+.modern-message-container .message-receive .voice-time,
+.sticky-chat-box .message-receive .voice-time {
+    color: var(--chat-recv-text, currentColor) !important;
+    -webkit-text-fill-color: var(--chat-recv-text, currentColor) !important;
+}
+
+.voice-time {
+    color: var(--voice-time);
 }
 
 .modern-message-container .voice-time,
