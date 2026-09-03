@@ -40,6 +40,9 @@ const AccountSetting = () => {
   const [showVoiceConfirmation, setShowVoiceConfirmation] = useState(false);
   const [pendingVoiceTranscript, setPendingVoiceTranscript] = useState("");
   const [isRegisteringFace, setIsRegisteringFace] = useState(false);
+  const [isFaceRegistered, setIsFaceRegistered] = useState(Boolean(myProfile?.user?.faceLoginEnabled));
+  const [showFaceCapture, setShowFaceCapture] = useState(false);
+  const [isRemovingFace, setIsRemovingFace] = useState(false);
 
   useEffect(() => {
     setBanglaName(myProfile?.banglaName || "");
@@ -47,6 +50,10 @@ const AccountSetting = () => {
       setData((prev) => ({ ...prev, userEmail: getProfileEmail(myProfile) }));
     }
   }, [myProfile?.banglaName, currentEmail, editEmail]);
+
+  useEffect(() => {
+    setIsFaceRegistered(Boolean(myProfile?.user?.faceLoginEnabled));
+  }, [myProfile?.user?.faceLoginEnabled]);
 
   useEffect(() => {
     if (currentEmail || !myProfile?._id || emailFetchAttempted.current) return;
@@ -111,6 +118,12 @@ const AccountSetting = () => {
         { frames },
         { skipAuthRefresh: true },
       );
+      setIsFaceRegistered(true);
+      setShowFaceCapture(false);
+      dispatch(getProfileSuccess({
+        ...myProfile,
+        user: { ...(myProfile?.user || {}), faceLoginEnabled: true },
+      }));
       showSuccessToast("Face login registered successfully");
     } catch (error) {
       showErrorToast(
@@ -120,7 +133,26 @@ const AccountSetting = () => {
     } finally {
       setIsRegisteringFace(false);
     }
-  }, []);
+  }, [dispatch, myProfile]);
+
+  const handleRemoveFace = useCallback(async () => {
+    if (!window.confirm("Remove face login from this account?")) return;
+    setIsRemovingFace(true);
+    try {
+      await api.post("auth/face/remove", {}, { skipAuthRefresh: true });
+      setIsFaceRegistered(false);
+      setShowFaceCapture(false);
+      dispatch(getProfileSuccess({
+        ...myProfile,
+        user: { ...(myProfile?.user || {}), faceLoginEnabled: false },
+      }));
+      showSuccessToast("Face login removed");
+    } catch (error) {
+      showErrorToast(error?.response?.data?.message || "Could not remove face login");
+    } finally {
+      setIsRemovingFace(false);
+    }
+  }, [dispatch, myProfile]);
 
   const handleBanglaNameChange = useCallback((e) => {
     setBanglaName(e.target.value);
@@ -429,11 +461,20 @@ const AccountSetting = () => {
         </p>
 
         <div className="mb-4 pb-4" style={{ borderBottom: "1px solid #e0e0e0" }}>
-          <h3 className="fs-4">Face Login</h3>
+          <h3 className="fs-4"><i className="fas fa-user-shield me-2"></i>Face Login</h3>
           <p className="text-muted small">
-            Register your face to sign in without a password. Look at the camera and blink naturally during capture.
+            {isFaceRegistered ? "Face login is enabled for this account. Replace it any time with a new capture." : "Register your face to sign in without a password. Your face can only belong to one Connect account."}
           </p>
-          <FaceCapture onCapture={handleFaceCapture} disabled={isRegisteringFace} />
+          <div className="d-flex flex-wrap gap-2 mt-3">
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => setShowFaceCapture((value) => !value)} disabled={isRegisteringFace || isRemovingFace}>
+              <i className={`fas ${isFaceRegistered ? "fa-sync-alt" : "fa-user-plus"} me-2`}></i>
+              {showFaceCapture ? "Close face camera" : isFaceRegistered ? "Improve face login" : "Register face login"}
+            </button>
+            {isFaceRegistered && <button type="button" className="btn btn-outline-danger btn-sm" onClick={handleRemoveFace} disabled={isRegisteringFace || isRemovingFace}>
+              <i className="fas fa-trash-alt me-2"></i>{isRemovingFace ? "Removing..." : "Remove face login"}
+            </button>}
+          </div>
+          {showFaceCapture && <div className="mt-3"><FaceCapture onCapture={handleFaceCapture} disabled={isRegisteringFace || isRemovingFace} /></div>}
         </div>
 
         {/* Bengali Name Section */}
