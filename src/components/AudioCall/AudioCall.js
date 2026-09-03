@@ -519,6 +519,47 @@ const AudioCall = ({ myId }) => {
           codec: "vp8",
         });
         const client = clientRef.current;
+
+        // Bind before joining/publishing so a fast remote publish cannot be missed.
+        if (!hasBoundClientEvents.current) {
+          hasBoundClientEvents.current = true;
+          client.on("user-published", async (user, mediaType) => {
+            console.log("Remote user published:", user.uid, mediaType);
+            try {
+              await client.subscribe(user, mediaType);
+              console.log("Successfully subscribed to", user.uid, mediaType);
+
+              if (mediaType === "audio" && user.audioTrack) {
+                user.audioTrack.play();
+                console.log("Playing remote audio from user:", user.uid);
+              }
+            } catch (error) {
+              console.error(
+                "Error subscribing to user:",
+                user.uid,
+                mediaType,
+                error,
+              );
+            }
+          });
+
+          client.on("user-unpublished", (user) => {
+            console.log("Remote user unpublished:", user.uid);
+          });
+
+          client.on("user-left", async (user) => {
+            console.log("AudioCall - Remote user left the channel:", user?.uid);
+            try {
+              await cleanupAudioCall();
+            } catch (e) {
+              console.warn(
+                "AudioCall - Cleanup after remote user-left failed:",
+                e,
+              );
+            }
+          });
+        }
+
         await client.join(appId, channelName, token, numericUid);
         console.log("Joined Agora audio channel successfully");
 
@@ -591,51 +632,6 @@ const AudioCall = ({ myId }) => {
             }
             throw pubErr;
           }
-        }
-
-        // Bind client events only once
-        if (!hasBoundClientEvents.current) {
-          hasBoundClientEvents.current = true;
-          client.on("user-published", async (user, mediaType) => {
-            console.log("Remote user published:", user.uid, mediaType);
-            try {
-              await client.subscribe(user, mediaType);
-              console.log("Successfully subscribed to", user.uid, mediaType);
-
-              if (mediaType === "audio") {
-                if (user.audioTrack) {
-                  user.audioTrack.play();
-                  console.log("Playing remote audio from user:", user.uid);
-                } else {
-                  console.warn("Cannot play remote audio - missing audioTrack");
-                }
-              }
-            } catch (error) {
-              console.error(
-                "Error subscribing to user:",
-                user.uid,
-                mediaType,
-                error,
-              );
-            }
-          });
-
-          client.on("user-unpublished", (user) => {
-            console.log("Remote user unpublished:", user.uid);
-          });
-
-          // End locally when remote user leaves the channel
-          client.on("user-left", async (user) => {
-            console.log("AudioCall - Remote user left the channel:", user?.uid);
-            try {
-              await cleanupAudioCall();
-            } catch (e) {
-              console.warn(
-                "AudioCall - Cleanup after remote user-left failed:",
-                e,
-              );
-            }
-          });
         }
 
         // Check for existing remote users who may have already published before we joined
