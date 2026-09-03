@@ -7,7 +7,6 @@ import $ from "jquery";
 import checkImgLoading from "../../utils/checkImgLoading";
 import isValidUrl from "../../utils/isValiUrl";
 import ImageSkleton from "../../skletons/message/ImageSkleton";
-import socket from "../../common/socket";
 import {
   isAudioUrl,
   isAudioMessage as isAudioMsg,
@@ -15,6 +14,7 @@ import {
   getMessageSnippet,
   getProfileDisplayName,
 } from "../../utils/messageMedia";
+import { speakMessageText } from "../../utils/speakMessage";
 
 const getMessageTime = (timestamp) => {
   const inputDate = moment(timestamp);
@@ -252,32 +252,11 @@ const SingleMessage = ({
     e?.stopPropagation?.();
     hideOptions();
 
-    if (String(msg?.senderId) !== String(myId)) {
-      return;
-    }
-
     try {
-      const msgId = msg?._id || msg?.id;
       const message = msg?.message || "";
-      const attachment = msg?.attachment || "";
-      const messageType = msg?.messageType || "";
-      const targetFriendId = msg?.receiverId || friendId;
-
-      if (!targetFriendId || !msgId) {
-        console.warn("Speak failed: missing friendId or msgId", {
-          targetFriendId,
-          msgId,
-        });
-        return;
+      if (!speakMessageText(message)) {
+        console.warn("Speak failed: this browser does not support text to speech or the message is empty");
       }
-
-      socket.emit("speak_message", {
-        msgId,
-        friendId: targetFriendId,
-        message,
-        attachment,
-        messageType,
-      });
     } catch (err) {
       console.error("Speak failed:", err);
     }
@@ -487,16 +466,18 @@ const SingleMessage = ({
           >
             <i className="fa fa-reply"></i>
           </button>
+          <button
+            type="button"
+            data-id={msg._id}
+            className="chat-message-option share speaker"
+            onClick={handleSpeakMessage.bind(this)}
+            aria-label="Speak message"
+            title="Speak message"
+          >
+            <i className="fa fa-volume-up"></i>
+          </button>
           {isSent && (
             <>
-              <button
-                type="button"
-                data-id={msg._id}
-                className="chat-message-option share speaker"
-                onClick={handleSpeakMessage.bind(this)}
-              >
-                <i className="fa fa-volume-up"></i>
-              </button>
               <button
                 type="button"
                 data-id={msg._id}

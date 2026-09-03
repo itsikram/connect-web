@@ -77,6 +77,7 @@ import { setBodyHeight, setLoading } from "../services/actions/optionAction";
 import { loadSettings } from "../services/actions/settingsActions.js";
 import { applyThemeMode } from "../utils/applyThemeMode";
 import { prefetchNavigationTarget } from "../utils/routePrefetch";
+import { speakMessageText } from "../utils/speakMessage";
 
 const Profile = lazy(() => import("./Profile"));
 const Friends = lazy(() => import("./Friends"));
@@ -215,12 +216,7 @@ const speakText = (textOrMsg) => {
 
   if (!text || !text.trim()) return;
 
-  const speech = new SpeechSynthesisUtterance(text.trim());
-  speech.lang = "en-US";
-  speech.rate = 1;
-  speech.pitch = 1;
-
-  window.speechSynthesis.speak(speech);
+  speakMessageText(text);
 };
 
 const isAudioAttachmentUrl = (url) => {

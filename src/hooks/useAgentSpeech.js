@@ -69,6 +69,14 @@ const pickVoice = (lang) => {
   return ranked[0] || null;
 };
 
+const speechLanguageFor = (text, langHint = "") => {
+  const hint = String(langHint || "").toLowerCase();
+  if (hint === "bn" || hint === "banglish" || hint.startsWith("bn")) {
+    return "bn-BD";
+  }
+  return hasBangla(text) ? "bn-BD" : "en-US";
+};
+
 const utteranceTimeoutMs = (text = "") =>
   Math.min(18000, 900 + String(text).length * 70);
 
@@ -135,12 +143,13 @@ export default function useAgentSpeech() {
       if (!supported) return;
       const text = stripForSpeech(raw).slice(0, 280);
       if (!text) return;
-      const lang = hasBangla(text) || String(langHint || "").startsWith("bn")
-        ? "bn-BD"
-        : "en-US";
+      const lang = speechLanguageFor(text, langHint);
       const utterance = new SpeechSynthesisUtterance(text);
       const voice = pickVoice(lang);
-      utterance.lang = voice ? voice.lang || lang : "en-US";
+      // Keep Bengali as the requested language even when the device has no
+      // Bengali voice; falling back to English made Bangla responses sound
+      // incorrectly pronounced.
+      utterance.lang = voice ? voice.lang || lang : lang;
       utterance.rate = 1.08;
       utterance.pitch = 1;
       utterance.volume = 1;

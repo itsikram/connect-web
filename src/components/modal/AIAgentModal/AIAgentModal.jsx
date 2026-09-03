@@ -344,9 +344,10 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   const announceUpcomingAction = useCallback(
     async (intent, friend = null, langHint = "") => {
       if (!liveTalkOnRef.current) return;
+      const language = detectAgentLanguage(langHint);
       const line = describeUpcomingAction(intent, {
         friendName: getFriendDisplayName(friend) || intent?.targetName || "",
-        lang: detectAgentLanguage(langHint),
+        lang: language,
       });
       if (!line) return;
       addMessage({
@@ -354,7 +355,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         content: line,
         skipSpeech: true,
       });
-      speakText(line);
+      speakText(line, { lang: language });
     },
     [addMessage, speakText],
   );
@@ -1139,19 +1140,23 @@ const AIAgentModal = ({ isOpen, onClose }) => {
     if (!latest || latest.type === "user" || isWelcomeMessage(latest)) return;
     const content = String(latest.content || "").trim();
     if (!content) return;
+    const latestUserMessage = [...messages]
+      .reverse()
+      .find((item) => item?.type === "user");
+    const responseLanguage = detectAgentLanguage(latestUserMessage?.content);
 
     if (latest.skipSpeech) {
       spokenMessageIdsRef.current.add(latest.id);
       return;
     }
     if (latest.streaming) {
-      feedSpeech(latest.id, content);
+      feedSpeech(latest.id, content, responseLanguage);
       return;
     }
 
     if (spokenMessageIdsRef.current.has(latest.id)) return;
     spokenMessageIdsRef.current.add(latest.id);
-    flushSpeech(latest.id, content);
+    flushSpeech(latest.id, content, responseLanguage);
   }, [messages, liveTalkOn, isOpen, feedSpeech, flushSpeech]);
 
   const liveTalkStuck =
