@@ -1101,8 +1101,21 @@ const Chat = () => {
       };
 
       fetchInitialMessages();
+      const refreshOnFocus = () => {
+         if (document.visibilityState !== "visible") return;
+         fetchChatHistory(userId, friendId, 20).then((response) => {
+           if (cancelled) return;
+           setMessages((prev) => mergeHistoryWithLive(response.messages, prev));
+           setHasMoreMessages(response.hasMore ?? false);
+           hasLoadedFreshMessagesRef.current = true;
+         });
+      };
+      window.addEventListener("focus", refreshOnFocus);
+      document.addEventListener("visibilitychange", refreshOnFocus);
       return function () {
         cancelled = true;
+         window.removeEventListener("focus", refreshOnFocus);
+         document.removeEventListener("visibilitychange", refreshOnFocus);
       };
     },
     [friendId, userId, fetchChatHistory],

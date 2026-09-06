@@ -17,6 +17,7 @@ import {
 } from "../utils/storageUtils";
 import { invalidateCachedResource } from "../utils/requestCache";
 import ProfileCacheManager from "../utils/profileCacheManager";
+import MessageCacheManager from "../utils/messageCacheManager";
 import { getServerAddress } from "../utils/offlineUtils";
 // Import socket lazily to avoid circular dependency at module load time
 const getSocket = () => {
@@ -402,6 +403,11 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (error) {
       console.warn("Warning: Could not cleanup web notifications:", error);
+    }
+    try {
+      MessageCacheManager.clearAllMessageCache();
+    } catch (error) {
+      console.warn("Warning: Could not clear message cache:", error);
     }
 
     // Disconnect socket connection (lazy import to avoid circular dependency)

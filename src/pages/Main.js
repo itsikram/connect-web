@@ -60,6 +60,7 @@ import IosAddToHomeScreen from "../components/IosAddToHomeScreen";
 import WatchPipPlayer from "../components/watch/WatchPipPlayer";
 import { useDispatch, useSelector } from "react-redux";
 import api from "../api/api";
+import FriendCacheManager from "../utils/friendCacheManager";
 import { fetchChatListCached, fetchProfileCached, primeCachedResource } from "../utils/requestCache";
 import {
   getCachedProfile,
@@ -1288,6 +1289,38 @@ const Main = () => {
     };
   }, [profileId, isAuthenticated]);
 
+  // Refresh the authenticated profile immediately after a relationship changes.
+  // Profile pages derive the Friend/Confirm/Cancel button from this Redux value.
+  useEffect(() => {
+    if (!profileId || !isAuthenticated) return;
+
+    const handleRelationshipUpdate = (event) => {
+      if (event?.status !== "friends" && event?.status !== "none") return;
+      if (
+        String(event?.actorId) !== String(profileId) &&
+        String(event?.targetId) !== String(profileId)
+      ) return;
+
+      fetchProfileCached(profileId, {
+        forceRefresh: true,
+        ttlMs: 0,
+        storageTtlMs: 300000,
+      })
+        .then((profileData) => {
+          if (profileData) {
+            dispatch(getProfileSuccess(profileData));
+            primeCachedResource(`profile:${profileId}`, profileData);
+          }
+        })
+        .catch((error) => {
+          console.error("Failed to refresh profile after friend update:", error);
+        });
+    };
+
+    socket.on("friendRelationshipUpdate", handleRelationshipUpdate);
+    return () => socket.off("friendRelationshipUpdate", handleRelationshipUpdate);
+  }, [profileId, isAuthenticated, dispatch]);
+
   // Realtime in-app notification feed (bell menu)
   useEffect(() => {
     if (!profileId || !isAuthenticated) return;
@@ -1315,6 +1348,39 @@ const Main = () => {
       socket.off("newNotification", handleNewNotification);
     };
   }, [profileId, isAuthenticated, dispatch]);
+
+  // Keep friend request/suggestion caches synchronized while the app is open.
+  useEffect(() => {
+    if (!profileId || !isAuthenticated) return;
+
+    const handleFriendCacheUpdate = async (event) => {
+      if (String(event?.profileId) !== String(profileId)) return;
+      const list = event?.list === "requests" || event?.list === "suggestions"
+        ? event.list
+        : null;
+      if (!list) return;
+
+      if (event.action === "remove" && event.targetProfileId) {
+        FriendCacheManager.removeProfile(profileId, list, event.targetProfileId);
+        return;
+      }
+
+      if (event.action === "refresh") {
+        const response = list === "requests"
+          ? await api.get("/friend/getRequest/")
+          : await api.get("/friend/getSuggetions/", { params: { profile: profileId } });
+        const items = Array.isArray(response.data) ? response.data : [];
+        if (list === "requests") {
+          FriendCacheManager.setCachedRequests(profileId, items);
+        } else {
+          FriendCacheManager.setCachedSuggestions(profileId, items);
+        }
+      }
+    };
+
+    socket.on("friendCacheUpdate", handleFriendCacheUpdate);
+    return () => socket.off("friendCacheUpdate", handleFriendCacheUpdate);
+  }, [profileId, isAuthenticated]);
 
   // Global ludo game invitation handlers - work throughout the entire app
   useEffect(() => {
