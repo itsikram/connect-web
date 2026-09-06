@@ -1,0 +1,52 @@
+.voice-input-enhancer {
+  align-items: center;
+  background: linear-gradient(135deg, #172554, #1e3a8a);
+  border: 1px solid rgba(147, 197, 253, 0.7);
+  border-radius: 20px;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.35);
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  position: fixed;
+  z-index: 1200;
+}
+
+.voice-input-enhancer select,
+.voice-input-enhancer button {
+  border: 0;
+  background: transparent;
+  color: #eff6ff;
+  cursor: pointer;
+  font-size: 11px;
+  height: 28px;
+}
+
+.voice-input-enhancer select {
+  border-right: 1px solid rgba(191, 219, 254, 0.35);
+  font-weight: 700;
+  outline: none;
+  padding: 0 3px;
+  width: 42px;
+}
+
+.voice-input-enhancer button {
+  border-radius: 50%;
+  padding: 0;
+  width: 28px;
+}
+
+.voice-input-enhancer select:hover,
+.voice-input-enhancer select:focus-visible {
+  background: rgba(147, 197, 253, 0.24);
+}
+
+.voice-input-enhancer button:hover,
+.voice-input-enhancer button.is-listening {
+  background: #ef4444;
+  color: #fff;
+}
+
+.voice-input-enhancer button:focus-visible,
+.voice-input-enhancer select:focus-visible {
+  box-shadow: 0 0 0 2px #fbbf24;
+}

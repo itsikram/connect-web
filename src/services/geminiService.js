@@ -15,6 +15,7 @@ import {
   streamChat,
   extractGeminiText,
   isGeminiQuotaError,
+  fetchAiProviderStatus,
 } from "./llmClient";
 import {
   getResolvedAgentSettings,
@@ -240,28 +241,61 @@ export const generateCaptionRoast = async (caption = "") => {
   return roast.slice(0, 280);
 };
 
-export const generatePostCaption = async (userRequest = "") => {
-  if (!hasConfiguredApiKey()) return "";
+const fallbackPostCaption = (userRequest = "") => {
+  const request = String(userRequest || "").trim().toLowerCase();
+  if (request.includes("funny") || request.includes("witty")) {
+    return "Good vibes, great stories, and a little chaos 😄";
+  }
+  if (request.includes("video")) {
+    return "Moments like this deserve a replay. 🎬";
+  }
+  if (request.includes("photo") || request.includes("image")) {
+    return "Some moments are just too good not to keep. ✨";
+  }
+  if (request.includes("improve") || request.includes("finish")) {
+    return "A little extra sparkle for this moment ✨";
+  }
+  return "Little moments, big memories. ✨";
+};
 
-  let caption = (
-    await completeChat({
-      system: `Write one original social-media caption for Connect. Match the user's language. If they asked for funny, make it witty. Return ONLY the caption — no quotes, no preamble, no hashtags unless they fit naturally. Max 180 characters.`,
-      messages: [
-        {
-          role: "user",
-          content:
-            String(userRequest || "").trim() || "Write a short funny caption.",
-        },
-      ],
-      temperature: 0.85,
-      maxTokens: 80,
-      operationLabel: "Post caption",
-    })
-  )
-    .replace(/^here(?:'s| is)[^.:\n]*[:\-]\s*/i, "")
-    .trim();
-  caption = caption.replace(/^['"‘’“”]+/, "").replace(/['"‘’“”]+$/, "").trim();
-  return caption.slice(0, 500);
+export const generatePostCaption = async (userRequest = "") => {
+  if (!hasConfiguredApiKey()) {
+    try {
+      await fetchAiProviderStatus();
+    } catch (_) {
+      // Ignore provider-refresh failures and fall back to a local caption.
+    }
+  }
+
+  if (!hasConfiguredApiKey()) {
+    return fallbackPostCaption(userRequest);
+  }
+
+  try {
+    let caption = (
+      await completeChat({
+        system: `Write one original social-media caption for Connect. Match the user's language. If they asked for funny, make it witty. Return ONLY the caption — no quotes, no preamble, no hashtags unless they fit naturally. Max 180 characters.`,
+        messages: [
+          {
+            role: "user",
+            content:
+              String(userRequest || "").trim() || "Write a short funny caption.",
+          },
+        ],
+        temperature: 0.85,
+        maxTokens: 80,
+        operationLabel: "Post caption",
+      })
+    )
+      .replace(/^here(?:'s| is)[^.:\n]*[:\-]\s*/i, "")
+      .trim();
+
+    caption = caption.replace(/^['"‘’“”]+/, "").replace(/['"‘’“”]+$/, "").trim();
+    return caption ? caption.slice(0, 500) : fallbackPostCaption(userRequest);
+  } catch (error) {
+    console.warn("Caption generation failed, using local fallback:", error);
+    return fallbackPostCaption(userRequest);
+  }
 };
 
 export const answerFromAppData = async ({

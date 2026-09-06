@@ -13,6 +13,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { CallMinimizeProvider } from './contexts/CallMinimizeContext';
 import { WatchPipProvider } from './contexts/WatchPipContext';
 import ErrorBoundary from './components/ErrorBoundary';
+import VoiceInputEnhancer from './components/VoiceInputEnhancer';
 import './utils/configValidation';
 window.process = process;
 
@@ -90,6 +91,7 @@ function App() {
             <Fragment>
               {/* <SimpleEmotionTest /> */}
               <Main />
+              <VoiceInputEnhancer />
               {showDownloadModal && (
                 <Suspense fallback={null}>
                   <DownloadAppModal isOpen onClose={handleCloseDownloadModal} />
