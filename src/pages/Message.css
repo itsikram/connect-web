@@ -2897,6 +2897,50 @@
     color: var(--msg-error);
 }
 
+.message-reaction-picker {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    display: flex;
+    gap: 3px;
+    padding: 5px;
+    background: var(--msg-bg-secondary);
+    border: 1px solid var(--msg-glass-border);
+    border-radius: var(--msg-radius-md);
+    box-shadow: var(--msg-glass-shadow);
+    z-index: 30;
+}
+
+.message-reaction-choice {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+}
+
+.message-reaction-choice:hover,
+.message-reaction-choice.selected {
+    background: rgba(0, 212, 255, 0.18);
+}
+
+.message-react-item {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 3px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.12);
+    font-size: 13px;
+    line-height: 1;
+}
+
 /* Message Seen Status */
 .chat-message-seen-status {
     display: flex;

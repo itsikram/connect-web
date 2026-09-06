@@ -3,6 +3,7 @@ import { useSelector } from "react-redux";
 import moment from "moment";
 import UserPP from "../UserPP";
 import api from "../../api/api";
+import socket from "../../common/socket";
 import $ from "jquery";
 import checkImgLoading from "../../utils/checkImgLoading";
 import isValidUrl from "../../utils/isValiUrl";
@@ -15,6 +16,21 @@ import {
   getProfileDisplayName,
 } from "../../utils/messageMedia";
 import { speakMessageText } from "../../utils/speakMessage";
+import { QUICK_REACTION_PRESETS } from "../../utils/chatThemes";
+
+const normalizeReactions = (reacts) =>
+  (Array.isArray(reacts) ? reacts : []).reduce((result, reaction) => {
+    const profile = reaction?.profile || reaction;
+    const profileId = String(profile?._id || profile || "");
+    if (!profileId || result.some((item) => String(item.profile?._id || item.profile) === profileId)) {
+      return result;
+    }
+    result.push({ profile, type: reaction?.type || "👍" });
+    return result;
+  }, []);
+
+const reactionProfileId = (reaction) =>
+  String(typeof reaction?.profile === "object" ? reaction.profile?._id || "" : reaction?.profile || "");
 
 const getMessageTime = (timestamp) => {
   const inputDate = moment(timestamp);
@@ -145,16 +161,18 @@ const SingleMessage = ({
   const [audioDuration, setAudioDuration] = useState(0);
   const [audioCurrent, setAudioCurrent] = useState(0);
   const [showOptions, setShowOptions] = useState(true);
+  const [showReactionPicker, setShowReactionPicker] = useState(false);
   const audioRef = useRef(null);
   const parentPollRef = useRef(null);
 
   useEffect(() => {
-    if (msg.reacts && friendId) {
-      setIsReactedByFriend(msg.reacts.includes(friendId));
-    }
-    if (msg.reacts) {
-      setIsReactedByMe(msg.reacts.includes(myId));
-    }
+    const reactions = normalizeReactions(msg.reacts);
+    setIsReactedByFriend(
+      reactions.some((reaction) => reactionProfileId(reaction) === String(friendId)),
+    );
+    setIsReactedByMe(
+      reactions.some((reaction) => reactionProfileId(reaction) === String(myId)),
+    );
   }, [msg.reacts, friendId, myId]);
 
   useEffect(() => {
@@ -186,44 +204,65 @@ const SingleMessage = ({
     }
   };
 
-  const handleLikeMessage = async (e) => {
-    const messageId = $(e.currentTarget).data("id");
+  const handleReaction = (reactionType = "👍") => {
+    const messageId = msg?._id;
+    if (!messageId || !myId) return;
+
+    const previousReacts = normalizeReactions(msg.reacts);
+    const currentReaction = previousReacts.find(
+      (reaction) => reactionProfileId(reaction) === String(myId),
+    );
+    const shouldRemove =
+      Boolean(currentReaction) && currentReaction.type === reactionType;
+    const nextReacts = shouldRemove
+      ? previousReacts.filter(
+          (reaction) => reactionProfileId(reaction) !== String(myId),
+        )
+      : [
+          ...previousReacts.filter(
+            (reaction) => reactionProfileId(reaction) !== String(myId),
+          ),
+          { profile: myId, type: reactionType },
+        ];
+
+    setMessages?.((prevMessages) =>
+      prevMessages.map((message) =>
+        message._id === messageId ? { ...message, reacts: nextReacts } : message,
+      ),
+    );
+    setIsReactedByMe(!shouldRemove);
+    setShowReactionPicker(false);
     hideOptions();
 
-    if (!isReactedByMe) {
-      const postReactRes = await api.post("/message/addReact", {
-        messageId,
-        myId,
-      });
-      if (postReactRes.status == 200) {
-        setIsReactedByMe(true);
-        if (setMessages) {
-          setMessages((prevMessages) =>
-            prevMessages.map((m) =>
-              m._id === messageId
-                ? { ...m, reacts: [...(m.reacts || []), myId] }
-                : m,
-            ),
-          );
-        }
-      }
+    socket.emit(
+      shouldRemove ? "removeReactMessage" : "reactMessage",
+      shouldRemove
+        ? { messageId, profileId: myId }
+        : { messageId, profileId: myId, reactType: reactionType },
+      (result) => {
+        if (result?.ok) return;
+        setMessages?.((prevMessages) =>
+          prevMessages.map((message) =>
+            message._id === messageId
+              ? { ...message, reacts: previousReacts }
+              : message,
+          ),
+        );
+        setIsReactedByMe(Boolean(currentReaction));
+        console.error("Message reaction failed:", result?.error || "unknown error");
+      },
+    );
+  };
+
+  const handleLikeMessage = (e) => {
+    e?.stopPropagation?.();
+    const currentReaction = normalizeReactions(msg.reacts).find(
+      (reaction) => reactionProfileId(reaction) === String(myId),
+    );
+    if (currentReaction) {
+      handleReaction(currentReaction.type);
     } else {
-      const removeReactRes = await api.post("/message/removeReact", {
-        messageId,
-        myId,
-      });
-      if (removeReactRes.status == 200) {
-        setIsReactedByMe(false);
-        if (setMessages) {
-          setMessages((prevMessages) =>
-            prevMessages.map((m) =>
-              m._id === messageId
-                ? { ...m, reacts: (m.reacts || []).filter((id) => id !== myId) }
-                : m,
-            ),
-          );
-        }
-      }
+      setShowReactionPicker((visible) => !visible);
     }
   };
 
@@ -455,9 +494,33 @@ const SingleMessage = ({
             data-id={msg._id}
             className={`chat-message-option like ${isReactedByMe == true ? "reacted" : ""}`}
             onClick={handleLikeMessage.bind(this)}
+            aria-label={isReactedByMe ? "Remove reaction" : "React to message"}
           >
             <i className="fa fa-thumbs-up"></i>
           </button>
+          {showReactionPicker && (
+            <div className="message-reaction-picker" role="menu" aria-label="Message reactions">
+              {QUICK_REACTION_PRESETS.slice(0, 8).map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  className={`message-reaction-choice ${
+                    normalizeReactions(msg.reacts).some(
+                      (reaction) =>
+                        reactionProfileId(reaction) === String(myId) &&
+                        reaction.type === emoji,
+                    )
+                      ? "selected"
+                      : ""
+                  }`}
+                  onClick={() => handleReaction(emoji)}
+                  aria-label={`React with ${emoji}`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          )}
           <button
             type="button"
             data-id={msg._id}
@@ -514,8 +577,16 @@ const SingleMessage = ({
 
       <div className="message-meta">
         <span className="message-time">{getMessageTime(msg.timestamp)}</span>
-        <span className="message-react">
-          <i>👍</i>
+        <span className="message-react" aria-label="Message reactions">
+          {normalizeReactions(msg.reacts).map((reaction) => (
+            <span
+              key={`${reactionProfileId(reaction)}-${reaction.type}`}
+              className="message-react-item"
+              title={reactionProfileId(reaction) === String(myId) ? "Your reaction" : "Reaction"}
+            >
+              {reaction.type}
+            </span>
+          ))}
         </span>
         {isSent &&
           (msg.sendFailed ? (

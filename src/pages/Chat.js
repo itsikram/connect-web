@@ -658,12 +658,33 @@ const Chat = () => {
       );
     };
 
+    const handleReactionUpdate = (payload) => {
+      const updatedMessage = payload?.message || payload;
+      if (
+        !updatedMessage?._id ||
+        !isConversationMessage(updatedMessage, userId, friendId)
+      ) {
+        return;
+      }
+      const reacts = Array.isArray(payload?.reactions)
+        ? payload.reactions
+        : updatedMessage.reacts;
+      setMessages((prevMessages) =>
+        prevMessages.map((message) =>
+          idOf(message?._id) === idOf(updatedMessage._id)
+            ? { ...message, reacts: reacts || [] }
+            : message,
+        ),
+      );
+    };
+
     socket.on("newMessage", handleNewMessage);
     socket.on("newMessageToUser", handleNewMessageToUser);
     socket.on("messageSent", handleMessageSent);
     socket.on("typing", handleTyping);
     socket.on("messageSeen", handleMessageSeen);
     socket.on("seenMessage", handleMessageSeen);
+    socket.on("messageReactionUpdated", handleReactionUpdate);
     socket.on("deleteMessage", handleDeleteMessage);
 
     const rejoinRoom = () => {
@@ -678,6 +699,7 @@ const Chat = () => {
       socket.off("typing", handleTyping);
       socket.off("messageSeen", handleMessageSeen);
       socket.off("seenMessage", handleMessageSeen);
+      socket.off("messageReactionUpdated", handleReactionUpdate);
       socket.off("deleteMessage", handleDeleteMessage);
       socket.off("connect", rejoinRoom);
       if (typingTimeoutRef.current) {
