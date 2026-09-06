@@ -102,6 +102,7 @@ let FriendsSuggest = () => {
                                     type={isIncomingReq ? "req" : "sug"}
                                     id={friend._id}
                                     profilePic={friend.profilePic}
+                                    isVerified={friend.isVerified}
                                     fullName={fullName}
                                 />
                             );

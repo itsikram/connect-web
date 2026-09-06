@@ -7,6 +7,7 @@ import checkImgLoading from '../../utils/checkImgLoading';
 import ImageSkleton from '../../skletons/friend/ImageSkleton';
 import config from "../../config/config.json";
 import ReportModal from '../modal/ReportModal';
+import VerifiedName from '../feed/VerifiedName';
 const default_pp_src = config?.defaultProfile;
 
 
@@ -94,7 +95,9 @@ const PFI = (props) => {
                             
                         </div>
                         <div className='friend-details'>
-                            <h4 className='friend-name text-capitalize'>{friendFullName}</h4>
+                            <h4 className='friend-name text-capitalize'>
+                                <VerifiedName profile={friend}>{friendFullName}</VerifiedName>
+                            </h4>
                             {
                                 friend.mutual && <span className='friend-mutual'> 20 Mutual Friends</span>
                             }

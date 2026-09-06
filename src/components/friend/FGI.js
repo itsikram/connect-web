@@ -6,6 +6,7 @@ import { useSelector } from 'react-redux';
 import checkImgLoading from '../../utils/checkImgLoading';
 import FriendCacheManager from '../../utils/friendCacheManager';
 import config from "../../config/config.json";
+import VerifiedName from "../feed/VerifiedName";
 
 let FGI = (props) => {
 
@@ -124,7 +125,7 @@ let FGI = (props) => {
 
                                 <div className="grid-body">
                                     <Link to={`/${profile}/`}>
-                                        <h5 className="profile-name">{fullName}</h5>
+                                        <h5 className="profile-name"><VerifiedName profile={props}>{fullName}</VerifiedName></h5>
                                     </Link>
 
                                     <div 
@@ -153,7 +154,7 @@ let FGI = (props) => {
 
                             <div className="grid-body">
                                 <Link to={`/${profile}/`}>
-                                    <h5 className="profile-name">{fullName}</h5>
+                                    <h5 className="profile-name"><VerifiedName profile={props}>{fullName}</VerifiedName></h5>
                                 </Link>
 
                                 <div 
@@ -195,7 +196,7 @@ let FGI = (props) => {
 
                             <div className="grid-body">
                                 <Link to={`/${profile}/`}>
-                                    <h5 className="profile-name">{fullName}</h5>
+                                    <h5 className="profile-name"><VerifiedName profile={props}>{fullName}</VerifiedName></h5>
                                 </Link>
 
                                 <div 
@@ -228,7 +229,7 @@ let FGI = (props) => {
 
                                 <div className="grid-body">
                                     <Link to={`/${profile}/`}>
-                                        <h5 className="profile-name">{fullName}</h5>
+                                        <h5 className="profile-name"><VerifiedName profile={props}>{fullName}</VerifiedName></h5>
                                     </Link>
 
                                     <div 

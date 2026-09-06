@@ -8,6 +8,7 @@ import CoverPic from "../components/Profile/CoverPic";
 import ProfilePic from "../components/Profile/ProfilePic";
 import OptionsDropdown from "../components/post/OptionsDropdown";
 import ReportModal from "../components/modal/ReportModal";
+import VerifiedName from "../components/feed/VerifiedName";
 
 
 
@@ -110,7 +111,12 @@ let Profile = (props) => {
                                 <ProfilePic profileData={profileData}></ProfilePic>
                                 <div className="profile-info">
                                     <div className="profile-name">
-                                        <h3 className="full-name">{profileData.user && profileData.user.firstName} {profileData.user && profileData.user.surname} {profileData?.nickname && (<span className="nickname">({ profileData.nickname})</span>)}</h3>
+                                        <h3 className="full-name">
+                                            <VerifiedName profile={profileData}>
+                                                {profileData.user && profileData.user.firstName} {profileData.user && profileData.user.surname}
+                                                {profileData?.nickname && (<span className="nickname">({ profileData.nickname})</span>)}
+                                            </VerifiedName>
+                                        </h3>
                                         <div className="friends-count">
                                             <Link className='text-decoration-none' to={`/${profileData._id}/friends`}>
                                                 {profileData.friends && profileData.friends.length} Friends

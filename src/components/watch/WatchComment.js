@@ -65,34 +65,38 @@ const WatchComment = (props) => {
         })
     }
 
+    const submitComment = async () => {
+        const body = (commentData.body || '').trim()
+        if (!body && !uploadedImageUrl) return
+
+        try {
+            const res = await api.post('/comment/addComment', {
+                body,
+                attachment: uploadedImageUrl,
+                watch: (watch._id).toString()
+            })
+            if (res.status === 200) {
+                const newComment = {
+                    ...res.data,
+                    author: res.data?.author || myProfile,
+                    reacts: Array.isArray(res.data?.reacts) ? res.data.reacts : [],
+                    replies: Array.isArray(res.data?.replies) ? res.data.replies : [],
+                }
+                setAllComments(state => [...(Array.isArray(state) ? state : []), newComment])
+                setCommentData({ body: null, attachment: null })
+                setUploadedImageUrl(null)
+                if (typeof props.commentState === 'function') {
+                    props.commentState(state => Number(state || 0) + 1);
+                }
+            }
+        } catch (error) {
+            console.log(error)
+        }
+    }
+
     const handleCommentKeyUp = async (e) => {
         e.preventDefault()
-        if (e.keyCode === 13) {
-            try {
-                e.target.value = ''
-                const res = await api.post('/comment/addComment', {
-                    body: commentData.body,
-                    attachment: uploadedImageUrl,
-                    watch: (watch._id).toString()
-                })
-                if (res.status === 200) {
-                    const newComment = {
-                        ...res.data,
-                        author: res.data?.author || myProfile,
-                        reacts: Array.isArray(res.data?.reacts) ? res.data.reacts : [],
-                        replies: Array.isArray(res.data?.replies) ? res.data.replies : [],
-                    }
-                    setAllComments(state => [...(Array.isArray(state) ? state : []), newComment])
-                    setCommentData({ body: null, attachment: null })
-                    setUploadedImageUrl(null)
-                    if (typeof props.commentState === 'function') {
-                        props.commentState(state => Number(state || 0) + 1);
-                    }
-                }
-            } catch (error) {
-                console.log(error)
-            }
-        }
+        if (e.keyCode === 13) await submitComment()
     }
 
     const clickCommentAttachBtn = async (e) => {
@@ -101,6 +105,7 @@ const WatchComment = (props) => {
     }
 
     const commentCount = Array.isArray(watch.comments) ? watch.comments.length : 0
+    const hasCommentText = Boolean((commentData.body || '').trim())
 
     return (
         <Fragment>
@@ -122,11 +127,24 @@ const WatchComment = (props) => {
                     <UserPP profilePic={authProfilePicture} profile={authProfileId}></UserPP>
                 </div>
                 <div className="comment-field">
-                    <input onKeyUp={handleCommentKeyUp} onChange={handleCommentBodyChange} className="field-comment-text" type="text" placeholder="Write a Public Comment" />
-                    <div onClick={clickCommentAttachBtn} className="comment-attachment">
+                    <input value={commentData.body || ''} onKeyUp={handleCommentKeyUp} onChange={handleCommentBodyChange} className="field-comment-text" type="text" placeholder="Write a Public Comment" />
+                    <div
+                        onClick={hasCommentText ? submitComment : clickCommentAttachBtn}
+                        className={`comment-attachment ${hasCommentText ? 'send-reply-btn' : ''}`}
+                        title={hasCommentText ? 'Send comment' : 'Add photo'}
+                        role="button"
+                        tabIndex="0"
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                if (hasCommentText) submitComment()
+                                else clickCommentAttachBtn(e)
+                            }
+                        }}
+                    >
                         <input onChange={handleAttachChange} className="attachment" type="file" />
                         <span className="icon">
-                            <i className="far fa-camera"></i>
+                            <i className={hasCommentText ? 'far fa-paper-plane' : 'far fa-camera'}></i>
                         </span>
 
                     </div>

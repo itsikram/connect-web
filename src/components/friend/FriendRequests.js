@@ -98,6 +98,7 @@ let FriendRequests = () => {
                                 key={req._id}
                                 id={req._id}
                                 profilePic={req.profilePic}
+                                isVerified={req.isVerified}
                                 fullName={`${req.user?.firstName || ""} ${req.user?.surname || ""}`.trim() || "User"}
                                 type="req"
                             />

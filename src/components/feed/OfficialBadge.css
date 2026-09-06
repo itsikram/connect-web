@@ -27,6 +27,20 @@
   display: none;
 }
 
+.connect-verified-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: #16a34a;
+  color: #fff;
+  font-size: 9px;
+  vertical-align: middle;
+}
+
 .connect-author-name {
   display: inline-flex;
   align-items: center;
