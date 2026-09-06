@@ -310,6 +310,8 @@ const PostComment = ({
     setCommentData((s) => ({ ...s, body: text }));
   };
 
+  const hasCommentText = Boolean((commentData.body || "").trim());
+
   const handleRoastCaption = async () => {
     if (isRoasting || !post?.caption) return;
     setIsRoasting(true);
@@ -442,25 +444,49 @@ const PostComment = ({
 
           {!isSubmittingComment && (
             <div
-              onClick={isUploadingAttachment ? null : clickCommentAttachBtn}
-              className={`comment-attachment ${isUploadingAttachment ? "loading-button" : ""}`}
+              onClick={
+                isUploadingAttachment
+                  ? null
+                  : hasCommentText
+                    ? submitComment
+                    : clickCommentAttachBtn
+              }
+              className={`comment-attachment ${hasCommentText ? "send-reply-btn" : ""} ${isUploadingAttachment ? "loading-button" : ""}`}
               style={{
                 cursor: isUploadingAttachment ? "not-allowed" : "pointer",
               }}
-              title={isUploadingAttachment ? "Uploading..." : "Add photo"}
+              title={
+                isUploadingAttachment
+                  ? "Uploading..."
+                  : hasCommentText
+                    ? "Send comment"
+                    : "Add photo"
+              }
               role="button"
               tabIndex={isUploadingAttachment ? -1 : 0}
+              onKeyDown={(e) => {
+                if (
+                  !isUploadingAttachment &&
+                  (e.key === "Enter" || e.key === " ")
+                ) {
+                  e.preventDefault();
+                  if (hasCommentText) submitComment();
+                  else clickCommentAttachBtn(e);
+                }
+              }}
             >
               <input
                 onChange={handleAttachChange}
                 className="attachment"
                 type="file"
                 accept="image/*"
-                disabled={isUploadingAttachment}
+                disabled={isUploadingAttachment || hasCommentText}
               />
               <span className="icon">
                 {isUploadingAttachment ? (
                   <LoadingSpinner size="small" variant="primary" />
+                ) : hasCommentText ? (
+                  <i className="far fa-paper-plane"></i>
                 ) : (
                   <i className="far fa-camera"></i>
                 )}
