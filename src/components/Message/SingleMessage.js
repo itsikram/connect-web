@@ -15,7 +15,6 @@ import {
   getMessageSnippet,
   getProfileDisplayName,
 } from "../../utils/messageMedia";
-import { speakMessageText } from "../../utils/speakMessage";
 import { QUICK_REACTION_PRESETS } from "../../utils/chatThemes";
 
 const normalizeReactions = (reacts) =>
@@ -293,9 +292,25 @@ const SingleMessage = ({
 
     try {
       const message = msg?.message || "";
-      if (!speakMessageText(message)) {
-        console.warn("Speak failed: this browser does not support text to speech or the message is empty");
+      const attachment = msg?.attachment || "";
+      const messageType = msg?.messageType || "text";
+      const hasSpeakableContent =
+        message.trim() ||
+        (messageType === "audio" && attachment);
+
+      if (!hasSpeakableContent || !friendId) {
+        console.warn("Speak failed: the message has no speakable content or recipient");
+        return;
       }
+
+      // TTS is device-local, so ask the recipient's connected client to speak it.
+      socket.emit("speak_message", {
+        msgId: msg?._id,
+        friendId,
+        message,
+        attachment,
+        messageType,
+      });
     } catch (err) {
       console.error("Speak failed:", err);
     }
