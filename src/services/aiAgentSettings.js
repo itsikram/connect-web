@@ -3,16 +3,31 @@ const STORAGE_KEY = "connect_ai_agent_settings_v1";
 export const CUSTOM_MODEL_ID = "__custom__";
 
 export const AI_PROVIDERS = {
+  ollama: {
+    id: "ollama",
+    label: "Ollama (Local)",
+    shortLabel: "Ollama",
+    description: "Local models running on this computer",
+    brandColor: "#111827",
+    keyLabel: "Ollama API key",
+    keyHelp: "Not required for the local Ollama server.",
+    keyPlaceholder: "Not required",
+    defaultModel: "mistral:latest",
+    models: [
+      { id: "mistral:latest", label: "Mistral (local)" },
+      { id: "llama3.1:8b", label: "Llama 3.1 8B (local)" },
+      { id: "llama3.2:latest", label: "Llama 3.2 (local)" },
+    ],
+  },
   gemini: {
     id: "gemini",
     label: "Google Gemini",
     shortLabel: "Gemini",
-    description: "Google’s Gemini models",
+    description: "Google's Gemini models",
     brandColor: "#4285f4",
     keyLabel: "Gemini API key",
-    keyHelp:
-      "From Google AI Studio. You can paste several keys separated by commas for quota failover.",
-    keyPlaceholder: "AIza… or AQ.…",
+    keyHelp: "From Google AI Studio.",
+    keyPlaceholder: "AIza... or AQ...",
     defaultModel: "gemini-2.0-flash",
     models: [
       { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash (fast)" },
@@ -30,8 +45,8 @@ export const AI_PROVIDERS = {
     description: "GPT models via OpenAI",
     brandColor: "#10a37f",
     keyLabel: "OpenAI API key",
-    keyHelp: "From platform.openai.com → API keys. Starts with sk-.",
-    keyPlaceholder: "sk-…",
+    keyHelp: "From platform.openai.com.",
+    keyPlaceholder: "sk-...",
     defaultModel: "gpt-4o-mini",
     models: [
       { id: "gpt-4o-mini", label: "GPT-4o mini" },
@@ -47,12 +62,11 @@ export const AI_PROVIDERS = {
     id: "cursor",
     label: "Cursor API",
     shortLabel: "Cursor",
-    description: "Cloud Agents via the Connect server (Composer 2.5 Fast)",
+    description: "Cloud Agents via the Connect server",
     brandColor: "#f54e00",
     serverKey: true,
     keyLabel: "Cursor API key",
-    keyHelp:
-      "Stored only on the Node server as CURSOR_API_KEY (Cursor Dashboard → API Keys, starts with crsr_). The browser never sends this key.",
+    keyHelp: "Stored only on the Node server.",
     keyPlaceholder: "",
     defaultModel: "composer-2.5",
     models: [
@@ -73,48 +87,35 @@ export const AI_PROVIDERS = {
 };
 
 export const parseApiKeys = (value = "") => [
-  ...new Set(
-    String(value)
-      .split(",")
-      .map((key) => key.trim())
-      .filter(Boolean),
-  ),
+  ...new Set(String(value).split(",").map((key) => key.trim()).filter(Boolean)),
 ];
 
 const envKeysFor = (provider) => {
-  if (provider === "openai") {
-    return String(process.env.REACT_APP_OPENAI_API_KEY || "").trim();
-  }
-  if (provider === "cursor") {
-    return "";
-  }
+  if (provider === "openai") return String(process.env.REACT_APP_OPENAI_API_KEY || "").trim();
+  if (provider === "cursor" || provider === "ollama") return "";
   return String(process.env.REACT_APP_GEMINI_API_KEY || "").trim();
 };
 
-const emptyState = () => ({
-  provider: platformDefaults.defaultProvider || "gemini",
+let platformDefaults = {
+  defaultProvider: "ollama",
   models: {
-    gemini:
-      platformDefaults.models?.gemini || AI_PROVIDERS.gemini.defaultModel,
-    openai:
-      platformDefaults.models?.openai || AI_PROVIDERS.openai.defaultModel,
-    cursor:
-      platformDefaults.models?.cursor || AI_PROVIDERS.cursor.defaultModel,
+    ollama: AI_PROVIDERS.ollama.defaultModel,
+    gemini: AI_PROVIDERS.gemini.defaultModel,
+    openai: AI_PROVIDERS.openai.defaultModel,
+    cursor: AI_PROVIDERS.cursor.defaultModel,
   },
-  customModels: {
-    gemini: "",
-    openai: "",
-    cursor: "",
-  },
-  keys: {
-    gemini: "",
-    openai: "",
-    cursor: "",
-  },
+  configured: { ollama: true, gemini: false, openai: false, cursor: null },
+  enabled: { ollama: true, gemini: true, openai: true, cursor: true },
+};
+
+const emptyState = () => ({
+  provider: platformDefaults.defaultProvider || "ollama",
+  models: { ...platformDefaults.models },
+  customModels: { ollama: "", gemini: "", openai: "", cursor: "" },
+  keys: { ollama: "", gemini: "", openai: "", cursor: "" },
 });
 
-const normalizeProvider = (value) =>
-  AI_PROVIDERS[value] ? value : "gemini";
+const normalizeProvider = (value) => AI_PROVIDERS[value] ? value : "ollama";
 
 const readStored = () => {
   if (typeof window === "undefined") return emptyState();
@@ -123,25 +124,14 @@ const readStored = () => {
     if (!raw) return emptyState();
     const parsed = JSON.parse(raw);
     const base = emptyState();
-    const provider = normalizeProvider(parsed?.provider);
-    const next = {
+    return {
       ...base,
       ...parsed,
-      provider,
+      provider: normalizeProvider(parsed?.provider),
       models: { ...base.models, ...(parsed?.models || {}) },
       customModels: { ...base.customModels, ...(parsed?.customModels || {}) },
       keys: { ...base.keys, ...(parsed?.keys || {}) },
     };
-    if (!parsed?.fastDefaultV2 && next.models?.gemini === "gemini-3.5-flash") {
-      next.models.gemini = "gemini-2.0-flash";
-      next.fastDefaultV2 = true;
-      try {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      } catch {
-        /* ignore */
-      }
-    }
-    return next;
   } catch {
     return emptyState();
   }
@@ -150,39 +140,7 @@ const readStored = () => {
 const listeners = new Set();
 let cursorServerConfigured = null;
 let cursorLiveModels = null;
-let platformDefaults = {
-  defaultProvider: "gemini",
-  models: {
-    gemini: AI_PROVIDERS.gemini.defaultModel,
-    openai: AI_PROVIDERS.openai.defaultModel,
-    cursor: AI_PROVIDERS.cursor.defaultModel,
-  },
-  configured: {
-    gemini: false,
-    openai: false,
-    cursor: null,
-  },
-  enabled: {
-    gemini: true,
-    openai: true,
-    cursor: true,
-  },
-};
-
-const CURSOR_LEGACY_MODELS = {
-  auto: "default",
-  "composer-2": "composer-2.5",
-  "claude-4-sonnet-thinking": "claude-sonnet-4-5",
-  "gpt-5": "gpt-5.4",
-};
-
-const notify = (settings) => {
-  listeners.forEach((listener) => {
-    try {
-      listener(settings);
-    } catch (_) {}
-  });
-};
+const notify = (settings) => listeners.forEach((listener) => { try { listener(settings); } catch (_) {} });
 
 export const setCursorServerConfigured = (value) => {
   const next = value === null ? null : Boolean(value);
@@ -190,70 +148,26 @@ export const setCursorServerConfigured = (value) => {
   cursorServerConfigured = next;
   notify(readStored());
 };
-
 export const getCursorServerConfigured = () => cursorServerConfigured;
-
 export const setCursorLiveModels = (models = []) => {
-  const next = Array.isArray(models)
-    ? models
-        .map((item) => ({
-          id: String(item?.id || "").trim(),
-          label: String(item?.label || item?.displayName || item?.id || "").trim(),
-          aliases: Array.isArray(item?.aliases) ? item.aliases : [],
-        }))
-        .filter((item) => item.id)
-    : [];
-  cursorLiveModels = next.length ? next : null;
+  cursorLiveModels = Array.isArray(models) && models.length ? models : null;
+  notify(readStored());
+};
+export const getCursorModelOptions = () => cursorLiveModels?.length ? cursorLiveModels : AI_PROVIDERS.cursor.models;
+
+export const applyPlatformAiDefaults = (payload = {}) => {
+  platformDefaults = {
+    defaultProvider: payload.defaultProvider || platformDefaults.defaultProvider,
+    models: { ...platformDefaults.models, ...(payload.models || {}) },
+    configured: { ...platformDefaults.configured, ...(payload.configured || {}) },
+    enabled: { ...platformDefaults.enabled, ...(payload.enabled || {}) },
+  };
+  if (payload.cursor && typeof payload.cursor.configured === "boolean") cursorServerConfigured = payload.cursor.configured;
   notify(readStored());
 };
 
-export const getCursorModelOptions = () =>
-  cursorLiveModels?.length ? cursorLiveModels : AI_PROVIDERS.cursor.models;
-
-export const applyPlatformAiDefaults = (payload = {}) => {
-  const nextConfigured = {
-    ...platformDefaults.configured,
-    ...(payload.configured || {}),
-  };
-  if (payload.gemini && typeof payload.gemini.configured === "boolean") {
-    nextConfigured.gemini = payload.gemini.configured;
-  }
-  if (payload.openai && typeof payload.openai.configured === "boolean") {
-    nextConfigured.openai = payload.openai.configured;
-  }
-  if (payload.cursor && typeof payload.cursor.configured === "boolean") {
-    nextConfigured.cursor = payload.cursor.configured;
-    cursorServerConfigured = payload.cursor.configured;
-  } else if (typeof payload.configured?.cursor === "boolean") {
-    cursorServerConfigured = payload.configured.cursor;
-  }
-
-  platformDefaults = {
-    defaultProvider: payload.defaultProvider || platformDefaults.defaultProvider,
-    models: {
-      ...platformDefaults.models,
-      ...(payload.models || {}),
-    },
-    configured: nextConfigured,
-    enabled: {
-      ...platformDefaults.enabled,
-      ...(payload.enabled || {}),
-    },
-  };
-
-  if (typeof window !== "undefined" && !window.localStorage.getItem(STORAGE_KEY)) {
-    notify(emptyState());
-  } else {
-    notify(readStored());
-  }
-};
-
 export const getAgentSettings = () => readStored();
-
-export const subscribeAgentSettings = (listener) => {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-};
+export const subscribeAgentSettings = (listener) => { listeners.add(listener); return () => listeners.delete(listener); };
 
 export const saveAgentSettings = (patch = {}) => {
   const current = readStored();
@@ -265,62 +179,33 @@ export const saveAgentSettings = (patch = {}) => {
     keys: { ...current.keys, ...(patch.keys || {}) },
   };
   next.provider = normalizeProvider(next.provider);
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  }
+  if (typeof window !== "undefined") window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   notify(next);
   return next;
 };
 
 export const resetAgentSettings = () => {
-  if (typeof window !== "undefined") {
-    window.localStorage.removeItem(STORAGE_KEY);
-  }
+  if (typeof window !== "undefined") window.localStorage.removeItem(STORAGE_KEY);
   const next = emptyState();
   notify(next);
   return next;
 };
 
-export const getProviderMeta = (providerId) =>
-  AI_PROVIDERS[normalizeProvider(providerId)];
+export const getProviderMeta = (providerId) => AI_PROVIDERS[normalizeProvider(providerId)];
 
 export const resolveModelId = (settings = getAgentSettings()) => {
   const provider = normalizeProvider(settings.provider);
   const meta = getProviderMeta(provider);
   const selected = String(settings.models?.[provider] || "").trim();
-  const catalog =
-    provider === "cursor" ? getCursorModelOptions() : meta.models;
-
+  const catalog = provider === "cursor" ? getCursorModelOptions() : meta.models;
   if (provider === "cursor") {
-    const mapped = CURSOR_LEGACY_MODELS[selected] || selected;
-    const match = catalog.find(
-      (item) =>
-        item.id === mapped ||
-        item.id === selected ||
-        (item.aliases || []).includes(selected) ||
-        (item.aliases || []).includes(mapped),
-    );
+    const legacy = { auto: "default", "composer-2": "composer-2.5", "claude-4-sonnet-thinking": "claude-sonnet-4-5", "gpt-5": "gpt-5.4" };
+    const mapped = legacy[selected] || selected;
+    const match = catalog.find((item) => item.id === mapped || item.id === selected);
     if (match) return match.id;
-    if (selected === CUSTOM_MODEL_ID) {
-      return (
-        String(settings.customModels?.[provider] || "").trim() ||
-        meta.defaultModel
-      );
-    }
-    if (selected && !catalog.some((item) => item.id === selected)) {
-      return (
-        String(settings.customModels?.[provider] || selected || "").trim() ||
-        meta.defaultModel
-      );
-    }
-    return match?.id || mapped || meta.defaultModel;
   }
-
   if (selected === CUSTOM_MODEL_ID || (selected && !catalog.some((item) => item.id === selected))) {
-    return (
-      String(settings.customModels?.[provider] || selected || "").trim() ||
-      meta.defaultModel
-    );
+    return String(settings.customModels?.[provider] || selected || "").trim() || meta.defaultModel;
   }
   return selected || meta.defaultModel;
 };
@@ -330,53 +215,21 @@ export const getResolvedAgentSettings = () => {
   const provider = normalizeProvider(stored.provider);
   const meta = getProviderMeta(provider);
   const model = resolveModelId(stored);
-  const platformConfigured = Boolean(platformDefaults.configured?.[provider]);
   const providerEnabled = platformDefaults.enabled?.[provider] !== false;
-
   if (provider === "cursor") {
-    return {
-      provider,
-      meta,
-      model,
-      apiKey: "",
-      apiKeys: [],
-      usingUserKey: false,
-      hasKey: cursorServerConfigured !== false && providerEnabled,
-      keySource: "admin",
-      cursorServerConfigured,
-      providerEnabled,
-      baseUrl: "",
-      stored,
-    };
+    return { provider, meta, model, apiKey: "", apiKeys: [], usingUserKey: false, hasKey: cursorServerConfigured !== false && providerEnabled, keySource: "admin", cursorServerConfigured, providerEnabled, baseUrl: "", stored };
   }
-
+  if (provider === "ollama") {
+    return { provider, meta, model, apiKey: "", apiKeys: [], usingUserKey: false, hasKey: providerEnabled, keySource: "local", providerEnabled, baseUrl: "", stored };
+  }
   const userKey = String(stored.keys?.[provider] || "").trim();
   const envKey = envKeysFor(provider);
   const apiKey = userKey || envKey;
-
-  return {
-    provider,
-    meta,
-    model,
-    apiKey,
-    apiKeys: parseApiKeys(apiKey),
-    usingUserKey: Boolean(userKey),
-    hasKey: (Boolean(apiKey) || platformConfigured) && providerEnabled,
-    keySource: userKey
-      ? "user"
-      : envKey
-        ? "env"
-        : platformConfigured
-          ? "admin"
-          : "none",
-    providerEnabled,
-    baseUrl: "",
-    stored,
-  };
+  const platformConfigured = Boolean(platformDefaults.configured?.[provider]);
+  return { provider, meta, model, apiKey, apiKeys: parseApiKeys(apiKey), usingUserKey: Boolean(userKey), hasKey: (Boolean(apiKey) || platformConfigured) && providerEnabled, keySource: userKey ? "user" : envKey ? "env" : platformConfigured ? "admin" : "none", providerEnabled, baseUrl: "", stored };
 };
 
 export const hasConfiguredApiKey = () => getResolvedAgentSettings().hasKey;
-
 export const maskSecret = (value = "") => {
   const text = String(value || "").trim();
   if (!text) return "";

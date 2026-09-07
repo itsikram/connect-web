@@ -555,7 +555,14 @@ const streamViaServer = async ({
 }) => {
   const [{ getUserFromStorage }, { getServerAddress }] = await getStreamHelpers();
   const token = getUserFromStorage()?.accessToken || "";
-  const timeoutMs = settings.provider === "cursor" ? 90000 : json ? 10000 : 18000;
+  const timeoutMs =
+    settings.provider === "cursor"
+      ? 90000
+      : settings.provider === "ollama"
+        ? 180000
+        : json
+          ? 10000
+          : 18000;
   const { signal: fetchSignal, cleanup } = withAbortTimeout(signal, timeoutMs);
 
   try {

@@ -14,7 +14,7 @@ import {
   pingCurrentProvider,
 } from "../../../services/llmClient";
 
-const PROVIDER_ORDER = ["gemini", "openai", "cursor"];
+const PROVIDER_ORDER = ["ollama", "gemini", "openai", "cursor"];
 
 const AgentSettingsPanel = ({ onClose }) => {
   const [draft, setDraft] = useState(() => getAgentSettings());
@@ -31,7 +31,7 @@ const AgentSettingsPanel = ({ onClose }) => {
   }, []);
 
   const provider = draft.provider;
-  const meta = AI_PROVIDERS[provider];
+  const meta = AI_PROVIDERS[provider] || resolved.meta || AI_PROVIDERS.ollama;
   const modelOptions =
     provider === "cursor" ? getCursorModelOptions() : meta.models;
   const selectedModel = draft.models?.[provider] || meta.defaultModel;
@@ -166,6 +166,7 @@ const AgentSettingsPanel = ({ onClose }) => {
         <div className="ai-agent-provider-grid">
           {PROVIDER_ORDER.map((id) => {
             const item = AI_PROVIDERS[id];
+            if (!item) return null;
             const active = provider === id;
             return (
               <button
@@ -221,7 +222,12 @@ const AgentSettingsPanel = ({ onClose }) => {
           />
         )}
 
-        {usesServerKey ? (
+        {provider === "ollama" ? (
+          <div className="ai-agent-settings-server-key">
+            <strong>Local Ollama server</strong>
+            <p>Using the Ollama service running on the Connect server. No API key is required.</p>
+          </div>
+        ) : usesServerKey ? (
           <div
             className={`ai-agent-settings-server-key ${
               resolved.cursorServerConfigured === false ? "missing" : ""
