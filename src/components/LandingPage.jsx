@@ -6,9 +6,9 @@ const LandingPage = () => {
   return (
     <div className="landing-page">
       <SEO 
-        title="Connect App - Social Media Platform by Ikramul | Connect with Friends"
-        description="Connect by Ikramul - A modern social media platform for connecting with friends, sharing moments, video calls, and building communities. Download the Connect app today!"
-        keywords="connect, connect app, connect by ikramul, social media, social network, video calls, messaging, friends, community, chat app"
+        title="Connect BD - Social Media App in Bangladesh | Connect with Friends"
+        description="Connect BD by Ikramul is a modern social media platform for Bangladesh users to connect, chat, share moments, make video calls, and build communities online."
+        keywords="Connect BD, connect bd, connect app, connect by ikramul, social media app Bangladesh, social networking platform, chat app, video calls, community app"
       />
 
       {/* Hero Section */}

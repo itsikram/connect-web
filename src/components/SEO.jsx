@@ -9,11 +9,11 @@ const SEO = ({
   ogType = 'website',
   twitterCard = 'summary_large_image'
 }) => {
-  const defaultTitle = 'Connect App - Social Media Platform by Ikramul | Connect with Friends';
-  const defaultDescription = 'Connect by Ikramul - A modern social media platform for connecting with friends, sharing moments, video calls, and building communities. Download the Connect app today!';
-  const defaultKeywords = 'connect, connect app, connect by ikramul, social media, social network, video calls, messaging, friends, community, chat app, ikramul connect, connect social media';
-  const defaultOgImage = ogImage || `${window.location.origin}/logo512.png`;
-  const defaultCanonical = canonical || window.location.href;
+  const defaultTitle = 'Connect BD - Social Media App in Bangladesh | Connect with Friends';
+  const defaultDescription = 'Connect BD by Ikramul is a modern social media platform for Bangladesh users to connect, chat, share moments, make video calls, and grow communities online.';
+  const defaultKeywords = 'Connect BD, connect bd, connect app, connect by ikramul, social media app Bangladesh, social networking platform, chat app, video calls, community app, connect with friends, online community';
+  const defaultOgImage = ogImage || 'https://connect-bd.online/logo512.png';
+  const defaultCanonical = canonical || 'https://connect-bd.online' + window.location.pathname;
 
   useEffect(() => {
     // Update document title
@@ -68,15 +68,15 @@ const SEO = ({
         "@type": "WebPage",
         "name": title || defaultTitle,
         "description": description || defaultDescription,
-        "url": window.location.href,
+        "url": defaultCanonical,
         "isPartOf": {
           "@type": "WebApplication",
-          "name": "Connect App",
-          "alternateName": ["Connect", "Connect by Ikramul", "Connect Social Media"],
+          "name": "Connect BD",
+          "alternateName": ["Connect", "Connect App", "Connect by Ikramul", "Connect Social Media"],
           "author": {
             "@type": "Person",
             "name": "Ikramul",
-            "url": "https://ikramul.com"
+            "url": "https://connect-bd.online/portfolio"
           }
         }
       };

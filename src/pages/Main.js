@@ -341,27 +341,27 @@ const Main = () => {
   const seoPages = [
     {
       match: /^\/$/,
-      title: "Connect App - Social Media Home | Connect by Ikramul",
+      title: "Connect BD - Social Media App in Bangladesh | Connect with Friends",
       description:
-        "Connect by Ikramul is a modern social media app for connecting with friends, sharing moments, video calls, and building communities.",
+        "Connect BD by Ikramul is a modern social media app for Bangladesh users to connect, share moments, make video calls, and build communities online.",
     },
     {
       match: /^\/login$/,
-      title: "Login | Connect App by Ikramul",
+      title: "Login | Connect BD by Ikramul",
       description:
-        "Sign in to Connect app by Ikramul to chat, share moments, and stay connected with friends and communities.",
+        "Sign in to Connect BD by Ikramul to chat, share moments, and stay connected with friends and communities in Bangladesh.",
     },
     {
       match: /^\/signup$/,
-      title: "Sign Up | Connect App by Ikramul",
+      title: "Sign Up | Connect BD by Ikramul",
       description:
-        "Create your Connect account today to start building your social media network with the Connect app.",
+        "Create your Connect BD account today and start building your network on the leading social media app for Bangladesh users.",
     },
     {
       match: /^\/forgot-password$/,
-      title: "Reset Password | Connect App",
+      title: "Reset Password | Connect BD",
       description:
-        "Reset your Connect password and get back to messaging, sharing, and calling your friends on the Connect social media app.",
+        "Reset your Connect BD password and get back to messaging, sharing, and calling your friends on the Connect social media app.",
     },
     // /portfolio/* SEO is owned by PortfolioSEO (name-focused Person schema)
   ];
@@ -371,7 +371,7 @@ const Main = () => {
     // Portfolio routes manage their own meta tags for name-search SEO
     if (pathname.startsWith("/portfolio")) return;
 
-    const baseUrl = "https://connect-zfgx.onrender.com";
+    const baseUrl = "https://connect-bd.online";
     const pageMeta =
       seoPages.find((page) => page.match.test(pathname)) || seoPages[0];
 

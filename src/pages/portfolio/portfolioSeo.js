@@ -1,6 +1,6 @@
 import config from '../../config/config.json';
 
-export const PORTFOLIO_BASE_URL = (config.siteUrlLive || 'https://connect-zfgx.onrender.com/').replace(/\/$/, '');
+export const PORTFOLIO_BASE_URL = (config.siteUrlLive || 'https://connect-bd.online/').replace(/\/$/, '');
 
 function absUrl(pathOrUrl = '') {
   if (!pathOrUrl) return `${PORTFOLIO_BASE_URL}/assets/images/portfolio-pp.png`;
