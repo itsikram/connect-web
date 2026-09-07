@@ -338,7 +338,6 @@ const startYoutubeDownloadJob = async ({
 };
 
 const LUDO_AGENT_CREATE_KEY = "ludo_agent_create";
-const LUDO_INVITE_TARGET_KEY = "ludo_invite_target";
 
 const collectLudoInvitees = ({
   friend,
@@ -391,46 +390,6 @@ const startOnlineLudo = async ({ invitees = [], myProfile, go }) => {
       }),
     );
   } catch (_) {}
-
-  if (friendsPayload[0]) {
-    try {
-      localStorage.setItem(
-        LUDO_INVITE_TARGET_KEY,
-        JSON.stringify({
-          friendId: friendsPayload[0].friendId,
-          friendName: friendsPayload[0].friendName,
-          friendAvatar: friendsPayload[0].friendAvatar,
-          gameId: gid,
-        }),
-      );
-    } catch (_) {}
-  }
-
-  emitSocket(socket, "ludo:join", { gameId: gid });
-  invitees.forEach((item, index) => {
-    emitSocket(socket, "ludo:invite", {
-      to: item._id,
-      by: myProfile?._id,
-      name: myProfile?.fullName || "Player",
-      avatar: myProfile?.profilePic,
-      cover: myProfile?.coverPic,
-      gameId: gid,
-      slotIndex: index + 1,
-      playerCount,
-      ts: Date.now(),
-    });
-  });
-
-  await Promise.all(
-    invitees.map((item) =>
-      sendGameInviteNotification({
-        friend: item,
-        myProfile,
-        game: "ludo",
-        gameId: gid,
-      }).catch(() => {}),
-    ),
-  );
 
   go(`/ludo-game?gameId=${encodeURIComponent(gid)}`);
   try {

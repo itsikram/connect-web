@@ -445,6 +445,23 @@ describe("agent action parsing", () => {
     });
   });
 
+  test("parses invitation-first ludo commands", () => {
+    expect(
+      parseIntent("send an invitation to Rahima and start a ludo game"),
+    ).toMatchObject({
+      action: "CREATE_LUDO",
+      targetName: "Rahima",
+    });
+    expect(parseIntent("invite Rahima and start ludo")).toMatchObject({
+      action: "CREATE_LUDO",
+      targetName: "Rahima",
+    });
+    expect(parseIntent("send invitation to Rahima to play ludo")).toMatchObject({
+      action: "INVITE_LUDO",
+      targetName: "Rahima",
+    });
+  });
+
   test("create ludo and invite friends starts a lobby without a name", () => {
     expect(parseIntent("create ludo and invite friends")).toMatchObject({
       action: "CREATE_LUDO",

@@ -877,6 +877,55 @@ const VideoCall = ({ myId }) => {
           codec: "vp8",
         });
         const client = clientRef.current;
+
+        // Bind before joining/publishing so a fast cross-platform publisher
+        // cannot be missed by the web client.
+        if (!hasBoundClientEvents.current) {
+          hasBoundClientEvents.current = true;
+          client.on("user-published", async (user, mediaType) => {
+            console.log("Remote user published:", user.uid, mediaType);
+            try {
+              await client.subscribe(user, mediaType);
+              console.log("Successfully subscribed to", user.uid, mediaType);
+
+              if (mediaType === "video" && userVideo.current && user.videoTrack) {
+                userVideo.current.innerHTML = "";
+                user.videoTrack.play(userVideo.current, VIDEO_FIT);
+                const ar =
+                  readTrackAspectRatio(user.videoTrack) ||
+                  readElementAspectRatio(userVideo.current);
+                if (ar) setRemoteAspectRatio(ar);
+              }
+
+              if (mediaType === "audio" && user.audioTrack) {
+                user.audioTrack.play();
+                console.log("Playing remote audio from user:", user.uid);
+              }
+            } catch (error) {
+              console.error(
+                "Error subscribing to user:",
+                user.uid,
+                mediaType,
+                error,
+              );
+            }
+          });
+
+          client.on("user-unpublished", (user) => {
+            console.log("Remote user unpublished:", user.uid);
+            if (userVideo.current) userVideo.current.innerHTML = "";
+          });
+
+          client.on("user-left", async (user) => {
+            console.log("Remote user left the channel:", user?.uid);
+            try {
+              await cleanupVideoCall();
+            } catch (e) {
+              console.warn("Cleanup after remote user-left failed:", e);
+            }
+          });
+        }
+
         await client.join(appId, channelName, token, numericUid);
         console.log("Joined Agora channel successfully");
 

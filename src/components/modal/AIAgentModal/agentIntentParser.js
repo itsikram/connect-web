@@ -894,6 +894,7 @@ const INTENT_PATTERNS = [
     action: "CREATE_LUDO",
     patterns: [
       /(?:create|start|new|begin|open|launch)\s+(?:a\s+)?ludo(?:\s+game)?\s+(?:with|and\s+invite)\s+(.+)/i,
+      /(?:invite|send\s+(?:an?\s+)?invitation\s+to)\s+(.+?)\s+and\s+(?:start|create|play)\s+(?:a\s+)?ludo(?:\s+game)?/i,
     ],
   },
 
@@ -904,6 +905,7 @@ const INTENT_PATTERNS = [
       /invite\s+(.+?)\s+to\s+(?:a?\s*)?ludo/i,
       /play\s+ludo\s+with\s+(.+)/i,
       /ludo\s+(?:with|and)\s+(.+)/i,
+      /(?:invite|send\s+(?:an?\s+)?invitation\s+to)\s+(.+?)\s+to\s+(?:play\s+)?ludo/i,
       /(?:ask|tell)\s+(.+?)\s+to\s+(?:play\s+)?ludo/i,
     ],
   },
@@ -1235,6 +1237,36 @@ const detectProfileSubNav = (message) => {
 
 // ── Main parser ────────────────────────────────────────────────────────────────
 
+const parseCombinedLudoIntent = (message) => {
+  const patterns = [
+    {
+      action: "CREATE_LUDO",
+      regex:
+        /(?:invite|send\s+(?:an?\s+)?invitation\s+to)\s+(.+?)\s+and\s+(?:start|create|play)\s+(?:a\s+)?ludo(?:\s+game)?/i,
+    },
+    {
+      action: "INVITE_LUDO",
+      regex:
+        /(?:invite|send\s+(?:an?\s+)?invitation\s+to)\s+(.+?)\s+to\s+(?:play\s+)?ludo(?:\s+game)?/i,
+    },
+  ];
+  for (const { action, regex } of patterns) {
+    const match = message.match(regex);
+    if (!match) continue;
+    return {
+      action,
+      targetName: cleanCapturedSegment(match[1]),
+      messageText: null,
+      searchQuery: null,
+      targetRoute: null,
+      subPath: null,
+      label: null,
+      params: {},
+    };
+  }
+  return null;
+};
+
 /**
  * Parse a user message to detect an actionable intent.
  * @param {string} message
@@ -1242,6 +1274,11 @@ const detectProfileSubNav = (message) => {
  *             subPath: string|null, label: string|null, params: object }|null}
  */
 const parseIntentOnce = (trimmed) => {
+  const combinedLudoIntent = parseCombinedLudoIntent(trimmed);
+  if (combinedLudoIntent) {
+    return combinedLudoIntent;
+  }
+
   const directSendMessageIntent = parseDirectSendMessageIntent(trimmed);
   if (directSendMessageIntent) {
     return directSendMessageIntent;

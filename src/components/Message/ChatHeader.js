@@ -109,6 +109,8 @@ const ChatHeader = ({
   const emotionServerSocketRef = useRef(null);
   const expressionCanvasRef = useRef(null);
   const captureInFlightRef = useRef(false);
+  const emotionStreamRef = useRef(null);
+  const cameraStartIdRef = useRef(0);
   // Ref to store latest handler to avoid stale closures
   const handleEmotionServerResponseRef = useRef(null);
   // Track if camera is currently running to prevent unnecessary restarts
@@ -1212,6 +1214,7 @@ const ChatHeader = ({
 
   const startVideo = useCallback(async () => {
     if (!cameraVideoRef.current) return;
+    const startId = ++cameraStartIdRef.current;
 
     // Check if camera is already running to prevent unnecessary restarts
     if (isCameraRunningRef.current) {
@@ -1232,8 +1235,18 @@ const ChatHeader = ({
         },
         audio: false,
       });
+      // Navigation can happen while getUserMedia is pending. Do not attach a
+      // newly granted stream after the message page has started cleaning up.
+      if (
+        startId !== cameraStartIdRef.current ||
+        !cameraVideoRef.current
+      ) {
+        emotionStream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       const videoEl = cameraVideoRef.current;
       videoEl.srcObject = emotionStream;
+      emotionStreamRef.current = emotionStream;
       isCameraRunningRef.current = true; // Mark camera as running
 
       await new Promise((resolve) => {
@@ -1268,20 +1281,29 @@ const ChatHeader = ({
   }, []);
 
   const stopCamera = (forceStop = false) => {
-    if (!cameraVideoRef.current) return;
-
     // Only stop if camera is actually running (unless forced)
-    if (!isCameraRunningRef.current && !forceStop) {
+    if (
+      !isCameraRunningRef.current &&
+      !forceStop &&
+      !emotionStreamRef.current &&
+      !cameraVideoRef.current?.srcObject
+    ) {
       return;
     }
 
+    // Invalidate any pending getUserMedia call so it cannot restart the camera.
+    cameraStartIdRef.current += 1;
     console.log("[ChatHeader] Stopping emotion detection camera...");
     try {
-      const stream = cameraVideoRef.current?.srcObject;
+      const stream =
+        emotionStreamRef.current || cameraVideoRef.current?.srcObject;
       if (stream) {
         stream.getTracks().forEach((track) => track.stop());
       }
-      cameraVideoRef.current.srcObject = null;
+      emotionStreamRef.current = null;
+      if (cameraVideoRef.current) {
+        cameraVideoRef.current.srcObject = null;
+      }
       isCameraRunningRef.current = false; // Mark camera as stopped
     } catch (e) {
       // Ignore errors when stopping camera
