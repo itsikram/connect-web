@@ -1348,7 +1348,7 @@ const Chat = () => {
               messages.filter(Boolean).map((msg, index) => {
                 return (
                   <SingleMessage
-                    key={msg._id || `msg-${index}`}
+                    key={msg._id ? `${msg._id}-${index}` : `msg-${index}`}
                     msg={msg}
                     friendProfile={friendProfile}
                     messages={messages}

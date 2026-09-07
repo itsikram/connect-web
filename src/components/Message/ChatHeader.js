@@ -107,12 +107,15 @@ const ChatHeader = ({
   const serverRequestSeqRef = useRef(0);
   // Python emotion detection server socket connection
   const emotionServerSocketRef = useRef(null);
+  const expressionCanvasRef = useRef(null);
+  const captureInFlightRef = useRef(false);
   // Ref to store latest handler to avoid stale closures
   const handleEmotionServerResponseRef = useRef(null);
   // Track if camera is currently running to prevent unnecessary restarts
   const isCameraRunningRef = useRef(false);
   // Track connection state to prevent race conditions
   const isConnectingRef = useRef(false);
+  const lastChatPathRef = useRef(null);
 
   const isMobile = useIsMobile();
   const navigate = useNavigate();
@@ -1304,19 +1307,26 @@ const ChatHeader = ({
    * Capture video frame and convert to base64 for server-side detection
    * Optimized to balance image quality and payload size
    */
-  const captureFrameAsBase64 = useCallback(() => {
+  const captureFrameAsBase64 = useCallback(async () => {
     if (!cameraVideoRef.current || cameraVideoRef.current.readyState < 2) {
       return null;
     }
 
+    if (captureInFlightRef.current) {
+      return null;
+    }
+
+    captureInFlightRef.current = true;
     try {
       const video = cameraVideoRef.current;
-      const canvas = document.createElement("canvas");
+      const canvas =
+        expressionCanvasRef.current ||
+        (expressionCanvasRef.current = document.createElement("canvas"));
 
       // Optimize dimensions: use max 480px width to balance quality and payload size
       // Server will resize if needed, but we want good quality for detection
-      const maxWidth = 480;
-      const maxHeight = 360;
+      const maxWidth = 320;
+      const maxHeight = 240;
 
       let targetWidth = video.videoWidth || 320;
       let targetHeight = video.videoHeight || 240;
@@ -1342,39 +1352,90 @@ const ChatHeader = ({
 
       // Use 0.85 quality - good balance between quality and file size
       // This should result in ~50-100KB base64 payload (well under 10MB limit)
-      return canvas.toDataURL("image/jpeg", 0.85);
+      const blob = await new Promise((resolve) => {
+        canvas.toBlob(resolve, "image/jpeg", 0.7);
+      });
+      if (!blob) return null;
+      return await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result || null);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      });
     } catch (error) {
       console.error("Error capturing frame:", error);
       return null;
+    } finally {
+      captureInFlightRef.current = false;
     }
   }, []);
 
   /**
    * Initialize Python emotion detection server socket connection
    */
-  const initializeEmotionServerSocket = useCallback(() => {
+  const initializeEmotionServerSocket = useCallback(async () => {
     if (emotionServerSocketRef.current?.connected) {
       return; // Already connected
     }
 
     if (isConnectingRef.current) {
-      return; // Already connecting, prevent duplicate connections
+      // Share the in-progress connection attempt with frame senders instead
+      // of making them poll a socket that has not been created yet.
+      return new Promise((resolve) => {
+        const startedAt = Date.now();
+        const waitForConnection = () => {
+          if (
+            emotionServerSocketRef.current?.connected ||
+            !isConnectingRef.current ||
+            Date.now() - startedAt >= 15000
+          ) {
+            resolve();
+            return;
+          }
+          window.setTimeout(waitForConnection, 100);
+        };
+        waitForConnection();
+      });
     }
 
+    isConnectingRef.current = true;
     try {
-      // Connect to Python server (default port 5000)
-      const pythonServerUrl =
-        process.env.REACT_APP_EMOTION_SERVER_URL ||
-        "https://emotion-detection-z1b2.onrender.com";
+      let pythonServerUrl = "";
+      let faceServiceSocketToken = "";
+      try {
+        const faceServiceResponse = await api.get("face-service-config", {
+          timeout: 10000,
+        });
+        pythonServerUrl = String(faceServiceResponse.data?.url || "").trim();
+        faceServiceSocketToken = String(
+          faceServiceResponse.data?.socketToken || "",
+        ).trim();
+        console.log("[ChatHeader] ✅ Using face-login server configuration:", {
+          faceServiceUrl: pythonServerUrl,
+          source: faceServiceResponse.data?.source,
+          updatedAt: faceServiceResponse.data?.updatedAt,
+          hasSocketToken: Boolean(faceServiceSocketToken),
+        });
+      } catch (error) {
+        console.warn(
+          "[ChatHeader] ⚠️ Could not resolve face-login server configuration:",
+          error?.message || error,
+        );
+      }
+      pythonServerUrl = pythonServerUrl.replace(/\/+$/, "");
+      if (!pythonServerUrl) {
+        console.error("[ChatHeader] ❌ Face service URL is unavailable");
+        isConnectingRef.current = false;
+        return;
+      }
       console.log(
         "[ChatHeader] Connecting to Python emotion detection server:",
         pythonServerUrl,
       );
 
-      isConnectingRef.current = true;
-
-      emotionServerSocketRef.current = io(pythonServerUrl, {
+      emotionServerSocketRef.current = io(`${pythonServerUrl}/expressions`, {
         transports: ["websocket", "polling"],
+        auth: { token: faceServiceSocketToken },
         reconnection: true,
         reconnectionDelay: 1000,
         reconnectionAttempts: 5,
@@ -1399,6 +1460,10 @@ const ChatHeader = ({
         console.warn(
           "[ChatHeader] ❌ Failed to connect to Python emotion detection server:",
           error.message,
+          {
+            description: error.description,
+            context: error.context,
+          },
         );
         isConnectingRef.current = false;
       });
@@ -1408,8 +1473,9 @@ const ChatHeader = ({
 
       // Listen for emotion detection results
       // Use ref to get latest handler version without re-creating socket
-      emotionServerSocketRef.current.on("face_emotion", (data) => {
-        console.log("[ChatHeader] 📥 Received face_emotion response:", data);
+      emotionServerSocketRef.current.off("expression_update");
+      emotionServerSocketRef.current.on("expression_update", (data) => {
+        console.log("[ChatHeader] 📥 Received expression_update response:", data);
         if (handleEmotionServerResponseRef.current) {
           handleEmotionServerResponseRef.current(data);
         }
@@ -1435,6 +1501,7 @@ const ChatHeader = ({
         success: data?.success,
         hasEmotions: !!data?.emotions,
         dominantEmotion: data?.dominant_emotion,
+        expressionLabel: data?.label,
         error: data?.error,
       });
 
@@ -1454,8 +1521,9 @@ const ChatHeader = ({
         return;
       }
 
-      // If we have dominant_emotion or emotions, process it even if success is false
-      const hasEmotionData = data.emotions || data.dominant_emotion;
+      // The current expression service returns label/base_emotion directly.
+      const hasEmotionData =
+        data.emotions || data.dominant_emotion || data.base_emotion || data.label;
       if (!hasEmotionData) {
         // No face detected or error - this is normal, just skip
         if (data?.error || data?.message) {
@@ -1468,8 +1536,18 @@ const ChatHeader = ({
 
       // Safely extract emotion data with fallbacks
       const emotions = data.emotions || {};
-      const dominant = emotions.dominant || data.dominant_emotion || "neutral";
-      const confidence = emotions.confidence || 0.5;
+      const rawDominant =
+        emotions.dominant ||
+        data.dominant_emotion ||
+        data.base_emotion ||
+        data.label ||
+        "neutral";
+      const dominant = String(rawDominant).trim().toLowerCase();
+      const confidence = Number.isFinite(Number(emotions.confidence))
+        ? Number(emotions.confidence)
+        : Number.isFinite(Number(data.confidence))
+          ? Number(data.confidence)
+          : 0;
       const allEmotions = emotions.all || {};
 
       // Map Python server emotion format to ChatHeader format
@@ -1664,6 +1742,16 @@ const ChatHeader = ({
    */
   const detectEmotionFromServer = useCallback(
     async (base64Image) => {
+      if (
+        typeof base64Image !== "string" ||
+        !base64Image.startsWith("data:image/")
+      ) {
+        console.warn(
+          "[ChatHeader] Skipping invalid captured frame; expected an image data URL",
+        );
+        return;
+      }
+
       if (serverRequestInFlightRef.current) {
         return; // Skip if request already in flight
       }
@@ -1680,13 +1768,11 @@ const ChatHeader = ({
       // Check if socket is connected, if not try to connect
       if (!emotionServerSocketRef.current?.connected) {
         // Only try to connect if we're not already connecting
-        if (!isConnectingRef.current) {
-          initializeEmotionServerSocket();
-        }
+        await initializeEmotionServerSocket();
 
         // Wait for connection with a timeout
         let waitCount = 0;
-        const maxWait = 10; // Wait up to 1 second (10 * 100ms)
+        const maxWait = 50; // Wait up to 5 seconds (50 * 100ms)
 
         while (
           !emotionServerSocketRef.current?.connected &&
@@ -1698,7 +1784,7 @@ const ChatHeader = ({
 
         if (!emotionServerSocketRef.current?.connected) {
           console.warn(
-            "[ChatHeader] Emotion server not connected after waiting, skipping frame",
+            "[ChatHeader] Emotion server not connected after waiting; frame will be retried",
           );
           return;
         }
@@ -1709,9 +1795,9 @@ const ChatHeader = ({
       const t0 = Date.now();
 
       try {
-        // Send frame to Python server via socket.io
-        emotionServerSocketRef.current.emit("webcam_frame", {
-          frame: base64Image,
+        // Send frame to the authenticated /expressions namespace.
+        emotionServerSocketRef.current.emit("frame", {
+          image: base64Image,
         });
         console.log(
           `[ChatHeader] 📤 Sent frame to Python server (req ${reqId})`,
@@ -1737,10 +1823,13 @@ const ChatHeader = ({
     }
 
     // Optimized adaptive detection frequency - faster for quick emotion changes
-    let detectionInterval = 600; // Reduced to 600ms for faster emotion change detection
+    const detectionInterval = 1000;
     let frameSkipCounter = 0;
 
     emotionIntervalRef.current = setInterval(async () => {
+      if (document.hidden || captureInFlightRef.current) {
+        return;
+      }
       // Use friendProfile._id directly if friendId state is not yet set
       const currentFriendId = friendId || friendProfile?._id;
 
@@ -1787,7 +1876,7 @@ const ChatHeader = ({
 
       if (cameraVideoRef?.current && cameraVideoRef.current.readyState >= 2) {
         try {
-          const base64Image = captureFrameAsBase64();
+          const base64Image = await captureFrameAsBase64();
           if (base64Image) {
             await detectEmotionFromServer(base64Image);
           }
@@ -1926,15 +2015,17 @@ const ChatHeader = ({
   ]);
 
   useEffect(() => {
-    // Only stop camera if we're actually leaving the chat page
-    // Check if the new location is still a chat page
+    const previousPath = lastChatPathRef.current;
+    const pathChanged = previousPath !== null && previousPath !== location.pathname;
+    lastChatPathRef.current = location.pathname;
+
     const isStillOnChatPage =
       location.pathname.includes("/chat") ||
       location.pathname.includes("/message");
 
-    if (!isStillOnChatPage) {
-      // User left chat page - stop camera
-      stopCamera(true); // Force stop when leaving page
+    if (pathChanged || !isStillOnChatPage) {
+      // Stop media immediately before another page or chat route takes over.
+      stopCamera(true);
     }
     // Always stop calling beep on location change
     stopCallingBeep();
