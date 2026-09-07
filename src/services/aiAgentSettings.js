@@ -12,8 +12,9 @@ export const AI_PROVIDERS = {
     keyLabel: "Ollama API key",
     keyHelp: "Not required for the local Ollama server.",
     keyPlaceholder: "Not required",
-    defaultModel: "mistral:latest",
+    defaultModel: "qwen3:4b",
     models: [
+      { id: "qwen3:4b", label: "Qwen 3 4B (local)" },
       { id: "mistral:latest", label: "Mistral (local)" },
       { id: "llama3.1:8b", label: "Llama 3.1 8B (local)" },
       { id: "llama3.2:latest", label: "Llama 3.2 (local)" },

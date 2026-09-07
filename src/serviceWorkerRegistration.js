@@ -54,10 +54,14 @@ function checkValidServiceWorker(swUrl, config) {
         response.status === 404 ||
         (contentType && !contentType.includes('javascript'))
       ) {
-        navigator.serviceWorker.ready.then((registration) => {
-          registration.unregister().then(() => {
-            window.location.reload();
-          });
+        // A missing or invalid worker should not force a page reload. Reloading
+        // here repeats the same failed registration and creates a reload loop.
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          return Promise.all(
+            registrations.map((registration) => registration.unregister())
+          );
+        }).catch((error) => {
+          console.error('Error unregistering invalid service worker:', error);
         });
       } else {
         registerValidSW(swUrl, config);
