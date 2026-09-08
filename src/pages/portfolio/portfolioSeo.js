@@ -112,6 +112,14 @@ export function buildPortfolioJsonLd(pathname = '', data) {
       addressCountry: personInfo.address.country,
     },
     sameAs: personInfo.sameAs,
+    knowsAbout: [
+      'WordPress',
+      'MERN Stack',
+      'React',
+      'React Native',
+      'JavaScript',
+      'Web Development',
+    ],
   };
 
   const webPage = {
@@ -128,6 +136,7 @@ export function buildPortfolioJsonLd(pathname = '', data) {
     },
     about: { '@id': `${PORTFOLIO_BASE_URL}/portfolio/#person` },
     mainEntity: { '@id': `${PORTFOLIO_BASE_URL}/portfolio/#person` },
+    mainEntityOfPage: pageUrl,
   };
 
   const breadcrumbItems = [

@@ -78,17 +78,17 @@ const PortfolioShell = () => {
         </button>
       </header>
 
-      {menuOpen && (
-        <button
-          type="button"
-          className="portfolio-backdrop"
-          aria-label="Close menu"
-          onClick={() => setMenuOpen(false)}
-        />
-      )}
-
       {/* Only sidebar + main participate in the layout grid */}
       <div className="portfolio-layout">
+        {menuOpen && (
+          <button
+            type="button"
+            className="portfolio-backdrop"
+            aria-label="Close menu"
+            onClick={() => setMenuOpen(false)}
+          />
+        )}
+
         <aside id="portfolio-sidebar" className="left-sidebar">
           <div className="sidebar-brand">
             <p className="my-name">{name}</p>

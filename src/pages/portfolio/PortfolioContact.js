@@ -70,7 +70,12 @@ const PortfolioContact = () => {
   }
 
   const phoneHref = profile.phone
-    ? `tel:${String(profile.phone).startsWith('+') ? profile.phone : `+88${profile.phone}`}`
+    ? `tel:${String(profile.phone).replace(/[^\d+]/g, '')}`
+    : undefined;
+  const websiteHref = profile.website
+    ? /^https?:\/\//i.test(profile.website)
+      ? profile.website
+      : `https://${profile.website}`
     : undefined;
 
   return (
@@ -103,13 +108,13 @@ const PortfolioContact = () => {
                   </dd>
                 </div>
               ) : null}
-              {profile.website ? (
+              {websiteHref ? (
                 <div className="info-row">
                   <dt className="info-label">Website</dt>
                   <dd className="info-value">
                     <a
                       className="contact-detail-link"
-                      href={`${profile.website.replace(/\/?$/, '/') }portfolio`}
+                      href={websiteHref}
                       target="_blank"
                       rel="noreferrer"
                     >
@@ -130,7 +135,7 @@ const PortfolioContact = () => {
           </div>
         </div>
 
-        <form className="contact-form" onSubmit={handleSubmit} noValidate>
+        <form className="contact-form" onSubmit={handleSubmit}>
           <div className="form-row">
             <div className="form-field">
               <label htmlFor="name">Name</label>
@@ -165,6 +170,7 @@ const PortfolioContact = () => {
               id="message"
               name="message"
               rows={5}
+              maxLength={5000}
               placeholder="Tell me about your project…"
               value={form.message}
               onChange={handleChange}

@@ -25,7 +25,7 @@ import {
 
 export { parseGeminiApiKeys, isGeminiQuotaError, extractGeminiText };
 
-const SYSTEM_PROMPT = `You are Connect's assistant. Reply in the user's language (English, Bangla, or Banglish) and answer the actual request directly. Be concise: 1–2 short sentences unless the user asks for detail. Do not invent app data, names, actions, or results. If a request is ambiguous, ask one brief clarifying question. Do not use markdown.`;
+const SYSTEM_PROMPT = `Connect assistant. Reply in the user's language (English, Bangla, or Banglish). Answer directly in 1–2 short sentences. Never invent app data, names, actions, or results. If unclear, ask one brief question. No markdown.`;
 
 const toChatMessages = (conversationHistory = [], message, limit = 3, clip = 140) => {
   const messages = [];
@@ -86,11 +86,10 @@ const extractJsonObject = (text = "") => {
   }
 };
 
-const AGENT_JSON_PROMPT = `Connect interpreter. JSON only:
-{"reply":"short","actions":[{"action":"NAME","targetName":null,"targetRoute":null,"searchQuery":"","messageText":"","queryType":null}],"ask":{"field":null,"question":null}}
-1 action or none. Never guess names. him/that/yes continue prior.
-NAVIGATE routes: / /message /friends /watch /notes /tasks /settings /ludo-game /yt-download
-SEARCH_YOUTUBE/DOWNLOAD_YOUTUBE use searchQuery. INVITE_LUDO needs targetName.`;
+const AGENT_JSON_PROMPT = `Connect command parser. Return JSON only:
+{"reply":"","actions":[],"ask":{"field":null,"question":null}}
+Use at most 1 action. Never guess names; resolve him/that/yes from context.
+NAVIGATE routes: / /message /friends /watch /notes /tasks /settings /ludo-game /yt-download.`;
 
 const omitEmpty = (value) => {
   if (Array.isArray(value)) {
@@ -157,7 +156,7 @@ export const interpretAgentCommand = async ({
     json: true,
     temperature: 0,
     maxTokens: 128,
-    timeoutMs: 8000,
+    timeoutMs: 20000,
     operationLabel: "Agent interpreter",
   });
 
@@ -303,9 +302,9 @@ export const answerFromAppData = async ({
   data,
   conversationHistory = [],
 } = {}) => {
-  const payload = JSON.stringify(data ?? {}, null, 0).slice(0, 12000);
+  const payload = JSON.stringify(data ?? {}, null, 0).slice(0, 8000);
   const response = await completeChat({
-    system: `You are Connect's in-app assistant. Answer ONLY from the provided JSON app data. If the data does not contain the answer, say you could not find it. Be concise (2-8 sentences or a short list). Reply in the same language as the question. Do not invent names, counts, dates, or captions.`,
+    system: `Answer only from the supplied app JSON. If absent, say you could not find it. Be concise and use the question's language. Never invent names, counts, dates, or captions.`,
     messages: toChatMessages(
       conversationHistory.slice(-4),
       `Question:\n${question}\n\nApp data JSON:\n${payload}`,

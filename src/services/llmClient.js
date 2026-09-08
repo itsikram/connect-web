@@ -26,9 +26,23 @@ export const isGeminiQuotaError = (status, data) => {
   );
 };
 
+const isGeminiTransientError = (status, data) => {
+  const message = String(data?.error?.message || data?.message || "").toLowerCase();
+  return (
+    isGeminiQuotaError(status, data) ||
+    [500, 502, 503, 504].includes(status) ||
+    message.includes("high demand") ||
+    message.includes("overloaded") ||
+    message.includes("temporarily unavailable") ||
+    message.includes("service unavailable")
+  );
+};
+
 let activeGeminiKeyIndex = 0;
 const GEMINI_FETCH_MS = 16000;
-const GEMINI_JSON_MS = 8000;
+// Gemini can spend several seconds starting a response, especially during
+// provider load. Keep JSON/action requests within a useful interactive budget.
+const GEMINI_JSON_MS = 20000;
 
 const geminiOutputCap = (json, maxTokens) =>
   json ? Math.min(maxTokens, 128) : Math.min(maxTokens, 160);
@@ -144,7 +158,7 @@ const requestGemini = async ({
       `${operationLabel} failed with HTTP ${response.status}`;
     lastError = new Error(errorMessage);
 
-    if (!isGeminiQuotaError(response.status, data)) {
+    if (!isGeminiTransientError(response.status, data)) {
       throw lastError;
     }
 
@@ -405,11 +419,13 @@ const streamGemini = async ({
             lastError = new Error(
               retryData?.error?.message || lastError.message,
             );
-            if (!isGeminiQuotaError(response.status, retryData)) throw lastError;
+            if (!isGeminiTransientError(response.status, retryData)) {
+              throw lastError;
+            }
             activeGeminiKeyIndex = (keyIndex + 1) % settings.apiKeys.length;
             continue;
           }
-        } else if (!isGeminiQuotaError(response.status, data)) {
+        } else if (!isGeminiTransientError(response.status, data)) {
           throw lastError;
         } else {
           activeGeminiKeyIndex = (keyIndex + 1) % settings.apiKeys.length;
@@ -444,7 +460,14 @@ const streamGemini = async ({
         text += chunk;
         onDelta?.(text);
       });
-      if (streamError) throw streamError;
+      if (streamError) {
+        if (!isGeminiTransientError(null, { error: { message: streamError.message } })) {
+          throw streamError;
+        }
+        lastError = streamError;
+        activeGeminiKeyIndex = (keyIndex + 1) % settings.apiKeys.length;
+        continue;
+      }
       if (!text.trim()) {
         throw new Error(`${operationLabel} returned an empty response`);
       }
@@ -454,9 +477,16 @@ const streamGemini = async ({
     cleanup();
   }
 
-  const quotaSummary = `All ${settings.apiKeys.length} configured Gemini API ${
-    settings.apiKeys.length === 1 ? "key has" : "keys have"
-  } exceeded quota.`;
+  const lastErrorData = { error: { message: lastError?.message || "" } };
+  const quotaSummary =
+    !isGeminiQuotaError(null, lastErrorData) &&
+    isGeminiTransientError(null, lastErrorData)
+    ? `Gemini is temporarily busy across all ${settings.apiKeys.length} configured API ${
+        settings.apiKeys.length === 1 ? "key." : "keys."
+      } Please try again in a moment.`
+    : `All ${settings.apiKeys.length} configured Gemini API ${
+        settings.apiKeys.length === 1 ? "key has" : "keys have"
+      } exceeded quota.`;
   throw new Error(
     lastError?.message
       ? `${quotaSummary} Last error: ${lastError.message}`

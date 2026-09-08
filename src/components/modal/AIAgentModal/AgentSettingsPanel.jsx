@@ -221,6 +221,13 @@ const AgentSettingsPanel = ({ onClose }) => {
             autoComplete="off"
           />
         )}
+        {provider === "gemini" && (
+          <p className="ai-agent-settings-help">
+            Gemini requests use short prompts and capped replies. Flash-Lite is
+            the recommended paid model for keeping each command well below
+            $0.10.
+          </p>
+        )}
 
         {provider === "ollama" ? (
           <div className="ai-agent-settings-server-key">

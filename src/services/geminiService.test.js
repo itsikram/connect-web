@@ -15,6 +15,17 @@ const quotaResponse = () => ({
   }),
 });
 
+const overloadedResponse = () => ({
+  ok: false,
+  status: 503,
+  json: jest.fn().mockResolvedValue({
+    error: {
+      status: "UNAVAILABLE",
+      message: "This model is currently experiencing high demand.",
+    },
+  }),
+});
+
 const successResponse = () => ({
   ok: true,
   status: 200,
@@ -85,4 +96,19 @@ test("reports how many keys were attempted when every key exceeds quota", async 
   expect(result.response).toContain(
     "All 3 configured Gemini API keys have exceeded quota",
   );
+});
+
+test("rotates keys when Gemini reports high demand", async () => {
+  jest.spyOn(console, "warn").mockImplementation(() => {});
+  global.fetch = jest
+    .fn()
+    .mockResolvedValueOnce(overloadedResponse())
+    .mockResolvedValueOnce(successResponse());
+  const { sendToGemini } = loadService("first-key, second-key");
+
+  const result = await sendToGemini("Hello");
+
+  expect(result).toMatchObject({ success: true, response: "Hello from Gemini" });
+  expect(global.fetch).toHaveBeenCalledTimes(2);
+  expect(global.fetch.mock.calls[1][0]).toContain("key=second-key");
 });

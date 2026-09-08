@@ -36,6 +36,9 @@ import {
   SORT_OPTIONS,
   watchesToPlaylistItems,
   getCachedSavedPlaylist,
+  loadSavedPlaylists,
+  saveNamedPlaylist,
+  deleteNamedPlaylist,
 } from "../utils/videoPlayerLibrary";
 import WatchCacheManager, {
   WATCH_CACHE_EVENT,
@@ -115,8 +118,12 @@ const VideoPlayer = () => {
   const [playQueue, setPlayQueue] = useState(() => loadPlayQueue());
   const [queueIndex, setQueueIndex] = useState(0);
   const [playPass, setPlayPass] = useState(1);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [dragIndex, setDragIndex] = useState(null);
   const [queueDragIndex, setQueueDragIndex] = useState(null);
+  const [savedPlaylists, setSavedPlaylists] = useState([]);
+  const [playlistName, setPlaylistName] = useState("");
+  const [savingPlaylist, setSavingPlaylist] = useState(false);
 
   const videoRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -300,6 +307,16 @@ const VideoPlayer = () => {
   useEffect(() => {
     refreshLibrary();
   }, [refreshLibrary]);
+
+  useEffect(() => {
+    if (!myProfileId) {
+      setSavedPlaylists([]);
+      return;
+    }
+    loadSavedPlaylists()
+      .then(setSavedPlaylists)
+      .catch((error) => console.error("Failed to load saved playlists:", error));
+  }, [myProfileId]);
 
   useEffect(() => {
     const onWatchCache = (event) => {
@@ -665,6 +682,42 @@ const VideoPlayer = () => {
     setIsPlaying(false);
   }, [backgroundAudio]);
 
+  const toggleFullscreen = useCallback(async () => {
+    const frame = videoRef.current?.parentElement;
+    if (!frame) return;
+
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+
+      await frame.requestFullscreen();
+      try {
+        await window.screen?.orientation?.lock?.("landscape");
+      } catch (_) {
+        // Orientation locking is not supported by every browser.
+      }
+    } catch (error) {
+      console.error("Unable to toggle video fullscreen:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const active = Boolean(document.fullscreenElement);
+      setIsFullscreen(active);
+      if (!active) {
+        window.screen?.orientation?.unlock?.();
+      }
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      window.screen?.orientation?.unlock?.();
+    };
+  }, []);
+
   const handleVideoEnd = useCallback(() => {
     const item = currentPlaybackRef.current;
     const times = clampPlayCount(item?.playCount);
@@ -817,6 +870,42 @@ const VideoPlayer = () => {
     setPlayPass(1);
   }, []);
 
+  const saveCurrentPlaylist = useCallback(async () => {
+    const name = playlistName.trim();
+    if (!name || playQueue.length === 0 || savingPlaylist) return;
+    setSavingPlaylist(true);
+    try {
+      const saved = await saveNamedPlaylist(name, playQueue);
+      if (saved) {
+        setSavedPlaylists((prev) => [saved, ...prev.filter((item) => item._id !== saved._id)]);
+        setPlaylistName("");
+        showSuccessToast(`Playlist "${saved.name}" saved.`);
+      }
+    } catch (error) {
+      showErrorToast(error?.response?.data?.error || "Could not save playlist.");
+    } finally {
+      setSavingPlaylist(false);
+    }
+  }, [playlistName, playQueue, savingPlaylist]);
+
+  const loadNamedPlaylist = useCallback((playlist) => {
+    const items = Array.isArray(playlist?.items) ? playlist.items : [];
+    if (!items.length) return;
+    setPlayQueue(items);
+    setQueueIndex(0);
+    setPlayPass(1);
+  }, []);
+
+  const removeNamedPlaylist = useCallback(async (playlist) => {
+    if (!playlist?._id || !window.confirm(`Delete playlist "${playlist.name}"?`)) return;
+    try {
+      await deleteNamedPlaylist(playlist._id);
+      setSavedPlaylists((prev) => prev.filter((item) => item._id !== playlist._id));
+    } catch (error) {
+      showErrorToast(error?.response?.data?.error || "Could not delete playlist.");
+    }
+  }, []);
+
   const applyQueueReorder = useCallback((fromIndex, toIndex) => {
     if (fromIndex === toIndex) return;
     setPlayQueue((prev) => {
@@ -886,7 +975,19 @@ const VideoPlayer = () => {
   const handleSelectYoutubeResult = async (result) => {
     if (!result?.url) return;
     const youtubeId = result.videoId;
-    const existingWatch = watchVideos.find((video) => video.youtubeId === youtubeId);
+    const existingWatch =
+      (result.localWatch?.videoUrl &&
+        normalizePlaylistItem({
+          id: `watch-${result.localWatch._id}`,
+          sourceId: result.localWatch._id,
+          url: result.localWatch.videoUrl,
+          title: result.localWatch.caption || result.title,
+          thumbnail: result.localWatch.thumbnail || result.thumbnail,
+          type: "watch",
+          online: true,
+          youtubeId: result.localWatch.youtubeId || youtubeId,
+        })) ||
+      watchVideos.find((video) => video.youtubeId === youtubeId);
     if (existingWatch) {
       addToPlayQueue(existingWatch);
       setSearchQuery("");
@@ -1580,6 +1681,15 @@ const VideoPlayer = () => {
                     <i className="fas fa-external-link-alt" />
                   </button>
                 )}
+                <button
+                  type="button"
+                  className="video-tool-btn"
+                  onClick={toggleFullscreen}
+                  title={isFullscreen ? "Exit fullscreen" : "Fullscreen landscape"}
+                  aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen landscape"}
+                >
+                  <i className={`fas ${isFullscreen ? "fa-compress" : "fa-expand"}`} />
+                </button>
               </div>
             </div>
           ) : (
@@ -1769,6 +1879,52 @@ const VideoPlayer = () => {
             )}
           </div>
 
+          <div className="video-playlist-sidebar saved-playlists-panel">
+            <div className="playlist-header">
+              <h2>Saved playlists</h2>
+              <span className="playlist-count">{savedPlaylists.length}</span>
+            </div>
+            {myProfileId ? (
+              <>
+                <div className="playlist-save-form">
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Playlist name"
+                    value={playlistName}
+                    maxLength={120}
+                    onChange={(e) => setPlaylistName(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary"
+                    onClick={saveCurrentPlaylist}
+                    disabled={!playlistName.trim() || playQueue.length === 0 || savingPlaylist}
+                  >
+                    {savingPlaylist ? "Saving…" : "Save current"}
+                  </button>
+                </div>
+                {savedPlaylists.length > 0 ? (
+                  <div className="saved-playlist-list">
+                    {savedPlaylists.map((playlist) => (
+                      <div className="saved-playlist-row" key={playlist._id}>
+                        <button type="button" className="saved-playlist-load" onClick={() => loadNamedPlaylist(playlist)}>
+                          <strong>{playlist.name}</strong>
+                          <span>{playlist.items?.length || 0} videos</span>
+                        </button>
+                        <button type="button" className="playlist-item-remove" onClick={() => removeNamedPlaylist(playlist)} title="Delete saved playlist">×</button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="playlist-empty-hint">Save the current playlist to access it on any device.</p>
+                )}
+              </>
+            ) : (
+              <p className="playlist-empty-hint">Sign in to save playlists across devices.</p>
+            )}
+          </div>
+
           <div className="video-playlist-sidebar">
             <div className="playlist-header">
               <h2>Library</h2>
@@ -1847,7 +2003,11 @@ const VideoPlayer = () => {
                       <img src={result.thumbnail} alt="" />
                       <span>
                         <strong>{result.title}</strong>
-                        <small>{result.channelTitle}</small>
+                        <small>
+                          {result.localWatch
+                            ? "Already in Watch · added instantly"
+                            : result.channelTitle}
+                        </small>
                       </span>
                       <i className="fas fa-plus" aria-hidden="true" />
                     </button>

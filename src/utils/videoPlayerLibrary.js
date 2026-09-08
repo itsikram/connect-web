@@ -1,5 +1,6 @@
 import { getAllSavedVideos } from './useSavedVideos';
 import WatchCacheManager from './watchCacheManager';
+import api from '../api/api';
 
 const PLAYLIST_STORAGE_KEY = 'videoPlayerCustomPlaylist';
 const PLAYLIST_ORDER_KEY = 'videoPlayerPlaylistOrder';
@@ -35,6 +36,7 @@ export const normalizePlaylistItem = (item) => {
         type: item.type || 'url',
         thumbnail: item.thumbnail || '',
         sourceId: item.sourceId || item.savedVideoId || item.watchId || '',
+        youtubeId: item.youtubeId || '',
         online: item.online !== false,
     };
 };
@@ -301,6 +303,20 @@ export const savePlayQueue = (items) => {
             })),
         ),
     );
+};
+
+export const loadSavedPlaylists = async () => {
+    const response = await api.get('/video-playlists');
+    return Array.isArray(response.data?.data) ? response.data.data : [];
+};
+
+export const saveNamedPlaylist = async (name, items) => {
+    const response = await api.post('/video-playlists', { name, items });
+    return response.data?.data;
+};
+
+export const deleteNamedPlaylist = async (id) => {
+    await api.delete(`/video-playlists/${id}`);
 };
 
 export const videoToQueueItem = (video, playCount = MIN_PLAY_COUNT) =>
