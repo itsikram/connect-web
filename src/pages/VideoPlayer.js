@@ -929,7 +929,9 @@ const VideoPlayer = () => {
         params: {
           url: result.url,
           ext: "mp4",
-          height: 1080,
+          // Request the highest source quality available, up to 4K. The server
+          // still falls back to the best format when a video has no 4K stream.
+          height: 2160,
           disposition: "inline",
           link_only: true,
           async_job: true,

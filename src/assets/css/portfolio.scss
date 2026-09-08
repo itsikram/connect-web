@@ -1000,10 +1000,9 @@ body.portfolio-menu-open {
     display: block;
     position: fixed;
     inset: 0;
-    z-index: 1250;
+    z-index: 1100;
     border: 0;
     background: rgba(5, 7, 16, 0.55);
-    backdrop-filter: blur(2px);
     cursor: pointer;
   }
 

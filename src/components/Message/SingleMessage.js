@@ -488,7 +488,8 @@ const SingleMessage = ({
           <audio
             ref={audioRef}
             src={src}
-            preload="metadata"
+            preload="auto"
+            playsInline
             onLoadedMetadata={onAudioLoaded}
             onTimeUpdate={onAudioTimeUpdate}
             onEnded={onAudioEnded}

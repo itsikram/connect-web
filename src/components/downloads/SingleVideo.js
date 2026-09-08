@@ -138,7 +138,7 @@ const SingleVideo = () => {
                                 className="sv-single-player"
                                 controls
                                 playsInline
-                                preload="metadata"
+                                preload="auto"
                                 src={videoUrl}
                             />
                         ) : (
