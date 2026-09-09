@@ -109,7 +109,7 @@ const Health = () => {
         body.append('name', fitnessMeal.name || 'meal');
         if (fitnessMealImage) body.append('image', fitnessMealImage);
         const response = await api.post('/fitness/analyze-food', body);
-        setFitnessMeal((old) => ({ ...old, ...(response.data.analysis || {}) }));
+        setFitnessMeal((old) => ({ ...old, ...(response.data.analysis || {}), source: response.data.provider || 'gemini' }));
     });
 
     const saveFitnessMeal = () => runFitness(async () => {
@@ -590,50 +590,97 @@ const Health = () => {
                         <h2 className="health-panel-title"><i className="fas fa-heartbeat" aria-hidden="true" /> Fitness Tracker</h2>
                         {fitnessError && <p className="health-disclaimer">{fitnessError}</p>}
                         {!fitnessData?.profile ? (
-                            <div className="health-form-grid">
-                                {[
-                                    ['age', 'Age'], ['heightCm', 'Height (cm)'], ['weightKg', 'Current weight (kg)'], ['targetWeightKg', 'Target weight (kg)'],
-                                ].map(([key, label]) => <input key={key} type="number" placeholder={label} value={fitnessProfile[key]} onChange={(e) => setFitnessProfile((old) => ({ ...old, [key]: e.target.value }))} />)}
-                                <select value={fitnessProfile.sex} onChange={(e) => setFitnessProfile((old) => ({ ...old, sex: e.target.value }))}><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select>
-                                <select value={fitnessProfile.activityLevel} onChange={(e) => setFitnessProfile((old) => ({ ...old, activityLevel: e.target.value }))}><option value="sedentary">Sedentary</option><option value="light">Light</option><option value="moderate">Moderate</option><option value="very_active">Very active</option><option value="extra_active">Extra active</option></select>
-                                <select value={fitnessProfile.goal} onChange={(e) => setFitnessProfile((old) => ({ ...old, goal: e.target.value }))}><option value="lose">Lose weight</option><option value="maintain">Maintain</option><option value="gain">Gain weight</option></select>
-                                <button type="button" disabled={fitnessLoading} className="health-form-submit" onClick={saveFitnessProfile}>{fitnessLoading ? 'Saving…' : 'Calculate my targets'}</button>
+                            <div className="fitness-setup-shell">
+                               <p className="health-calorie-description">Your targets are calculated privately on the server using Mifflin-St Jeor.</p>
+                               <div className="health-form-grid">
+                                   {[
+                                       ['age', 'Age'], ['heightCm', 'Height (cm)'], ['weightKg', 'Current weight (kg)'], ['targetWeightKg', 'Target weight (kg)'],
+                                   ].map(([key, label]) => <input key={key} type="number" placeholder={label} value={fitnessProfile[key]} onChange={(e) => setFitnessProfile((old) => ({ ...old, [key]: e.target.value }))} />)}
+                                   <select value={fitnessProfile.sex} onChange={(e) => setFitnessProfile((old) => ({ ...old, sex: e.target.value }))}><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select>
+                                   <select value={fitnessProfile.activityLevel} onChange={(e) => setFitnessProfile((old) => ({ ...old, activityLevel: e.target.value }))}><option value="sedentary">Sedentary</option><option value="light">Light</option><option value="moderate">Moderate</option><option value="very_active">Very active</option><option value="extra_active">Extra active</option></select>
+                                   <select value={fitnessProfile.goal} onChange={(e) => setFitnessProfile((old) => ({ ...old, goal: e.target.value }))}><option value="lose">Lose weight</option><option value="maintain">Maintain</option><option value="gain">Gain weight</option></select>
+                                   <button type="button" disabled={fitnessLoading} className="health-form-submit" onClick={saveFitnessProfile}>{fitnessLoading ? 'Saving…' : 'Calculate my targets'}</button>
+                               </div>
                             </div>
                         ) : (
-                            <>
-                                <div className="health-calorie-info">
-                                    <div className="health-calorie-row"><span>Calories</span><strong>{fitnessData.totals?.calories || 0} / {fitnessData.profile.targetCalories} kcal</strong></div>
-                                    <div className="health-calorie-row"><span>Macros</span><strong>P {Math.round(fitnessData.totals?.proteinG || 0)}/{Math.round(fitnessData.profile.macros?.proteinG || 0)}g · C {Math.round(fitnessData.totals?.carbsG || 0)}/{Math.round(fitnessData.profile.macros?.carbsG || 0)}g · F {Math.round(fitnessData.totals?.fatG || 0)}/{Math.round(fitnessData.profile.macros?.fatG || 0)}g</strong></div>
+                            <div className="fitness-shell">
+                                <div className="fitness-hero-card">
+                                    <div>
+                                        <span className="fitness-eyebrow">Today&apos;s fitness</span>
+                                        <strong>{fitnessData.totals?.calories || 0} / {fitnessData.profile.targetCalories} kcal</strong>
+                                        <span>BMR {Math.round(fitnessData.profile.bmr || 0)} · TDEE {Math.round(fitnessData.profile.tdee || 0)}</span>
+                                    </div>
+                                    <div className="fitness-target-summary">
+                                        <span>Goal</span>
+                                        <strong>{fitnessData.profile.goal}</strong>
+                                        {fitnessData.latestWeight?.weightKg && <small>{fitnessData.latestWeight.weightKg} kg latest</small>}
+                                    </div>
                                 </div>
+
+                               <div className="fitness-macro-grid">
+                                   {[
+                                       ['Protein', 'proteinG'], ['Carbs', 'carbsG'], ['Fat', 'fatG'],
+                                   ].map(([label, key]) => <div className="fitness-macro-card" key={key}>
+                                       <strong>{Math.round(fitnessData.totals?.[key] || 0)} / {Math.round(fitnessData.profile.macros?.[key] || 0)}g</strong>
+                                       <span>{label}</span>
+                                   </div>)}
+                               </div>
+
+                               <div className="fitness-section-heading"><h3>Today&apos;s meals</h3><span>{fitnessData.meals?.length || 0} logged</span></div>
+                               {fitnessData.meals?.length ? fitnessData.meals.map((meal) => <div className="health-meal-item fitness-meal-row" key={meal._id}>
+                                    <div><strong>{meal.name}</strong><small>{meal.mealType} · {new Date(meal.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</small></div>
+                                    <span>{Math.round(meal.calories || 0)} kcal · P {Math.round(meal.proteinG || 0)}g · C {Math.round(meal.carbsG || 0)}g · F {Math.round(meal.fatG || 0)}g</span>
+                                </div>) : <p className="fitness-empty-state">No meals logged today. Scan a food photo or add one manually.</p>}
+
+                               <div className="fitness-section-heading"><h3>Add meal</h3><span>AI + manual</span></div>
                                 <div className="health-form-grid">
                                     <input placeholder="Food name" value={fitnessMeal.name} onChange={(e) => setFitnessMeal((old) => ({ ...old, name: e.target.value }))} />
                                     <select value={fitnessMeal.mealType} onChange={(e) => setFitnessMeal((old) => ({ ...old, mealType: e.target.value }))}><option value="breakfast">Breakfast</option><option value="lunch">Lunch</option><option value="dinner">Dinner</option><option value="snack">Snack</option></select>
                                     {['calories', 'proteinG', 'carbsG', 'fatG', 'fiberG'].map((key) => <input key={key} type="number" placeholder={key} value={fitnessMeal[key]} onChange={(e) => setFitnessMeal((old) => ({ ...old, [key]: e.target.value }))} />)}
                                     <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setFitnessMealImage(e.target.files?.[0] || null)} />
-                                    <button type="button" disabled={fitnessLoading} className="health-calorie-add-btn" onClick={analyzeFitnessMeal}>{fitnessLoading ? 'Analyzing…' : 'Analyze food with AI'}</button>
-                                    <button type="button" disabled={fitnessLoading} className="health-form-submit" onClick={saveFitnessMeal}>{fitnessLoading ? 'Saving…' : 'Save meal'}</button>
-                                </div>
-                                <div className="health-form-grid">
-                                    <input type="number" placeholder="Log weight (kg)" onKeyDown={(e) => e.key === 'Enter' && logFitnessWeight(e.currentTarget.value)} />
-                                    <button type="button" disabled={fitnessLoading} className="health-weight-edit-btn" onClick={() => loadFitnessProgress(fitnessPeriod)}>Refresh progress</button>
-                                    {['daily', 'weekly', 'monthly'].map((period) => <button type="button" key={period} className="health-weight-edit-btn" onClick={() => loadFitnessProgress(period)}>{period}</button>)}
-                                </div>
-                                {fitnessProgress && <p className="health-disclaimer">Progress: {fitnessProgress.averageCalories || 0} average kcal · {fitnessProgress.mealCount || 0} meals logged.</p>}
-                                <button type="button" disabled={fitnessLoading} className="health-calorie-add-btn" onClick={loadFitnessRecommendations}>{fitnessLoading ? 'Loading…' : 'Get food recommendations'}</button>
-                                {fitnessRecommendations?.recommendations?.map((item) => <div className="health-meal-item" key={item.name}><span className="health-meal-name">{item.name}</span><span>{item.calories} kcal · P {item.proteinG}g · C {item.carbsG}g · F {item.fatG}g</span><small>{item.why}</small></div>)}
-                                <div className="health-form-grid">
+                                    <div className="fitness-actions-row">
+                                       <button type="button" disabled={fitnessLoading} className="health-calorie-add-btn" onClick={analyzeFitnessMeal}>{fitnessLoading ? 'Analyzing meal with AI…' : 'Analyze food with AI'}</button>
+                                       <button type="button" disabled={fitnessLoading} className="health-form-submit" onClick={saveFitnessMeal}>{fitnessLoading ? 'Saving…' : 'Save meal'}</button>
+                                    </div>
+                               </div>
+                               {fitnessMealImage && <p className="fitness-estimate-note">Photo selected: {fitnessMealImage.name}. Review all AI estimates before saving.</p>}
+                               {fitnessMeal.name && fitnessMeal.source === 'gemini' && <p className="fitness-estimate-note">AI filled these values as estimates. Review and edit them before saving.</p>}
+
+                               <div className="fitness-section-heading"><h3>Progress</h3><span>{fitnessPeriod}</span></div>
+                               <div className="fitness-actions-row">
+                                    {['daily', 'weekly', 'monthly'].map((period) => <button type="button" disabled={fitnessLoading} key={period} className={`health-weight-edit-btn ${fitnessPeriod === period ? 'is-selected' : ''}`} onClick={() => loadFitnessProgress(period)}>{period}</button>)}
+                                    <button type="button" disabled={fitnessLoading} className="health-weight-edit-btn" onClick={() => loadFitnessProgress(fitnessPeriod)}>Refresh</button>
+                               </div>
+                               {fitnessProgress && <div className="fitness-progress-summary">
+                                    <strong>{fitnessPeriod === 'daily' ? "Today's details" : fitnessPeriod === 'weekly' ? 'This week' : 'This month'}</strong>
+                                    <span>Average calories: {fitnessProgress.summary?.averageCalories || 0} kcal/day</span>
+                                    <span>Protein: {Math.round(fitnessProgress.summary?.totalProteinG || 0)}g · Carbs: {Math.round(fitnessProgress.summary?.totalCarbsG || 0)}g · Fat: {Math.round(fitnessProgress.summary?.totalFatG || 0)}g</span>
+                                    <span>Logged days: {fitnessProgress.summary?.loggedDays || 0}</span>
+                               </div>}
+                               <div className="fitness-section-heading"><h3>Food recommendations</h3><span>AI insight</span></div>
+                               <div className="fitness-actions-row">
+                                   <button type="button" disabled={fitnessLoading} className="health-calorie-add-btn" onClick={loadFitnessRecommendations}>{fitnessLoading ? 'Loading…' : 'Get food recommendations'}</button>
+                               </div>
+                               {fitnessRecommendations?.recommendations?.map((item) => <div className="health-meal-item" key={item.name}><span className="health-meal-name">{item.name}</span><span>{item.calories} kcal · P {item.proteinG}g · C {item.carbsG}g · F {item.fatG}g</span><small>{item.why}</small></div>)}
+                               {fitnessRecommendations?.healthNotes?.length ? <div className="fitness-health-notes"><strong>Health details</strong>{fitnessRecommendations.healthNotes.map((note) => <span key={note}>• {note}</span>)}</div> : null}
+
+                               <div className="fitness-section-heading"><h3>Fitness coach</h3><span>General guidance</span></div>
+                               <div className="health-form-grid">
                                     <input placeholder="Ask Fitness coach" value={fitnessCoachQuestion} onChange={(e) => setFitnessCoachQuestion(e.target.value)} />
                                     <button type="button" disabled={fitnessLoading || !fitnessCoachQuestion.trim()} className="health-form-submit" onClick={askFitnessCoach}>Ask coach</button>
-                                </div>
-                                {fitnessCoachReply && <p className="health-disclaimer">{fitnessCoachReply}</p>}
-                                <div className="health-form-grid">
+                               </div>
+                               {fitnessCoachReply && <p className="health-disclaimer">{fitnessCoachReply}</p>}
+
+                               <div className="fitness-section-heading"><h3>Reminders</h3><span>Daily habit prompts</span></div>
+                               <div className="health-form-grid">
                                     <input placeholder="Reminder title" value={fitnessReminder.title} onChange={(e) => setFitnessReminder((old) => ({ ...old, title: e.target.value }))} />
                                     <input type="time" value={fitnessReminder.time} onChange={(e) => setFitnessReminder((old) => ({ ...old, time: e.target.value }))} />
                                     <button type="button" disabled={fitnessLoading} className="health-form-submit" onClick={createFitnessReminder}>Add reminder</button>
-                                </div>
-                                {fitnessReminders.map((item) => <div className="health-meal-item" key={item._id}><span>{item.time} · {item.title}</span><button type="button" onClick={() => deleteFitnessReminder(item._id)}>Delete</button></div>)}
-                                <button type="button" disabled={fitnessLoading} className="health-weight-edit-btn" onClick={resetFitness}>{fitnessLoading ? 'Resetting…' : 'Reset Fitness details'}</button>
-                            </>
+                               </div>
+                               {fitnessReminders.map((item) => <div className="health-meal-item" key={item._id}><span>{item.time} · {item.title}</span><button type="button" onClick={() => deleteFitnessReminder(item._id)}>Delete</button></div>)}
+
+                               <button type="button" disabled={fitnessLoading} className="health-weight-edit-btn" onClick={resetFitness}>{fitnessLoading ? 'Resetting…' : 'Reset Fitness details'}</button>
+                            </div>
                         )}
                     </div>
                 </section>
