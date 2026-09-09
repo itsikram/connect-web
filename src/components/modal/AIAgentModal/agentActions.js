@@ -789,6 +789,7 @@ export const executeAction = async ({
   queryType,
   hintText,
   sourceText,
+  params = {},
   postAsWatch: postAsWatchOverride,
   audioOnly: audioOnlyOverride,
   quality: qualityOverride,
@@ -894,6 +895,51 @@ export const executeAction = async ({
         }
       }
 
+      case "FITNESS_DASHBOARD": {
+        const response = await api.get("/fitness/dashboard");
+        return { success: true, type: "fitness-dashboard", data: response.data, message: "Here is your Fitness dashboard data." };
+      }
+      case "FITNESS_RECOMMENDATIONS": {
+        const response = await api.get("/fitness/recommendations");
+        return { success: true, type: "fitness-recommendations", data: response.data, message: response.data?.message || "Here are your personalized food recommendations." };
+      }
+      case "FITNESS_PROGRESS": {
+        const period = ["daily", "weekly", "monthly"].includes(params.period) ? params.period : "daily";
+        const response = await api.get("/fitness/progress", { params: { period } });
+        return { success: true, type: "fitness-progress", data: response.data, message: `${period[0].toUpperCase()}${period.slice(1)} Fitness progress is ready.` };
+      }
+      case "LOG_FITNESS_MEAL": {
+        const name = String(params.name || "").trim();
+        const fields = ["calories", "proteinG", "carbsG", "fatG"];
+        if (!name || fields.some((field) => !Number.isFinite(Number(params[field])))) return { success: false, message: "Please provide the meal name and calories, protein, carbs, and fat." };
+        const payload = { name, calories: Number(params.calories), proteinG: Number(params.proteinG), carbsG: Number(params.carbsG), fatG: Number(params.fatG), fiberG: Number(params.fiberG) || 0, mealType: params.mealType || "snack" };
+        if (Object.values(payload).some((value) => typeof value === "number" && (value < 0 || value > 100000))) return { success: false, message: "Those meal values are outside a safe range." };
+        await api.post("/fitness/meals", payload);
+        invalidateGetCache("/fitness/dashboard");
+        return { success: true, message: `${name} was added to today's Fitness meals.` };
+      }
+      case "LOG_FITNESS_WEIGHT": {
+        const weightKg = Number(params.weightKg);
+        if (!Number.isFinite(weightKg) || weightKg <= 0 || weightKg > 500) return { success: false, message: "Please provide a valid weight in kilograms." };
+        await api.post("/fitness/weight", { weightKg, note: String(params.note || "").trim() });
+        invalidateGetCache("/fitness/dashboard");
+        return { success: true, message: `Logged ${weightKg} kg in your Fitness progress.` };
+      }
+      case "CREATE_FITNESS_REMINDER": {
+        const title = String(params.title || "").trim();
+        const time = String(params.time || "").trim();
+        if (!title || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return { success: false, message: "Please provide a reminder title and time in HH:mm format." };
+        await api.post("/fitness/reminders", { title, time, type: params.type || "custom", message: String(params.message || title).trim(), days: [0, 1, 2, 3, 4, 5, 6], enabled: true });
+        invalidateGetCache("/fitness/reminders");
+        return { success: true, message: `Fitness reminder "${title}" is set for ${time}.` };
+      }
+      case "ASK_FITNESS_COACH": {
+        const question = String(params.question || sourceText || "").trim();
+        if (!question) return { success: false, message: "What would you like to ask your Fitness coach?" };
+        const response = await api.post("/fitness/coach", { question });
+        return { success: true, type: "fitness-coach", data: response.data, message: response.data?.answer || response.data?.reply || "Your Fitness coach replied." };
+      }
+
       // ── Navigation: static / my-profile routes ──────────────────────────────
       case "NAVIGATE": {
         const dest = label || targetRoute || "page";
@@ -903,6 +949,7 @@ export const executeAction = async ({
           go(`/${myProfile._id}`);
           return { success: true, message: `👤 Opening your profile…` };
         }
+
         if (targetRoute === "MY_PROFILE_FRIENDS") {
           go(`/${myProfile._id}/friends`);
           return { success: true, message: `👥 Opening your friends list…` };
@@ -2313,6 +2360,13 @@ export const getActionMeta = (action) => {
     LIST_EVENTS: { label: "Calendar", icon: "fa-calendar-alt", color: "#00d4ff" },
     LIST_FRIENDS_INFO: { label: "Friends", icon: "fa-users", color: "#00d4ff" },
     GET_MY_DETAILS: { label: "My Details", icon: "fa-id-card", color: "#00d4ff" },
+    FITNESS_DASHBOARD: { label: "Fitness Dashboard", icon: "fa-heartbeat", color: "#00c851" },
+    FITNESS_RECOMMENDATIONS: { label: "Food Recommendations", icon: "fa-utensils", color: "#00c851" },
+    FITNESS_PROGRESS: { label: "Fitness Progress", icon: "fa-chart-line", color: "#00d4ff" },
+    LOG_FITNESS_MEAL: { label: "Log Fitness Meal", icon: "fa-apple-alt", color: "#00c851" },
+    LOG_FITNESS_WEIGHT: { label: "Log Fitness Weight", icon: "fa-weight", color: "#00d4ff" },
+    CREATE_FITNESS_REMINDER: { label: "Fitness Reminder", icon: "fa-bell", color: "#f59e0b" },
+    ASK_FITNESS_COACH: { label: "Fitness Coach", icon: "fa-user-md", color: "#00c851" },
     ACCEPT_FRIEND: {
       label: "Accept Request",
       icon: "fa-user-check",

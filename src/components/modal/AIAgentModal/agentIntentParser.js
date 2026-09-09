@@ -1274,6 +1274,27 @@ const parseCombinedLudoIntent = (message) => {
  *             subPath: string|null, label: string|null, params: object }|null}
  */
 const parseIntentOnce = (trimmed) => {
+  const lower = trimmed.toLowerCase();
+  if (/\b(fitness|nutrition|health)\b/.test(lower)) {
+    if (/\b(recommend|suggest|food|eat)\b/.test(lower)) {
+      return { action: "FITNESS_RECOMMENDATIONS", params: {}, sourceText: trimmed };
+    }
+    if (/\b(progress|summary|report)\b/.test(lower)) {
+      const period = lower.includes("monthly") ? "monthly" : lower.includes("weekly") ? "weekly" : "daily";
+      return { action: "FITNESS_PROGRESS", params: { period }, sourceText: trimmed };
+    }
+    if (/\b(coach|advice|ask)\b/.test(lower)) {
+      return { action: "ASK_FITNESS_COACH", params: { question: trimmed }, sourceText: trimmed };
+    }
+    if (/\bweight\b/.test(lower)) {
+      const match = trimmed.match(/(\d+(?:\.\d+)?)\s*(?:kg|kilograms?)/i);
+      return { action: "LOG_FITNESS_WEIGHT", params: { weightKg: match?.[1] }, sourceText: trimmed };
+    }
+    if (/\b(meal|ate|eaten|log food)\b/.test(lower)) {
+      return { action: "LOG_FITNESS_MEAL", params: {}, sourceText: trimmed };
+    }
+    return { action: "FITNESS_DASHBOARD", params: {}, sourceText: trimmed };
+  }
   const combinedLudoIntent = parseCombinedLudoIntent(trimmed);
   if (combinedLudoIntent) {
     return combinedLudoIntent;

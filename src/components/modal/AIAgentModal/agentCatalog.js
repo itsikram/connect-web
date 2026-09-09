@@ -92,6 +92,13 @@ export const AGENT_ACTIONS = {
   LIST_EVENTS: "LIST_EVENTS",
   LIST_FRIENDS_INFO: "LIST_FRIENDS_INFO",
   GET_MY_DETAILS: "GET_MY_DETAILS",
+  FITNESS_DASHBOARD: "FITNESS_DASHBOARD",
+  FITNESS_RECOMMENDATIONS: "FITNESS_RECOMMENDATIONS",
+  FITNESS_PROGRESS: "FITNESS_PROGRESS",
+  LOG_FITNESS_MEAL: "LOG_FITNESS_MEAL",
+  LOG_FITNESS_WEIGHT: "LOG_FITNESS_WEIGHT",
+  CREATE_FITNESS_REMINDER: "CREATE_FITNESS_REMINDER",
+  ASK_FITNESS_COACH: "ASK_FITNESS_COACH",
 };
 
 export const ALLOWED_ACTIONS = new Set(Object.values(AGENT_ACTIONS));
@@ -170,6 +177,13 @@ export const NO_FRIEND_ACTIONS = new Set([
   AGENT_ACTIONS.LIST_EVENTS,
   AGENT_ACTIONS.LIST_FRIENDS_INFO,
   AGENT_ACTIONS.GET_MY_DETAILS,
+  AGENT_ACTIONS.FITNESS_DASHBOARD,
+  AGENT_ACTIONS.FITNESS_RECOMMENDATIONS,
+  AGENT_ACTIONS.FITNESS_PROGRESS,
+  AGENT_ACTIONS.LOG_FITNESS_MEAL,
+  AGENT_ACTIONS.LOG_FITNESS_WEIGHT,
+  AGENT_ACTIONS.CREATE_FITNESS_REMINDER,
+  AGENT_ACTIONS.ASK_FITNESS_COACH,
 ]);
 
 export const LOOKUP_ACTIONS = new Set([
@@ -641,6 +655,25 @@ export const getMissingIntentSlots = (intent) => {
     if (!hasPatch) {
       missing.push("searchQuery");
     }
+
+    const params = intent.params || {};
+    if (action === AGENT_ACTIONS.LOG_FITNESS_MEAL) {
+      if (!hasValue(params.name || intent.label)) missing.push("mealName");
+      if (!Number.isFinite(Number(params.calories))) missing.push("calories");
+      if (!Number.isFinite(Number(params.proteinG))) missing.push("proteinG");
+      if (!Number.isFinite(Number(params.carbsG))) missing.push("carbsG");
+      if (!Number.isFinite(Number(params.fatG))) missing.push("fatG");
+    }
+    if (action === AGENT_ACTIONS.LOG_FITNESS_WEIGHT && !Number.isFinite(Number(params.weightKg))) {
+      missing.push("weightKg");
+    }
+    if (action === AGENT_ACTIONS.CREATE_FITNESS_REMINDER) {
+      if (!hasValue(params.title)) missing.push("reminderTitle");
+      if (!hasValue(params.time)) missing.push("reminderTime");
+    }
+    if (action === AGENT_ACTIONS.ASK_FITNESS_COACH && !hasValue(params.question)) {
+      missing.push("coachQuestion");
+    }
   }
 
   if (
@@ -664,6 +697,15 @@ export const getSlotQuestion = (intent, slots = []) => {
     if (action === "SEND_MESSAGE" || action === "SEND_MESSAGE_TO_USER") {
       return "Who should I message?";
     }
+    if (slot === "mealName") return "What meal should I log?";
+    if (slot === "calories") return "How many calories did it have?";
+    if (slot === "proteinG") return "How many grams of protein?";
+    if (slot === "carbsG") return "How many grams of carbs?";
+    if (slot === "fatG") return "How many grams of fat?";
+    if (slot === "weightKg") return "What is your weight in kilograms?";
+    if (slot === "reminderTitle") return "What should I call the reminder?";
+    if (slot === "reminderTime") return "What time should it run? Use HH:mm.";
+    if (slot === "coachQuestion") return "What would you like to ask your Fitness coach?";
     if (action === "BUMP") return "Who should I bump?";
     if (action === "CREATE_LUDO" || action === "INVITE_LUDO") {
       return "Who should I invite to Ludo?";
@@ -792,4 +834,3 @@ export const mergeFollowUpIntent = ({
 
   return merged;
 };
-

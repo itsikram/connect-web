@@ -8,6 +8,7 @@ import {
     QUICK_TIPS,
 } from '../constants/healthContent';
 import { getSuggestedMeals, getCalorieAnalysis, calculateTDEE } from '../utils/geminiApi';
+import api from '../api/api';
 import './Health.css';
 
 const STORAGE_KEY = 'connectHealthWellness';
@@ -53,8 +54,115 @@ const Health = () => {
     const [activityLevel, setActivityLevel] = useState('moderately-active');
     const [healthGoal, setHealthGoal] = useState('weight-loss');
     const [dietaryPreferences, setDietaryPreferences] = useState('');
+    const [fitnessData, setFitnessData] = useState(null);
+    const [fitnessProfile, setFitnessProfile] = useState({ sex: 'other', age: '', heightCm: '', weightKg: '', targetWeightKg: '', activityLevel: 'moderate', goal: 'maintain' });
+    const [fitnessPeriod, setFitnessPeriod] = useState('daily');
+    const [fitnessProgress, setFitnessProgress] = useState(null);
+    const [fitnessRecommendations, setFitnessRecommendations] = useState(null);
+    const [fitnessReminders, setFitnessReminders] = useState([]);
+    const [fitnessCoachQuestion, setFitnessCoachQuestion] = useState('');
+    const [fitnessCoachReply, setFitnessCoachReply] = useState('');
+    const [fitnessMeal, setFitnessMeal] = useState({ name: '', calories: '', proteinG: '', carbsG: '', fatG: '', fiberG: '', mealType: 'snack' });
+    const [fitnessMealImage, setFitnessMealImage] = useState(null);
+    const [fitnessReminder, setFitnessReminder] = useState({ title: '', time: '', type: 'custom', message: '' });
+    const [fitnessLoading, setFitnessLoading] = useState(false);
+    const [fitnessError, setFitnessError] = useState('');
 
     const todayKey = getTodayKey();
+
+    const loadFitness = useCallback(async () => {
+        try {
+            const [dashboard, reminders] = await Promise.all([
+                api.get('/fitness/dashboard'),
+                api.get('/fitness/reminders'),
+            ]);
+            setFitnessData(dashboard.data);
+            setFitnessReminders(reminders.data?.reminders || reminders.data || []);
+            if (dashboard.data?.profile) setFitnessProfile(dashboard.data.profile);
+        } catch (error) {
+            setFitnessError(error?.response?.status === 404 ? '' : 'Could not load Fitness data.');
+        }
+    }, []);
+
+    useEffect(() => { loadFitness(); }, [loadFitness]);
+
+    const runFitness = async (operation) => {
+        setFitnessLoading(true);
+        setFitnessError('');
+        try { await operation(); } catch (error) { setFitnessError(error?.response?.data?.message || 'Fitness request failed.'); } finally { setFitnessLoading(false); }
+    };
+
+    const saveFitnessProfile = () => runFitness(async () => {
+        const response = await api.put('/fitness/profile', {
+            ...fitnessProfile,
+            age: Number(fitnessProfile.age),
+            heightCm: Number(fitnessProfile.heightCm),
+            weightKg: Number(fitnessProfile.weightKg),
+            targetWeightKg: fitnessProfile.targetWeightKg ? Number(fitnessProfile.targetWeightKg) : undefined,
+        });
+        setFitnessData((old) => ({ ...(old || {}), profile: response.data.profile || response.data }));
+        await loadFitness();
+    });
+
+    const analyzeFitnessMeal = () => runFitness(async () => {
+        const body = new FormData();
+        body.append('name', fitnessMeal.name || 'meal');
+        if (fitnessMealImage) body.append('image', fitnessMealImage);
+        const response = await api.post('/fitness/analyze-food', body);
+        setFitnessMeal((old) => ({ ...old, ...(response.data.analysis || {}) }));
+    });
+
+    const saveFitnessMeal = () => runFitness(async () => {
+        await api.post('/fitness/meals', { ...fitnessMeal, source: 'web', date: new Date().toISOString() });
+        setFitnessMeal({ name: '', calories: '', proteinG: '', carbsG: '', fatG: '', fiberG: '', mealType: 'snack' });
+        await loadFitness();
+    });
+
+    const loadFitnessProgress = (period) => runFitness(async () => {
+        setFitnessPeriod(period);
+        const response = await api.get('/fitness/progress', { params: { period } });
+        setFitnessProgress(response.data);
+    });
+
+    const loadFitnessRecommendations = () => runFitness(async () => {
+        const response = await api.get('/fitness/recommendations');
+        setFitnessRecommendations(response.data);
+    });
+
+    const logFitnessWeight = (value) => runFitness(async () => {
+        await api.post('/fitness/weight', { weightKg: Number(value), date: new Date().toISOString() });
+        await loadFitness();
+    });
+
+    const askFitnessCoach = () => runFitness(async () => {
+        const response = await api.post('/fitness/coach', { question: fitnessCoachQuestion });
+        setFitnessCoachReply(response.data.reply || response.data.answer || '');
+    });
+
+    const createFitnessReminder = () => runFitness(async () => {
+        await api.post('/fitness/reminders', { ...fitnessReminder, days: [0, 1, 2, 3, 4, 5, 6], enabled: true });
+        setFitnessReminder({ title: '', time: '', type: 'custom', message: '' });
+        await loadFitness();
+    });
+
+    const deleteFitnessReminder = (id) => runFitness(async () => {
+        await api.delete(`/fitness/reminders/${id}`);
+        await loadFitness();
+    });
+
+    const resetFitness = () => {
+        if (!window.confirm('Reset Fitness details? This permanently deletes your Fitness profile, meals, weights, and reminders.')) return;
+        runFitness(async () => {
+            await api.delete('/fitness/reset');
+            setFitnessData(null);
+            setFitnessProfile({ sex: 'other', age: '', heightCm: '', weightKg: '', targetWeightKg: '', activityLevel: 'moderate', goal: 'maintain' });
+            setFitnessProgress(null);
+            setFitnessRecommendations(null);
+            setFitnessReminders([]);
+            setFitnessCoachReply('');
+            [USER_PROFILE_KEY, CALORIE_TARGET_KEY, MEAL_LOG_KEY, WEIGHT_TARGET_KEY, WEIGHT_LOG_KEY, NOTIFICATIONS_KEY].forEach((key) => localStorage.removeItem(key));
+        });
+    };
 
     useEffect(() => {
         try {
@@ -476,6 +584,59 @@ const Health = () => {
                     <i className="fas fa-info-circle" aria-hidden="true" />
                     {HEALTH_DISCLAIMER}
                 </p>
+
+                <section className="health-calorie-section" aria-label="Fitness tracker">
+                    <div className="health-calorie-card">
+                        <h2 className="health-panel-title"><i className="fas fa-heartbeat" aria-hidden="true" /> Fitness Tracker</h2>
+                        {fitnessError && <p className="health-disclaimer">{fitnessError}</p>}
+                        {!fitnessData?.profile ? (
+                            <div className="health-form-grid">
+                                {[
+                                    ['age', 'Age'], ['heightCm', 'Height (cm)'], ['weightKg', 'Current weight (kg)'], ['targetWeightKg', 'Target weight (kg)'],
+                                ].map(([key, label]) => <input key={key} type="number" placeholder={label} value={fitnessProfile[key]} onChange={(e) => setFitnessProfile((old) => ({ ...old, [key]: e.target.value }))} />)}
+                                <select value={fitnessProfile.sex} onChange={(e) => setFitnessProfile((old) => ({ ...old, sex: e.target.value }))}><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select>
+                                <select value={fitnessProfile.activityLevel} onChange={(e) => setFitnessProfile((old) => ({ ...old, activityLevel: e.target.value }))}><option value="sedentary">Sedentary</option><option value="light">Light</option><option value="moderate">Moderate</option><option value="very_active">Very active</option><option value="extra_active">Extra active</option></select>
+                                <select value={fitnessProfile.goal} onChange={(e) => setFitnessProfile((old) => ({ ...old, goal: e.target.value }))}><option value="lose">Lose weight</option><option value="maintain">Maintain</option><option value="gain">Gain weight</option></select>
+                                <button type="button" disabled={fitnessLoading} className="health-form-submit" onClick={saveFitnessProfile}>{fitnessLoading ? 'Saving…' : 'Calculate my targets'}</button>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="health-calorie-info">
+                                    <div className="health-calorie-row"><span>Calories</span><strong>{fitnessData.totals?.calories || 0} / {fitnessData.profile.targetCalories} kcal</strong></div>
+                                    <div className="health-calorie-row"><span>Macros</span><strong>P {Math.round(fitnessData.totals?.proteinG || 0)}/{Math.round(fitnessData.profile.macros?.proteinG || 0)}g · C {Math.round(fitnessData.totals?.carbsG || 0)}/{Math.round(fitnessData.profile.macros?.carbsG || 0)}g · F {Math.round(fitnessData.totals?.fatG || 0)}/{Math.round(fitnessData.profile.macros?.fatG || 0)}g</strong></div>
+                                </div>
+                                <div className="health-form-grid">
+                                    <input placeholder="Food name" value={fitnessMeal.name} onChange={(e) => setFitnessMeal((old) => ({ ...old, name: e.target.value }))} />
+                                    <select value={fitnessMeal.mealType} onChange={(e) => setFitnessMeal((old) => ({ ...old, mealType: e.target.value }))}><option value="breakfast">Breakfast</option><option value="lunch">Lunch</option><option value="dinner">Dinner</option><option value="snack">Snack</option></select>
+                                    {['calories', 'proteinG', 'carbsG', 'fatG', 'fiberG'].map((key) => <input key={key} type="number" placeholder={key} value={fitnessMeal[key]} onChange={(e) => setFitnessMeal((old) => ({ ...old, [key]: e.target.value }))} />)}
+                                    <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setFitnessMealImage(e.target.files?.[0] || null)} />
+                                    <button type="button" disabled={fitnessLoading} className="health-calorie-add-btn" onClick={analyzeFitnessMeal}>{fitnessLoading ? 'Analyzing…' : 'Analyze food with AI'}</button>
+                                    <button type="button" disabled={fitnessLoading} className="health-form-submit" onClick={saveFitnessMeal}>{fitnessLoading ? 'Saving…' : 'Save meal'}</button>
+                                </div>
+                                <div className="health-form-grid">
+                                    <input type="number" placeholder="Log weight (kg)" onKeyDown={(e) => e.key === 'Enter' && logFitnessWeight(e.currentTarget.value)} />
+                                    <button type="button" disabled={fitnessLoading} className="health-weight-edit-btn" onClick={() => loadFitnessProgress(fitnessPeriod)}>Refresh progress</button>
+                                    {['daily', 'weekly', 'monthly'].map((period) => <button type="button" key={period} className="health-weight-edit-btn" onClick={() => loadFitnessProgress(period)}>{period}</button>)}
+                                </div>
+                                {fitnessProgress && <p className="health-disclaimer">Progress: {fitnessProgress.averageCalories || 0} average kcal · {fitnessProgress.mealCount || 0} meals logged.</p>}
+                                <button type="button" disabled={fitnessLoading} className="health-calorie-add-btn" onClick={loadFitnessRecommendations}>{fitnessLoading ? 'Loading…' : 'Get food recommendations'}</button>
+                                {fitnessRecommendations?.recommendations?.map((item) => <div className="health-meal-item" key={item.name}><span className="health-meal-name">{item.name}</span><span>{item.calories} kcal · P {item.proteinG}g · C {item.carbsG}g · F {item.fatG}g</span><small>{item.why}</small></div>)}
+                                <div className="health-form-grid">
+                                    <input placeholder="Ask Fitness coach" value={fitnessCoachQuestion} onChange={(e) => setFitnessCoachQuestion(e.target.value)} />
+                                    <button type="button" disabled={fitnessLoading || !fitnessCoachQuestion.trim()} className="health-form-submit" onClick={askFitnessCoach}>Ask coach</button>
+                                </div>
+                                {fitnessCoachReply && <p className="health-disclaimer">{fitnessCoachReply}</p>}
+                                <div className="health-form-grid">
+                                    <input placeholder="Reminder title" value={fitnessReminder.title} onChange={(e) => setFitnessReminder((old) => ({ ...old, title: e.target.value }))} />
+                                    <input type="time" value={fitnessReminder.time} onChange={(e) => setFitnessReminder((old) => ({ ...old, time: e.target.value }))} />
+                                    <button type="button" disabled={fitnessLoading} className="health-form-submit" onClick={createFitnessReminder}>Add reminder</button>
+                                </div>
+                                {fitnessReminders.map((item) => <div className="health-meal-item" key={item._id}><span>{item.time} · {item.title}</span><button type="button" onClick={() => deleteFitnessReminder(item._id)}>Delete</button></div>)}
+                                <button type="button" disabled={fitnessLoading} className="health-weight-edit-btn" onClick={resetFitness}>{fitnessLoading ? 'Resetting…' : 'Reset Fitness details'}</button>
+                            </>
+                        )}
+                    </div>
+                </section>
 
                 <section className="health-stats-row" aria-label="Daily wellness progress">
                     <div className="health-stat-card">
