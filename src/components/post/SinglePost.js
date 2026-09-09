@@ -7,7 +7,7 @@ import { useSelector } from "react-redux";
 import UserPP from "../UserPP";
 import { Link } from "react-router-dom";
 import { Container } from "react-bootstrap";
-import ImageSkleton from "../../skletons/post/ImageSkleton";
+import PostImage from "./PostImage";
 import SinglePostSkeleton from "../../skletons/post/SinglePostSkeleton";
 import ModalContainer from "../modal/ModalContainer";
 import useIsMobile from "../../utils/useIsMobile";
@@ -18,7 +18,6 @@ import { AuthorDisplayName } from "../feed/OfficialBadge";
 import SingleReactor from "./SingleReactor";
 import { confirmAlert } from "react-confirm-alert";
 import "react-confirm-alert/src/react-confirm-alert.css";
-import checkImgLoading from "../../utils/checkImgLoading";
 import { showSuccessToast, showErrorToast } from "../../utils/toastUtils";
 import {
   uniquePlacedReacts,
@@ -46,7 +45,6 @@ const SinglePost = () => {
   let [postData, setPostData] = useState(false);
   let [isShareModal, setIsShareModal] = useState(false);
   let [shareCap, setShareCap] = useState(false);
-  let [isLoaded, setIsloaded] = useState(false);
   let isMobile = useIsMobile();
   let navigate = useNavigate();
   const location = useLocation();
@@ -98,11 +96,6 @@ const SinglePost = () => {
   );
 
   let postPhoto = postData && postData.photos;
-  useEffect(() => {
-    checkImgLoading(postPhoto, setIsloaded);
-    // checkImgLoading(postPhoto, setIsloaded)
-  }, [postPhoto]);
-
   useEffect(() => {
     let storedReacts = uniquePlacedReacts(postData?.reacts || []);
     (postData?.reacts || []).forEach((react) => {
@@ -505,16 +498,8 @@ const SinglePost = () => {
               <p className="caption">{postData.caption}</p>
               <div className="body">
                 <p className="caption">{postData.parentPost?.caption}</p>
-                {isLoaded ? (
-                  <>
-                    <div className="attachment">
-                      <Link to={`/post/${postData._id}`}>
-                        <img src={postPhoto} alt="post" />
-                      </Link>
-                    </div>
-                  </>
-                ) : (
-                  <>{isValidUrl(postPhoto) && <ImageSkleton />}</>
+                {isValidUrl(postPhoto) && (
+                  <PostImage src={postPhoto} postId={postData._id} />
                 )}
               </div>
             </div>
@@ -817,16 +802,8 @@ const SinglePost = () => {
                 <p className="caption">{postData.caption}</p>
               )}
 
-              {isLoaded ? (
-                <>
-                  <div className="attachment">
-                    <Link to={`/post/${postData._id}`}>
-                      <img src={postPhoto} alt="post" />
-                    </Link>
-                  </div>
-                </>
-              ) : (
-                <>{isValidUrl(postPhoto) && <ImageSkleton />}</>
+              {isValidUrl(postPhoto) && (
+                <PostImage src={postPhoto} postId={postData._id} />
               )}
             </div>
             <div className="footer">

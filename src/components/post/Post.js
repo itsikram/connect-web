@@ -16,10 +16,9 @@ import ExpandableText from "./ExpandableText";
 import { confirmAlert } from "react-confirm-alert";
 import "react-confirm-alert/src/react-confirm-alert.css"; // Import CSS
 import socket from "../../common/socket";
-import ImageSkleton from "../../skletons/post/ImageSkleton";
+import PostImage from "./PostImage";
 import ModalContainer from "../modal/ModalContainer";
 import useIsMobile from "../../utils/useIsMobile";
-import checkImgLoading from "../../utils/checkImgLoading";
 import isValidUrl from "../../utils/isValiUrl";
 import { addPost, removePost } from "../../services/actions/postActions";
 import CacheManager from "../../utils/cacheManager";
@@ -121,7 +120,6 @@ const Post = React.memo(
     let [isReportModal, setIsReportModal] = useState(false);
     let [selectedAudience, setSelectedAudience] = useState(post.audience || 1);
     let [isUpdatingAudience, setIsUpdatingAudience] = useState(false);
-    const [isLoaded, setIsloaded] = useState(false);
     let isMobile = useIsMobile();
     let navigate = useNavigate();
     let nfPosts = useRef([]);
@@ -187,10 +185,6 @@ const Post = React.memo(
 
     let postPhoto = post.photos;
     let type = post.type || "post";
-
-    useEffect(() => {
-      checkImgLoading(postPhoto, setIsloaded);
-    }, [postPhoto]);
 
     let hideThisPost = useCallback(
       async (e) => {
@@ -749,17 +743,8 @@ const Post = React.memo(
                     <p className="caption">
                       <ExpandableText>{post?.parentPost?.caption}</ExpandableText>
                     </p>
-                    {isLoaded && isValidUrl(postPhoto) ? (
-                      <>
-                        {" "}
-                        <div className="attachment">
-                          <Link to={`/post/${post._id}`}>
-                            <img src={postPhoto} alt="post" />
-                          </Link>
-                        </div>
-                      </>
-                    ) : (
-                      <>{isValidUrl(postPhoto) && <ImageSkleton />}</>
+                    {isValidUrl(postPhoto) && (
+                      <PostImage src={postPhoto} postId={post._id} />
                     )}
                   </div>
                 </div>
@@ -1058,17 +1043,8 @@ const Post = React.memo(
                     <ExpandableText>{post.caption}</ExpandableText>
                   </p>
                 ) : null}
-                {isLoaded && isValidUrl(postPhoto) ? (
-                  <>
-                    {" "}
-                    <div className="attachment">
-                      <Link to={`/post/${post._id}`}>
-                        <img src={postPhoto} alt="post" />
-                      </Link>
-                    </div>
-                  </>
-                ) : (
-                  <>{isValidUrl(postPhoto) && <ImageSkleton />}</>
+                {isValidUrl(postPhoto) && (
+                  <PostImage src={postPhoto} postId={post._id} />
                 )}
               </div>
               <div className="footer">
@@ -1266,7 +1242,6 @@ const Post = React.memo(
       index,
       postAuthorPP,
       isPostOption,
-      isLoaded,
       postPhoto,
       placedReacts,
       totalReacts,

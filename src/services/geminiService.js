@@ -283,6 +283,7 @@ export const generatePostCaption = async (userRequest = "") => {
         ],
         temperature: 0.85,
         maxTokens: 80,
+        timeoutMs: 30000,
         operationLabel: "Post caption",
       })
     )

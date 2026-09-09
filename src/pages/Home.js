@@ -56,6 +56,7 @@ const Home = () => {
             return []
         }
     })
+    const [storiesLoading, setStoriesLoading] = useState(true)
     const [lastVisitPost, setLastVisitPost] = useState(false)
     const [feedLoaded, setFeedLoaded] = useState(false)
     const [pageNumber, setPageNumber] = useState(0)
@@ -94,9 +95,9 @@ const Home = () => {
         try {
             const previousCachedPosts = CacheManager.getCachedPosts() || []
             const previousCachedPostIds = new Set(previousCachedPosts.map(post => post?._id))
-            const nfRes = await api.get('/post/newsFeed/', {
+            const nfRes = await api.get('/feed/posts', {
                 params: {
-                    pageNumber: 1
+                    page: 1
                 }
             })
 
@@ -109,7 +110,7 @@ const Home = () => {
                 dispatch(loadPosts(latestPosts, { append: false }))
                 CacheManager.setCachedPosts(latestPosts)
                 setPageNumber(1)
-                setHasNewPosts(nfRes.data.hasNewPost ?? false)
+                setHasNewPosts(nfRes.data.hasMore ?? nfRes.data.hasNewPost ?? false)
 
                 if (newPostsInFetch.length > 0) {
                     setNewPostsCount(newPostsInFetch.length)
@@ -135,16 +136,16 @@ const Home = () => {
 
         const nextPage = pageNumber + 1;
         try {
-            const nfRes = await api.get('/post/newsFeed/', {
+            const nfRes = await api.get('/feed/posts', {
                 params: {
-                    pageNumber: nextPage
+                    page: nextPage
                 }
             })
             if (nfRes.status === 200) {
                 const newPosts = Array.isArray(nfRes.data.posts) ? nfRes.data.posts : []
                 dispatch(loadPosts(newPosts, { append: true }))
                 setPageNumber(nextPage)
-                setHasNewPosts(nfRes.data.hasNewPost ?? false)
+                setHasNewPosts(nfRes.data.hasMore ?? nfRes.data.hasNewPost ?? false)
             }
         } catch (error) {
             console.error('Error loading news feed:', error);
@@ -165,6 +166,8 @@ const Home = () => {
             }
         } catch (error) {
             console.error('Error fetching stories:', error)
+        } finally {
+            setStoriesLoading(false)
         }
     }, [writeStoriesCache])
 
@@ -282,7 +285,13 @@ const Home = () => {
                                 )}
 
                                 {
-                                    stories.length > 0 ? (
+                                    storiesLoading ? (
+                                        <div id="nf-story-container" >
+                                            <div ref={storyContainer} className="nf-story-overflow-container">
+                                                <StoryListSkleton count={7} />
+                                            </div>
+                                        </div>
+                                    ) : stories.length > 0 ? (
                                         <div id="nf-story-container" >
                                             <div ref={storyContainer} className="nf-story-overflow-container">
 
@@ -297,25 +306,7 @@ const Home = () => {
                                             </div>
 
                                         </div>
-                                    ) :
-
-                                        (
-                                            <div id="nf-story-container" >
-                                                <div ref={storyContainer} className="nf-story-overflow-container">
-
-                                                    <StoryListSkleton count={7} />
-
-                                                </div>
-                                                <div className="nf-story-arrow-left" onClick={scrollLeft.bind(this)} >
-                                                    <i className="fa fa-chevron-left"></i>
-                                                </div>
-                                                <div className="nf-story-arrow-right" onClick={scrollRight.bind(this)} >
-                                                    <i className="fa fa-chevron-right"></i>
-                                                </div>
-
-
-                                            </div>
-                                        )
+                                    ) : null
                                 }
 
 

@@ -312,10 +312,10 @@ class WatchCacheManager {
       setCached: (items) =>
         this.setCachedFeed(profileId, Array.isArray(items) ? items : []),
       fetcher: async () => {
-        const response = await api.get("watch/related", {
-          params: { profile_id: profileId },
+        const response = await api.get("feed/watches", {
+          params: { page: 1, limit: 24 },
         });
-        return Array.isArray(response.data) ? response.data : [];
+        return Array.isArray(response.data?.watches) ? response.data.watches : [];
       },
     });
 

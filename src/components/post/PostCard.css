@@ -283,6 +283,38 @@ html[data-theme="light"],
   background: rgba(0, 0, 0, 0.2);
 }
 
+.nf-post .body .post-image {
+  position: relative;
+  min-height: 180px;
+  overflow: hidden;
+}
+
+.nf-post .body .post-image .post-image-link {
+  display: block;
+}
+
+.nf-post .body .post-image--loading img,
+.nf-post .body .post-image--error img {
+  visibility: hidden;
+}
+
+.nf-post .body .post-image-retry {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--post-text-muted);
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.nf-post .body .post-image-retry:hover {
+  color: var(--post-accent);
+  background: var(--post-hover);
+}
+
 .nf-post .body .attachment img {
   width: 100%;
   max-height: 620px;
