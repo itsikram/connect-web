@@ -200,11 +200,11 @@ const openSpeechSocket = (socketUrl, onMessage) =>
   });
 
 const toDeepgramLang = (langCode) =>
-  String(langCode || "")
-    .toLowerCase()
-    .startsWith("bn")
-    ? "bn"
-    : "en";
+  String(langCode || "").toLowerCase() === "auto"
+    ? "multi"
+    : String(langCode || "").toLowerCase().startsWith("bn")
+      ? "bn"
+      : "en";
 
 export default function useComposerLiveTranscribe({
   onFinal,
@@ -655,6 +655,13 @@ export default function useComposerLiveTranscribe({
         lastPartialRef.current = "";
         const requested = String(langCode || "en-US");
         langRef.current = requested;
+        if (requested.toLowerCase() === "auto") {
+          if (!canUseDeepgram()) {
+            throw new Error("auto-language-detection-unavailable");
+          }
+          await startDeepgram("multi");
+          return true;
+        }
         const isBangla = requested.toLowerCase().startsWith("bn");
         const browserLangs = isBangla
           ? requested.toLowerCase().startsWith("bn-in")

@@ -19,7 +19,7 @@ let ProfilePic = ({ profileData }) => {
 
     let myProfileData = useSelector(state => state.profile)
     const dispatch = useDispatch();
-    // handle profile pic upload
+    // handle profile pic uploadconnect-author-name
 
     const [isPPModal, setIsPPModal] = useState(false)
     const [isPPViewModal, setIsPPViewModal] = useState(false)

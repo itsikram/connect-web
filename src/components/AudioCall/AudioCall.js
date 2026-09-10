@@ -25,6 +25,7 @@ import {
   closeCallNotification,
 } from "../../utils/callNotification";
 import audioPreloader from "../../utils/audioPreloader";
+import CallTranscript from "../CallTranscript/CallTranscript";
 
 const RINGTONE_DB_NAME = "connect-audio-cache";
 const RINGTONE_DB_VERSION = 1;
@@ -92,6 +93,7 @@ const AudioCall = ({ myId }) => {
   const localTracks = useRef([]);
   const isJoiningOrJoined = useRef(false);
   const hasBoundClientEvents = useRef(false);
+  const acceptedChannelRef = useRef(null);
   const remoteUserCheckInterval = useRef(null);
   const cleanupAudioCallRef = useRef(null);
 
@@ -450,6 +452,7 @@ const AudioCall = ({ myId }) => {
     const { data } = await api.post("/agora/token", {
       channelName,
       uid: numericUid,
+      role: "publisher",
     });
     return data; // { appId, token }
   };
@@ -465,6 +468,10 @@ const AudioCall = ({ myId }) => {
         }
         setCallAccepted(true);
         setCurrentChannel(channelName);
+        // Mark the channel synchronously so a late reject/cancel event cannot
+        // tear down a call whose acceptance is already being processed.
+        callAcceptedRef.current = true;
+        acceptedChannelRef.current = channelName;
 
         // Set call start time for duration tracking
         if (!callStartTime.current) {
@@ -477,23 +484,6 @@ const AudioCall = ({ myId }) => {
           return;
         }
         isJoiningOrJoined.current = true;
-
-        // Small helper: wait until client connectionState is CONNECTED
-        const waitForConnected = async (maxMs = 1500, stepMs = 100) => {
-          const maxSteps = Math.ceil(maxMs / stepMs);
-          for (let i = 0; i < maxSteps; i++) {
-            if (
-              clientRef.current &&
-              clientRef.current.connectionState === "CONNECTED"
-            )
-              return true;
-            await new Promise((r) => setTimeout(r, stepMs));
-          }
-          return (
-            clientRef.current &&
-            clientRef.current.connectionState === "CONNECTED"
-          );
-        };
 
         const { appId, token } = await getToken(channelName);
         console.log("Got Agora token for audio channel:", channelName);
@@ -520,76 +510,36 @@ const AudioCall = ({ myId }) => {
         });
         const client = clientRef.current;
 
-        // Bind before joining/publishing so a fast remote publish cannot be missed.
-        if (!hasBoundClientEvents.current) {
-          hasBoundClientEvents.current = true;
-          client.on("user-published", async (user, mediaType) => {
-            console.log("Remote user published:", user.uid, mediaType);
-            try {
-              await client.subscribe(user, mediaType);
-              console.log("Successfully subscribed to", user.uid, mediaType);
-
-              if (mediaType === "audio" && user.audioTrack) {
-                user.audioTrack.play();
-                console.log("Playing remote audio from user:", user.uid);
-              }
-            } catch (error) {
-              console.error(
-                "Error subscribing to user:",
-                user.uid,
-                mediaType,
-                error,
-              );
-            }
-          });
-
-          client.on("user-unpublished", (user) => {
-            console.log("Remote user unpublished:", user.uid);
-          });
-
-          client.on("user-left", async (user) => {
-            console.log("AudioCall - Remote user left the channel:", user?.uid);
-            try {
-              await cleanupAudioCall();
-            } catch (e) {
-              console.warn(
-                "AudioCall - Cleanup after remote user-left failed:",
-                e,
-              );
-            }
-          });
-        }
+        // Bind on every fresh client. The client is recreated for each call.
+        hasBoundClientEvents.current = true;
+        client.on("user-published", async (user, mediaType) => {
+          if (mediaType !== "audio") return;
+          try {
+            await client.subscribe(user, "audio");
+            user.audioTrack?.play();
+            console.log("Playing remote audio from user:", user.uid);
+          } catch (error) {
+            console.error("Error subscribing to remote audio:", error);
+          }
+        });
+        client.on("user-left", (user) => {
+          console.log("AudioCall - Remote user left the channel:", user?.uid);
+          if (callAcceptedRef.current) {
+            cleanupAudioCall();
+          }
+        });
 
         await client.join(appId, channelName, token, numericUid);
         console.log("Joined Agora audio channel successfully");
 
-        // Ensure fully connected before publishing
-        await waitForConnected();
-
         // Create local audio track only (no video)
         if (!localTracks.current || localTracks.current.length === 0) {
           try {
-            // Request microphone permission explicitly
-            try {
-              const mediaStream = await navigator.mediaDevices.getUserMedia({
-                audio: true,
-              });
-              // Stop the tracks after getting permission (Agora will create its own)
-              mediaStream.getTracks().forEach((track) => track.stop());
-            } catch (permissionError) {
-              if (permissionError.name === "NotAllowedError") {
-                console.warn("Microphone permission denied by user");
-                // Don't throw - let startCall handle the error
-              }
-            }
-
             localTracks.current = [await AgoraRTC.createMicrophoneAudioTrack()];
             console.log("Created local audio track");
           } catch (trackError) {
             console.error("Failed to create microphone track:", trackError);
-            if (trackError.name === "NotAllowedError") {
-              console.warn("Cannot proceed without microphone permission");
-            }
+            throw trackError;
           }
         } else {
           console.log("Using existing audio track");
@@ -612,13 +562,10 @@ const AudioCall = ({ myId }) => {
             console.warn(
               "Publish raced join; waiting briefly then retrying...",
             );
-            await waitForConnected(800, 100);
-            if (isTerminating.current) {
-              console.warn("Publish retry skipped: call is terminating");
-              return;
+            if (!isTerminating.current) {
+              await client.publish(localTracks.current);
+              console.log("Published local audio track on retry");
             }
-            await client.publish(localTracks.current);
-            console.log("Published local audio track on retry");
           } else {
             if (
               String(pubErr.message || pubErr).includes(
@@ -838,6 +785,7 @@ const AudioCall = ({ myId }) => {
 
     isJoiningOrJoined.current = false;
     hasBoundClientEvents.current = false;
+    acceptedChannelRef.current = null;
     callStartTime.current = null;
     console.log("AudioCall: Cleanup - reset call flags");
 
@@ -848,6 +796,7 @@ const AudioCall = ({ myId }) => {
     }
 
     setCallAccepted(false);
+    callAcceptedRef.current = false;
     setIsAudioCall(false);
     setCurrentChannel(null);
     setReceivingCall(false);
@@ -1055,6 +1004,8 @@ const AudioCall = ({ myId }) => {
       }
       callSeenStatusSentRef.current = false;
       callIgnoredStatusSentRef.current = false;
+      callAcceptedRef.current = false;
+      acceptedChannelRef.current = null;
       setIsAudioCall(true);
       setReceivingCall(false);
       setCaller(to);
@@ -1091,6 +1042,8 @@ const AudioCall = ({ myId }) => {
           });
           stopRingtone();
           setOutgoingCallStatus("");
+          callAcceptedRef.current = true;
+          acceptedChannelRef.current = channelName;
           startCall(channelName);
         } else {
           console.log(
@@ -1115,14 +1068,31 @@ const AudioCall = ({ myId }) => {
     };
     socket.on("audio-call-cancelled", onAudioCallCancelled);
 
-    const onAudioCallRejected = async () => {
+    const onAudioCallRejected = async ({ channelName } = {}) => {
       console.log("AudioCall: Received audio-call-rejected event from server");
+      // A reject can arrive from a duplicate socket/push delivery after the
+      // callee has already accepted. Never tear down the accepted call.
+      if (
+        callAcceptedRef.current ||
+        isJoiningOrJoined.current ||
+        (channelName &&
+          currentChannelRef.current &&
+          channelName !== currentChannelRef.current)
+      ) {
+        console.warn("AudioCall: Ignoring stale rejection for active call", {
+          channelName,
+          activeChannel: currentChannelRef.current,
+        });
+        return;
+      }
       console.warn("AudioCall: Call was rejected by recipient");
       stopRingtone();
       setOutgoingCallStatus("Call rejected");
       // Wait briefly before cleanup to let user see the rejection status
       setTimeout(() => {
-        cleanupAudioCall();
+        if (!callAcceptedRef.current && !isJoiningOrJoined.current) {
+          cleanupAudioCall();
+        }
       }, 500);
     };
     socket.on("audio-call-rejected", onAudioCallRejected);
@@ -1585,7 +1555,6 @@ const AudioCall = ({ myId }) => {
                 </button>
               </>
             )}
-
             {!callAccepted && receivingCall && (
               <>
                 <button
@@ -1600,6 +1569,7 @@ const AudioCall = ({ myId }) => {
               </>
             )}
           </div>
+          {callAccepted && <CallTranscript enabled channelName={currentChannel} peerId={caller} myId={myId} />}
         </div>
       </ModalContainer>
       {/* Always render audio element to avoid autoplay issues when tab is not focused */}

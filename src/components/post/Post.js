@@ -17,6 +17,7 @@ import { confirmAlert } from "react-confirm-alert";
 import "react-confirm-alert/src/react-confirm-alert.css"; // Import CSS
 import socket from "../../common/socket";
 import PostImage from "./PostImage";
+import PostGallery from "./PostGallery";
 import ModalContainer from "../modal/ModalContainer";
 import useIsMobile from "../../utils/useIsMobile";
 import isValidUrl from "../../utils/isValiUrl";
@@ -184,6 +185,12 @@ const Post = React.memo(
     }, [post._id, post.reacts, myProfileId]);
 
     let postPhoto = post.photos;
+    let postGallery = post.gallery || [];
+    if (post?.parentPost) {
+      postPhoto = post.parentPost.photos;
+      postGallery = post.parentPost.gallery || [];
+    }
+    const postImages = [postPhoto, ...postGallery].filter((url) => isValidUrl(url));
     let type = post.type || "post";
 
     let hideThisPost = useCallback(
@@ -743,9 +750,14 @@ const Post = React.memo(
                     <p className="caption">
                       <ExpandableText>{post?.parentPost?.caption}</ExpandableText>
                     </p>
-                    {isValidUrl(postPhoto) && (
+                    {postImages.length > 1 ? (
+                      <PostGallery
+                        photos={{ primary: postPhoto, gallery: postGallery }}
+                        postId={post._id}
+                      />
+                    ) : isValidUrl(postPhoto) ? (
                       <PostImage src={postPhoto} postId={post._id} />
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -1043,9 +1055,14 @@ const Post = React.memo(
                     <ExpandableText>{post.caption}</ExpandableText>
                   </p>
                 ) : null}
-                {isValidUrl(postPhoto) && (
+                {postImages.length > 1 ? (
+                  <PostGallery
+                    photos={{ primary: postPhoto, gallery: postGallery }}
+                    postId={post._id}
+                  />
+                ) : isValidUrl(postPhoto) ? (
                   <PostImage src={postPhoto} postId={post._id} />
-                )}
+                ) : null}
               </div>
               <div className="footer">
                 <div className="react-count">

@@ -8,6 +8,7 @@ import UserPP from "../UserPP";
 import { Link } from "react-router-dom";
 import { Container } from "react-bootstrap";
 import PostImage from "./PostImage";
+import PostGallery from "./PostGallery";
 import SinglePostSkeleton from "../../skletons/post/SinglePostSkeleton";
 import ModalContainer from "../modal/ModalContainer";
 import useIsMobile from "../../utils/useIsMobile";
@@ -96,6 +97,8 @@ const SinglePost = () => {
   );
 
   let postPhoto = postData && postData.photos;
+  let postGallery = (postData && postData.gallery) || [];
+  const postImages = [postPhoto, ...postGallery].filter((url) => isValidUrl(url));
   useEffect(() => {
     let storedReacts = uniquePlacedReacts(postData?.reacts || []);
     (postData?.reacts || []).forEach((react) => {
@@ -498,9 +501,14 @@ const SinglePost = () => {
               <p className="caption">{postData.caption}</p>
               <div className="body">
                 <p className="caption">{postData.parentPost?.caption}</p>
-                {isValidUrl(postPhoto) && (
+                {postImages.length > 1 ? (
+                  <PostGallery
+                    photos={{ primary: postPhoto, gallery: postGallery }}
+                    postId={postData._id}
+                  />
+                ) : isValidUrl(postPhoto) ? (
                   <PostImage src={postPhoto} postId={postData._id} />
-                )}
+                ) : null}
               </div>
             </div>
 
@@ -802,9 +810,14 @@ const SinglePost = () => {
                 <p className="caption">{postData.caption}</p>
               )}
 
-              {isValidUrl(postPhoto) && (
+              {postImages.length > 1 ? (
+                <PostGallery
+                  photos={{ primary: postPhoto, gallery: postGallery }}
+                  postId={postData._id}
+                />
+              ) : isValidUrl(postPhoto) ? (
                 <PostImage src={postPhoto} postId={postData._id} />
-              )}
+              ) : null}
             </div>
             <div className="footer">
               <div className="react-count">

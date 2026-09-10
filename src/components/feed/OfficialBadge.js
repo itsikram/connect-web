@@ -17,7 +17,7 @@ export const VerifiedBadge = () => (
     title="Verified profile"
     aria-label="Verified profile"
   >
-    <i className="fas fa-check" aria-hidden="true" />
+    <i className="fas fa-badge-check" aria-hidden="true" />
   </span>
 );
 

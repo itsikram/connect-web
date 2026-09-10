@@ -16,6 +16,7 @@ import api from "../../api/api";
 import { useCallMinimize } from "../../contexts/CallMinimizeContext";
 import config from "../../config/config.json";
 import audioPreloader from "../../utils/audioPreloader";
+import CallTranscript from "../CallTranscript/CallTranscript";
 import {
   unlockAudio,
   playAudioWithWebAudio,
@@ -163,6 +164,7 @@ const VideoCall = ({ myId }) => {
   const remoteContainer = useRef();
   const remoteUserCheckInterval = useRef(null);
   const isCleaningUpRef = useRef(false); // Track if cleanup is in progress
+  const callAttemptRef = useRef(0);
   const cleanupVideoCallRef = useRef(null);
 
   // Stable numeric UID for Agora (avoids string-UID warning)
@@ -536,6 +538,9 @@ const VideoCall = ({ myId }) => {
       return;
     }
     isCleaningUpRef.current = true;
+    // Invalidate any in-flight join/publish sequence. A remote rejection can
+    // arrive while Agora is still connecting and cancel that sequence.
+    callAttemptRef.current += 1;
 
     stopRingtone();
     stopFlashingTitle();
@@ -554,7 +559,11 @@ const VideoCall = ({ myId }) => {
 
     // Unpublish and leave Agora channel if connected, then dispose client
     try {
-      if (clientRef.current && localTracks.current.length > 0) {
+      if (
+        clientRef.current &&
+        clientRef.current.connectionState === "CONNECTED" &&
+        localTracks.current.length > 0
+      ) {
         try {
           console.log("VideoCall: Unpublishing local tracks...");
           await clientRef.current.unpublish(localTracks.current);
@@ -840,6 +849,10 @@ const VideoCall = ({ myId }) => {
   // Start a call (join & publish)
   const startCall = useCallback(
     async (channelName) => {
+      const callAttempt = ++callAttemptRef.current;
+      const isStaleAttempt = () =>
+        callAttempt !== callAttemptRef.current || isCleaningUpRef.current;
+
       try {
         console.log("Starting Agora call with channel:", channelName);
         setCallAccepted(true);
@@ -858,6 +871,7 @@ const VideoCall = ({ myId }) => {
         isJoiningOrJoined.current = true;
 
         const { appId, token } = await getToken(channelName);
+        if (isStaleAttempt()) return;
         console.log("Got Agora token for channel:", channelName);
 
         // Ensure previous client is disposed
@@ -927,6 +941,7 @@ const VideoCall = ({ myId }) => {
         }
 
         await client.join(appId, channelName, token, numericUid);
+        if (isStaleAttempt()) return;
         console.log("Joined Agora channel successfully");
 
         // Immediately check for existing users after joining
@@ -955,7 +970,9 @@ const VideoCall = ({ myId }) => {
           try {
             localTracks.current =
               await AgoraRTC.createMicrophoneAndCameraTracks();
+            if (isStaleAttempt()) return;
           } catch (trackErr) {
+            if (isStaleAttempt()) return;
             console.error(
               "createMicrophoneAndCameraTracks failed, falling back to mic only:",
               trackErr,
@@ -979,6 +996,7 @@ const VideoCall = ({ myId }) => {
         }
 
         await client.publish(localTracks.current);
+        if (isStaleAttempt()) return;
         console.log("Published local tracks");
 
         // Bind client events only once
@@ -1151,6 +1169,15 @@ const VideoCall = ({ myId }) => {
           }
         }, 2000); // Check every 2 seconds
       } catch (error) {
+        const message = String(error?.message || error || "");
+        if (
+          isStaleAttempt() ||
+          message.includes("OPERATION_ABORTED") ||
+          message.includes("cancel token canceled")
+        ) {
+          console.log("Agora call startup cancelled during call cleanup");
+          return;
+        }
         console.error("Failed to start call:", error);
         alert("Failed to start call. Please try again.");
         setIsVideoCall(false);
@@ -2380,6 +2407,7 @@ const VideoCall = ({ myId }) => {
                 )}
               </>
             )}
+            {callAccepted && <CallTranscript enabled channelName={currentChannel} peerId={caller} myId={myId} />}
 
             {!callAccepted && receivingCall && (
               <>

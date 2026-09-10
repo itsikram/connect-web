@@ -25,6 +25,7 @@ let CreatePost = ({ setPosts = null }) => {
     let [isUploading, setIsUploading] = useState(false)
     let [isSubmitting, setIsSubmitting] = useState(false)
     const uploadAttachmentRef = React.useRef(null)
+    const uploadInputRef = React.useRef(null)
 
     let handleCpFieldClick = (e) => {
         setPostModal(true)
@@ -95,6 +96,7 @@ let CreatePost = ({ setPosts = null }) => {
         caption: '',
         attachments: null,
         urls: null,
+        gallery: [],
         location: '',
         feelings: '',
         audience: 3 // Default: Only Me
@@ -220,11 +222,19 @@ let CreatePost = ({ setPosts = null }) => {
 
     let handleAttachmentChange = useCallback((e) => {
         let currentTarget = e.currentTarget
-        setPostData({ ...postData, urls: loadingImgUrl })
-        $(currentTarget).parents('.cpm-attachment-upload').slideUp()
-        $(currentTarget).parents('.cpm-attachment-upload').siblings('.cpm-attachment-preview').addClass('show').slideDown()
-        let attachments = e.target.files[0];
-        handleUploadAttachment(attachments.type, attachments)
+        let attachments = Array.from(e.target.files || [])
+        const attachmentTypes = new Set(attachments.map((file) => file.type.split('/')[0]))
+        if (attachmentTypes.size > 1 || (postData.type === 'image' && attachmentTypes.has('video'))) {
+            e.target.value = ''
+            window.alert('Please select images only when adding to an image post.')
+            return
+        }
+        if (attachments.length) {
+            setPostData({ ...postData, urls: loadingImgUrl })
+            $(currentTarget).parents('.cpm-attachment-upload').slideUp()
+            $(currentTarget).parents('.cpm-attachment-upload').siblings('.cpm-attachment-preview').addClass('show').slideDown()
+            handleUploadAttachment(attachments[0].type, attachments)
+        }
 
     }, [postData])
 
@@ -234,41 +244,46 @@ let CreatePost = ({ setPosts = null }) => {
         e.preventDefault()
     }
 
-    let handleUploadAttachment = async (type, attachment) => {
+    let handleUploadAttachment = async (type, attachments) => {
         setIsUploading(true)
         try {
-
+            const files = Array.isArray(attachments) ? attachments : [attachments]
             let fileType = type.split('/')[0]
             setAttachmentType(fileType)
 
             switch (fileType) {
 
                 case 'image':
-                    let imageFormData = new FormData();
-
-                    imageFormData.append('image', attachment);
-                    imageFormData.append('type', 'image/png');
-
-                    let uploadImageRes = await api.post('/upload/', imageFormData, {
-                        headers: {
-                            'content-type': 'multipart/form-data'
+                    const uploadedImageUrls = []
+                    for (const image of files) {
+                        const imageFormData = new FormData();
+                        imageFormData.append('image', image);
+                        imageFormData.append('type', image.type || 'image/jpeg');
+                        const uploadImageRes = await api.post('/upload/', imageFormData, {
+                            headers: { 'content-type': 'multipart/form-data' }
+                        })
+                        if (uploadImageRes.status !== 200 || !uploadImageRes.data.secure_url) {
+                            throw new Error('Image upload failed')
+                        }
+                        uploadedImageUrls.push(uploadImageRes.data.secure_url)
+                    }
+                    setPostData(state => {
+                        const existingImageUrls = state.type === 'image'
+                            ? [state.urls, ...(state.gallery || [])].filter(Boolean)
+                            : []
+                        const allImageUrls = [...existingImageUrls, ...uploadedImageUrls]
+                        return {
+                            ...state,
+                            urls: allImageUrls[0] || null,
+                            gallery: allImageUrls.slice(1),
+                            type: fileType,
                         }
                     })
-                    if (uploadImageRes.status == 200) {
-                        setIsUploading(false)
-                        var uploadedImageUrl = uploadImageRes.data.secure_url;
-                        setPostData(state => {
-                            return {
-                                ...state,
-                                urls: uploadedImageUrl,
-                                type: fileType,
-                            }
-                        })
-                        $('.cpm-attachment-preview').addClass('show')
-                    }
+                    $('.cpm-attachment-preview').addClass('show')
 
                     break;
                 case 'video':
+                    const attachment = files[0]
                     let watchUploadFormData = new FormData();
                     watchUploadFormData.append('attachment', attachment);
                     watchUploadFormData.append('type', 'video/mp4');
@@ -281,7 +296,6 @@ let CreatePost = ({ setPosts = null }) => {
 
                     if (uploadWatchRes.status == 200) {
                         var uploadedWatchUrl = uploadWatchRes.data.secure_url;
-                        setIsUploading(false)
                         setPostData(state => {
                             return {
                                 ...state,
@@ -297,12 +311,36 @@ let CreatePost = ({ setPosts = null }) => {
 
         } catch (error) {
             console.log('Error uploading attachment:', error)
+        } finally {
             setIsUploading(false)
+            if (uploadInputRef.current) {
+                uploadInputRef.current.value = ''
+            }
         }
 
     }
 
     uploadAttachmentRef.current = handleUploadAttachment;
+
+    const removeSelectedImage = (index) => {
+        setPostData((state) => {
+            const images = [state.urls, ...(state.gallery || [])].filter(Boolean)
+            const remainingImages = images.filter((_, imageIndex) => imageIndex !== index)
+            return {
+                ...state,
+                urls: remainingImages[0] || null,
+                gallery: remainingImages.slice(1),
+                type: remainingImages.length ? 'image' : null,
+            }
+        })
+        const hadMultipleImages = [postData.urls, ...(postData.gallery || [])].filter(Boolean).length > 1
+        setAttachmentType(hadMultipleImages ? 'image' : false)
+        if (uploadInputRef.current) uploadInputRef.current.value = ''
+        if ([postData.urls, ...(postData.gallery || [])].filter(Boolean).length <= 1) {
+            $('.cpm-attachment-preview').removeClass('show').slideUp()
+        }
+        $('.cpm-attachment-upload').slideDown()
+    }
 
     let handlePostSubmit = useCallback(async (e) => {
         e.preventDefault()
@@ -316,6 +354,7 @@ let CreatePost = ({ setPosts = null }) => {
                     let postFormData = new FormData()
                     postFormData.append('caption', postData.caption)
                     postFormData.append('photos', postData.urls)
+                    postFormData.append('gallery', JSON.stringify(postData.gallery || []))
                     postFormData.append('feelings', postData.feelings)
                     postFormData.append('location', postData.location)
                     postFormData.append('audience', postData.audience || 3)
@@ -344,6 +383,7 @@ let CreatePost = ({ setPosts = null }) => {
                     let videoPostFormData = new FormData()
                     videoPostFormData.append('caption', postData.caption)
                     videoPostFormData.append('photos', postData.urls)
+                    videoPostFormData.append('gallery', JSON.stringify([]))
                     videoPostFormData.append('feelings', postData.feelings)
                     videoPostFormData.append('location', postData.location)
                     videoPostFormData.append('audience', postData.audience || 3)
@@ -372,6 +412,7 @@ let CreatePost = ({ setPosts = null }) => {
                     let defaultFormData = new FormData()
                     defaultFormData.append('caption', postData.caption)
                     defaultFormData.append('photos', postData.urls)
+                    defaultFormData.append('gallery', JSON.stringify([]))
                     defaultFormData.append('feelings', postData.feelings)
                     defaultFormData.append('location', postData.location)
                     defaultFormData.append('audience', postData.audience || 3)
@@ -590,19 +631,31 @@ let CreatePost = ({ setPosts = null }) => {
                                             </div>
                                         )}
                                         {postData.type === 'image' && !isUploading && postData.urls && (
-                                            <div className="attachment-preview-wrapper">
-                                                <img src={postData.urls} alt="attachment preview" />
-                                                <button 
-                                                    type="button" 
-                                                    className="remove-attachment-btn"
-                                                    onClick={() => {
-                                                        setPostData(state => ({ ...state, urls: null, type: null }))
-                                                        setAttachmentType(false)
-                                                    }}
-                                                >
-                                                    <i className="fas fa-times"></i>
-                                                </button>
+                                            <div className="attachment-preview-gallery">
+                                                {[postData.urls, ...(postData.gallery || [])].map((url, index) => (
+                                                    <div className="attachment-preview-wrapper" key={`${url}-${index}`}>
+                                                        <img src={url} alt={`attachment preview ${index + 1}`} />
+                                                        <button
+                                                            type="button"
+                                                            className="remove-attachment-btn"
+                                                            aria-label={`Remove image ${index + 1}`}
+                                                            onClick={() => removeSelectedImage(index)}
+                                                        >
+                                                            <i className="fas fa-times"></i>
+                                                        </button>
+                                                    </div>
+                                                ))}
                                             </div>
+                                        )}
+                                        {postData.type === 'image' && !isUploading && postData.urls && (
+                                            <button
+                                                type="button"
+                                                className="add-more-images-btn"
+                                                onClick={() => uploadInputRef.current?.click()}
+                                            >
+                                                <i className="fas fa-plus"></i>
+                                                <span>Add more images</span>
+                                            </button>
                                         )}
                                     </div>
                                     <div className="cpm-attachment-upload">
@@ -612,8 +665,10 @@ let CreatePost = ({ setPosts = null }) => {
                                         </div>
                                         <input 
                                             onChange={handleAttachmentChange} 
+                                            ref={uploadInputRef}
                                             name="photos_vidoes" 
                                             type="file" 
+                                            multiple={true}
                                             accept="image/*,video/*"
                                         ></input>
                                     </div>
