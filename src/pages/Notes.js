@@ -79,7 +79,12 @@ const Notes = () => {
 
     const handleUpdateNote = async (field, value) => {
         if (!selectedNote) return;
-        
+
+        // Notes require a non-empty title; use the same default as note creation.
+        const valueToSave = field === 'title' && !value.trim()
+            ? 'Untitled Note'
+            : value;
+
         // Optimistic update
         const updatedNote = {
             ...selectedNote,
@@ -94,7 +99,7 @@ const Notes = () => {
         handleUpdateNote.timeout = setTimeout(async () => {
             try {
                 const response = await api.put(`/notes/${selectedNote._id}`, {
-                    [field]: value
+                    [field]: valueToSave
                 });
                 if (response.data.success) {
                     const savedNote = response.data.note;

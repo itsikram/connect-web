@@ -4,7 +4,7 @@ import Moment from 'react-moment';
 import { Link } from 'react-router-dom';
 import api from "../../api/api";
 import LoadingSpinner, { TypingIndicator } from "../loading/LoadingSpinner";
-import { getProfileDisplayName, splitMentionBody, buildReplyMessage } from './commentUtils';
+import { getProfileDisplayName, buildReplyMessage, splitMentionTokens } from './commentUtils';
 import './CommentStyles.css';
 import ExpandableText from './ExpandableText';
 import MentionInput from './MentionInput';
@@ -43,7 +43,7 @@ const SingleReply = ({ item, myProfile, setReplies, comment, isEditMode, isPostA
 
     const submitNestedReply = useCallback(async () => {
         if (isSubmittingReply) return;
-        const message = buildReplyMessage(replyData.body, authorName);
+        const message = buildReplyMessage(replyData.body, comment?.author);
         if (!message || !comment?._id) return;
 
         setIsSubmittingReply(true);
@@ -127,7 +127,11 @@ const SingleReply = ({ item, myProfile, setReplies, comment, isEditMode, isPostA
 
     if (removed || !item?.author) return null;
 
-    const { mention, rest } = splitMentionBody(item.body);
+    const renderBody = (text) => splitMentionTokens(text).map((part, index) =>
+        part.profileId
+            ? <Link key={`${part.profileId}-${index}`} className="comment-mention" to={`/${part.profileId}`}>{part.text}</Link>
+            : <React.Fragment key={`text-${index}`}>{part.text}</React.Fragment>
+    );
 
     return (
         <div className={`reply-container reply-id-${item._id}`}>
@@ -141,8 +145,7 @@ const SingleReply = ({ item, myProfile, setReplies, comment, isEditMode, isPostA
                             <Link to={`/${item.author._id}`}>{authorName}</Link>
                         </div>
                         <ExpandableText className="comment-text">
-                            {mention && <span className="comment-mention">{mention}</span>}
-                            {mention ? ` ${rest}` : rest}
+                            {renderBody(item.body)}
                         </ExpandableText>
                     </div>
 

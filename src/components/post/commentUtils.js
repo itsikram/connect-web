@@ -24,11 +24,32 @@ export function splitMentionBody(body) {
     return { mention: mentionMatch[1], rest: mentionMatch[2] };
 }
 
-export function buildReplyMessage(body, replyToName) {
+export function buildReplyMessage(body, replyToProfile) {
     const trimmed = (body || '').trim();
     if (!trimmed) return '';
-    if (!replyToName) return trimmed;
-    const mention = `@${String(replyToName).replace(/\s+/g, '')}`;
+    const replyToName = typeof replyToProfile === 'string'
+        ? replyToProfile
+        : getProfileDisplayName(replyToProfile);
+    const replyToId = typeof replyToProfile === 'object' ? replyToProfile?._id : null;
+    if (!replyToName || replyToName === 'Unknown User') return trimmed;
+    const mention = replyToId
+        ? `@[${String(replyToName).trim()}](${replyToId})`
+        : `@${String(replyToName).trim()}`;
     if (trimmed.startsWith('@')) return trimmed;
     return `${mention} ${trimmed}`;
+}
+
+export function splitMentionTokens(text) {
+    const value = String(text || '');
+    const tokenPattern = /@\[([^\]]+)\]\(([a-f\d]{24})\)/gi;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+    while ((match = tokenPattern.exec(value))) {
+        if (match.index > lastIndex) parts.push({ text: value.slice(lastIndex, match.index) });
+        parts.push({ text: match[1].trim(), profileId: match[2] });
+        lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < value.length) parts.push({ text: value.slice(lastIndex) });
+    return parts.length ? parts : [{ text: value }];
 }

@@ -122,6 +122,10 @@ let Profile = (props) => {
                                                 {profileData.connects && profileData.connects.length} Connects
                                             </Link>
                                         </div>
+                                        <div className="profile-follow-stats">
+                                            <span>{profileData.followersCount ?? profileData.followers?.length ?? 0} Followers</span>
+                                            <span>{profileData.followingCount ?? profileData.following?.length ?? 0} Following</span>
+                                        </div>
                                     </div>
                                     <ProfileButtons profileData={profileData} isAuth={isAuth} isConnect={isConnect}></ProfileButtons>
                                 </div>

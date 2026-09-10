@@ -3489,6 +3489,7 @@ body {
   font-weight: bold;
   color: #fff;
   margin-bottom: 0;
+  margin-top: 10px;
   text-transform: capitalize;
 }
 #profile .profile-header .profile-info-container .profile-info .profile-name .full-name span {
@@ -3501,6 +3502,16 @@ body {
 #profile .profile-header .profile-info-container .profile-info .profile-name .connects-count a:hover {
   color: #B0B3B8;
   text-decoration: underline !important;
+}
+#profile .profile-header .profile-info-container .profile-info .profile-name .profile-follow-stats {
+  display: flex;
+  gap: 12px;
+  color: #B0B3B8;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+#profile .profile-header .profile-info-container .profile-info .profile-name .profile-follow-stats span + span {
+  margin-left: 12px;
 }
 #profile .profile-header .profile-info-container .profile-info .profile-buttons {
   display: flex;

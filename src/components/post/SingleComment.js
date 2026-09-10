@@ -6,7 +6,7 @@ import UserPP from "../UserPP";
 import api from '../../api/api';
 import { ReplySkeleton } from "../loading/CommentSkeleton";
 import LoadingSpinner, { TypingIndicator } from "../loading/LoadingSpinner";
-import { getProfileDisplayName, splitMentionBody } from './commentUtils';
+import { getProfileDisplayName, splitMentionTokens } from './commentUtils';
 import './CommentStyles.css';
 import ExpandableText from './ExpandableText';
 import MentionInput from './MentionInput';
@@ -175,7 +175,11 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode, parentType = 
 
     if (removed || !comment?.author) return null;
 
-    const { mention, rest } = splitMentionBody(updatedComment);
+    const renderBody = (text) => splitMentionTokens(text).map((part, index) =>
+        part.profileId
+            ? <Link key={`${part.profileId}-${index}`} className="comment-mention" to={`/${part.profileId}`}>{part.text}</Link>
+            : <React.Fragment key={`text-${index}`}>{part.text}</React.Fragment>
+    );
     const visibleReplies = Array.isArray(replies) ? replies.filter(Boolean) : [];
     const hasBody = Boolean((updatedComment || '').trim());
     const attachmentUrl = comment.attachment;
@@ -230,8 +234,7 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode, parentType = 
                                 </div>
                             ) : (
                                 <ExpandableText className="comment-text-body mb-0">
-                                    {mention && <span className="comment-mention">{mention}</span>}
-                                    {mention ? ` ${rest}` : rest}
+                                    {renderBody(updatedComment)}
                                 </ExpandableText>
                             )}
                         </div>

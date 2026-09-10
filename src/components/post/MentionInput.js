@@ -65,9 +65,10 @@ const MentionInput = ({
     const start = value.slice(0, cursor).search(/(?:^|\s)@[^\s@]*$/);
     if (start < 0) return;
     const mentionStart = value[cursor - 1] === "@" ? cursor - 1 : start + (value[start] === " " ? 1 : 0);
-    const name = getProfileDisplayName(profile).replace(/\s+/g, "");
-    const nextValue = `${value.slice(0, mentionStart)}@${name} ${value.slice(cursor)}`;
-    const nextCursor = mentionStart + name.length + 2;
+    const name = getProfileDisplayName(profile).trim();
+    const mentionToken = `@[${name}](${profile._id})`;
+    const nextValue = `${value.slice(0, mentionStart)}${mentionToken} ${value.slice(cursor)}`;
+    const nextCursor = mentionStart + mentionToken.length + 1;
     onChange({ target: { value: nextValue } });
     setActiveQuery(null);
     requestAnimationFrame(() => {
