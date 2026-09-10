@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import * as faceapi from "@vladmandic/face-api";
+import * as faceapi from "../utils/faceApiStub";
 
 const SimpleEmotionTest = () => {
   const videoRef = useRef(null);

@@ -6,6 +6,7 @@ import { showErrorToast } from '../utils/toastUtils';
 const Tasks = () => {
     const [tasks, setTasks] = useState([]);
     const [newTask, setNewTask] = useState('');
+    const [reminderTime, setReminderTime] = useState('');
     const [filter, setFilter] = useState('all'); // all, active, completed
     const [loading, setLoading] = useState(true);
 
@@ -42,11 +43,16 @@ const Tasks = () => {
         if (newTask.trim()) {
             try {
                 const response = await api.post('/tasks', {
-                    text: newTask.trim()
+                    text: newTask.trim(),
+                    reminderTime: reminderTime || null,
+                    reminderTimezone: reminderTime
+                        ? Intl.DateTimeFormat().resolvedOptions().timeZone
+                        : null
                 });
                 if (response.data.success) {
                     setTasks([response.data.task, ...tasks]);
                     setNewTask('');
+                    setReminderTime('');
                 }
             } catch (error) {
                 console.error('Error creating task:', error);
@@ -75,6 +81,27 @@ const Tasks = () => {
             console.error('Error updating task:', error);
             showErrorToast('Failed to update task');
             loadTasks(); // Reload on error
+        }
+    };
+
+    const handleTaskReminderChange = async (id, reminderTime) => {
+        const reminderTimezone = reminderTime
+            ? Intl.DateTimeFormat().resolvedOptions().timeZone
+            : null;
+        try {
+            const response = await api.put(`/tasks/${id}`, {
+                reminderTime: reminderTime || null,
+                reminderTimezone
+            });
+            if (response.data.success) {
+                setTasks(current => current.map(task =>
+                    task._id === id ? response.data.task : task
+                ));
+            }
+        } catch (error) {
+            console.error('Error updating task reminder:', error);
+            showErrorToast('Failed to update task reminder');
+            loadTasks();
         }
     };
 
@@ -183,6 +210,24 @@ const Tasks = () => {
         outline: 'none',
         transition: 'all 0.2s',
         minWidth: '200px'
+    };
+
+    const reminderControlStyle = {
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        width: '100%',
+        marginTop: '-20px',
+        marginBottom: '24px',
+        color: '#CBD5E1',
+        fontSize: '14px'
+    };
+
+    const reminderInputStyle = {
+        ...inputStyle,
+        flex: '0 1 180px',
+        minWidth: '150px',
+        padding: '10px 12px'
     };
 
     const addButtonStyle = {
@@ -353,6 +398,25 @@ const Tasks = () => {
                     Add Task
                 </button>
             </div>
+            <label style={reminderControlStyle}>
+                <span>Daily reminder</span>
+                <input
+                    type="time"
+                    value={reminderTime}
+                    onChange={(e) => setReminderTime(e.target.value)}
+                    style={reminderInputStyle}
+                    aria-label="Daily reminder time"
+                />
+                {reminderTime && (
+                    <button
+                        type="button"
+                        onClick={() => setReminderTime('')}
+                        style={{ ...deleteButtonStyle, background: 'rgba(239,68,68,0.12)' }}
+                    >
+                        Clear
+                    </button>
+                )}
+            </label>
 
             {tasks.length > 0 && (
                 <div style={filtersStyle}>
@@ -415,9 +479,28 @@ const Tasks = () => {
                                         <span style={{ color: '#ffffff', fontSize: '12px' }}>✓</span>
                                     )}
                                 </div>
-                                <p style={task.completed ? taskTextCompletedStyle : taskTextStyle}>
-                                    {task.text}
-                                </p>
+                                <div style={{ flex: 1 }}>
+                                    <p style={task.completed ? taskTextCompletedStyle : taskTextStyle}>
+                                        {task.text}
+                                    </p>
+                                    {task.reminderTime && (
+                                        <small style={{ color: '#94A3B8' }}>
+                                            Daily reminder at {task.reminderTime}
+                                        </small>
+                                    )}
+                                    <div style={{ marginTop: '6px' }}>
+                                        <label style={{ color: '#94A3B8', fontSize: '12px' }}>
+                                            Reminder time{' '}
+                                            <input
+                                                type="time"
+                                                value={task.reminderTime || ''}
+                                                onChange={(e) => handleTaskReminderChange(task._id, e.target.value)}
+                                                style={{ ...reminderInputStyle, minWidth: '120px', width: '120px', padding: '4px 8px', fontSize: '12px' }}
+                                                aria-label={`Reminder time for ${task.text}`}
+                                            />
+                                        </label>
+                                    </div>
+                                </div>
                                 <button
                                     onClick={() => handleDeleteTask(task._id)}
                                     style={deleteButtonStyle}

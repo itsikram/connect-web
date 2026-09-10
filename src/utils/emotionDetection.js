@@ -1,4 +1,4 @@
-import * as faceapi from "@vladmandic/face-api";
+import * as faceapi from "./faceApiStub";
 
 // Emotion to emoji mapping
 export const emotionEmojiMap = {

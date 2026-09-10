@@ -8,6 +8,26 @@ const getMentionQuery = (value, cursor) => {
   return match ? match[1] : null;
 };
 
+const mentionTokenPattern = /@\[([^\]]+)\]\(([a-f\d]{24})\)/gi;
+
+const toDisplayValue = (value) =>
+  String(value || "").replace(mentionTokenPattern, "@$1");
+
+const toStoredValue = (value, sourceValue) => {
+  const sourceTokens = [];
+  let sourceMatch;
+  while ((sourceMatch = mentionTokenPattern.exec(String(sourceValue || "")))) {
+    sourceTokens.push({ name: sourceMatch[1].trim(), id: sourceMatch[2] });
+  }
+  mentionTokenPattern.lastIndex = 0;
+
+  let storedValue = String(value || "");
+  sourceTokens.forEach(({ name, id }) => {
+    storedValue = storedValue.replace(`@${name}`, `@[${name}](${id})`);
+  });
+  return storedValue;
+};
+
 const MentionInput = ({
   value = "",
   onChange,
@@ -58,17 +78,18 @@ const MentionInput = ({
     const nextCursor = event.target.selectionStart ?? nextValue.length;
     setCursor(nextCursor);
     setActiveQuery(getMentionQuery(nextValue, nextCursor));
-    onChange(event);
+    onChange({ ...event, target: { ...event.target, value: toStoredValue(nextValue, value) } });
   };
 
   const selectProfile = (profile) => {
-    const start = value.slice(0, cursor).search(/(?:^|\s)@[^\s@]*$/);
+    const displayValue = toDisplayValue(value);
+    const start = displayValue.slice(0, cursor).search(/(?:^|\s)@[^\s@]*$/);
     if (start < 0) return;
-    const mentionStart = value[cursor - 1] === "@" ? cursor - 1 : start + (value[start] === " " ? 1 : 0);
+    const mentionStart = displayValue[cursor - 1] === "@" ? cursor - 1 : start + (displayValue[start] === " " ? 1 : 0);
     const name = getProfileDisplayName(profile).trim();
-    const mentionToken = `@[${name}](${profile._id})`;
-    const nextValue = `${value.slice(0, mentionStart)}${mentionToken} ${value.slice(cursor)}`;
-    const nextCursor = mentionStart + mentionToken.length + 1;
+    const nextDisplayValue = `${displayValue.slice(0, mentionStart)}@${name} ${displayValue.slice(cursor)}`;
+    const nextCursor = mentionStart + name.length + 2;
+    const nextValue = toStoredValue(nextDisplayValue, value).replace(`@${name}`, `@[${name}](${profile._id})`);
     onChange({ target: { value: nextValue } });
     setActiveQuery(null);
     requestAnimationFrame(() => {
@@ -83,7 +104,7 @@ const MentionInput = ({
         ref={inputRef}
         {...props}
         className={className}
-        value={value}
+        value={toDisplayValue(value)}
         placeholder={placeholder}
         disabled={disabled}
         onChange={handleChange}

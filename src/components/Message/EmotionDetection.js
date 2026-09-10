@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from "react";
-import * as faceapi from "@vladmandic/face-api";
+import * as faceapi from "../../utils/faceApiStub";
 import openaiService from '../../services/openaiService';
 import { 
   smoothEmotionDetection, 

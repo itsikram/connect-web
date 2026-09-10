@@ -18,6 +18,9 @@ const Wallet = () => {
   const [tipUsername, setTipUsername] = useState("");
   const [tipCoins, setTipCoins] = useState("");
   const [sendingTip, setSendingTip] = useState(false);
+  const [payouts, setPayouts] = useState([]);
+  const [payoutForm, setPayoutForm] = useState({ method: "bkash", payoutAddress: "", recipientName: "", phoneNumber: "", amountCoins: "" });
+  const [submittingPayout, setSubmittingPayout] = useState(false);
 
   const loadWallet = useCallback(async () => {
     try {
@@ -25,12 +28,33 @@ const Wallet = () => {
       setLoading(true);
       const response = await api.get("/wallet");
       setWallet(response.data);
+      const payoutResponse = await api.get("/wallet/payout-requests");
+      setPayouts(payoutResponse.data?.requests || []);
     } catch (requestError) {
       setError(requestError?.response?.data?.message || "Unable to load your wallet.");
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const submitPayout = async (event) => {
+    event.preventDefault();
+    setSubmittingPayout(true);
+    setError("");
+    try {
+      await api.post("/wallet/payout-requests", {
+        ...payoutForm,
+        amountCoins: Number(payoutForm.amountCoins),
+      });
+      setNotice("Payout request submitted for admin review.");
+      setPayoutForm({ method: "bkash", payoutAddress: "", recipientName: "", phoneNumber: "", amountCoins: "" });
+      await loadWallet();
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || "Unable to submit payout request.");
+    } finally {
+      setSubmittingPayout(false);
+    }
+  };
 
   useEffect(() => {
     void loadWallet();
@@ -123,7 +147,20 @@ const Wallet = () => {
           </div>
           <div className="wallet-subscription">
             <h2>Creator earnings</h2>
-            <p>{wallet?.creatorEarningsCoins ?? 0} coins received from tips.</p>
+            <p>{wallet?.creatorEarningsCoins ?? 0} coins available to withdraw.</p>
+          </div>
+          <div className="wallet-subscription">
+            <h2>Withdraw earnings</h2>
+            <p>Choose mobile recharge, bKash, or Nagad. Coins are deducted only after approval.</p>
+            <form className="wallet-payment-form" onSubmit={submitPayout}>
+              <label>Method<select value={payoutForm.method} onChange={(event) => setPayoutForm({ ...payoutForm, method: event.target.value })}><option value="mobile_recharge">Mobile recharge</option><option value="bkash">bKash</option><option value="nagad">Nagad</option></select></label>
+              <label>Recipient name<input value={payoutForm.recipientName} onChange={(event) => setPayoutForm({ ...payoutForm, recipientName: event.target.value })} required /></label>
+              <label>Phone number<input value={payoutForm.phoneNumber} onChange={(event) => setPayoutForm({ ...payoutForm, phoneNumber: event.target.value })} required placeholder="01XXXXXXXXX" /></label>
+              <label>Payout address / account<input value={payoutForm.payoutAddress} onChange={(event) => setPayoutForm({ ...payoutForm, payoutAddress: event.target.value })} required placeholder="Account or recharge number" /></label>
+              <label>Coins to withdraw<input type="number" min={config?.payout?.minimumCoins || 1} value={payoutForm.amountCoins} onChange={(event) => setPayoutForm({ ...payoutForm, amountCoins: event.target.value })} required /></label>
+              <button type="submit" className="wallet-submit" disabled={submittingPayout}>{submittingPayout ? "Submitting..." : "Request payout"}</button>
+            </form>
+            {payouts.length ? <div className="wallet-payout-history"><h3>Recent payout requests</h3>{payouts.map((payout) => <p key={payout._id}>{payout.amountCoins} coins → ৳{Number(payout.amountBDT).toFixed(2)} ({payout.status})</p>)}</div> : null}
           </div>
           <div className="wallet-subscription">
             <h2>Daily free coins</h2>
