@@ -11,6 +11,7 @@ export function getProfileDisplayName(profile) {
         if (user.displayName) return user.displayName;
         if (user.fullName) return user.fullName;
     }
+    if (profile.username || profile.nickname) return profile.username || profile.nickname;
     return 'Unknown User';
 }
 

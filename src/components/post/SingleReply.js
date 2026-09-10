@@ -7,8 +7,9 @@ import LoadingSpinner, { TypingIndicator } from "../loading/LoadingSpinner";
 import { getProfileDisplayName, splitMentionBody, buildReplyMessage } from './commentUtils';
 import './CommentStyles.css';
 import ExpandableText from './ExpandableText';
+import MentionInput from './MentionInput';
 
-const SingleReply = ({ item, myProfile, setReplies, comment, isEditMode }) => {
+const SingleReply = ({ item, myProfile, setReplies, comment, isEditMode, isPostAuthor }) => {
     const myId = myProfile?._id;
     const authorName = getProfileDisplayName(item?.author);
     const [isReplyOption, setIsReplyOption] = useState(false);
@@ -145,7 +146,7 @@ const SingleReply = ({ item, myProfile, setReplies, comment, isEditMode }) => {
                         </ExpandableText>
                     </div>
 
-                    {(String(item.author._id) === String(myId) || isEditMode) && (
+                    {(String(item.author._id) === String(myId) || isPostAuthor || isEditMode) && (
                         <div className={`options-icon comment-options ${isReplyOption ? 'is-open' : ''}`}>
                             <button
                                 type="button"
@@ -219,7 +220,8 @@ const SingleReply = ({ item, myProfile, setReplies, comment, isEditMode }) => {
                             </button>
                         </div>
                         <div className={`comment-field ${isSubmittingReply ? 'loading-input' : ''}`}>
-                            <input
+                            <MentionInput
+                                myProfileId={myProfile?._id}
                                 onKeyDown={handleReplyKeyUp}
                                 onChange={(e) => setReplyData((s) => ({ ...s, body: e.target.value }))}
                                 className="field-comment-text"

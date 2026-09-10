@@ -15,6 +15,7 @@ import LoadingSpinner, { TypingIndicator } from "../loading/LoadingSpinner";
 import "./CommentStyles.css";
 import config from "../../config/config.json";
 import { generateSmartReplies } from "../../services/geminiService";
+import MentionInput from "./MentionInput";
 
 const loadingUrl = config?.loadingUrl;
 
@@ -392,7 +393,8 @@ const PostComment = ({
         <div
           className={`comment-field ${isSubmittingComment || isUploadingAttachment ? "loading-input" : ""}`}
         >
-          <input
+          <MentionInput
+            myProfileId={myProfile?._id}
             onKeyDown={handleCommentKeyUp}
             onChange={(e) =>
               setCommentData((s) => ({ ...s, body: e.target.value }))

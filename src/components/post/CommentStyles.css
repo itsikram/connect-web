@@ -832,6 +832,68 @@ html[data-theme="light"] .nf-post .comments,
     border: 1px solid var(--fb-border);
 }
 
+.mention-input-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+}
+
+.mention-input-wrap > .field-comment-text {
+    width: 100%;
+}
+
+.mention-suggestions {
+    position: absolute;
+    z-index: 50;
+    left: 0;
+    right: 0;
+    bottom: calc(100% + 6px);
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 4px;
+    border: 1px solid var(--fb-border);
+    border-radius: 12px;
+    background: var(--fb-bg);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+}
+
+.mention-suggestion {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--fb-text);
+    text-align: left;
+    cursor: pointer;
+}
+
+.mention-suggestion:hover,
+.mention-suggestion:focus-visible {
+    background: var(--fb-hover);
+    outline: none;
+}
+
+.mention-suggestion img {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.mention-suggestion span {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.mention-suggestion small {
+    color: var(--fb-secondary-text);
+}
+
 .new-reply .user-pp img {
     width: 28px;
     height: 28px;

@@ -9,9 +9,12 @@ import LoadingSpinner, { TypingIndicator } from "../loading/LoadingSpinner";
 import { getProfileDisplayName, splitMentionBody } from './commentUtils';
 import './CommentStyles.css';
 import ExpandableText from './ExpandableText';
+import MentionInput from './MentionInput';
 
 const SingleComment = ({ comment, postData, myProfile, isEditMode, parentType = 'post', onRemove }) => {
     const myId = myProfile?._id;
+    const isPostAuthor = parentType === 'post' && Boolean(postData?.author && myId) &&
+        String(postData.author?._id || postData.author) === String(myId);
     const authorName = getProfileDisplayName(comment?.author);
     const [totalComment, setTotalComment] = useState(Array.isArray(comment?.reacts) ? comment.reacts.length : 0);
     const [isReacted, setIsReacted] = useState(
@@ -248,7 +251,7 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode, parentType = 
                         </button>
                     )}
 
-                    {(String(comment.author._id) === String(myId) || isEditMode) && (
+                    {(String(comment.author._id) === String(myId) || isPostAuthor || isEditMode) && (
                         <div className={`options-icon comment-options ${optionsOpen ? 'is-open' : ''}`}>
                             <button
                                 type="button"
@@ -260,14 +263,16 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode, parentType = 
                                 <i className="fas fa-ellipsis-h"></i>
                             </button>
                             <div className={`options-container ${optionsOpen ? 'open' : ''}`} role="menu">
-                                <button
-                                    type="button"
-                                    onClick={(e) => { e.stopPropagation(); setIsEdit(true); setOptionsOpen(false); }}
-                                    className="comment-option text-primary"
-                                    role="menuitem"
-                                >
-                                    Edit Comment
-                                </button>
+                                {(String(comment.author._id) === String(myId) || isEditMode) && (
+                                    <button
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); setIsEdit(true); setOptionsOpen(false); }}
+                                        className="comment-option text-primary"
+                                        role="menuitem"
+                                    >
+                                        Edit Comment
+                                    </button>
+                                )}
                                 <button
                                     type="button"
                                     onClick={deleteComment}
@@ -334,7 +339,8 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode, parentType = 
                             </button>
                         </div>
                         <div className={`comment-field ${isSubmittingReply ? 'loading-input' : ''}`}>
-                            <input
+                            <MentionInput
+                                myProfileId={myProfile?._id}
                                 onKeyDown={handleReplyKeyUp}
                                 onChange={(e) => setReplyData((s) => ({ ...s, body: e.target.value }))}
                                 className="field-comment-text"
@@ -386,6 +392,7 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode, parentType = 
                                 replies={visibleReplies}
                                 comment={comment}
                                 item={item}
+                                isPostAuthor={isPostAuthor}
                                 key={item._id || item.createdAt || `reply-${index}`}
                                 myProfile={myProfile}
                             />
