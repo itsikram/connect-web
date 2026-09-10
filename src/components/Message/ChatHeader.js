@@ -100,6 +100,7 @@ const ChatHeader = ({
   // Majority emotion tracking (rolling window)
   const labelHistoryRef = useRef([]);
   const lastMajorityLabelRef = useRef(null);
+  const lastExpressionRef = useRef("none");
   const expressionDataRef = useRef({}); // Store latest expression data for emission
   const MAJORITY_WINDOW_MS = 1500;
   // Server-side detection request tracking
@@ -1345,10 +1346,11 @@ const ChatHeader = ({
         expressionCanvasRef.current ||
         (expressionCanvasRef.current = document.createElement("canvas"));
 
-      // Optimize dimensions: use max 480px width to balance quality and payload size
-      // Server will resize if needed, but we want good quality for detection
-      const maxWidth = 320;
-      const maxHeight = 240;
+      // Keep enough detail for small or backlit faces. The Python service still
+      // caps processing at 640px, so this improves detection without unbounded
+      // payloads.
+      const maxWidth = 640;
+      const maxHeight = 480;
 
       let targetWidth = video.videoWidth || 320;
       let targetHeight = video.videoHeight || 240;
@@ -1372,10 +1374,10 @@ const ChatHeader = ({
       const ctx = canvas.getContext("2d");
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      // Use 0.85 quality - good balance between quality and file size
-      // This should result in ~50-100KB base64 payload (well under 10MB limit)
+      // Preserve facial detail for the detector while staying well below the
+      // Socket.IO frame-size limit.
       const blob = await new Promise((resolve) => {
-        canvas.toBlob(resolve, "image/jpeg", 0.7);
+        canvas.toBlob(resolve, "image/jpeg", 0.85);
       });
       if (!blob) return null;
       return await new Promise((resolve) => {
@@ -1456,7 +1458,11 @@ const ChatHeader = ({
       );
 
       emotionServerSocketRef.current = io(`${pythonServerUrl}/expressions`, {
-        transports: ["websocket", "polling"],
+        // Establish the connection over HTTP polling first. This avoids
+        // browser/WebView websocket handshake failures while still allowing
+        // Socket.IO to upgrade to websocket when the network supports it.
+        transports: ["polling", "websocket"],
+        upgrade: true,
         auth: { token: faceServiceSocketToken },
         reconnection: true,
         reconnectionDelay: 1000,
@@ -1590,6 +1596,17 @@ const ChatHeader = ({
       const dominantExpressionData = data.dominant_expression_data || {};
       const expressions = data.expressions || {};
       const features = data.features || {};
+      // The Python service reports temporal actions (speaking, laughing, etc.)
+      // as `label` while `base_emotion` contains the underlying emotion.
+      // Preserve that action for the recipient instead of forwarding "none".
+      const normalizedAction = String(data.label || "").trim().toLowerCase();
+      const normalizedBaseEmotion = String(data.base_emotion || dominant).trim().toLowerCase();
+      const detectedExpression =
+        dominantExpression !== "none"
+          ? dominantExpression
+          : normalizedAction && normalizedAction !== normalizedBaseEmotion
+            ? normalizedAction
+            : "none";
 
       // Check if there's a dominant expression that might override emotion
       let finalEmotion = dominant;
@@ -1629,7 +1646,7 @@ const ChatHeader = ({
 
       // Store expression data in ref for later emission
       expressionDataRef.current = {
-        dominantExpression: dominantExpression,
+        dominantExpression: detectedExpression,
         expressionIntensity: dominantExpressionData.intensity || 0,
         expressionScore: dominantExpressionData.score || 0,
         allExpressions: expressions,
@@ -1648,11 +1665,15 @@ const ChatHeader = ({
 
       // FAST EMISSION: Emit immediately if emotion changed (before majority window)
       // This ensures super fast response when emotions change
-      if (label !== lastMajorityLabelRef.current) {
+      if (
+        label !== lastMajorityLabelRef.current ||
+        detectedExpression !== lastExpressionRef.current
+      ) {
         // New emotion detected - emit immediately for fast response
         const emoji = emotionEmojiMap[label] || "😐";
         const previousLabel = lastMajorityLabelRef.current;
         lastMajorityLabelRef.current = label;
+        lastExpressionRef.current = detectedExpression;
         setMyEmotion(`${emoji} ${label}`);
 
         // Use connectProfile._id directly if connectId state is not yet set
@@ -1687,6 +1708,19 @@ const ChatHeader = ({
                 latestExpressionData.detectedExpressions || [],
               // Include all emotion scores
               emotionScores: latestExpressionData.allEmotions || {},
+            }, (ack) => {
+              if (!ack?.ok) {
+                console.warn(
+                  "[ChatHeader] ⚠️ Emotion delivery was not acknowledged:",
+                  ack,
+                );
+              } else {
+                console.log(
+                  `[ChatHeader] ✅ Emotion delivered to ${
+                    ack.connectedRecipients || 0
+                  }/${ack.recipients || 0} connected recipient(s)`,
+                );
+              }
             });
             console.log(
               `[ChatHeader] 📤 ⚡ FAST Emotion & Expression emitted immediately to connectId: ${currentConnectId}`,

@@ -928,7 +928,7 @@ const Chat = () => {
     if (!connectId || !userId) return;
     const epoch = blockLiveEpochRef.current;
     try {
-      const res = await api.get("connect/block-status", {
+      const res = await api.get("connects/block-status", {
         params: { connectId },
       });
       if (!res?.data) return;
@@ -965,7 +965,7 @@ const Chat = () => {
 
     (async () => {
       try {
-        const res = await api.get("connect/block-status", {
+        const res = await api.get("connects/block-status", {
           params: { connectId },
         });
         if (cancelled || !res?.data) return;
