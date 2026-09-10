@@ -113,7 +113,7 @@ const Health = () => {
     });
 
     const saveFitnessMeal = () => runFitness(async () => {
-        await api.post('/fitness/meals', { ...fitnessMeal, source: 'web', date: new Date().toISOString() });
+        await api.post('/fitness/meals', { ...fitnessMeal, source: fitnessMeal.source || 'manual', date: new Date().toISOString() });
         setFitnessMeal({ name: '', calories: '', proteinG: '', carbsG: '', fatG: '', fiberG: '', mealType: 'snack' });
         await loadFitness();
     });
@@ -657,7 +657,7 @@ const Health = () => {
                                     <span>Protein: {Math.round(fitnessProgress.summary?.totalProteinG || 0)}g · Carbs: {Math.round(fitnessProgress.summary?.totalCarbsG || 0)}g · Fat: {Math.round(fitnessProgress.summary?.totalFatG || 0)}g</span>
                                     <span>Logged days: {fitnessProgress.summary?.loggedDays || 0}</span>
                                </div>}
-                               <div className="fitness-section-heading"><h3>Food recommendations</h3><span>AI insight</span></div>
+                               <div className="fitness-section-heading"><h3>Food recommendations</h3><span>{fitnessRecommendations?.source === 'gemini' ? 'Gemini AI' : 'Wellness suggestions'}</span></div>
                                <div className="fitness-actions-row">
                                    <button type="button" disabled={fitnessLoading} className="health-calorie-add-btn" onClick={loadFitnessRecommendations}>{fitnessLoading ? 'Loading…' : 'Get food recommendations'}</button>
                                </div>

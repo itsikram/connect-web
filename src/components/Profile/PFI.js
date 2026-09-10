@@ -55,7 +55,7 @@ const PFI = (props) => {
     let clickRemoveFrndOption = async (e) => {
         try {
 
-            let res = await api.post('/connects/removeConnect', {
+            let res = await api.post('/connects/disconnect', {
                 profile: connect._id
             })
             if(res.status == 200) {
@@ -117,7 +117,7 @@ const PFI = (props) => {
                                     <div className='menu-item-icon'>
                                         <i className="fas fa-user-times"></i>
                                     </div>
-                                    <div className='menu-item-text'>Remove Connect</div>
+                                    <div className='menu-item-text'>Disconnect</div>
                                 </div>
 
                                 :

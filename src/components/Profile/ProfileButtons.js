@@ -83,11 +83,11 @@ const ProfileButtons = (props) => {
         }
     };
 
-    const clickRemoveConnectBtn = async (e) => {
+    const clickDisconnectBtn = async (e) => {
         const target = e.currentTarget;
         setIsRemovingConnect(true);
         try {
-            await api.post('/connects/removeConnect', { profile: profileData._id });
+            await api.post('/connects/disconnect', { profile: profileData._id });
             $(target).parents('.connect').hide();
         } catch (error) {
             console.log(error);
@@ -124,7 +124,7 @@ const ProfileButtons = (props) => {
                             <span>Connect</span>
                             <div className="connect-options-menu hide">
                                 <div
-                                    onClick={isRemovingConnect ? null : clickRemoveConnectBtn}
+                                    onClick={isRemovingConnect ? null : clickDisconnectBtn}
                                     className={`connect-options-menu-item ${isRemovingConnect ? 'disabled' : ''}`}
                                     style={{ opacity: isRemovingConnect ? 0.6 : 1, cursor: isRemovingConnect ? 'not-allowed' : 'pointer' }}
                                 >
@@ -132,7 +132,7 @@ const ProfileButtons = (props) => {
                                         <i className="fas fa-user-times" />
                                     </div>
                                     <div className="menu-item-text">
-                                        {isRemovingConnect ? 'Removing...' : 'Remove Connect'}
+                                        {isRemovingConnect ? 'Disconnecting...' : 'Disconnect'}
                                     </div>
                                 </div>
                                 <div

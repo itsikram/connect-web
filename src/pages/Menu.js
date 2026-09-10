@@ -136,6 +136,33 @@ const Menu = () => {
               </div>
             </Link>
           ))}
+          <Link
+            to="/wallet"
+            style={cardStyle}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "translateY(-4px)";
+              e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,0.35)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.boxShadow = "0 2px 10px rgba(0,0,0,0.25)";
+            }}
+          >
+            <div
+              style={{
+                ...iconBadgeStyle,
+                background: "rgba(245,158,11,0.12)",
+                boxShadow: "inset 0 0 0 1px rgba(245,158,11,0.2)",
+              }}
+              aria-hidden="true"
+            >
+              <i className="fas fa-coins" style={{ color: "#F59E0B" }} aria-hidden="true" />
+            </div>
+            <div style={cardContentStyle}>
+              <div style={cardTitleRow}><h3 style={cardTitle}>My Wallet</h3></div>
+              <p style={cardDesc}>View your coins and Connect+ subscription</p>
+            </div>
+          </Link>
         </div>
       </div>
     </div>

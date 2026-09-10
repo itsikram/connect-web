@@ -35,7 +35,7 @@ const PfiSkleton = ({ count = 1 }) => {
                                     <div className='menu-item-icon'>
                                         <i className="fas fa-user-times"></i>
                                     </div>
-                                    <div className='menu-item-text'>Remove Connect</div>
+                                    <div className='menu-item-text'>Disconnect</div>
                                 </div>
 
                                 :

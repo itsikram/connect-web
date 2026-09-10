@@ -91,7 +91,7 @@ let CGI = (props) => {
         }
     }
 
-    let handleRomoveConnect = async (e) => {
+    let handleRemoveRequest = async (e) => {
         setIsRemoving(true)
         let target = e.currentTarget
 
@@ -209,8 +209,8 @@ let CGI = (props) => {
                                     }
                                 </div>
                                 <div 
-                                    onClick={isAdding || isRemoving ? null : handleRomoveConnect} 
-                                    className={`button remove-connect ${isAdding || isRemoving ? 'disabled' : ''}`}
+                                    onClick={isAdding || isRemoving ? null : handleRemoveRequest} 
+                                    className={`button remove-request ${isAdding || isRemoving ? 'disabled' : ''}`}
                                     style={{ opacity: isAdding || isRemoving ? 0.6 : 1, cursor: isAdding || isRemoving ? 'not-allowed' : 'pointer' }}
                                 >
                                     {isRemoving ? 'Removing...' : 'Remove'}
@@ -242,8 +242,8 @@ let CGI = (props) => {
                                         }
                                     </div>
                                     <div 
-                                        onClick={isAdding || isRemoving ? null : handleRomoveConnect} 
-                                        className={`button remove-connect ${isAdding || isRemoving ? 'disabled' : ''}`}
+                                        onClick={isAdding || isRemoving ? null : handleRemoveRequest} 
+                                        className={`button remove-request ${isAdding || isRemoving ? 'disabled' : ''}`}
                                         style={{ opacity: isAdding || isRemoving ? 0.6 : 1, cursor: isAdding || isRemoving ? 'not-allowed' : 'pointer' }}
                                     >
                                         {isRemoving ? 'Removing...' : 'Remove'}

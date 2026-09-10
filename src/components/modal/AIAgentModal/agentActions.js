@@ -1284,13 +1284,13 @@ export const executeAction = async ({
         }
 
         try {
-          const response = await api.post("/connects/removeConnect", {
+          const response = await api.post("/connects/disconnect", {
             profile: profileId,
           });
-          if (response?.data?.message !== "Connect removed From your profile") {
+          if (response?.data?.message !== "Disconnected from your profile") {
             return {
               success: false,
-              message: `I couldn't confirm removing ${connectName} from your connects.`,
+              message: `I couldn't confirm disconnecting ${connectName}.`,
             };
           }
 
