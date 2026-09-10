@@ -282,17 +282,17 @@ const LudoGame = () => {
   const [showReconnectModal, setShowReconnectModal] = useState(false);
   const [disconnectedPlayers, setDisconnectedPlayers] = useState(new Set());
 
-  // Friend selection and invites
-  const [selectedFriends, setSelectedFriends] = useState([]);
-  const [friendSearchQuery, setFriendSearchQuery] = useState("");
+  // Connect selection and invites
+  const [selectedConnects, setSelectedConnects] = useState([]);
+  const [connectSearchQuery, setConnectSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [loadingSearch, setLoadingSearch] = useState(false);
-  const [friendList, setFriendList] = useState([]);
+  const [connectList, setConnectList] = useState([]);
 
-  // Robust friend search handler (debounced, tolerant of API shapes)
-  const onChangeFriendSearch = (text) => {
+  // Robust connect search handler (debounced, tolerant of API shapes)
+  const onChangeConnectSearch = (text) => {
     try {
-      setFriendSearchQuery(text);
+      setConnectSearchQuery(text);
     } catch (_e) {}
 
     // Clear any pending timeout
@@ -347,7 +347,7 @@ const LudoGame = () => {
 
         setSearchResults(users || []);
       } catch (_e) {
-        console.error("Friend search error:", _e);
+        console.error("Connect search error:", _e);
         setSearchResults([]);
       } finally {
         setLoadingSearch(false);
@@ -362,8 +362,8 @@ const LudoGame = () => {
   };
 
   // Invite management
-  const [invitedStatusByFriendId, setInvitedStatusByFriendId] = useState({});
-  const [invitedSlotByFriendId, setInvitedSlotByFriendId] = useState({});
+  const [invitedStatusByConnectId, setInvitedStatusByConnectId] = useState({});
+  const [invitedSlotByConnectId, setInvitedSlotByConnectId] = useState({});
   const [incomingInvite, setIncomingInvite] = useState(null);
   const [incomingInviteRequest, setIncomingInviteRequest] = useState(null);
   const [pendingInvites, setPendingInvites] = useState([]);
@@ -372,8 +372,8 @@ const LudoGame = () => {
   const [lastInviter, setLastInviter] = useState(null);
 
   // Online multiplayer refs
-  const invitedStatusByFriendIdRef = useRef({});
-  const invitedSlotByFriendIdRef = useRef({});
+  const invitedStatusByConnectIdRef = useRef({});
+  const invitedSlotByConnectIdRef = useRef({});
   const inviteTimestampsRef = useRef({});
   const searchTimeoutRef = useRef(null);
   const inviteHandlersAttachedRef = useRef(false);
@@ -548,7 +548,7 @@ const LudoGame = () => {
                         socketRef.current.emit("ludo:accept", {
                           gameId: payload.gameId,
                           slotIndex: payload.slotIndex,
-                          friend: {
+                          connect: {
                             _id: myProfile?._id,
                             fullName: myProfile?.fullName,
                             profilePic: myProfile?.profilePic,
@@ -561,7 +561,7 @@ const LudoGame = () => {
                           {
                             gameId: payload.gameId,
                             slotIndex: payload.slotIndex,
-                            friendId: myProfile?._id,
+                            connectId: myProfile?._id,
                           },
                         );
                       } catch (_e) {
@@ -1450,11 +1450,11 @@ const LudoGame = () => {
     consecutiveSixesRef.current = consecutiveSixes;
   }, [consecutiveSixes]);
   useEffect(() => {
-    invitedStatusByFriendIdRef.current = invitedStatusByFriendId;
-  }, [invitedStatusByFriendId]);
+    invitedStatusByConnectIdRef.current = invitedStatusByConnectId;
+  }, [invitedStatusByConnectId]);
   useEffect(() => {
-    invitedSlotByFriendIdRef.current = invitedSlotByFriendId;
-  }, [invitedSlotByFriendId]);
+    invitedSlotByConnectIdRef.current = invitedSlotByConnectId;
+  }, [invitedSlotByConnectId]);
   useEffect(() => {
     maxStepsRef.current = maxSteps;
   }, [maxSteps]);
@@ -1829,7 +1829,7 @@ const LudoGame = () => {
     return captured;
   };
 
-  // Check for captures when a token moves AWAY from a position (rule 2: friend moves token away)
+  // Check for captures when a token moves AWAY from a position (rule 2: connect moves token away)
   /**
    * Check if any pieces can be captured after a piece moves away from a position
    * This handles cases where moving a piece reveals a capture opportunity
@@ -1936,7 +1936,7 @@ const LudoGame = () => {
 
   const initializeGame = (
     playerCount = selectedPlayerCount,
-    friends = selectedFriends,
+    connects = selectedConnects,
   ) => {
     const newPlayers = [];
     const names = [];
@@ -1950,7 +1950,7 @@ const LudoGame = () => {
       myProfile?.profileCover ||
       undefined;
     for (let i = 1; i < playerCount; i++) {
-      const f = friends[i - 1];
+      const f = connects[i - 1];
       const boardSeatIndex = getBoardSeatIndex(i, playerCount);
       names[i] = f?.fullName || playerNames[boardSeatIndex];
       avatars[i] = f?.profilePic;
@@ -2776,7 +2776,7 @@ const LudoGame = () => {
         const slotFromLink =
           typeof payload.slotIndex === "number" ? payload.slotIndex : undefined;
 
-        // If current user is NOT the inviter, auto-accept the invite as the friend
+        // If current user is NOT the inviter, auto-accept the invite as the connect
         if (!isInviter) {
           ensureSocketConnected();
           const inviteRequest = {
@@ -2849,25 +2849,25 @@ const LudoGame = () => {
     } catch (_e) {}
   }, [gameStarted, myProfile?._id]);
 
-  // Optional: load default friend list when opening player selection
+  // Optional: load default connect list when opening player selection
   useEffect(() => {
     if (!showPlayerSelection) return;
-    // Attempt to fetch friend list (adjust endpoint as needed)
+    // Attempt to fetch connect list (adjust endpoint as needed)
     (async () => {
       try {
-        // Use the search API without query to get all users, then filter friends
+        // Use the search API without query to get all users, then filter connects
         const res = await api.get("/search?input=", { credentials: "include" });
         if (!res.success) {
-          setFriendList([]);
+          setConnectList([]);
           return;
         }
         const data = await res.data;
         // Show all users (no filtering)
         const allUsers = data.users || [];
-        setFriendList(allUsers);
+        setConnectList(allUsers);
       } catch (_e) {
-        console.error("Failed to load friend list:", _e);
-        setFriendList([]);
+        console.error("Failed to load connect list:", _e);
+        setConnectList([]);
       }
     })();
   }, [showPlayerSelection, myProfile?._id]);
@@ -2876,7 +2876,7 @@ const LudoGame = () => {
   const getNextOpenSlot = useCallback(() => {
     const max = Math.max(2, Math.min(4, selectedPlayerCount));
     const reservedSlots = new Set(
-      Object.values(invitedSlotByFriendIdRef.current || {}).map((slot) =>
+      Object.values(invitedSlotByConnectIdRef.current || {}).map((slot) =>
         Number(slot),
       ),
     );
@@ -3343,17 +3343,17 @@ const LudoGame = () => {
       setPlayers(nextPlayers);
 
       if (replacedProfileId) {
-        const nextStatuses = { ...invitedStatusByFriendIdRef.current };
-        const nextSlots = { ...invitedSlotByFriendIdRef.current };
+        const nextStatuses = { ...invitedStatusByConnectIdRef.current };
+        const nextSlots = { ...invitedSlotByConnectIdRef.current };
         delete nextStatuses[replacedProfileId];
         delete nextSlots[replacedProfileId];
-        invitedStatusByFriendIdRef.current = nextStatuses;
-        invitedSlotByFriendIdRef.current = nextSlots;
-        setInvitedStatusByFriendId(nextStatuses);
-        setInvitedSlotByFriendId(nextSlots);
-        setSelectedFriends((prev) =>
+        invitedStatusByConnectIdRef.current = nextStatuses;
+        invitedSlotByConnectIdRef.current = nextSlots;
+        setInvitedStatusByConnectId(nextStatuses);
+        setInvitedSlotByConnectId(nextSlots);
+        setSelectedConnects((prev) =>
           prev.filter(
-            (friend) => String(friend?._id || "") !== replacedProfileId,
+            (connect) => String(connect?._id || "") !== replacedProfileId,
           ),
         );
       }
@@ -3397,8 +3397,8 @@ const LudoGame = () => {
     const currentPlayers = Array.isArray(playersRef.current)
       ? playersRef.current
       : players;
-    const statuses = invitedStatusByFriendIdRef.current;
-    const slots = invitedSlotByFriendIdRef.current;
+    const statuses = invitedStatusByConnectIdRef.current;
+    const slots = invitedSlotByConnectIdRef.current;
     const waitingSeatIndexes = [];
 
     for (let seatIndex = 1; seatIndex < maxPlayers; seatIndex += 1) {
@@ -3457,13 +3457,13 @@ const LudoGame = () => {
 
       playersRef.current = nextPlayers;
       setPlayers(nextPlayers);
-      invitedStatusByFriendIdRef.current = nextStatuses;
-      invitedSlotByFriendIdRef.current = nextSlots;
-      setInvitedStatusByFriendId(nextStatuses);
-      setInvitedSlotByFriendId(nextSlots);
-      setSelectedFriends((previous) =>
+      invitedStatusByConnectIdRef.current = nextStatuses;
+      invitedSlotByConnectIdRef.current = nextSlots;
+      setInvitedStatusByConnectId(nextStatuses);
+      setInvitedSlotByConnectId(nextSlots);
+      setSelectedConnects((previous) =>
         previous.filter(
-          (friend) => !replacedProfileIds.includes(String(friend?._id || "")),
+          (connect) => !replacedProfileIds.includes(String(connect?._id || "")),
         ),
       );
 
@@ -3499,53 +3499,53 @@ const LudoGame = () => {
     setDiceValueImmediate,
   ]);
 
-  const inviteFriend = useCallback(
-    (friend) => {
-      if (!friend || !friend._id) return;
+  const inviteConnect = useCallback(
+    (connect) => {
+      if (!connect || !connect._id) return;
 
-      const friendIdStr = String(friend._id);
+      const connectIdStr = String(connect._id);
 
-      // Invite state is valid only while the friend still owns a seat in the
+      // Invite state is valid only while the connect still owns a seat in the
       // current setup. A delayed state update from a room that was just left
-      // must not make that friend permanently appear joined in a new game.
+      // must not make that connect permanently appear joined in a new game.
       const currentPlayers = Array.isArray(playersRef.current)
         ? playersRef.current
         : players;
-      const friendAlreadyInGame = currentPlayers.some(
+      const connectAlreadyInGame = currentPlayers.some(
         (p, index) =>
-          index > 0 && p?.profileId && String(p.profileId) === friendIdStr,
+          index > 0 && p?.profileId && String(p.profileId) === connectIdStr,
       );
-      let currentStatus = invitedStatusByFriendIdRef.current[friendIdStr];
+      let currentStatus = invitedStatusByConnectIdRef.current[connectIdStr];
 
-      if (currentStatus && !friendAlreadyInGame) {
-        const nextStatuses = { ...invitedStatusByFriendIdRef.current };
-        const nextSlots = { ...invitedSlotByFriendIdRef.current };
-        delete nextStatuses[friendIdStr];
-        delete nextSlots[friendIdStr];
-        invitedStatusByFriendIdRef.current = nextStatuses;
-        invitedSlotByFriendIdRef.current = nextSlots;
-        setInvitedStatusByFriendId(nextStatuses);
-        setInvitedSlotByFriendId(nextSlots);
+      if (currentStatus && !connectAlreadyInGame) {
+        const nextStatuses = { ...invitedStatusByConnectIdRef.current };
+        const nextSlots = { ...invitedSlotByConnectIdRef.current };
+        delete nextStatuses[connectIdStr];
+        delete nextSlots[connectIdStr];
+        invitedStatusByConnectIdRef.current = nextStatuses;
+        invitedSlotByConnectIdRef.current = nextSlots;
+        setInvitedStatusByConnectId(nextStatuses);
+        setInvitedSlotByConnectId(nextSlots);
         currentStatus = undefined;
       }
 
       if (currentStatus === "joined") {
         console.log(
-          `[INVITE_FRIEND] Skipping invite to ${friendIdStr} - already joined`,
+          `[INVITE_CONNECT] Skipping invite to ${connectIdStr} - already joined`,
         );
         return;
       }
 
-      // Also check if the friend is already in the current game.
-      if (friendAlreadyInGame) {
+      // Also check if the connect is already in the current game.
+      if (connectAlreadyInGame) {
         console.log(
-          `[INVITE_FRIEND] Skipping invite to ${friendIdStr} - already in game`,
+          `[INVITE_CONNECT] Skipping invite to ${connectIdStr} - already in game`,
         );
         // Update status to 'joined' if not already set
         if (currentStatus !== "joined") {
-          setInvitedStatusByFriendId((prev) => {
-            const updated = { ...prev, [friendIdStr]: "joined" };
-            invitedStatusByFriendIdRef.current = updated;
+          setInvitedStatusByConnectId((prev) => {
+            const updated = { ...prev, [connectIdStr]: "joined" };
+            invitedStatusByConnectIdRef.current = updated;
             return updated;
           });
         }
@@ -3559,7 +3559,7 @@ const LudoGame = () => {
       newGameDraftIdRef.current = gid;
       gameIdRef.current = gid;
       if (gameId !== gid) setGameId(gid);
-      // Reserve a slot for friend
+      // Reserve a slot for connect
       const slot = getNextOpenSlot();
       if (slot == null) return; // no open slot
       // Update local players with reservation
@@ -3569,47 +3569,47 @@ const LudoGame = () => {
           pieces: p.pieces.map((pc) => ({ ...pc })),
         }));
         if (!copy[slot]) return prev;
-        copy[slot].name = friend.fullName || copy[slot].name;
-        copy[slot].avatar = friend.profilePic || copy[slot].avatar;
-        copy[slot].cover = friend.coverPic || copy[slot].cover;
+        copy[slot].name = connect.fullName || copy[slot].name;
+        copy[slot].avatar = connect.profilePic || copy[slot].avatar;
+        copy[slot].cover = connect.coverPic || copy[slot].cover;
         copy[slot].isBot = false;
         copy[slot].isActive = true;
         copy[slot].isOffline = false;
         return copy;
       });
-      setInvitedStatusByFriendId((prev) => {
-        const updated = { ...prev, [friendIdStr]: "invited" };
-        // Setting status to 'invited' for friend
+      setInvitedStatusByConnectId((prev) => {
+        const updated = { ...prev, [connectIdStr]: "invited" };
+        // Setting status to 'invited' for connect
         // Update ref immediately for consistency
-        invitedStatusByFriendIdRef.current = updated;
+        invitedStatusByConnectIdRef.current = updated;
         return updated;
       });
-      setInvitedSlotByFriendId((prev) => {
-        const updated = { ...prev, [friendIdStr]: slot };
-        invitedSlotByFriendIdRef.current = updated;
+      setInvitedSlotByConnectId((prev) => {
+        const updated = { ...prev, [connectIdStr]: slot };
+        invitedSlotByConnectIdRef.current = updated;
         return updated;
       });
 
-      // CRITICAL: Add friend to selectedFriends if not already there
-      setSelectedFriends((prev) => {
-        const already = prev.some((p) => String(p?._id) === String(friend._id));
+      // CRITICAL: Add connect to selectedConnects if not already there
+      setSelectedConnects((prev) => {
+        const already = prev.some((p) => String(p?._id) === String(connect._id));
         if (already) {
           console.log(
-            `[INVITE_FRIEND] Friend ${friendIdStr} already in selectedFriends`,
+            `[INVITE_CONNECT] Connect ${connectIdStr} already in selectedConnects`,
           );
           return prev;
         }
-        const next = [...prev, friend];
-        const maxFriends = Math.max(0, selectedPlayerCount - 1);
-        const limited = next.slice(0, maxFriends);
+        const next = [...prev, connect];
+        const maxConnects = Math.max(0, selectedPlayerCount - 1);
+        const limited = next.slice(0, maxConnects);
         console.log(
-          `[INVITE_FRIEND] Added friend ${friendIdStr} to selectedFriends (${limited.length}/${maxFriends})`,
+          `[INVITE_CONNECT] Added connect ${connectIdStr} to selectedConnects (${limited.length}/${maxConnects})`,
         );
         return limited;
       });
 
-      // Track when this friend was invited to prevent processing accept events that arrive immediately
-      inviteTimestampsRef.current[friendIdStr] = Date.now();
+      // Track when this connect was invited to prevent processing accept events that arrive immediately
+      inviteTimestampsRef.current[connectIdStr] = Date.now();
 
       // CRITICAL: Only send invitation if game state has been created (game has started or gameId exists in DB)
       // If game hasn't started yet, the invitation will be sent when "Start Game" is clicked
@@ -3620,15 +3620,15 @@ const LudoGame = () => {
 
       if (shouldSendInviteNow) {
         try {
-          const targetId = friend?._id || friend?.id;
+          const targetId = connect?._id || connect?.id;
           if (!targetId) return;
 
           // Double-check status before sending (race condition protection)
           const statusBeforeSend =
-            invitedStatusByFriendIdRef.current[friendIdStr];
+            invitedStatusByConnectIdRef.current[connectIdStr];
           if (statusBeforeSend === "joined") {
             console.log(
-              `[INVITE_FRIEND] Skipping invite to ${friendIdStr} - status changed to joined`,
+              `[INVITE_CONNECT] Skipping invite to ${connectIdStr} - status changed to joined`,
             );
             return;
           }
@@ -3649,9 +3649,9 @@ const LudoGame = () => {
             playerCount: selectedPlayerCount,
             ts: Date.now(),
           });
-          // Fire a web notification to the friend's active browsers
+          // Fire a web notification to the connect's active browsers
           try {
-            sendInviteNotificationToFriend(friend, gid, slot);
+            sendInviteNotificationToConnect(connect, gid, slot);
           } catch (_e) {}
         } catch (_e) {}
       }
@@ -3704,30 +3704,30 @@ const LudoGame = () => {
             ? Number(payload.playerCount)
             : 4;
           setSelectedPlayerCount(playerCount);
-          const friends = (Array.isArray(payload.friends) ? payload.friends : [])
+          const connects = (Array.isArray(payload.connects) ? payload.connects : [])
             .map((item) => ({
-              _id: item.friendId,
-              fullName: item.friendName,
+              _id: item.connectId,
+              fullName: item.connectName,
               profilePic: item.friendAvatar,
             }))
             .filter((item) => item._id);
-          if (friends.length) {
-            setSelectedFriends(friends);
+          if (connects.length) {
+            setSelectedConnects(connects);
             const slots = {};
             const statuses = {};
-            friends.forEach((item, index) => {
-              const source = (payload.friends || []).find(
-                (entry) => String(entry?.friendId) === String(item._id),
+            connects.forEach((item, index) => {
+              const source = (payload.connects || []).find(
+                (entry) => String(entry?.connectId) === String(item._id),
               );
               const slot = Number(source?.slotIndex) || index + 1;
-              const friendIdStr = String(item._id);
-              slots[friendIdStr] = slot;
-              statuses[friendIdStr] = "invited";
+              const connectIdStr = String(item._id);
+              slots[connectIdStr] = slot;
+              statuses[connectIdStr] = "invited";
             });
-            invitedSlotByFriendIdRef.current = slots;
-            invitedStatusByFriendIdRef.current = statuses;
-            setInvitedSlotByFriendId(slots);
-            setInvitedStatusByFriendId(statuses);
+            invitedSlotByConnectIdRef.current = slots;
+            invitedStatusByConnectIdRef.current = statuses;
+            setInvitedSlotByConnectId(slots);
+            setInvitedStatusByConnectId(statuses);
           }
         }
       }
@@ -3738,21 +3738,21 @@ const LudoGame = () => {
       localStorage.removeItem("ludo_invite_target");
       if (usedAgentCreate) return true;
       const target = JSON.parse(raw);
-      if (!target?.friendId) return usedAgentCreate;
+      if (!target?.connectId) return usedAgentCreate;
       if (target.gameId) {
         gameIdRef.current = target.gameId;
         newGameDraftIdRef.current = target.gameId;
         setGameId(target.gameId);
         setOnlineMode(true);
       }
-      inviteFriend({
-        _id: target.friendId,
-        fullName: target.friendName,
+      inviteConnect({
+        _id: target.connectId,
+        fullName: target.connectName,
         profilePic: target.friendAvatar,
       });
     } catch (_) {}
     return usedAgentCreate;
-  }, [inviteFriend, myProfile?._id]);
+  }, [inviteConnect, myProfile?._id]);
 
   useEffect(() => {
     consumeAgentLudoStart();
@@ -3766,10 +3766,10 @@ const LudoGame = () => {
     return () => window.removeEventListener("ludo:agent-create", onAgentCreate);
   }, [consumeAgentLudoStart]);
 
-  // Offline: assign a searched friend/profile to the next open local seat (no socket)
-  const assignFriendOffline = useCallback(
-    (friend) => {
-      if (!friend || !friend._id) return;
+  // Offline: assign a searched connect/profile to the next open local seat (no socket)
+  const assignConnectOffline = useCallback(
+    (connect) => {
+      if (!connect || !connect._id) return;
       const slot = getNextOpenSlot();
       if (slot == null) return;
       setPlayers((prev) => {
@@ -3778,26 +3778,26 @@ const LudoGame = () => {
           pieces: p.pieces.map((pc) => ({ ...pc })),
         }));
         if (!copy[slot]) return prev;
-        copy[slot].name = friend.fullName || copy[slot].name;
-        copy[slot].avatar = friend.profilePic || copy[slot].avatar;
-        copy[slot].cover = friend.coverPic || copy[slot].cover;
-        copy[slot].profileId = friend._id; // local-only association
+        copy[slot].name = connect.fullName || copy[slot].name;
+        copy[slot].avatar = connect.profilePic || copy[slot].avatar;
+        copy[slot].cover = connect.coverPic || copy[slot].cover;
+        copy[slot].profileId = connect._id; // local-only association
         return copy;
       });
-      setSelectedFriends((prev) => {
-        const already = prev.some((p) => String(p?._id) === String(friend._id));
+      setSelectedConnects((prev) => {
+        const already = prev.some((p) => String(p?._id) === String(connect._id));
         if (already) return prev;
-        const next = [...prev, friend];
+        const next = [...prev, connect];
         return next.slice(0, Math.max(0, selectedPlayerCount - 1));
       });
     },
     [getNextOpenSlot, selectedPlayerCount],
   );
 
-  // Assign a searched friend/profile directly to a specific seat index (used by PlayerEditorModal)
-  const assignFriendToSlot = useCallback(
-    (friend, slotIndex) => {
-      if (!friend || !friend._id) return;
+  // Assign a searched connect/profile directly to a specific seat index (used by PlayerEditorModal)
+  const assignConnectToSlot = useCallback(
+    (connect, slotIndex) => {
+      if (!connect || !connect._id) return;
       if (typeof slotIndex !== "number" || slotIndex < 0) return;
       setPlayers((prev) => {
         const copy = prev.map((p) => ({
@@ -3805,19 +3805,19 @@ const LudoGame = () => {
           pieces: p.pieces.map((pc) => ({ ...pc })),
         }));
         if (!copy[slotIndex]) return prev;
-        copy[slotIndex].name = friend.fullName || copy[slotIndex].name;
-        copy[slotIndex].avatar = friend.profilePic || copy[slotIndex].avatar;
-        copy[slotIndex].cover = friend.coverPic || copy[slotIndex].cover;
-        copy[slotIndex].profileId = friend._id; // local-only association
+        copy[slotIndex].name = connect.fullName || copy[slotIndex].name;
+        copy[slotIndex].avatar = connect.profilePic || copy[slotIndex].avatar;
+        copy[slotIndex].cover = connect.coverPic || copy[slotIndex].cover;
+        copy[slotIndex].profileId = connect._id; // local-only association
         copy[slotIndex].isBot = false;
         copy[slotIndex].isActive = true;
         copy[slotIndex].isOffline = false;
         return copy;
       });
-      setSelectedFriends((prev) => {
-        const already = prev.some((p) => String(p?._id) === String(friend._id));
+      setSelectedConnects((prev) => {
+        const already = prev.some((p) => String(p?._id) === String(connect._id));
         if (already) return prev;
-        const next = [...prev, friend];
+        const next = [...prev, connect];
         return next.slice(0, Math.max(0, selectedPlayerCount - 1));
       });
     },
@@ -3847,13 +3847,13 @@ const LudoGame = () => {
   }, [onlineMode, selectedPlayerCount, players]);
 
   const applyRemotePlayerJoin = useCallback(
-    (friend, requestedSlot) => {
+    (connect, requestedSlot) => {
       if (myPlayerIndexRef.current !== 0) return false;
       if (gameStartedRef.current) return false;
-      const friendId = friend?._id;
-      if (!friendId) return false;
-      const friendIdStr = String(friendId);
-      if (myProfile?._id && friendIdStr === String(myProfile._id)) return false;
+      const connectId = connect?._id;
+      if (!connectId) return false;
+      const connectIdStr = String(connectId);
+      if (myProfile?._id && connectIdStr === String(myProfile._id)) return false;
 
       const currentPlayers = (
         Array.isArray(playersRef.current) ? playersRef.current : []
@@ -3865,8 +3865,8 @@ const LudoGame = () => {
       }));
 
       const expectedSlot = Number(
-        invitedSlotByFriendIdRef.current[friendIdStr] ??
-          invitedSlotByFriendIdRef.current[friendId],
+        invitedSlotByConnectIdRef.current[connectIdStr] ??
+          invitedSlotByConnectIdRef.current[connectId],
       );
       const requested = Number(requestedSlot);
 
@@ -3875,7 +3875,7 @@ const LudoGame = () => {
         (player, index) =>
           index > 0 &&
           player?.profileId &&
-          String(player.profileId) === friendIdStr,
+          String(player.profileId) === connectIdStr,
       );
       if (already > 0) {
         slot = already;
@@ -3905,14 +3905,14 @@ const LudoGame = () => {
 
       currentPlayers[slot] = {
         ...currentPlayers[slot],
-        name: friend.fullName || currentPlayers[slot].name,
-        avatar: friend.profilePic || currentPlayers[slot].avatar,
+        name: connect.fullName || currentPlayers[slot].name,
+        avatar: connect.profilePic || currentPlayers[slot].avatar,
         cover:
-          friend.coverPic ||
-          friend.cover ||
-          friend.profileCover ||
+          connect.coverPic ||
+          connect.cover ||
+          connect.profileCover ||
           currentPlayers[slot].cover,
-        profileId: friendId,
+        profileId: connectId,
         isActive: true,
         isOffline: false,
         offlineSince: undefined,
@@ -3924,7 +3924,7 @@ const LudoGame = () => {
           index !== 0 &&
           index !== slot &&
           player?.profileId &&
-          String(player.profileId) === friendIdStr
+          String(player.profileId) === connectIdStr
         ) {
           currentPlayers[index] = {
             ...player,
@@ -3937,19 +3937,19 @@ const LudoGame = () => {
       playersRef.current = currentPlayers;
       setPlayers(currentPlayers);
 
-      invitedStatusByFriendIdRef.current = {
-        ...invitedStatusByFriendIdRef.current,
-        [friendIdStr]: "joined",
+      invitedStatusByConnectIdRef.current = {
+        ...invitedStatusByConnectIdRef.current,
+        [connectIdStr]: "joined",
       };
-      invitedSlotByFriendIdRef.current = {
-        ...invitedSlotByFriendIdRef.current,
-        [friendIdStr]: slot,
+      invitedSlotByConnectIdRef.current = {
+        ...invitedSlotByConnectIdRef.current,
+        [connectIdStr]: slot,
       };
-      setInvitedStatusByFriendId((prev) => ({
+      setInvitedStatusByConnectId((prev) => ({
         ...prev,
-        [friendIdStr]: "joined",
+        [connectIdStr]: "joined",
       }));
-      setInvitedSlotByFriendId((prev) => ({ ...prev, [friendIdStr]: slot }));
+      setInvitedSlotByConnectId((prev) => ({ ...prev, [connectIdStr]: slot }));
       return true;
     },
     [myProfile?._id],
@@ -3979,7 +3979,7 @@ const LudoGame = () => {
       if (gameStartedRef.current) {
         setWaitingForPlayers(false);
         // CRITICAL: Don't set canRollDice to true unconditionally - let the useEffect handle it
-        // This prevents friends from being able to roll dice when it's not their turn
+        // This prevents connects from being able to roll dice when it's not their turn
         // setCanRollDice(true); // Removed - let useEffect handle based on turn
         return;
       }
@@ -4073,8 +4073,8 @@ const LudoGame = () => {
     return btoa(JSON.stringify(payload));
   };
 
-  const sendInviteNotificationToFriend = async (
-    friend,
+  const sendInviteNotificationToConnect = async (
+    connect,
     gid,
     slotIndex,
     options = {},
@@ -4101,7 +4101,7 @@ const LudoGame = () => {
       const url = `${window.location.origin}${window.location.pathname}`;
       const notificationData = {
         title: "Ludo Invitation",
-        text: `${myProfile?.fullName || "A friend"} invited you to play Ludo`,
+        text: `${myProfile?.fullName || "A connect"} invited you to play Ludo`,
         icon: myProfile?.profilePic || siteConfig.logo,
         link: url,
         type: "ludo_invite",
@@ -4118,25 +4118,25 @@ const LudoGame = () => {
         },
       };
       await api.post("/web-notification/send-to-all-browsers", {
-        profileId: friend?._id,
+        profileId: connect?._id,
         notificationData,
       });
     } catch (_e) {}
   };
 
-  // Resolve invited friend's display name for a given slot index
+  // Resolve invited connect's display name for a given slot index
   const getInvitedNameForSlot = useCallback(
     (slotIndex) => {
       try {
-        const entries = Object.entries(invitedSlotByFriendId || {});
+        const entries = Object.entries(invitedSlotByConnectId || {});
         for (const [fid, slot] of entries) {
           if (Number(slot) === Number(slotIndex)) {
-            // Only return name if friend hasn't joined yet
-            const inviteStatus = invitedStatusByFriendId?.[fid];
+            // Only return name if connect hasn't joined yet
+            const inviteStatus = invitedStatusByConnectId?.[fid];
             if (inviteStatus === "joined") {
-              return null; // Friend has already joined, don't show as pending invite
+              return null; // Connect has already joined, don't show as pending invite
             }
-            const pool = [...selectedFriends, ...friendList, ...searchResults];
+            const pool = [...selectedConnects, ...connectList, ...searchResults];
             const f = pool.find((u) => u && String(u._id) === String(fid));
             return f?.fullName || null;
           }
@@ -4145,10 +4145,10 @@ const LudoGame = () => {
       return null;
     },
     [
-      invitedSlotByFriendId,
-      invitedStatusByFriendId,
-      selectedFriends,
-      friendList,
+      invitedSlotByConnectId,
+      invitedStatusByConnectId,
+      selectedConnects,
+      connectList,
       searchResults,
     ],
   );
@@ -4296,7 +4296,7 @@ const LudoGame = () => {
     console.log("[RE_INVITE] Re-inviting players to current game");
 
     try {
-      const reinvitedFriendIds = new Set();
+      const reinvitedConnectIds = new Set();
       // Find offline players or empty slots and re-invite them specifically
       players.forEach((player, index) => {
         // Skip current player and active online players
@@ -4308,19 +4308,19 @@ const LudoGame = () => {
         }
 
         if (!player.profileId || player.isOffline) {
-          // Case 1: Empty slot - send to all selected friends as potential invites
+          // Case 1: Empty slot - send to all selected connects as potential invites
           if (!player.profileId) {
             console.log(
-              "[RE_INVITE] Sending invites to selected friends for empty slot",
+              "[RE_INVITE] Sending invites to selected connects for empty slot",
               index,
             );
-            selectedFriends.forEach((friend) => {
-              if (friend && friend._id) {
-                const friendIdStr = String(friend._id);
+            selectedConnects.forEach((connect) => {
+              if (connect && connect._id) {
+                const connectIdStr = String(connect._id);
                 const reservedSlot =
-                  invitedSlotByFriendIdRef.current[friendIdStr];
+                  invitedSlotByConnectIdRef.current[connectIdStr];
                 if (
-                  reinvitedFriendIds.has(friendIdStr) ||
+                  reinvitedConnectIds.has(connectIdStr) ||
                   (reservedSlot !== undefined &&
                     Number(reservedSlot) !== Number(index))
                 ) {
@@ -4331,20 +4331,20 @@ const LudoGame = () => {
                 // seat means a previous joined/declined marker must not block a
                 // fresh invitation.
                 const currentStatus =
-                  invitedStatusByFriendIdRef.current[friendIdStr];
+                  invitedStatusByConnectIdRef.current[connectIdStr];
 
-                // Also check if the friend is already in the game
-                const friendAlreadyInGame = players.some(
-                  (p) => p?.profileId && String(p.profileId) === friendIdStr,
+                // Also check if the connect is already in the game
+                const connectAlreadyInGame = players.some(
+                  (p) => p?.profileId && String(p.profileId) === connectIdStr,
                 );
-                if (friendAlreadyInGame) {
+                if (connectAlreadyInGame) {
                   console.log(
-                    `[RE_INVITE] Skipping invite to ${friendIdStr} - already in game`,
+                    `[RE_INVITE] Skipping invite to ${connectIdStr} - already in game`,
                   );
                   if (currentStatus !== "joined") {
-                    setInvitedStatusByFriendId((prev) => {
-                      const updated = { ...prev, [friendIdStr]: "joined" };
-                      invitedStatusByFriendIdRef.current = updated;
+                    setInvitedStatusByConnectId((prev) => {
+                      const updated = { ...prev, [connectIdStr]: "joined" };
+                      invitedStatusByConnectIdRef.current = updated;
                       return updated;
                     });
                   }
@@ -4352,10 +4352,10 @@ const LudoGame = () => {
                 }
 
                 try {
-                  reinvitedFriendIds.add(friendIdStr);
-                  const inviteId = `${gameId}:${friendIdStr}:${Date.now()}`;
+                  reinvitedConnectIds.add(connectIdStr);
+                  const inviteId = `${gameId}:${connectIdStr}:${Date.now()}`;
                   socketRef.current.emit("ludo:invite", {
-                    to: friend._id,
+                    to: connect._id,
                     by: myProfile?._id,
                     name: myProfile?.fullName || "Player",
                     avatar: myProfile?.profilePic,
@@ -4367,33 +4367,33 @@ const LudoGame = () => {
                     inviteId,
                     ts: Date.now(),
                   });
-                  invitedStatusByFriendIdRef.current[friendIdStr] = "invited";
-                  invitedSlotByFriendIdRef.current[friendIdStr] = index;
-                  setInvitedStatusByFriendId((prev) => ({
+                  invitedStatusByConnectIdRef.current[connectIdStr] = "invited";
+                  invitedSlotByConnectIdRef.current[connectIdStr] = index;
+                  setInvitedStatusByConnectId((prev) => ({
                     ...prev,
-                    [friendIdStr]: "invited",
+                    [connectIdStr]: "invited",
                   }));
-                  setInvitedSlotByFriendId((prev) => ({
+                  setInvitedSlotByConnectId((prev) => ({
                     ...prev,
-                    [friendIdStr]: index,
+                    [connectIdStr]: index,
                   }));
 
-                  // Fire web notification to friend
+                  // Fire web notification to connect
                   try {
-                    sendInviteNotificationToFriend(friend, gameId, index, {
+                    sendInviteNotificationToConnect(connect, gameId, index, {
                       reinvite: true,
                       inviteId,
                     });
                   } catch (_e) {}
                   console.log(
-                    "[RE_INVITE] Sent targeted invite to friend",
-                    friend._id,
+                    "[RE_INVITE] Sent targeted invite to connect",
+                    connect._id,
                     "for slot",
                     index,
                   );
                 } catch (error) {
                   console.error(
-                    "[RE_INVITE] Error sending invite to friend:",
+                    "[RE_INVITE] Error sending invite to connect:",
                     error,
                   );
                 }
@@ -4411,8 +4411,8 @@ const LudoGame = () => {
               index,
             );
             try {
-              if (reinvitedFriendIds.has(playerIdStr)) return;
-              reinvitedFriendIds.add(playerIdStr);
+              if (reinvitedConnectIds.has(playerIdStr)) return;
+              reinvitedConnectIds.add(playerIdStr);
               const inviteId = `${gameId}:${playerIdStr}:${Date.now()}`;
               socketRef.current.emit("ludo:invite", {
                 to: player.profileId,
@@ -4427,25 +4427,25 @@ const LudoGame = () => {
                 inviteId,
                 ts: Date.now(),
               });
-              invitedStatusByFriendIdRef.current[playerIdStr] = "invited";
-              invitedSlotByFriendIdRef.current[playerIdStr] = index;
-              setInvitedStatusByFriendId((prev) => ({
+              invitedStatusByConnectIdRef.current[playerIdStr] = "invited";
+              invitedSlotByConnectIdRef.current[playerIdStr] = index;
+              setInvitedStatusByConnectId((prev) => ({
                 ...prev,
                 [playerIdStr]: "invited",
               }));
-              setInvitedSlotByFriendId((prev) => ({
+              setInvitedSlotByConnectId((prev) => ({
                 ...prev,
                 [playerIdStr]: index,
               }));
 
               // Fire web notification to offline player
-              const offlineFriend = {
+              const offlineConnect = {
                 _id: player.profileId,
                 fullName: player.name,
                 profilePic: player.avatar,
               };
               try {
-                sendInviteNotificationToFriend(offlineFriend, gameId, index, {
+                sendInviteNotificationToConnect(offlineConnect, gameId, index, {
                   reinvite: true,
                   inviteId,
                 });
@@ -4475,7 +4475,7 @@ const LudoGame = () => {
     myPlayerIndexRef.current,
     myProfile,
     selectedPlayerCount,
-    selectedFriends,
+    selectedConnects,
   ]);
 
   /**
@@ -5716,7 +5716,7 @@ const LudoGame = () => {
             }
 
             // Check for captures at the old position (when token moves away)
-            // This handles the case where friend has double tokens and moves
+            // This handles the case where connect has double tokens and moves
             // one away, leaving a single token that should be captured
             if (oldSteps > 0 && oldSteps < maxSteps) {
               const capturedAfterMoveAway = checkForCaptureAfterMoveAway(
@@ -6447,7 +6447,7 @@ const LudoGame = () => {
         if (myPlayerIndexRef.current !== 0) return;
 
         const applied = applyRemotePlayerJoinRef.current?.(
-          payload.friend,
+          payload.connect,
           payload.slotIndex,
         );
         if (!applied) return;
@@ -6458,7 +6458,7 @@ const LudoGame = () => {
         setTimeout(() => {
           persistAndBroadcastGameState("player_accept_join", {
             slotIndex: payload.slotIndex,
-            friendId: payload.friend?._id,
+            connectId: payload.connect?._id,
           });
           recomputeWaitingState();
 
@@ -6687,7 +6687,7 @@ const LudoGame = () => {
           setIsReconnecting(false);
           setShowReconnectModal(false);
           // CRITICAL: Don't set canRollDice to true unconditionally - let the useEffect handle it
-          // This prevents friends from being able to roll dice when it's not their turn
+          // This prevents connects from being able to roll dice when it's not their turn
           // The useEffect will properly check if it's the player's turn before enabling dice roll
           // setCanRollDice(true); // Removed - let useEffect handle based on turn
           // CRITICAL: Clear reconnecting state when we receive valid game state
@@ -6706,7 +6706,7 @@ const LudoGame = () => {
               inviteAcceptTimestampRef.current = 0; // Reset timestamp
             }, 1000);
           }
-          // CRITICAL: Ensure onlineMode is set when receiving game state (for friend who accepted invite)
+          // CRITICAL: Ensure onlineMode is set when receiving game state (for connect who accepted invite)
           if (!onlineMode && payload.gameStarted) {
             setOnlineMode(true);
             console.log(
@@ -7164,22 +7164,22 @@ const LudoGame = () => {
               ) {
                 const playerIdStr = String(player.profileId);
                 if (
-                  invitedStatusByFriendIdRef.current[playerIdStr] !== "joined"
+                  invitedStatusByConnectIdRef.current[playerIdStr] !== "joined"
                 ) {
-                  setInvitedStatusByFriendId((prev) => {
+                  setInvitedStatusByConnectId((prev) => {
                     const updated = { ...prev, [playerIdStr]: "joined" };
-                    invitedStatusByFriendIdRef.current = updated;
+                    invitedStatusByConnectIdRef.current = updated;
                     return updated;
                   });
                 }
                 if (
-                  invitedSlotByFriendIdRef.current[playerIdStr] == null
+                  invitedSlotByConnectIdRef.current[playerIdStr] == null
                 ) {
-                  invitedSlotByFriendIdRef.current = {
-                    ...invitedSlotByFriendIdRef.current,
+                  invitedSlotByConnectIdRef.current = {
+                    ...invitedSlotByConnectIdRef.current,
                     [playerIdStr]: playerIndex,
                   };
-                  setInvitedSlotByFriendId((prev) => ({
+                  setInvitedSlotByConnectId((prev) => ({
                     ...prev,
                     [playerIdStr]: playerIndex,
                   }));
@@ -7467,7 +7467,7 @@ const LudoGame = () => {
         setPlayers((prev) => {
           const updated = prev.map((p) => {
             if (p.profileId && String(p.profileId) === pid) {
-              // If host and friend disconnected, track it
+              // If host and connect disconnected, track it
               if (isHost && String(p.profileId) !== String(myProfile?._id)) {
                 setDisconnectedPlayers((prev) => new Set([...prev, pid]));
               }
@@ -7755,11 +7755,11 @@ const LudoGame = () => {
           setIncomingInviteRequest(null);
           setIncomingInvite(null);
           setPendingInvites([]);
-          setSelectedFriends([]);
-          setInvitedStatusByFriendId({});
-          invitedStatusByFriendIdRef.current = {};
-          setInvitedSlotByFriendId({});
-          invitedSlotByFriendIdRef.current = {};
+          setSelectedConnects([]);
+          setInvitedStatusByConnectId({});
+          invitedStatusByConnectIdRef.current = {};
+          setInvitedSlotByConnectId({});
+          invitedSlotByConnectIdRef.current = {};
           setDisconnectedPlayers(new Set());
           isRollingRef.current = false;
           isMovingRef.current = false;
@@ -7804,8 +7804,8 @@ const LudoGame = () => {
           return;
         }
         const reservedSlot =
-          invitedSlotByFriendIdRef.current[String(profileId)] ??
-          invitedSlotByFriendIdRef.current[profileId];
+          invitedSlotByConnectIdRef.current[String(profileId)] ??
+          invitedSlotByConnectIdRef.current[profileId];
         const existing = (playersRef.current || []).find(
           (player) =>
             player?.profileId && String(player.profileId) === String(profileId),
@@ -7835,7 +7835,7 @@ const LudoGame = () => {
         if (!applied) return;
         setTimeout(() => {
           persistAndBroadcastGameState("player_room_join", {
-            friendId: profileId,
+            connectId: profileId,
           });
           recomputeWaitingState();
         }, 50);
@@ -7874,7 +7874,7 @@ const LudoGame = () => {
   useEffect(() => {
     recomputeWaitingState();
   }, [
-    invitedStatusByFriendId,
+    invitedStatusByConnectId,
     players,
     selectedPlayerCount,
     onlineMode,
@@ -8433,7 +8433,7 @@ const LudoGame = () => {
           });
 
           showLudoInviteToast(
-            payload.name || "A friend",
+            payload.name || "A connect",
             payload.avatar,
             () => {
               markInviteHandled(payload.gameId, payload.by);
@@ -8533,7 +8533,7 @@ const LudoGame = () => {
 
           if (firstNewInvite) {
             showLudoInviteToast(
-              firstNewInvite.name || "A friend",
+              firstNewInvite.name || "A connect",
               firstNewInvite.avatar,
               () => {
                 markInviteHandled(firstNewInvite.gameId, firstNewInvite.from);
@@ -8915,11 +8915,11 @@ const LudoGame = () => {
     lastJoinRequestRef.current = { gameId: null, timestamp: 0 };
     lastPlayersGetRequestRef.current = { gameId: null, timestamp: 0 };
     selfHealPlayersGetRequestRef.current = { gameId: null, timestamp: 0 };
-    invitedStatusByFriendIdRef.current = {};
-    invitedSlotByFriendIdRef.current = {};
-    setInvitedStatusByFriendId({});
-    setInvitedSlotByFriendId({});
-    setSelectedFriends([]);
+    invitedStatusByConnectIdRef.current = {};
+    invitedSlotByConnectIdRef.current = {};
+    setInvitedStatusByConnectId({});
+    setInvitedSlotByConnectId({});
+    setSelectedConnects([]);
     initializeGame(selectedPlayerCount, []);
     // Open player selection
     setShowPlayerSelection(true);
@@ -9066,16 +9066,16 @@ const LudoGame = () => {
     setIncomingInvite(null);
     setPendingInvites([]);
     setInviteCopied(false);
-    setSelectedFriends([]);
-    setInvitedStatusByFriendId({});
-    setInvitedSlotByFriendId({});
+    setSelectedConnects([]);
+    setInvitedStatusByConnectId({});
+    setInvitedSlotByConnectId({});
     setLastInviter(null);
 
-    // Clear friend search state
-    setFriendSearchQuery("");
+    // Clear connect search state
+    setConnectSearchQuery("");
     setSearchResults([]);
     setLoadingSearch(false);
-    setFriendList([]);
+    setConnectList([]);
 
     // Clear player editor state
     setShowPlayerEditor(false);
@@ -9102,8 +9102,8 @@ const LudoGame = () => {
     selectedPlayerCountRef.current = 4;
     winnersRef.current = [];
     maxStepsRef.current = 0;
-    invitedStatusByFriendIdRef.current = {};
-    invitedSlotByFriendIdRef.current = {};
+    invitedStatusByConnectIdRef.current = {};
+    invitedSlotByConnectIdRef.current = {};
     inviteTimestampsRef.current = {};
     recentMovesRef.current.clear();
     lastTurnAdvanceTimeRef.current = 0;
@@ -9188,13 +9188,13 @@ const LudoGame = () => {
     console.log("[CONFIRM_PLAYER_COUNT] Called", {
       onlineMode,
       selectedPlayerCount,
-      selectedFriendsCount: selectedFriends.length,
-      selectedFriends: selectedFriends.map((f) => ({
+      selectedConnectsCount: selectedConnects.length,
+      selectedConnects: selectedConnects.map((f) => ({
         id: f._id,
         name: f.fullName,
       })),
       gameId,
-      invitedSlots: invitedSlotByFriendIdRef.current,
+      invitedSlots: invitedSlotByConnectIdRef.current,
     });
 
     setShowPlayerSelection(false);
@@ -9247,9 +9247,9 @@ const LudoGame = () => {
       if (playWithComputer && !onlineMode) {
         for (let i = 1; i < next.length; i++) {
           const seat = next[i];
-          const hasHumanFriend =
+          const hasHumanConnect =
             seat?.profileId && !String(seat.profileId).startsWith("bot-");
-          if (!hasHumanFriend) {
+          if (!hasHumanConnect) {
             next[i] = {
               ...seat,
               name: `Computer ${i}`,
@@ -9264,45 +9264,45 @@ const LudoGame = () => {
       return next;
     });
     // Re-apply any reserved invited slots to the fresh players list
-    // CRITICAL: Don't set profileId until friend accepts - only set name/avatar for display
+    // CRITICAL: Don't set profileId until connect accepts - only set name/avatar for display
     // This prevents the server from thinking they've joined before they accept
     // The profileId will be set when they accept via the onAccepted handler
     if (
       onlineMode &&
-      invitedSlotByFriendId &&
-      Object.keys(invitedSlotByFriendId).length > 0
+      invitedSlotByConnectId &&
+      Object.keys(invitedSlotByConnectId).length > 0
     ) {
       setPlayers((prev) => {
         const copy = prev.map((p) => ({
           ...p,
           pieces: p.pieces.map((pc) => ({ ...pc })),
         }));
-        Object.entries(invitedSlotByFriendId).forEach(([fid, slotStr]) => {
+        Object.entries(invitedSlotByConnectId).forEach(([fid, slotStr]) => {
           const slot = Number(slotStr);
-          const friend = [
-            ...selectedFriends,
-            ...friendList,
+          const connect = [
+            ...selectedConnects,
+            ...connectList,
             ...searchResults,
           ].find((f) => String(f?._id) === String(fid));
-          if (copy[slot] && friend) {
-            const friendIdStr = String(friend._id);
+          if (copy[slot] && connect) {
+            const connectIdStr = String(connect._id);
             const inviteStatus =
-              invitedStatusByFriendIdRef.current[friendIdStr];
+              invitedStatusByConnectIdRef.current[connectIdStr];
 
             // Set name/avatar for UI display (so host can see who they invited)
-            copy[slot].name = friend.fullName || copy[slot].name;
-            copy[slot].avatar = friend.profilePic || copy[slot].avatar;
+            copy[slot].name = connect.fullName || copy[slot].name;
+            copy[slot].avatar = connect.profilePic || copy[slot].avatar;
             copy[slot].cover =
-              friend.coverPic ||
-              friend.cover ||
-              friend.profileCover ||
+              connect.coverPic ||
+              connect.cover ||
+              connect.profileCover ||
               copy[slot].cover;
 
-            // CRITICAL: Only set profileId if friend has already accepted (status === 'joined')
+            // CRITICAL: Only set profileId if connect has already accepted (status === 'joined')
             // Otherwise, DON'T set profileId - this prevents the server from thinking they've joined
             // The profileId will be set when they accept via the onAccepted handler
             if (inviteStatus === "joined") {
-              copy[slot].profileId = friend._id;
+              copy[slot].profileId = connect._id;
             }
             // If status is not 'joined', leave profileId undefined - this is intentional
           }
@@ -9337,7 +9337,7 @@ const LudoGame = () => {
             gid,
             playersRefLength: playersRef.current?.length,
             playersLength: players.length,
-            selectedFriendsCount: selectedFriends.length,
+            selectedConnectsCount: selectedConnects.length,
           },
         );
 
@@ -9363,12 +9363,12 @@ const LudoGame = () => {
               console.log(
                 "[CONFIRM_PLAYER_COUNT] Game state created, preparing to send invites",
                 {
-                  selectedFriendsCount: selectedFriends.length,
-                  selectedFriends: selectedFriends.map((f) => ({
+                  selectedConnectsCount: selectedConnects.length,
+                  selectedConnects: selectedConnects.map((f) => ({
                     id: f._id,
                     name: f.fullName,
                   })),
-                  invitedSlots: invitedSlotByFriendIdRef.current,
+                  invitedSlots: invitedSlotByConnectIdRef.current,
                 },
               );
 
@@ -9392,7 +9392,7 @@ const LudoGame = () => {
                       console.log(
                         "[CONFIRM_PLAYER_COUNT] Socket connected, sending invites",
                       );
-                      sendInvitesToFriends();
+                      sendInvitesToConnects();
                     },
                   );
                   return;
@@ -9402,30 +9402,30 @@ const LudoGame = () => {
                 console.log(
                   "[CONFIRM_PLAYER_COUNT] Socket connected, sending invites immediately",
                 );
-                sendInvitesToFriends();
+                sendInvitesToConnects();
               };
 
-              const sendInvitesToFriends = () => {
-                // Game state created successfully - now send invitations to all selected friends
-                // Send invitations to all friends in selectedFriends list
-                // This includes friends that were selected before "Start Game" was clicked
-                if (!selectedFriends || selectedFriends.length === 0) {
+              const sendInvitesToConnects = () => {
+                // Game state created successfully - now send invitations to all selected connects
+                // Send invitations to all connects in selectedConnects list
+                // This includes connects that were selected before "Start Game" was clicked
+                if (!selectedConnects || selectedConnects.length === 0) {
                   console.log(
-                    "[CONFIRM_PLAYER_COUNT] No selected friends to invite",
+                    "[CONFIRM_PLAYER_COUNT] No selected connects to invite",
                   );
                   return;
                 }
 
                 console.log(
                   "[CONFIRM_PLAYER_COUNT] Sending invites to",
-                  selectedFriends.length,
-                  "friends",
+                  selectedConnects.length,
+                  "connects",
                 );
 
-                selectedFriends.forEach((friend) => {
-                  if (friend && friend._id) {
-                    const friendIdStr = String(friend._id);
-                    const slot = invitedSlotByFriendIdRef.current[friendIdStr];
+                selectedConnects.forEach((connect) => {
+                  if (connect && connect._id) {
+                    const connectIdStr = String(connect._id);
+                    const slot = invitedSlotByConnectIdRef.current[connectIdStr];
 
                     // If slot is not set, try to get it from the players array
                     let actualSlot = slot;
@@ -9433,16 +9433,16 @@ const LudoGame = () => {
                       const currentPlayers = playersRef.current || players;
                       const playerIndex = currentPlayers.findIndex(
                         (p) =>
-                          p?.profileId && String(p.profileId) === friendIdStr,
+                          p?.profileId && String(p.profileId) === connectIdStr,
                       );
                       if (playerIndex >= 0) {
                         actualSlot = playerIndex;
                         // Update the ref
-                        invitedSlotByFriendIdRef.current[friendIdStr] =
+                        invitedSlotByConnectIdRef.current[connectIdStr] =
                           actualSlot;
-                        setInvitedSlotByFriendId((prev) => ({
+                        setInvitedSlotByConnectId((prev) => ({
                           ...prev,
-                          [friendIdStr]: actualSlot,
+                          [connectIdStr]: actualSlot,
                         }));
                       }
                     }
@@ -9450,19 +9450,19 @@ const LudoGame = () => {
                     if (actualSlot === undefined) {
                       actualSlot = getNextOpenSlot();
                       if (actualSlot != null) {
-                        invitedSlotByFriendIdRef.current[friendIdStr] =
+                        invitedSlotByConnectIdRef.current[connectIdStr] =
                           actualSlot;
-                        invitedStatusByFriendIdRef.current[friendIdStr] =
-                          invitedStatusByFriendIdRef.current[friendIdStr] ||
+                        invitedStatusByConnectIdRef.current[connectIdStr] =
+                          invitedStatusByConnectIdRef.current[connectIdStr] ||
                           "invited";
-                        setInvitedSlotByFriendId((prev) => ({
+                        setInvitedSlotByConnectId((prev) => ({
                           ...prev,
-                          [friendIdStr]: actualSlot,
+                          [connectIdStr]: actualSlot,
                         }));
-                        setInvitedStatusByFriendId((prev) => ({
+                        setInvitedStatusByConnectId((prev) => ({
                           ...prev,
-                          [friendIdStr]:
-                            prev[friendIdStr] || "invited",
+                          [connectIdStr]:
+                            prev[connectIdStr] || "invited",
                         }));
                         setPlayers((prev) => {
                           const copy = prev.map((p) => ({
@@ -9471,11 +9471,11 @@ const LudoGame = () => {
                           }));
                           if (copy[actualSlot]) {
                             copy[actualSlot].name =
-                              friend.fullName || copy[actualSlot].name;
+                              connect.fullName || copy[actualSlot].name;
                             copy[actualSlot].avatar =
-                              friend.profilePic || copy[actualSlot].avatar;
+                              connect.profilePic || copy[actualSlot].avatar;
                             copy[actualSlot].cover =
-                              friend.coverPic || copy[actualSlot].cover;
+                              connect.coverPic || copy[actualSlot].cover;
                           }
                           playersRef.current = copy;
                           return copy;
@@ -9485,18 +9485,18 @@ const LudoGame = () => {
 
                     if (actualSlot === undefined || actualSlot == null) {
                       console.error(
-                        `[CONFIRM_PLAYER_COUNT] No slot found for friend ${friendIdStr}, skipping invite`,
+                        `[CONFIRM_PLAYER_COUNT] No slot found for connect ${connectIdStr}, skipping invite`,
                       );
                       return;
                     }
 
-                    // CRITICAL: Only skip if friend has actually joined (status === 'joined')
+                    // CRITICAL: Only skip if connect has actually joined (status === 'joined')
                     // Don't skip if status is 'invited' or undefined - we need to send/re-send the invite
                     const currentStatus =
-                      invitedStatusByFriendIdRef.current[friendIdStr];
+                      invitedStatusByConnectIdRef.current[connectIdStr];
                     if (currentStatus === "joined") {
                       console.log(
-                        `[CONFIRM_PLAYER_COUNT] Skipping invite to ${friendIdStr} - already joined`,
+                        `[CONFIRM_PLAYER_COUNT] Skipping invite to ${connectIdStr} - already joined`,
                       );
                       return;
                     }
@@ -9504,20 +9504,20 @@ const LudoGame = () => {
                     // Send invitation after game state is created
                     setTimeout(() => {
                       try {
-                        const targetId = friend?._id || friend?.id;
+                        const targetId = connect?._id || connect?.id;
                         if (!targetId) {
                           console.error(
-                            `[CONFIRM_PLAYER_COUNT] No targetId for friend ${friendIdStr}`,
+                            `[CONFIRM_PLAYER_COUNT] No targetId for connect ${connectIdStr}`,
                           );
                           return;
                         }
 
                         // Double-check status before sending (race condition protection)
                         const statusBeforeSend =
-                          invitedStatusByFriendIdRef.current[friendIdStr];
+                          invitedStatusByConnectIdRef.current[connectIdStr];
                         if (statusBeforeSend === "joined") {
                           console.log(
-                            `[CONFIRM_PLAYER_COUNT] Skipping invite to ${friendIdStr} - status changed to joined`,
+                            `[CONFIRM_PLAYER_COUNT] Skipping invite to ${connectIdStr} - status changed to joined`,
                           );
                           return;
                         }
@@ -9528,7 +9528,7 @@ const LudoGame = () => {
                           !socketRef.current.connected
                         ) {
                           console.error(
-                            `[CONFIRM_PLAYER_COUNT] Socket not connected when trying to send invite to ${friendIdStr}`,
+                            `[CONFIRM_PLAYER_COUNT] Socket not connected when trying to send invite to ${connectIdStr}`,
                           );
                           return;
                         }
@@ -9544,7 +9544,7 @@ const LudoGame = () => {
                         }
 
                         console.log(
-                          `[CONFIRM_PLAYER_COUNT] Sending invite to ${friendIdStr} (${friend.fullName || friend.name}) for slot ${actualSlot}`,
+                          `[CONFIRM_PLAYER_COUNT] Sending invite to ${connectIdStr} (${connect.fullName || connect.name}) for slot ${actualSlot}`,
                           {
                             gameId: gid,
                             slotIndex: actualSlot,
@@ -9567,46 +9567,46 @@ const LudoGame = () => {
                             ts: Date.now(),
                           });
                           console.log(
-                            `[CONFIRM_PLAYER_COUNT] ✅ Invite sent successfully to ${friendIdStr}`,
+                            `[CONFIRM_PLAYER_COUNT] ✅ Invite sent successfully to ${connectIdStr}`,
                           );
                         } catch (emitError) {
                           console.error(
-                            `[CONFIRM_PLAYER_COUNT] ❌ Error emitting invite to ${friendIdStr}:`,
+                            `[CONFIRM_PLAYER_COUNT] ❌ Error emitting invite to ${connectIdStr}:`,
                             emitError,
                           );
                         }
 
-                        // Fire a web notification to the friend's active browsers
+                        // Fire a web notification to the connect's active browsers
                         try {
-                          sendInviteNotificationToFriend(
-                            friend,
+                          sendInviteNotificationToConnect(
+                            connect,
                             gid,
                             actualSlot,
                           );
                         } catch (notifError) {
                           console.error(
-                            `[CONFIRM_PLAYER_COUNT] Error sending notification to ${friendIdStr}:`,
+                            `[CONFIRM_PLAYER_COUNT] Error sending notification to ${connectIdStr}:`,
                             notifError,
                           );
                         }
 
                         // Update status to 'invited' if not already set
                         if (
-                          invitedStatusByFriendIdRef.current[friendIdStr] !==
+                          invitedStatusByConnectIdRef.current[connectIdStr] !==
                           "joined"
                         ) {
-                          setInvitedStatusByFriendId((prev) => {
+                          setInvitedStatusByConnectId((prev) => {
                             const updated = {
                               ...prev,
-                              [friendIdStr]: "invited",
+                              [connectIdStr]: "invited",
                             };
-                            invitedStatusByFriendIdRef.current = updated;
+                            invitedStatusByConnectIdRef.current = updated;
                             return updated;
                           });
                         }
                       } catch (_e) {
                         console.error(
-                          `[CONFIRM_PLAYER_COUNT] Error sending invite to ${friendIdStr}:`,
+                          `[CONFIRM_PLAYER_COUNT] Error sending invite to ${connectIdStr}:`,
                           _e,
                         );
                       }
@@ -9924,8 +9924,8 @@ const LudoGame = () => {
     initializeGame(selectedPlayerCount);
 
     // Reset invite tracking
-    setInvitedStatusByFriendId({});
-    setInvitedSlotByFriendId({});
+    setInvitedStatusByConnectId({});
+    setInvitedSlotByConnectId({});
     clearHandledLudoInvites();
     latestSentPlayersSeqRef.current = 0;
     latestAppliedPlayersSeqRef.current = 0;
@@ -10099,7 +10099,7 @@ const LudoGame = () => {
                   socketRef.current.emit("ludo:accept", {
                     gameId: payload.gameId,
                     slotIndex: payload.slotIndex,
-                    friend: {
+                    connect: {
                       _id: myProfile?._id,
                       fullName: myProfile?.fullName,
                       profilePic: myProfile?.profilePic,
@@ -10110,7 +10110,7 @@ const LudoGame = () => {
                   console.log("[ACCEPT_INVITE] Sent accept event", {
                     gameId: payload.gameId,
                     slotIndex: payload.slotIndex,
-                    friendId: myProfile?._id,
+                    connectId: myProfile?._id,
                     from: payload.from,
                   });
                 }
@@ -11004,12 +11004,12 @@ const LudoGame = () => {
           selectedPlayerCount={selectedPlayerCount}
           onlineMode={onlineMode}
           playWithComputer={playWithComputer}
-          friendSearchQuery={friendSearchQuery}
+          connectSearchQuery={connectSearchQuery}
           loadingSearch={loadingSearch}
           searchResults={searchResults}
-          friendList={friendList}
-          selectedFriends={selectedFriends}
-          invitedStatusByFriendId={invitedStatusByFriendId}
+          connectList={connectList}
+          selectedConnects={selectedConnects}
+          invitedStatusByConnectId={invitedStatusByConnectId}
           players={players}
           myProfile={myProfile}
           joinedGames={joinedGames}
@@ -11025,16 +11025,16 @@ const LudoGame = () => {
               return next;
             });
           }}
-          onFriendSearchChange={onChangeFriendSearch}
-          onFriendSelect={(f, isSelected) => {
-            setSelectedFriends((prev) => {
+          onConnectSearchChange={onChangeConnectSearch}
+          onConnectSelect={(f, isSelected) => {
+            setSelectedConnects((prev) => {
               if (isSelected) return prev.filter((p) => p._id !== f._id);
               const next = [...prev, f];
               return next.slice(0, Math.max(0, selectedPlayerCount - 1));
             });
           }}
-          onInviteFriend={inviteFriend}
-          onAssignFriendOffline={assignFriendOffline}
+          onInviteConnect={inviteConnect}
+          onAssignConnectOffline={assignConnectOffline}
           onGetNextOpenSlot={getNextOpenSlot}
           onGetInvitedNameForSlot={getInvitedNameForSlot}
           onOpenPlayerEditor={openPlayerEditor}
@@ -11075,12 +11075,12 @@ const LudoGame = () => {
             setEditAvatarUrl("");
           }}
           // Search/assign props for picking a user inside editor
-          friendSearchQuery={friendSearchQuery}
+          connectSearchQuery={connectSearchQuery}
           loadingSearch={loadingSearch}
           searchResults={searchResults}
-          friendList={friendList}
-          onFriendSearchChange={onChangeFriendSearch}
-          onAssignFriendToSlot={assignFriendToSlot}
+          connectList={connectList}
+          onConnectSearchChange={onChangeConnectSearch}
+          onAssignConnectToSlot={assignConnectToSlot}
           onPlaySound={playSound}
           canReplaceWithComputer={
             myPlayerIndex === 0 &&
@@ -11418,31 +11418,31 @@ const LudoGame = () => {
                 (players &&
                   players[0]?.profileId &&
                   String(players[0].profileId) === String(myProfile?._id));
-              const hasDisconnectedFriends =
+              const hasDisconnectedConnects =
                 disconnectedPlayers.size > 0 &&
                 gameStarted &&
                 onlineMode &&
                 isHost &&
                 !isReconnecting;
-              if (!hasDisconnectedFriends) return null;
+              if (!hasDisconnectedConnects) return null;
               const disconnectedNames = Array.from(disconnectedPlayers)
                 .map((pid) => {
                   const player = players.find(
                     (p) => p.profileId && String(p.profileId) === pid,
                   );
-                  return player?.name || "Friend";
+                  return player?.name || "Connect";
                 })
                 .filter(Boolean);
               return (
                 <div className="ludo-overlay ludo-overlay--warn">
                   <div className="ludo-card ludo-card--danger">
                     <div className="ludo-card__title ludo-card__title--danger">
-                      Friend Disconnected
+                      Connect Disconnected
                     </div>
                     <div className="ludo-card__body">
                       {disconnectedNames.length === 1
                         ? `${disconnectedNames[0]} left the match.`
-                        : `${disconnectedNames.length} friends left the match.`}
+                        : `${disconnectedNames.length} connects left the match.`}
                     </div>
                     {disconnectedNames.length > 0 && (
                       <div
@@ -11789,7 +11789,7 @@ const LudoGame = () => {
           </div>
           <div className="ludo-idle__title">Ludo Classic</div>
           <div className="ludo-idle__copy">
-            Start a local match or invite friends for an online game.
+            Start a local match or invite connects for an online game.
           </div>
           <div className="ludo-idle__actions">
             <button
@@ -11917,12 +11917,12 @@ const LudoGame = () => {
           setEditAvatarUrl("");
         }}
         // Search/assign props for picking a user inside editor
-        friendSearchQuery={friendSearchQuery}
+        connectSearchQuery={connectSearchQuery}
         loadingSearch={loadingSearch}
         searchResults={searchResults}
-        friendList={friendList}
-        onFriendSearchChange={onChangeFriendSearch}
-        onAssignFriendToSlot={assignFriendToSlot}
+        connectList={connectList}
+        onConnectSearchChange={onChangeConnectSearch}
+        onAssignConnectToSlot={assignConnectToSlot}
         onPlaySound={playSound}
         canReplaceWithComputer={
           myPlayerIndex === 0 &&

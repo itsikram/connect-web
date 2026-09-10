@@ -84,7 +84,7 @@ const NotificationMenu = ({
         type: "ludo_invite",
         timestamp: inv.ts || Date.now(),
         title: "Ludo Invitation",
-        text: `${inv.name || "A friend"} invited you to play Ludo`,
+        text: `${inv.name || "A connect"} invited you to play Ludo`,
         icon: inv.avatar,
         inviterName: inv.name,
         inviterAvatar: inv.avatar,
@@ -103,7 +103,7 @@ const NotificationMenu = ({
         type: "chess_invite",
         timestamp: inv.ts || Date.now(),
         title: "Chess Invitation",
-        text: `${inv.name || "A friend"} invited you to play Chess`,
+        text: `${inv.name || "A connect"} invited you to play Chess`,
         icon: inv.avatar,
         inviterName: inv.name,
         inviterAvatar: inv.avatar,
@@ -378,8 +378,8 @@ const NotificationMenu = ({
           actorName:
             notification.inviterName ||
             derivedInvitePayload?.name ||
-            "A friend",
-          headline: `${notification.inviterName || derivedInvitePayload?.name || "A friend"} invited you to play Ludo`,
+            "A connect",
+          headline: `${notification.inviterName || derivedInvitePayload?.name || "A connect"} invited you to play Ludo`,
           description: "",
           typeMeta: {
             label: "Ludo Invite",
@@ -396,8 +396,8 @@ const NotificationMenu = ({
           actorName:
             notification.inviterName ||
             derivedInvitePayload?.name ||
-            "A friend",
-          headline: `${notification.inviterName || derivedInvitePayload?.name || "A friend"} invited you to play Chess`,
+            "A connect",
+          headline: `${notification.inviterName || derivedInvitePayload?.name || "A connect"} invited you to play Chess`,
           description: "",
           typeMeta: {
             label: "Chess Invite",

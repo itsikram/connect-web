@@ -7,7 +7,7 @@ const PrivacySetting = () => {
     const profile = useSelector(state => state.profile);
     const [settings, setSettings] = useState({
         postVisibility: 'public',
-        friendRequestVisibility: 'public',
+        connectRequestVisibility: 'public',
         timelinePostVisibility: 'public',
         isShareLocation: true,
     });
@@ -24,7 +24,7 @@ const PrivacySetting = () => {
                     setSettings(prev => ({
                         ...prev,
                         postVisibility: res.data.postVisibility || 'public',
-                        friendRequestVisibility: res.data.friendRequestVisibility || 'public',
+                        connectRequestVisibility: res.data.connectRequestVisibility || 'public',
                         timelinePostVisibility: res.data.timelinePostVisibility || 'public',
                         isShareLocation: res.data.isShareLocation !== false,
                     }));
@@ -42,8 +42,8 @@ const PrivacySetting = () => {
             setSettings((prev) => ({
                 ...prev,
                 ...(patch.postVisibility != null ? { postVisibility: patch.postVisibility } : {}),
-                ...(patch.friendRequestVisibility != null
-                    ? { friendRequestVisibility: patch.friendRequestVisibility }
+                ...(patch.connectRequestVisibility != null
+                    ? { connectRequestVisibility: patch.connectRequestVisibility }
                     : {}),
                 ...(patch.timelinePostVisibility != null
                     ? { timelinePostVisibility: patch.timelinePostVisibility }
@@ -114,20 +114,20 @@ const PrivacySetting = () => {
                                 onChange={(e) => setSettings(prev => ({ ...prev, postVisibility: e.target.value }))}
                             >
                                 <option value='om'>Only Me</option>
-                                <option value='fof'>Friend of Friends</option>
+                                <option value='fof'>Connect of Connects</option>
                                 <option value='public'>Public</option>
                             </select>
                         </div>
                         <div className="form-group mb-2">
-                            <label htmlFor="friendRequestVisibility">Who Can Send you Friend Request?</label>
+                            <label htmlFor="connectRequestVisibility">Who Can Send you Connect Request?</label>
                             <select 
                                 className='form-control'
-                                id="friendRequestVisibility"
-                                value={settings.friendRequestVisibility}
-                                onChange={(e) => setSettings(prev => ({ ...prev, friendRequestVisibility: e.target.value }))}
+                                id="connectRequestVisibility"
+                                value={settings.connectRequestVisibility}
+                                onChange={(e) => setSettings(prev => ({ ...prev, connectRequestVisibility: e.target.value }))}
                             >
                                 <option value='om'>Only Me</option>
-                                <option value='fof'>Friend of Friends</option>
+                                <option value='fof'>Connect of Connects</option>
                                 <option value='public'>Public</option>
                             </select>
                         </div>
@@ -140,7 +140,7 @@ const PrivacySetting = () => {
                                 onChange={(e) => setSettings(prev => ({ ...prev, timelinePostVisibility: e.target.value }))}
                             >
                                 <option value='om'>Only Me</option>
-                                <option value='fof'>Friend of Friends</option>
+                                <option value='fof'>Connect of Connects</option>
                                 <option value='public'>Public</option>
                             </select>
                         </div>
@@ -149,10 +149,10 @@ const PrivacySetting = () => {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', backgroundColor: '#222324', borderRadius: '8px' }}>
                                 <div>
                                     <label htmlFor="isShareLocation" style={{ margin: 0, fontWeight: '500' }}>
-                                        Share Location with Friends
+                                        Share Location with Connects
                                     </label>
                                     <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: '#666' }}>
-                                        Allow friends to see your real-time location in the info modal
+                                        Allow connects to see your real-time location in the info modal
                                     </p>
                                 </div>
                                 <div className="form-check form-switch">

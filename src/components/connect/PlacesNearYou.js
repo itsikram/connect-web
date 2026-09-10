@@ -93,14 +93,14 @@ const PlacesNearYou = () => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const placeMarkersRef = useRef([]);
-  const friendMarkersRef = useRef([]);
+  const connectMarkersRef = useRef([]);
   const userMarkerRef = useRef(null);
   const initAttemptedRef = useRef(false);
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
-  const [friends, setFriends] = useState([]);
+  const [connects, setConnects] = useState([]);
   const [nearbyProfiles, setNearbyProfiles] = useState([]);
   const [mapsReady, setMapsReady] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -205,11 +205,11 @@ const PlacesNearYou = () => {
     }
   }, []);
 
-  const loadFriendsOnMap = useCallback(
+  const loadConnectsOnMap = useCallback(
     async (mapInstance, location, profiles) => {
       if (!mapInstance || !location) return;
 
-      clearMarkers(friendMarkersRef);
+      clearMarkers(connectMarkersRef);
 
       if (!profiles?.length) return;
 
@@ -234,9 +234,9 @@ const PlacesNearYou = () => {
 
         let icon = buildDivIcon({
           size: 40,
-          borderColor: person.isFriend ? "#16a34a" : "#ef4444",
+          borderColor: person.isConnect ? "#16a34a" : "#ef4444",
           imageUrl: null,
-          background: person.isFriend ? "#16a34a" : "#ef4444",
+          background: person.isConnect ? "#16a34a" : "#ef4444",
           label: person.fullName || person.username || "U",
         });
 
@@ -248,7 +248,7 @@ const PlacesNearYou = () => {
           if (circularImage) {
             icon = buildDivIcon({
               size: 40,
-              borderColor: person.isFriend ? "#16a34a" : "#ef4444",
+              borderColor: person.isConnect ? "#16a34a" : "#ef4444",
               imageUrl: circularImage,
               label: person.fullName || person.username || "U",
             });
@@ -273,8 +273,8 @@ const PlacesNearYou = () => {
                               person.fullName || "User",
                             )}</strong>
                             ${
-                              person.isFriend
-                                ? `<div style="color:#16a34a;font-size:11px">Friend</div>`
+                              person.isConnect
+                                ? `<div style="color:#16a34a;font-size:11px">Connect</div>`
                                 : ""
                             }
                         </div>
@@ -310,7 +310,7 @@ const PlacesNearYou = () => {
         newMarkers.push(marker);
       }
 
-      friendMarkersRef.current = newMarkers;
+      connectMarkersRef.current = newMarkers;
     },
     [navigate],
   );
@@ -415,7 +415,7 @@ const PlacesNearYou = () => {
           if (userMarkerRef.current) {
             userMarkerRef.current.setLatLng([lat, lng]);
           }
-          loadFriendsOnMap(
+          loadConnectsOnMap(
             mapInstanceRef.current,
             nextLocation,
             nearbyProfiles,
@@ -429,7 +429,7 @@ const PlacesNearYou = () => {
         setIsSearchingLocation(false);
       }
     },
-    [searchQuery, nearbyProfiles, loadFriendsOnMap, searchNearbyPlaces],
+    [searchQuery, nearbyProfiles, loadConnectsOnMap, searchNearbyPlaces],
   );
 
   useEffect(() => {
@@ -515,9 +515,9 @@ const PlacesNearYou = () => {
           params: { profileId: profile._id },
         });
 
-        let friendIds = [];
-        if (profileRes.status === 200 && profileRes.data?.friends) {
-          friendIds = profileRes.data.friends.map((id) =>
+        let connectIds = [];
+        if (profileRes.status === 200 && profileRes.data?.connects) {
+          connectIds = profileRes.data.connects.map((id) =>
             typeof id === "object" && id?._id
               ? id._id.toString()
               : id?.toString() || id,
@@ -547,7 +547,7 @@ const PlacesNearYou = () => {
               timestamp: profileData.lastLocation.timestamp,
             },
             distance: profileData.distance,
-            isFriend: friendIds.some((fid) => {
+            isConnect: connectIds.some((fid) => {
               const fidStr =
                 typeof fid === "object" && fid?._id
                   ? fid._id.toString()
@@ -561,7 +561,7 @@ const PlacesNearYou = () => {
           }));
 
           setNearbyProfiles(mappedProfiles);
-          setFriends(mappedProfiles.filter((p) => p.isFriend));
+          setConnects(mappedProfiles.filter((p) => p.isConnect));
         }
       } catch (err) {
         console.error("Error fetching nearby profiles:", err);
@@ -583,9 +583,9 @@ const PlacesNearYou = () => {
       userMarkerRef.current.setLatLng([userLocation.lat, userLocation.lng]);
     }
 
-    loadFriendsOnMap(mapInstanceRef.current, userLocation, nearbyProfiles);
+    loadConnectsOnMap(mapInstanceRef.current, userLocation, nearbyProfiles);
     searchNearbyPlaces(mapInstanceRef.current, userLocation);
-  }, [nearbyProfiles, userLocation, loadFriendsOnMap, searchNearbyPlaces]);
+  }, [nearbyProfiles, userLocation, loadConnectsOnMap, searchNearbyPlaces]);
 
   useEffect(() => {
     if (!mapInstanceRef.current || !mapRef.current) {
@@ -608,7 +608,7 @@ const PlacesNearYou = () => {
   useEffect(() => {
     return () => {
       clearMarkers(placeMarkersRef);
-      clearMarkers(friendMarkersRef);
+      clearMarkers(connectMarkersRef);
       if (userMarkerRef.current) {
         userMarkerRef.current.remove();
         userMarkerRef.current = null;
@@ -626,7 +626,7 @@ const PlacesNearYou = () => {
     <Fragment>
       <div className="places-near-you">
         <div className="places-near-you__header">
-          <h2>Places &amp; friends near you</h2>
+          <h2>Places &amp; connects near you</h2>
           <p>
             Discover nearby spots and see people who have shared their location.
           </p>
@@ -637,10 +637,10 @@ const PlacesNearYou = () => {
                 {nearbyProfiles.length} nearby
               </span>
               <span className="places-stat">
-                {friends.length} friend{friends.length !== 1 ? "s" : ""}
+                {connects.length} connect{connects.length !== 1 ? "s" : ""}
               </span>
               <span className="places-stat">
-                {Math.max(nearbyProfiles.length - friends.length, 0)} others
+                {Math.max(nearbyProfiles.length - connects.length, 0)} others
               </span>
             </div>
           )}
@@ -688,7 +688,7 @@ const PlacesNearYou = () => {
             <i className="places-dot places-dot--you" /> You
           </span>
           <span>
-            <i className="places-dot places-dot--friend" /> Friends
+            <i className="places-dot places-dot--connect" /> Connects
           </span>
           <span>
             <i className="places-dot places-dot--other" /> Others

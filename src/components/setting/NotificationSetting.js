@@ -5,36 +5,36 @@ import { loadSettings } from '../../services/actions/settingsActions';
 import { showSuccessToast, showErrorToast } from '../../utils/toastUtils';
 
 const NOTIFICATION_DEFAULTS = {
-    friendRequestReceived: true,
-    friendRequestAccepted: true,
+    connectRequestReceived: true,
+    connectRequestAccepted: true,
     newMessageReceived: true,
-    newFriendPost: true,
-    newFriendStory: true,
-    newFriendWatch: true,
-    friendRequestReceivedEmail: false,
-    friendRequestAcceptedEmail: false,
+    newConnectPost: true,
+    newConnectStory: true,
+    newConnectWatch: true,
+    connectRequestReceivedEmail: false,
+    connectRequestAcceptedEmail: false,
     newMessageReceivedEmail: false,
-    newFriendPostEmail: false,
-    newFriendStoryEmail: false,
-    newFriendWatchEmail: false,
+    newConnectPostEmail: false,
+    newConnectStoryEmail: false,
+    newConnectWatchEmail: false,
 };
 
 const PUSH_TOGGLES = [
-    { key: 'friendRequestReceived', label: 'Friend Request Received', help: 'Get notified when someone sends you a friend request' },
-    { key: 'friendRequestAccepted', label: 'Friend Request Accepted', help: 'Get notified when someone accepts your friend request' },
+    { key: 'connectRequestReceived', label: 'Connect Request Received', help: 'Get notified when someone sends you a connect request' },
+    { key: 'connectRequestAccepted', label: 'Connect Request Accepted', help: 'Get notified when someone accepts your connect request' },
     { key: 'newMessageReceived', label: 'New Message Received', help: 'Get notified when you receive a new message' },
-    { key: 'newFriendPost', label: "New Friend's Post", help: 'Get notified when your friends create new posts' },
-    { key: 'newFriendStory', label: "New Friend's Story", help: 'Get notified when your friends share new stories' },
-    { key: 'newFriendWatch', label: "New Friend's Watch", help: 'Get notified when your friends share new watch content' },
+    { key: 'newConnectPost', label: "New Connect's Post", help: 'Get notified when your connects create new posts' },
+    { key: 'newConnectStory', label: "New Connect's Story", help: 'Get notified when your connects share new stories' },
+    { key: 'newConnectWatch', label: "New Connect's Watch", help: 'Get notified when your connects share new watch content' },
 ];
 
 const EMAIL_TOGGLES = [
-    { key: 'friendRequestReceivedEmail', label: 'Friend Request Received', help: 'Get email notifications for new friend requests' },
-    { key: 'friendRequestAcceptedEmail', label: 'Friend Request Accepted', help: 'Get email notifications when friend requests are accepted' },
+    { key: 'connectRequestReceivedEmail', label: 'Connect Request Received', help: 'Get email notifications for new connect requests' },
+    { key: 'connectRequestAcceptedEmail', label: 'Connect Request Accepted', help: 'Get email notifications when connect requests are accepted' },
     { key: 'newMessageReceivedEmail', label: 'New Message Received', help: 'Get email notifications for new messages' },
-    { key: 'newFriendPostEmail', label: "New Friend's Post", help: 'Get email notifications for new friend posts' },
-    { key: 'newFriendStoryEmail', label: "New Friend's Story", help: 'Get email notifications for new friend stories' },
-    { key: 'newFriendWatchEmail', label: "New Friend's Watch", help: 'Get email notifications for new friend watch content' },
+    { key: 'newConnectPostEmail', label: "New Connect's Post", help: 'Get email notifications for new connect posts' },
+    { key: 'newConnectStoryEmail', label: "New Connect's Story", help: 'Get email notifications for new connect stories' },
+    { key: 'newConnectWatchEmail', label: "New Connect's Watch", help: 'Get email notifications for new connect watch content' },
 ];
 
 const NotificationSetting = () => {
@@ -46,18 +46,18 @@ const NotificationSetting = () => {
 
     useEffect(() => {
         setNotificationSettings({
-            friendRequestReceived: reduxSettings.friendRequestReceived ?? true,
-            friendRequestAccepted: reduxSettings.friendRequestAccepted ?? true,
+            connectRequestReceived: reduxSettings.connectRequestReceived ?? true,
+            connectRequestAccepted: reduxSettings.connectRequestAccepted ?? true,
             newMessageReceived: reduxSettings.newMessageReceived ?? true,
-            newFriendPost: reduxSettings.newFriendPost ?? true,
-            newFriendStory: reduxSettings.newFriendStory ?? true,
-            newFriendWatch: reduxSettings.newFriendWatch ?? true,
-            friendRequestReceivedEmail: reduxSettings.friendRequestReceivedEmail ?? false,
-            friendRequestAcceptedEmail: reduxSettings.friendRequestAcceptedEmail ?? false,
+            newConnectPost: reduxSettings.newConnectPost ?? true,
+            newConnectStory: reduxSettings.newConnectStory ?? true,
+            newConnectWatch: reduxSettings.newConnectWatch ?? true,
+            connectRequestReceivedEmail: reduxSettings.connectRequestReceivedEmail ?? false,
+            connectRequestAcceptedEmail: reduxSettings.connectRequestAcceptedEmail ?? false,
             newMessageReceivedEmail: reduxSettings.newMessageReceivedEmail ?? false,
-            newFriendPostEmail: reduxSettings.newFriendPostEmail ?? false,
-            newFriendStoryEmail: reduxSettings.newFriendStoryEmail ?? false,
-            newFriendWatchEmail: reduxSettings.newFriendWatchEmail ?? false,
+            newConnectPostEmail: reduxSettings.newConnectPostEmail ?? false,
+            newConnectStoryEmail: reduxSettings.newConnectStoryEmail ?? false,
+            newConnectWatchEmail: reduxSettings.newConnectWatchEmail ?? false,
         });
     }, [reduxSettings]);
 

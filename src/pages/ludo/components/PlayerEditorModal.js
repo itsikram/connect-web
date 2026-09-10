@@ -16,21 +16,21 @@ export const PlayerEditorModal = ({
     onClose,
     onSave,
     // New props for searching and assigning users
-    friendSearchQuery,
+    connectSearchQuery,
     loadingSearch,
     searchResults,
-    friendList,
-    onFriendSearchChange,
-    onAssignFriendToSlot,
+    connectList,
+    onConnectSearchChange,
+    onAssignConnectToSlot,
     onPlaySound,
     canReplaceWithComputer,
     onReplaceWithComputer,
 }) => {
     if (!show || editingPlayerIndex == null || !player) return null;
 
-    const visibleFriends = friendSearchQuery ? (searchResults || []) : (friendList || []);
+    const visibleConnects = connectSearchQuery ? (searchResults || []) : (connectList || []);
 
-    console.log('friendSearchQuery', friendSearchQuery)
+    console.log('connectSearchQuery', connectSearchQuery)
 
     return (
         <div className="ludo-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="ludo-edit-title" style={{ zIndex: 3201 }}>
@@ -99,9 +99,9 @@ export const PlayerEditorModal = ({
                         <span aria-hidden="true" className="ludo-search__icon">⌕</span>
                         <input
                             placeholder="Search users by name..."
-                            value={friendSearchQuery || ''}
+                            value={connectSearchQuery || ''}
                             onChange={(e) => {
-                                onFriendSearchChange && onFriendSearchChange(e.target.value);
+                                onConnectSearchChange && onConnectSearchChange(e.target.value);
                             }}
                             aria-label="Search users"
                         />
@@ -115,18 +115,18 @@ export const PlayerEditorModal = ({
                             </div>
                         )}
 
-                        {!loadingSearch && visibleFriends.length === 0 && (
-                            <div className="ludo-empty">{friendSearchQuery ? 'No users match your search' : 'No users to show'}</div>
+                        {!loadingSearch && visibleConnects.length === 0 && (
+                            <div className="ludo-empty">{connectSearchQuery ? 'No users match your search' : 'No users to show'}</div>
                         )}
 
-                        <div className="ludo-friend-list" style={{ maxHeight: 200, overflow: 'auto', marginTop: 6 }}>
-                            {visibleFriends.map((f) => {
+                        <div className="ludo-connect-list" style={{ maxHeight: 200, overflow: 'auto', marginTop: 6 }}>
+                            {visibleConnects.map((f) => {
                                 const key = f?._id || String(f?.id) || Math.random().toString(36);
                                 const initial = (f?.fullName || '?').trim().charAt(0).toUpperCase();
                                 return (
-                                    <div key={key} className="ludo-friend" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                                    <div key={key} className="ludo-connect" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                            <div className="ludo-friend__avatar" style={{ width: 36, height: 36, borderRadius: 8, overflow: 'hidden' }}>
+                                            <div className="ludo-connect__avatar" style={{ width: 36, height: 36, borderRadius: 8, overflow: 'hidden' }}>
                                                 {f?.profilePic ? <img src={f.profilePic} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#eee' }}>{initial}</div>}
                                             </div>
                                             <div style={{ minWidth: 120 }}>{f?.fullName || 'Unknown'}</div>
@@ -149,7 +149,7 @@ export const PlayerEditorModal = ({
                                                 className="ludo-btn ludo-btn--sm ludo-btn--primary"
                                                 onClick={() => {
                                                     onPlaySound && onPlaySound('buttonClick');
-                                                    if (onAssignFriendToSlot) onAssignFriendToSlot(f, editingPlayerIndex);
+                                                    if (onAssignConnectToSlot) onAssignConnectToSlot(f, editingPlayerIndex);
                                                     // close editor after assign
                                                     onClose && onClose();
                                                 }}

@@ -1,6 +1,6 @@
-/* ===== Friends Page ===== */
+/* ===== Connects Page ===== */
 
-.friends-page {
+.connects-page {
     --fr-bg: #0b0d11;
     --fr-panel: rgba(22, 24, 28, 0.96);
     --fr-border: rgba(255, 255, 255, 0.08);
@@ -30,13 +30,13 @@
     color: var(--fr-text);
 }
 
-.friends-page .friends-shell {
+.connects-page .connects-shell {
     max-width: 1180px;
     margin: 0 auto;
     padding: 0 14px;
 }
 
-.friends-page .friends-header {
+.connects-page .connects-header {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
@@ -44,7 +44,7 @@
     margin-bottom: 16px;
 }
 
-.friends-page .friends-header h1 {
+.connects-page .connects-header h1 {
     margin: 0 0 4px;
     font-size: 1.55rem;
     font-weight: 750;
@@ -52,13 +52,13 @@
     color: var(--fr-text);
 }
 
-.friends-page .friends-header p {
+.connects-page .connects-header p {
     margin: 0;
     color: var(--fr-muted);
     font-size: 0.92rem;
 }
 
-.friends-page .friends-nav-toggle {
+.connects-page .connects-nav-toggle {
     display: none;
     align-items: center;
     gap: 8px;
@@ -73,7 +73,7 @@
     cursor: pointer;
 }
 
-.friends-page .friends-layout {
+.connects-page .connects-layout {
     display: grid;
     grid-template-columns: 250px minmax(0, 1fr);
     gap: 14px;
@@ -81,15 +81,15 @@
     position: relative;
 }
 
-.friends-page .friends-nav-panel,
-.friends-page .friends-content-panel {
+.connects-page .connects-nav-panel,
+.connects-page .connects-content-panel {
     background: var(--fr-panel);
     border: 1px solid var(--fr-border);
     border-radius: var(--fr-radius);
     box-shadow: 0 8px 28px rgba(0, 0, 0, 0.24);
 }
 
-.friends-page .friends-nav-panel {
+.connects-page .connects-nav-panel {
     position: sticky;
     top: 72px;
     padding: 10px;
@@ -97,7 +97,7 @@
     z-index: 2;
 }
 
-.friends-page .friends-nav-list {
+.connects-page .connects-nav-list {
     list-style: none;
     margin: 0;
     padding: 0;
@@ -106,7 +106,7 @@
     gap: 4px;
 }
 
-.friends-page .friends-nav-item {
+.connects-page .connects-nav-item {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -122,18 +122,18 @@
     min-height: 44px;
 }
 
-.friends-page .friends-nav-item:hover {
+.connects-page .connects-nav-item:hover {
     background: var(--fr-hover);
     color: var(--fr-text);
 }
 
-.friends-page .friends-nav-item.active {
+.connects-page .connects-nav-item.active {
     background: var(--fr-accent-soft);
     color: var(--fr-text);
     font-weight: 650;
 }
 
-.friends-page .friends-nav-icon {
+.connects-page .connects-nav-icon {
     width: 32px;
     height: 32px;
     border-radius: 10px;
@@ -146,36 +146,36 @@
     font-size: 0.85rem;
 }
 
-.friends-page .friends-nav-item.active .friends-nav-icon {
+.connects-page .connects-nav-item.active .connects-nav-icon {
     background: rgba(0, 212, 255, 0.18);
 }
 
-.friends-page .friends-nav-label {
+.connects-page .connects-nav-label {
     flex: 1;
     min-width: 0;
     line-height: 1.2;
 }
 
-.friends-page .friends-nav-short {
+.connects-page .connects-nav-short {
     display: none;
 }
 
-.friends-page .friends-nav-backdrop {
+.connects-page .connects-nav-backdrop {
     display: none;
 }
 
-.friends-page .friends-content-panel {
+.connects-page .connects-content-panel {
     padding: 18px 16px 22px;
     min-height: 420px;
     min-width: 0;
 }
 
-/* Friend grids inside friends page */
-.friends-page #friends-container {
+/* Connect grids inside connects page */
+.connects-page #connects-container {
     margin-bottom: 28px;
 }
 
-.friends-page #friends-container .heading {
+.connects-page #connects-container .heading {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -184,14 +184,14 @@
     width: 100%;
 }
 
-.friends-page #friends-container .heading-title {
+.connects-page #connects-container .heading-title {
     margin: 0;
     font-size: 1.15rem;
     font-weight: 700;
     color: var(--fr-text);
 }
 
-.friends-page #friends-container .view-more-btn {
+.connects-page #connects-container .view-more-btn {
     text-decoration: none;
     font-weight: 650;
     color: var(--fr-accent);
@@ -199,11 +199,11 @@
     white-space: nowrap;
 }
 
-.friends-page #friends-container .view-more-btn:hover {
+.connects-page #connects-container .view-more-btn:hover {
     text-decoration: underline;
 }
 
-.friends-page #friends-container .friend-grid-container {
+.connects-page #connects-container .connect-grid-container {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
     gap: 12px;
@@ -215,7 +215,7 @@
     float: none;
 }
 
-.friends-page #friends-container .friend-grid-item {
+.connects-page #connects-container .connect-grid-item {
     width: 100%;
     float: none;
     margin: 0;
@@ -232,20 +232,20 @@
         background 0.15s ease;
 }
 
-.friends-page #friends-container .friend-grid-item:hover {
+.connects-page #connects-container .connect-grid-item:hover {
     border-color: rgba(0, 212, 255, 0.28);
     background: rgba(255, 255, 255, 0.05);
     transform: translateY(-1px);
 }
 
-.friends-page #friends-container .friend-grid-item a {
+.connects-page #connects-container .connect-grid-item a {
     display: block;
     text-align: center;
     text-decoration: none;
     color: unset;
 }
 
-.friends-page #friends-container .friend-grid-item .profile-picture {
+.connects-page #connects-container .connect-grid-item .profile-picture {
     width: 100%;
     aspect-ratio: 1 / 1;
     min-height: 0;
@@ -255,7 +255,7 @@
     border-radius: 0;
 }
 
-.friends-page #friends-container .friend-grid-item .grid-body {
+.connects-page #connects-container .connect-grid-item .grid-body {
     padding: 12px;
     display: flex;
     flex-direction: column;
@@ -263,7 +263,7 @@
     flex: 1;
 }
 
-.friends-page #friends-container .friend-grid-item .grid-body .profile-name {
+.connects-page #connects-container .connect-grid-item .grid-body .profile-name {
     margin: 0 0 4px;
     color: var(--fr-text);
     font-size: 0.95rem;
@@ -276,7 +276,7 @@
     overflow: hidden;
 }
 
-.friends-page #friends-container .friend-grid-item .grid-body .button {
+.connects-page #connects-container .connect-grid-item .grid-body .button {
     text-align: center;
     font-size: 0.85rem;
     font-weight: 650;
@@ -291,24 +291,24 @@
         opacity 0.15s ease;
 }
 
-.friends-page #friends-container .friend-grid-item .grid-body .button:hover {
+.connects-page #connects-container .connect-grid-item .grid-body .button:hover {
     background: rgba(255, 255, 255, 0.12);
 }
 
-.friends-page #friends-container .friend-grid-item .grid-body .primary-button {
+.connects-page #connects-container .connect-grid-item .grid-body .primary-button {
     background: linear-gradient(135deg, #00d4ff, #0099cc) !important;
     color: #041018 !important;
 }
 
-.friends-page
-    #friends-container
-    .friend-grid-item
+.connects-page
+    #connects-container
+    .connect-grid-item
     .grid-body
     .primary-button:hover {
     filter: brightness(1.05);
 }
 
-.friends-page #friends-container .data-not-found {
+.connects-page #connects-container .data-not-found {
     grid-column: 1 / -1;
     margin: 18px 0;
     color: var(--fr-muted);
@@ -316,21 +316,21 @@
     font-weight: 500;
 }
 
-/* Friend grid skeleton — same card geometry as FGI */
-.friends-page #friends-container .friend-grid-item.fgi-skeleton {
+/* Connect grid skeleton — same card geometry as FGI */
+.connects-page #connects-container .connect-grid-item.fgi-skeleton {
     pointer-events: none;
     user-select: none;
 }
 
-.friends-page #friends-container .friend-grid-item.fgi-skeleton:hover {
+.connects-page #connects-container .connect-grid-item.fgi-skeleton:hover {
     transform: none;
     border-color: var(--fr-border);
     background: rgba(255, 255, 255, 0.03);
 }
 
-.friends-page .fgi-skeleton-photo,
-.friends-page .fgi-skeleton-line,
-.friends-page .fgi-skeleton-btn {
+.connects-page .fgi-skeleton-photo,
+.connects-page .fgi-skeleton-line,
+.connects-page .fgi-skeleton-btn {
     background: linear-gradient(
         100deg,
         rgba(255, 255, 255, 0.04) 0%,
@@ -343,14 +343,14 @@
     animation: fgiSkeletonShine 1.55s ease-in-out infinite;
 }
 
-.friends-page .fgi-skeleton-photo {
+.connects-page .fgi-skeleton-photo {
     width: 100%;
     aspect-ratio: 1 / 1;
     min-height: 0;
     border-radius: 0;
 }
 
-.friends-page .fgi-skeleton-line {
+.connects-page .fgi-skeleton-line {
     display: block;
     height: 13px;
     max-width: 100%;
@@ -358,12 +358,12 @@
     border-radius: 999px;
 }
 
-.friends-page #friends-container .friend-grid-item.fgi-skeleton .grid-body .profile-name {
+.connects-page #connects-container .connect-grid-item.fgi-skeleton .grid-body .profile-name {
     min-height: 2.5em;
     margin-bottom: 2px;
 }
 
-.friends-page #friends-container .friend-grid-item.fgi-skeleton .grid-body .fgi-skeleton-btn {
+.connects-page #connects-container .connect-grid-item.fgi-skeleton .grid-body .fgi-skeleton-btn {
     min-height: 36px;
     padding: 0;
     color: transparent;
@@ -371,7 +371,7 @@
     cursor: default;
 }
 
-.friends-page #friends-container .friend-grid-item.fgi-skeleton .grid-body .primary-button.fgi-skeleton-btn {
+.connects-page #connects-container .connect-grid-item.fgi-skeleton .grid-body .primary-button.fgi-skeleton-btn {
     background: linear-gradient(
         100deg,
         rgba(0, 212, 255, 0.18) 0%,
@@ -394,33 +394,33 @@
 }
 
 /* Places Near You */
-.friends-page .places-near-you {
+.connects-page .places-near-you {
     display: flex;
     flex-direction: column;
     gap: 14px;
 }
 
-.friends-page .places-near-you__header h2 {
+.connects-page .places-near-you__header h2 {
     margin: 0 0 4px;
     font-size: 1.2rem;
     font-weight: 700;
     color: var(--fr-text);
 }
 
-.friends-page .places-near-you__header p {
+.connects-page .places-near-you__header p {
     margin: 0;
     color: var(--fr-muted);
     font-size: 0.9rem;
 }
 
-.friends-page .places-near-you__stats {
+.connects-page .places-near-you__stats {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
     margin-top: 10px;
 }
 
-.friends-page .places-stat {
+.connects-page .places-stat {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -433,47 +433,47 @@
     font-weight: 600;
 }
 
-.friends-page .places-stat--people {
+.connects-page .places-stat--people {
     color: var(--fr-success);
     border-color: rgba(34, 197, 94, 0.25);
     background: rgba(34, 197, 94, 0.08);
 }
 
-.friends-page .places-alert {
+.connects-page .places-alert {
     padding: 12px 14px;
     border-radius: 12px;
     font-size: 0.9rem;
     line-height: 1.45;
 }
 
-.friends-page .places-alert strong {
+.connects-page .places-alert strong {
     display: block;
     margin-bottom: 4px;
 }
 
-.friends-page .places-alert--warning {
+.connects-page .places-alert--warning {
     background: rgba(245, 158, 11, 0.12);
     border: 1px solid rgba(245, 158, 11, 0.35);
     color: #fbbf24;
 }
 
-.friends-page .places-alert--danger {
+.connects-page .places-alert--danger {
     background: rgba(239, 68, 68, 0.12);
     border: 1px solid rgba(239, 68, 68, 0.35);
     color: #fca5a5;
 }
 
-.friends-page .places-alert a {
+.connects-page .places-alert a {
     color: var(--fr-accent);
 }
 
-.friends-page .places-map-search {
+.connects-page .places-map-search {
     display: flex;
     gap: 8px;
     align-items: center;
 }
 
-.friends-page .places-map-search__input {
+.connects-page .places-map-search__input {
     flex: 1;
     min-width: 0;
     border-radius: 10px;
@@ -485,12 +485,12 @@
     outline: none;
 }
 
-.friends-page .places-map-search__input:focus {
+.connects-page .places-map-search__input:focus {
     border-color: var(--fr-accent);
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.18);
 }
 
-.friends-page .places-map-search__button {
+.connects-page .places-map-search__button {
     border: 1px solid transparent;
     border-radius: 10px;
     background: linear-gradient(135deg, #3b82f6, #2563eb);
@@ -500,12 +500,12 @@
     min-width: 92px;
 }
 
-.friends-page .places-map-search__button:disabled {
+.connects-page .places-map-search__button:disabled {
     opacity: 0.75;
     cursor: not-allowed;
 }
 
-.friends-page .places-map-wrap {
+.connects-page .places-map-wrap {
     position: relative;
     width: 100%;
     border-radius: 14px;
@@ -515,13 +515,13 @@
     min-height: min(62vh, 560px);
 }
 
-.friends-page .places-map {
+.connects-page .places-map {
     width: 100%;
     height: min(62vh, 560px);
     min-height: 320px;
 }
 
-.friends-page .places-map-loading {
+.connects-page .places-map-loading {
     position: absolute;
     inset: 0;
     display: flex;
@@ -535,12 +535,12 @@
     pointer-events: none;
 }
 
-.friends-page .places-map-loading p {
+.connects-page .places-map-loading p {
     margin: 0;
     font-size: 0.9rem;
 }
 
-.friends-page .places-legend {
+.connects-page .places-legend {
     display: flex;
     flex-wrap: wrap;
     gap: 12px 18px;
@@ -548,36 +548,36 @@
     color: var(--fr-muted);
 }
 
-.friends-page .places-legend span {
+.connects-page .places-legend span {
     display: inline-flex;
     align-items: center;
     gap: 6px;
 }
 
-.friends-page .places-dot {
+.connects-page .places-dot {
     width: 10px;
     height: 10px;
     border-radius: 50%;
     display: inline-block;
 }
 
-.friends-page .places-dot--you {
+.connects-page .places-dot--you {
     background: #3b82f6;
 }
 
-.friends-page .places-dot--friend {
+.connects-page .places-dot--connect {
     background: #22c55e;
 }
 
-.friends-page .places-dot--other {
+.connects-page .places-dot--other {
     background: #ef4444;
 }
 
-.friends-page .places-dot--place {
+.connects-page .places-dot--place {
     background: #f59e0b;
 }
 
-.friends-page .leaflet-tooltip.places-map-place-label {
+.connects-page .leaflet-tooltip.places-map-place-label {
     border: 1px solid rgba(255, 255, 255, 0.2);
     background: rgba(16, 20, 30, 0.9);
     color: #f8fafc;
@@ -588,22 +588,22 @@
     line-height: 1.25;
 }
 
-.friends-page .leaflet-tooltip-top.places-map-place-label:before {
+.connects-page .leaflet-tooltip-top.places-map-place-label:before {
     border-top-color: rgba(16, 20, 30, 0.9);
 }
 
 /* Responsive */
 @media (max-width: 900px) {
-    .friends-page .friends-layout {
+    .connects-page .connects-layout {
         grid-template-columns: 1fr;
     }
 
-    .friends-page .friends-nav-toggle {
+    .connects-page .connects-nav-toggle {
         display: inline-flex;
         flex-shrink: 0;
     }
 
-    .friends-page .friends-nav-panel {
+    .connects-page .connects-nav-panel {
         position: fixed;
         top: 70px;
         left: 14px;
@@ -620,13 +620,13 @@
         z-index: 40;
     }
 
-    .friends-page .friends-layout.nav-open .friends-nav-panel {
+    .connects-page .connects-layout.nav-open .connects-nav-panel {
         transform: translateX(0);
         opacity: 1;
         pointer-events: auto;
     }
 
-    .friends-page .friends-nav-backdrop {
+    .connects-page .connects-nav-backdrop {
         display: block;
         position: fixed;
         inset: 0;
@@ -636,74 +636,74 @@
         cursor: pointer;
     }
 
-    .friends-page .friends-content-panel {
+    .connects-page .connects-content-panel {
         padding: 14px 12px 18px;
     }
 }
 
 @media (max-width: 640px) {
-    .friends-page {
+    .connects-page {
         padding: 10px 0 28px;
     }
 
-    .friends-page .friends-shell {
+    .connects-page .connects-shell {
         padding: 0 10px;
     }
 
-    .friends-page .friends-header {
+    .connects-page .connects-header {
         flex-direction: column;
         align-items: stretch;
     }
 
-    .friends-page .friends-header h1 {
+    .connects-page .connects-header h1 {
         font-size: 1.35rem;
     }
 
-    .friends-page .friends-nav-toggle {
+    .connects-page .connects-nav-toggle {
         width: 100%;
         justify-content: center;
     }
 
-    .friends-page #friends-container .friend-grid-container {
+    .connects-page #connects-container .connect-grid-container {
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 10px;
     }
 
-    .friends-page #friends-container .friend-grid-item .grid-body {
+    .connects-page #connects-container .connect-grid-item .grid-body {
         padding: 10px;
     }
 
-    .friends-page
-        #friends-container
-        .friend-grid-item
+    .connects-page
+        #connects-container
+        .connect-grid-item
         .grid-body
         .profile-name {
         font-size: 0.88rem;
     }
 
-    .friends-page #friends-container .friend-grid-item .grid-body .button {
+    .connects-page #connects-container .connect-grid-item .grid-body .button {
         font-size: 0.8rem;
         padding: 8px;
     }
 
-    .friends-page .places-map,
-    .friends-page .places-map-wrap {
+    .connects-page .places-map,
+    .connects-page .places-map-wrap {
         min-height: 280px;
         height: min(55vh, 420px);
     }
 
-    .friends-page .places-map-search {
+    .connects-page .places-map-search {
         flex-direction: column;
         align-items: stretch;
     }
 
-    .friends-page .places-map-search__button {
+    .connects-page .places-map-search__button {
         width: 100%;
     }
 }
 
 @media (min-width: 901px) and (max-width: 1100px) {
-    .friends-page #friends-container .friend-grid-container {
+    .connects-page #connects-container .connect-grid-container {
         grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     }
 }

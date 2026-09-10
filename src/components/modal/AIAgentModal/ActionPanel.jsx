@@ -11,37 +11,37 @@ const ACTIONS = [
     items: [
       {
         id: "ac_video_call",
-        label: "Video Call Friend",
+        label: "Video Call Connect",
         icon: "fa-video",
         prompt: "Video call ",
       },
       {
         id: "ac_audio_call",
-        label: "Audio Call Friend",
+        label: "Audio Call Connect",
         icon: "fa-phone-alt",
         prompt: "Call ",
       },
       {
         id: "ac_message",
-        label: "Message Friend",
+        label: "Message Connect",
         icon: "fa-comment-dots",
         prompt: "Message ",
       },
       {
         id: "ac_bump",
-        label: "Bump Friend",
+        label: "Bump Connect",
         icon: "fa-hand-rock",
         prompt: "Bump ",
       },
       {
         id: "ac_view_profile",
-        label: "Friend's Profile",
+        label: "Connect's Profile",
         icon: "fa-user",
         prompt: "View profile of ",
       },
       {
         id: "ac_get_location",
-        label: "Friend's Location",
+        label: "Connect's Location",
         icon: "fa-map-marker-alt",
         prompt: "Where is ",
       },
@@ -63,10 +63,10 @@ const ACTIONS = [
         prompt: "go to my profile",
       },
       {
-        id: "nav_my_friends",
-        label: "My Friends List",
+        id: "nav_my_connects",
+        label: "My Connects List",
         icon: "fa-users",
-        prompt: "go to my friends",
+        prompt: "go to my connects",
       },
       {
         id: "nav_messages",
@@ -81,20 +81,20 @@ const ACTIONS = [
         prompt: "go to watch",
       },
       {
-        id: "nav_friends",
-        label: "Friends Page",
-        icon: "fa-user-friends",
-        prompt: "go to friends page",
+        id: "nav_connects",
+        label: "Connects Page",
+        icon: "fa-user-connects",
+        prompt: "go to connects page",
       },
       {
-        id: "nav_friend_req",
-        label: "Friend Requests",
+        id: "nav_connect_req",
+        label: "Connect Requests",
         icon: "fa-user-plus",
-        prompt: "go to friend requests",
+        prompt: "go to connect requests",
       },
       {
         id: "nav_suggestions",
-        label: "Friend Suggestions",
+        label: "Connect Suggestions",
         icon: "fa-lightbulb",
         prompt: "go to suggestions",
       },
@@ -237,18 +237,18 @@ const ACTIONS = [
     ],
   },
 
-  // ── Friend Management ─────────────────────────────────────────────────────────
+  // ── Connect Management ─────────────────────────────────────────────────────────
   {
-    category: "friends",
-    icon: "fa-user-friends",
-    label: "Friend Management",
+    category: "connects",
+    icon: "fa-user-connects",
+    label: "Connect Management",
     color: "#33e0ff",
     items: [
       {
-        id: "ac_add_friend",
-        label: "Add Friend",
+        id: "ac_add_connect",
+        label: "Add Connect",
         icon: "fa-user-plus",
-        prompt: "Add friend ",
+        prompt: "Add connect ",
       },
       {
         id: "ac_unfriend",
@@ -269,8 +269,8 @@ const ACTIONS = [
         prompt: "Unblock ",
       },
       {
-        id: "ac_friend_nav",
-        label: "Go to Friend's Page",
+        id: "ac_connect_nav",
+        label: "Go to Connect's Page",
         icon: "fa-external-link-alt",
         prompt: "Go to ",
       },

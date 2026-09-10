@@ -98,7 +98,7 @@ const VideoCall = ({ myId }) => {
   const [hasVideoInput, setHasVideoInput] = useState(true);
   const [modalHeight] = useState("auto");
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [filterFriendVideo, setFilterFriendVideo] = useState(false);
+  const [filterConnectVideo, setFilterConnectVideo] = useState(false);
   const [filterMyVideo, setFilterMyVideo] = useState(false);
   const [currentChannel, setCurrentChannel] = useState(null);
   const [incomingCall, setIncomingCall] = useState(null);
@@ -659,7 +659,7 @@ const VideoCall = ({ myId }) => {
     setCallerName("");
     setCallerProfilePic("");
     setFilterMyVideo("");
-    setFilterFriendVideo("");
+    setFilterConnectVideo("");
     setIsMicrophone(true);
     setIsCameraOn(true);
     setIsBackCamera(false);
@@ -699,7 +699,7 @@ const VideoCall = ({ myId }) => {
 
       stopRingtone();
       stopFlashingTitle();
-      const friendIdToNotify =
+      const connectIdToNotify =
         incomingCall?.from && incomingCall.from !== myId
           ? incomingCall.from
           : incomingCall?.to || caller;
@@ -712,14 +712,14 @@ const VideoCall = ({ myId }) => {
       }
 
       if (callAccepted) {
-        if (friendIdToNotify && channelName && friendIdToNotify !== myId) {
+        if (connectIdToNotify && channelName && connectIdToNotify !== myId) {
           socket.emit("video-call-end", {
-            to: String(friendIdToNotify),
+            to: String(connectIdToNotify),
             channelName,
           });
           console.log(
-            "VideoCall: Emitting video-call-end to friend:",
-            friendIdToNotify,
+            "VideoCall: Emitting video-call-end to connect:",
+            connectIdToNotify,
           );
         }
         await cleanupVideoCall();
@@ -727,24 +727,24 @@ const VideoCall = ({ myId }) => {
       }
 
       // Not yet accepted — cancel (caller) or reject (callee)
-      if (friendIdToNotify && channelName && friendIdToNotify !== myId) {
+      if (connectIdToNotify && channelName && connectIdToNotify !== myId) {
         if (receivingCall) {
           socket.emit("video-call-reject", {
-            to: String(friendIdToNotify),
+            to: String(connectIdToNotify),
             channelName,
           });
           console.log(
-            "VideoCall: Emitting video-call-reject to friend:",
-            friendIdToNotify,
+            "VideoCall: Emitting video-call-reject to connect:",
+            connectIdToNotify,
           );
         } else {
           socket.emit("video-call-cancel", {
-            to: String(friendIdToNotify),
+            to: String(connectIdToNotify),
             channelName,
           });
           console.log(
-            "VideoCall: Emitting video-call-cancel to friend:",
-            friendIdToNotify,
+            "VideoCall: Emitting video-call-cancel to connect:",
+            connectIdToNotify,
           );
         }
       }
@@ -1224,20 +1224,20 @@ const VideoCall = ({ myId }) => {
         "channel:",
         channelName,
       );
-      console.log("VideoCall - Friend info:", { callerName, callerProfilePic });
+      console.log("VideoCall - Connect info:", { callerName, callerProfilePic });
       callSeenStatusSentRef.current = false;
       callIgnoredStatusSentRef.current = false;
       setIsVideoCall(true);
       setReceivingCall(false);
       setCaller(to);
-      setCallerName(callerName || "Friend");
+      setCallerName(callerName || "Connect");
       setCallerProfilePic(callerProfilePic || config?.defaultProfile);
       setCurrentChannel(channelName);
       setIncomingCall({
         from: myId,
         to,
         channelName,
-        name: callerName || "Friend",
+        name: callerName || "Connect",
         profilePic: callerProfilePic,
       });
       setOutgoingCallStatus("Calling...");
@@ -1549,9 +1549,9 @@ const VideoCall = ({ myId }) => {
 
     const onApplyVideoFilter = ({ filter }) => {
       if (filter !== "") {
-        setFilterFriendVideo(filter);
+        setFilterConnectVideo(filter);
       } else {
-        setFilterFriendVideo("");
+        setFilterConnectVideo("");
       }
     };
     socket.on("apply-video-filter", onApplyVideoFilter);
@@ -2197,15 +2197,15 @@ const VideoCall = ({ myId }) => {
           >
             <div
               ref={userVideo}
-              className={`receive-friends-video ${filterFriendVideo || ""}`}
+              className={`receive-connects-video ${filterConnectVideo || ""}`}
               style={{
                 width: "100%",
                 height: "100%",
                 display: callAccepted ? "block" : "none",
                 background: "#0b0f17",
-                border: filterFriendVideo ? "3px solid #29B1A9" : "none",
+                border: filterConnectVideo ? "3px solid #29B1A9" : "none",
               }}
-              data-video-type="friend-remote-video"
+              data-video-type="connect-remote-video"
             />
             <div
               ref={myVideo}

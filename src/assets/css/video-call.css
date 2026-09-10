@@ -27,8 +27,8 @@
   justify-content: center;
 }
 
-.friends-video,
-.receive-friends-video {
+.connects-video,
+.receive-connects-video {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -52,16 +52,16 @@
 }
 
 /* Agora injects <video>/<canvas> — never crop the camera */
-.friends-video video,
-.receive-friends-video video,
+.connects-video video,
+.receive-connects-video video,
 .my-video video,
 .receive-my-video video,
-.friends-video canvas,
-.receive-friends-video canvas,
+.connects-video canvas,
+.receive-connects-video canvas,
 .my-video canvas,
 .receive-my-video canvas,
-.friends-video > div,
-.receive-friends-video > div,
+.connects-video > div,
+.receive-connects-video > div,
 .my-video > div,
 .receive-my-video > div {
   width: 100% !important;
@@ -174,8 +174,8 @@
   background: #0b0f17;
 }
 
-.fullscreen-content .friends-video,
-.fullscreen-content .receive-friends-video {
+.fullscreen-content .connects-video,
+.fullscreen-content .receive-connects-video {
   position: absolute;
   top: 0;
   left: 0;
@@ -200,12 +200,12 @@
   overflow: hidden;
 }
 
-.fullscreen-content .friends-video video,
-.fullscreen-content .receive-friends-video video,
+.fullscreen-content .connects-video video,
+.fullscreen-content .receive-connects-video video,
 .fullscreen-content .my-video video,
 .fullscreen-content .receive-my-video video,
-.fullscreen-content .friends-video canvas,
-.fullscreen-content .receive-friends-video canvas,
+.fullscreen-content .connects-video canvas,
+.fullscreen-content .receive-connects-video canvas,
 .fullscreen-content .my-video canvas,
 .fullscreen-content .receive-my-video canvas {
   object-fit: contain !important;

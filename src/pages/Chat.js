@@ -25,7 +25,7 @@ import ChatFooter from "../components/Message/ChatFooter";
 import SingleMsgSkleton from "../skletons/message/SingleMsgSkleton";
 import defaultChatBackground from "../assets/images/default-chat-bg.svg";
 import MessageCacheManager from "../utils/messageCacheManager";
-import useFriendChatSettings from "../hooks/useFriendChatSettings";
+import useConnectChatSettings from "../hooks/useConnectChatSettings";
 import { isRomanticMessage } from "../utils/chatThemes";
 import LoveEmojiRain from "../components/Message/LoveEmojiRain";
 import {
@@ -95,7 +95,7 @@ const Chat = () => {
     blockedMe: false,
   });
   const blockLiveEpochRef = useRef(0);
-  const [friendProfile, setFriendProfile] = useState({});
+  const [connectProfile, setConnectProfile] = useState({});
   const [isBlockedMe, setIsBlockedMe] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
   const [lastSeen, setLastSeen] = useState(false);
@@ -148,9 +148,9 @@ const Chat = () => {
   );
 
   const params = useParams();
-  const friendId = params.profile;
-  const { theme, wallpaper, settings: chatAppearance } = useFriendChatSettings(
-    friendId,
+  const connectId = params.profile;
+  const { theme, wallpaper, settings: chatAppearance } = useConnectChatSettings(
+    connectId,
   );
   const [loveRainBurst, setLoveRainBurst] = useState(0);
   const themeRef = useRef(theme);
@@ -226,21 +226,21 @@ const Chat = () => {
 
   // Persist conversation changes after fresh data has been loaded once.
   useEffect(() => {
-    if (!hasLoadedFreshMessagesRef.current || !userId || !friendId) return;
+    if (!hasLoadedFreshMessagesRef.current || !userId || !connectId) return;
     MessageCacheManager.setCachedMessages(
       userId,
-      friendId,
+      connectId,
       messages.filter((m) => m && m._id && !m.isOptimistic),
     );
-  }, [messages, userId, friendId]);
+  }, [messages, userId, connectId]);
 
   const fetchChatHistory = useCallback(
-    async (profileId, friendIdArg, limit = 20) => {
+    async (profileId, connectIdArg, limit = 20) => {
       try {
         const response = await api.get("/message/getChatHistory", {
           params: {
             profileId,
-            friendId: friendIdArg,
+            connectId: connectIdArg,
             limit,
           },
         });
@@ -257,7 +257,7 @@ const Chat = () => {
         if (messages.length > 0) {
           MessageCacheManager.setCachedMessages(
             profileId,
-            friendIdArg,
+            connectIdArg,
             messages,
           );
           console.log("📦 Updated message cache for conversation");
@@ -273,7 +273,7 @@ const Chat = () => {
   );
 
   const fetchOldMessages = useCallback(
-    async (profileId, friendIdArg, beforeTimestamp, limit = 20) => {
+    async (profileId, connectIdArg, beforeTimestamp, limit = 20) => {
       if (!beforeTimestamp) {
         return { messages: [], hasMore: false };
       }
@@ -281,7 +281,7 @@ const Chat = () => {
         const response = await api.get("/message/getOldMessages", {
           params: {
             profileId,
-            friendId: friendIdArg,
+            connectId: connectIdArg,
             beforeTimestamp,
             limit,
           },
@@ -306,10 +306,10 @@ const Chat = () => {
 
   // Load cached messages on chat open if available
   useEffect(() => {
-    if (userId && friendId) {
+    if (userId && connectId) {
       const cachedMessages = MessageCacheManager.getCachedMessages(
         userId,
-        friendId,
+        connectId,
       );
       if (cachedMessages && cachedMessages.length > 0) {
         setMessages(cachedMessages);
@@ -317,12 +317,12 @@ const Chat = () => {
         setIsMsgLoading(false);
       }
     }
-  }, [userId, friendId]);
+  }, [userId, connectId]);
 
   useEffect(() => {
-    if (!friendId || !canMarkAsSeen) return;
-    dispatch(seenMessage(friendId));
-  }, [friendId, canMarkAsSeen, dispatch]);
+    if (!connectId || !canMarkAsSeen) return;
+    dispatch(seenMessage(connectId));
+  }, [connectId, canMarkAsSeen, dispatch]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -357,7 +357,7 @@ const Chat = () => {
         el.removeEventListener("scroll", handleScroll);
       }
     };
-  }, [friendId, checkIsNearBottom]);
+  }, [connectId, checkIsNearBottom]);
 
   const messagesRef = useRef(messages);
   useEffect(() => {
@@ -385,7 +385,7 @@ const Chat = () => {
   }, [messages, scrollToLastMessage]);
 
   useEffect(() => {
-    if (!friendId || !userId || !hasMoreMessages) return;
+    if (!connectId || !userId || !hasMoreMessages) return;
     if (!hasInitialScrolledRef.current) return;
     if (scrollPercent >= 30 || !Number.isFinite(scrollPercent)) return;
     const skip = messagesRef.current.length;
@@ -404,7 +404,7 @@ const Chat = () => {
       try {
         const response = await fetchOldMessages(
           userId,
-          friendId,
+          connectId,
           beforeTimestamp,
           20,
         );
@@ -433,7 +433,7 @@ const Chat = () => {
       }
     })();
     // Intentionally omit isMsgLoading: when it flips false, deps would match again and load every page in one burst.
-  }, [scrollPercent, hasMoreMessages, userId, friendId, fetchOldMessages]);
+  }, [scrollPercent, hasMoreMessages, userId, connectId, fetchOldMessages]);
 
   // WebSocket-based message sending with optimistic UI
   const sendMessage = async (messageData) => {
@@ -442,7 +442,7 @@ const Chat = () => {
       _id: tempId,
       tempId,
       senderId: userId,
-      receiverId: friendId,
+      receiverId: connectId,
       message: messageData.message,
       attachment: messageData.attachment,
       parent: messageData.parent,
@@ -521,7 +521,7 @@ const Chat = () => {
     });
   };
 
-  // Mark all unseen messages from friend as seen (one batched POST)
+  // Mark all unseen messages from connect as seen (one batched POST)
   const markMessageAsSeen = useCallback(async () => {
     try {
       if (!canMarkAsSeen) return;
@@ -530,7 +530,7 @@ const Chat = () => {
         .filter(
           (msg) =>
             msg &&
-            String(msg.senderId) === String(friendId) &&
+            String(msg.senderId) === String(connectId) &&
             !msg.isSeen &&
             !msg.isOptimistic,
         )
@@ -556,14 +556,14 @@ const Chat = () => {
     } catch (error) {
       console.error("Error marking messages as seen:", error);
     }
-  }, [friendId, canMarkAsSeen]);
+  }, [connectId, canMarkAsSeen]);
 
   // Real-time socket listeners for new messages
   useEffect(() => {
-    if (!friendId || !userId) return;
+    if (!connectId || !userId) return;
 
     // Join the chat room
-    const roomId = [userId, friendId].sort().join("_");
+    const roomId = [userId, connectId].sort().join("_");
     socket.emit("joinRoom", roomId);
 
     const appendIncomingMessage = (updatedMessage) => {
@@ -587,7 +587,7 @@ const Chat = () => {
     const handleNewMessage = (data) => {
       if (
         data?.updatedMessage &&
-        isConversationMessage(data.updatedMessage, userId, friendId)
+        isConversationMessage(data.updatedMessage, userId, connectId)
       ) {
         appendIncomingMessage(data.updatedMessage);
       }
@@ -596,7 +596,7 @@ const Chat = () => {
     const handleNewMessageToUser = (data) => {
       if (
         data?.updatedMessage &&
-        isConversationMessage(data.updatedMessage, userId, friendId)
+        isConversationMessage(data.updatedMessage, userId, connectId)
       ) {
         appendIncomingMessage(data.updatedMessage);
       }
@@ -605,7 +605,7 @@ const Chat = () => {
     const handleMessageSent = (data) => {
       if (
         data?.updatedMessage &&
-        isConversationMessage(data.updatedMessage, userId, friendId)
+        isConversationMessage(data.updatedMessage, userId, connectId)
       ) {
         appendIncomingMessage(data.updatedMessage);
       }
@@ -662,7 +662,7 @@ const Chat = () => {
       const updatedMessage = payload?.message || payload;
       if (
         !updatedMessage?._id ||
-        !isConversationMessage(updatedMessage, userId, friendId)
+        !isConversationMessage(updatedMessage, userId, connectId)
       ) {
         return;
       }
@@ -708,7 +708,7 @@ const Chat = () => {
       }
       socket.emit("leaveRoom", roomId);
     };
-  }, [friendId, userId, scrollToLastMessage, dispatch, triggerLoveRain]);
+  }, [connectId, userId, scrollToLastMessage, dispatch, triggerLoveRain]);
 
   // Get online status from contacts data (no separate API calls)
   const getOnlineStatusFromContacts = useCallback(
@@ -722,13 +722,13 @@ const Chat = () => {
 
         if (contactsData) {
           const contacts = JSON.parse(contactsData);
-          const friendContact = contacts.find(
-            (c) => c.person?._id === friendId,
+          const connectContact = contacts.find(
+            (c) => c.person?._id === connectId,
           );
-          if (friendContact) {
+          if (connectContact) {
             return {
-              isActive: friendContact.isOnline || false,
-              lastSeen: friendContact.lastSeen || null,
+              isActive: connectContact.isOnline || false,
+              lastSeen: connectContact.lastSeen || null,
             };
           }
         }
@@ -737,12 +737,12 @@ const Chat = () => {
       }
       return { isActive: false, lastSeen: null };
     },
-    [friendId, userId],
+    [connectId, userId],
   );
 
   useEffect(
     function () {
-      if (!friendId || !userId) return;
+      if (!connectId || !userId) return;
 
       const setOnlineStatus = function () {
         const statusData = getOnlineStatusFromContacts();
@@ -775,20 +775,20 @@ const Chat = () => {
         clearInterval(statusInterval);
       };
     },
-    [friendId, userId, getOnlineStatusFromContacts],
+    [connectId, userId, getOnlineStatusFromContacts],
   );
 
   useEffect(
     function () {
-      if (!friendId) return;
+      if (!connectId) return;
 
       let isCancelled = false;
       // Prevent stale header avatar while profile is loading for a new route.
-      setFriendProfile({ _id: friendId, profilePic: "" });
+      setConnectProfile({ _id: connectId, profilePic: "" });
 
       const loadProfile = async () => {
         try {
-          let profileData = await fetchProfileCached(friendId, {
+          let profileData = await fetchProfileCached(connectId, {
             ttlMs: 60000,
             storageTtlMs: 300000,
             lite: true,
@@ -796,7 +796,7 @@ const Chat = () => {
 
           // If cached data is partial/missing, force a fresh profile fetch.
           if (!profileData || !profileData._id) {
-            profileData = await fetchProfileCached(friendId, {
+            profileData = await fetchProfileCached(connectId, {
               ttlMs: 60000,
               storageTtlMs: 300000,
               lite: true,
@@ -807,20 +807,20 @@ const Chat = () => {
           if (isCancelled) return;
 
           if (profileData && profileData._id) {
-            setFriendProfile(profileData);
+            setConnectProfile(profileData);
           } else {
-            setFriendProfile((prev) => ({
+            setConnectProfile((prev) => ({
               ...(prev || {}),
-              _id: friendId,
+              _id: connectId,
               profilePic: prev?.profilePic || "",
             }));
           }
           dispatch(setLoading(false));
         } catch (e) {
           if (isCancelled) return;
-          setFriendProfile((prev) => ({
+          setConnectProfile((prev) => ({
             ...(prev || {}),
-            _id: friendId,
+            _id: connectId,
             profilePic: prev?.profilePic || "",
           }));
           console.log(e);
@@ -833,7 +833,7 @@ const Chat = () => {
         isCancelled = true;
       };
     },
-    [friendId, dispatch],
+    [connectId, dispatch],
   );
 
   useEffect(() => {
@@ -844,18 +844,18 @@ const Chat = () => {
     };
     blockLiveEpochRef.current += 1;
     setIsBlockedMe(false);
-    if (!friendId) {
+    if (!connectId) {
       setIsBlocked(false);
       return;
     }
     setIsBlocked(
       Array.isArray(profileRef.current?.blockedUsers)
         ? profileRef.current.blockedUsers.some(
-            (id) => String(id) === String(friendId),
+            (id) => String(id) === String(connectId),
           )
         : false,
     );
-  }, [friendId]);
+  }, [connectId]);
 
   const patchMyBlockedUsersInStore = useCallback(
     (shouldBlock, id) => {
@@ -877,8 +877,8 @@ const Chat = () => {
   const applyLiveBlockUpdate = useCallback(
     ({ iBlocked, blockedMe, by, target } = {}) => {
       const myId = idOf(userId);
-      const currentFriend = idOf(friendId);
-      if (!myId || !currentFriend) return;
+      const currentConnect = idOf(connectId);
+      if (!myId || !currentConnect) return;
 
       const byId = by != null ? idOf(by) : "";
       const targetId = target != null ? idOf(target) : "";
@@ -887,10 +887,10 @@ const Chat = () => {
       let nextBlockedMe = blockedMe;
 
       if (typeof nextIBlocked !== "boolean") {
-        if (byId === myId && targetId === currentFriend) nextIBlocked = true;
+        if (byId === myId && targetId === currentConnect) nextIBlocked = true;
       }
       if (typeof nextBlockedMe !== "boolean") {
-        if (byId === currentFriend && targetId === myId) nextBlockedMe = true;
+        if (byId === currentConnect && targetId === myId) nextBlockedMe = true;
       }
 
       if (typeof nextIBlocked === "boolean") {
@@ -898,15 +898,15 @@ const Chat = () => {
         blockStatusRef.current.loaded = true;
         blockLiveEpochRef.current += 1;
         setIsBlocked(nextIBlocked);
-        patchMyBlockedUsersInStore(nextIBlocked, friendId);
+        patchMyBlockedUsersInStore(nextIBlocked, connectId);
       }
       if (typeof nextBlockedMe === "boolean") {
         blockStatusRef.current.blockedMe = nextBlockedMe;
         blockStatusRef.current.loaded = true;
         blockLiveEpochRef.current += 1;
         setIsBlockedMe(nextBlockedMe);
-        setFriendProfile((prev) => {
-          if (!prev || idOf(prev._id) !== currentFriend) return prev;
+        setConnectProfile((prev) => {
+          if (!prev || idOf(prev._id) !== currentConnect) return prev;
           const current = Array.isArray(prev.blockedUsers)
             ? prev.blockedUsers
             : [];
@@ -921,15 +921,15 @@ const Chat = () => {
         });
       }
     },
-    [friendId, userId, patchMyBlockedUsersInStore],
+    [connectId, userId, patchMyBlockedUsersInStore],
   );
 
   const refreshBlockStatus = useCallback(async () => {
-    if (!friendId || !userId) return;
+    if (!connectId || !userId) return;
     const epoch = blockLiveEpochRef.current;
     try {
-      const res = await api.get("friend/block-status", {
-        params: { friendId },
+      const res = await api.get("connect/block-status", {
+        params: { connectId },
       });
       if (!res?.data) return;
       if (epoch !== blockLiveEpochRef.current) return;
@@ -940,13 +940,13 @@ const Chat = () => {
     } catch (error) {
       console.error("Error fetching block status:", error);
     }
-  }, [friendId, userId, applyLiveBlockUpdate]);
+  }, [connectId, userId, applyLiveBlockUpdate]);
 
   // Header block/unblock writes Redux; mirror that into the footer immediately.
   useEffect(() => {
-    if (!friendId) return;
+    if (!connectId) return;
     const fromProfile = Array.isArray(profile?.blockedUsers)
-      ? profile.blockedUsers.some((id) => idOf(id) === idOf(friendId))
+      ? profile.blockedUsers.some((id) => idOf(id) === idOf(connectId))
       : false;
     if (fromProfile) {
       blockStatusRef.current.iBlocked = true;
@@ -956,17 +956,17 @@ const Chat = () => {
     if (blockStatusRef.current.loaded) {
       setIsBlocked(Boolean(blockStatusRef.current.iBlocked));
     }
-  }, [friendId, profile?.blockedUsers]);
+  }, [connectId, profile?.blockedUsers]);
 
   useEffect(() => {
-    if (!friendId || !userId) return undefined;
+    if (!connectId || !userId) return undefined;
     let cancelled = false;
     const epoch = blockLiveEpochRef.current;
 
     (async () => {
       try {
-        const res = await api.get("friend/block-status", {
-          params: { friendId },
+        const res = await api.get("connect/block-status", {
+          params: { connectId },
         });
         if (cancelled || !res?.data) return;
         if (epoch !== blockLiveEpochRef.current) return;
@@ -982,14 +982,14 @@ const Chat = () => {
     return () => {
       cancelled = true;
     };
-  }, [friendId, userId, applyLiveBlockUpdate]);
+  }, [connectId, userId, applyLiveBlockUpdate]);
 
   useEffect(() => {
-    if (!friendId || !userId) return undefined;
+    if (!connectId || !userId) return undefined;
 
     const invalidateBlockCaches = () => {
-      invalidateCachedResource(`profile:${friendId}`);
-      invalidateCachedResource(`profileLite:${friendId}`);
+      invalidateCachedResource(`profile:${connectId}`);
+      invalidateCachedResource(`profileLite:${connectId}`);
       invalidateCachedResource(`profile:${userId}`);
       invalidateCachedResource(`profileLite:${userId}`);
       invalidateGetCache("/profile");
@@ -997,44 +997,44 @@ const Chat = () => {
 
     const handleUserBlocked = (payload = {}) => {
       const { by, target } = payload;
-      if (idOf(by) === idOf(userId) && idOf(target) === idOf(friendId)) {
+      if (idOf(by) === idOf(userId) && idOf(target) === idOf(connectId)) {
         applyLiveBlockUpdate({ iBlocked: true, by, target });
         invalidateBlockCaches();
       }
     };
     const handleBlockedByUser = (payload = {}) => {
       const { by, target } = payload;
-      if (idOf(by) === idOf(friendId) && idOf(target) === idOf(userId)) {
+      if (idOf(by) === idOf(connectId) && idOf(target) === idOf(userId)) {
         applyLiveBlockUpdate({ blockedMe: true, by, target });
         invalidateBlockCaches();
       }
     };
     const handleUserUnblocked = (payload = {}) => {
       const { by, target } = payload;
-      if (idOf(by) === idOf(userId) && idOf(target) === idOf(friendId)) {
+      if (idOf(by) === idOf(userId) && idOf(target) === idOf(connectId)) {
         applyLiveBlockUpdate({ iBlocked: false, by, target });
         invalidateBlockCaches();
       }
     };
     const handleUnblockedByUser = (payload = {}) => {
       const { by, target } = payload;
-      if (idOf(by) === idOf(friendId) && idOf(target) === idOf(userId)) {
+      if (idOf(by) === idOf(connectId) && idOf(target) === idOf(userId)) {
         applyLiveBlockUpdate({ blockedMe: false, by, target });
         invalidateBlockCaches();
       }
     };
     const handleMessageBlocked = (payload = {}) => {
-      if (payload.receiverId && idOf(payload.receiverId) !== idOf(friendId)) {
+      if (payload.receiverId && idOf(payload.receiverId) !== idOf(connectId)) {
         return;
       }
       refreshBlockStatus();
     };
     const handleWindowBlockStatus = (event) => {
       const detail = event?.detail || {};
-      const detailFriend =
-        detail.friendId ||
+      const detailConnect =
+        detail.connectId ||
         (idOf(detail.by) === idOf(userId) ? detail.target : detail.by);
-      if (detailFriend && idOf(detailFriend) !== idOf(friendId)) return;
+      if (detailConnect && idOf(detailConnect) !== idOf(connectId)) return;
       applyLiveBlockUpdate(detail);
     };
 
@@ -1056,13 +1056,13 @@ const Chat = () => {
         handleWindowBlockStatus,
       );
     };
-  }, [friendId, userId, applyLiveBlockUpdate, refreshBlockStatus]);
+  }, [connectId, userId, applyLiveBlockUpdate, refreshBlockStatus]);
 
   useEffect(
     function () {
-      if (!friendId || !userId) return;
+      if (!connectId || !userId) return;
       let cancelled = false;
-      setRoom([userId, friendId].sort().join("_"));
+      setRoom([userId, connectId].sort().join("_"));
       hasLoadedFreshMessagesRef.current = false;
       markedSeenIdsRef.current = new Set();
       setMessages([]);
@@ -1076,7 +1076,7 @@ const Chat = () => {
       const fetchInitialMessages = async function () {
         setIsMsgLoading(true);
         try {
-          const response = await fetchChatHistory(userId, friendId, 20);
+          const response = await fetchChatHistory(userId, connectId, 20);
           if (cancelled) return;
 
           if (response.messages) {
@@ -1103,7 +1103,7 @@ const Chat = () => {
       fetchInitialMessages();
       const refreshOnFocus = () => {
          if (document.visibilityState !== "visible") return;
-         fetchChatHistory(userId, friendId, 20).then((response) => {
+         fetchChatHistory(userId, connectId, 20).then((response) => {
            if (cancelled) return;
            setMessages((prev) => mergeHistoryWithLive(response.messages, prev));
            setHasMoreMessages(response.hasMore ?? false);
@@ -1118,17 +1118,17 @@ const Chat = () => {
          document.removeEventListener("visibilitychange", refreshOnFocus);
       };
     },
-    [friendId, userId, fetchChatHistory],
+    [connectId, userId, fetchChatHistory],
   );
 
   // Scroll once after the first batch of messages for a chat is rendered.
   useLayoutEffect(() => {
     if (hasInitialScrolledRef.current) return;
-    if (!friendId || messages.length === 0 || isMsgLoading) return;
+    if (!connectId || messages.length === 0 || isMsgLoading) return;
     hasInitialScrolledRef.current = true;
     setScrollPercent(100);
     scrollToLastMessage("auto");
-  }, [friendId, messages.length, isMsgLoading, scrollToLastMessage]);
+  }, [connectId, messages.length, isMsgLoading, scrollToLastMessage]);
 
   // Keep typing indicator visible while the other person is typing.
   useEffect(() => {
@@ -1138,16 +1138,16 @@ const Chat = () => {
 
   useEffect(() => {
     if (!canMarkAsSeen) return;
-    if (messages.length > 0 && friendId && friendProfile?._id) {
+    if (messages.length > 0 && connectId && connectProfile?._id) {
       const t = setTimeout(() => {
-        // Check if there are any unseen messages from the friend
-        const hasUnseenFromFriend = messages.some(
-          (msg) => String(msg.senderId) === String(friendId) && !msg.isSeen,
+        // Check if there are any unseen messages from the connect
+        const hasUnseenFromConnect = messages.some(
+          (msg) => String(msg.senderId) === String(connectId) && !msg.isSeen,
         );
 
-        if (hasUnseenFromFriend) {
+        if (hasUnseenFromConnect) {
           markMessageAsSeen();
-          dispatch(seenMessage(friendId));
+          dispatch(seenMessage(connectId));
 
           // Hide all seen status indicators for sent messages
           $(
@@ -1171,8 +1171,8 @@ const Chat = () => {
     }
   }, [
     messages,
-    friendId,
-    friendProfile?._id,
+    connectId,
+    connectProfile?._id,
     userId,
     dispatch,
     markMessageAsSeen,
@@ -1184,7 +1184,7 @@ const Chat = () => {
   const footerProps = {
     chatFooter,
     room,
-    friendId,
+    connectId,
     setIsTyping,
     setIsReplying,
     isReplying,
@@ -1197,7 +1197,7 @@ const Chat = () => {
     setIsPreview,
     setReplyData,
     messages,
-    friendProfile,
+    connectProfile,
     sendMessage,
     msgListRef,
     scrollToLastMessage,
@@ -1235,7 +1235,7 @@ const Chat = () => {
       window.removeEventListener("resize", syncFooterHeight);
       if (ro) ro.disconnect();
     };
-  }, [isBlockedMe, isBlocked, friendId]);
+  }, [isBlockedMe, isBlocked, connectId]);
 
   // Keep the thread anchored at the bottom when the iOS keyboard resizes the chat pane.
   useEffect(() => {
@@ -1253,7 +1253,7 @@ const Chat = () => {
 
     vv.addEventListener("resize", anchorIfNearBottom);
     return () => vv.removeEventListener("resize", anchorIfNearBottom);
-  }, [friendId]);
+  }, [connectId]);
 
   // Detect if background is dark and apply light text
   useEffect(() => {
@@ -1302,9 +1302,9 @@ const Chat = () => {
       >
         <div ref={chatHeader} className="chat-header">
           <ChatHeader
-            friendProfile={friendProfile}
-            friendProfilePic={friendProfile.profilePic}
-            friendId={friendId}
+            connectProfile={connectProfile}
+            connectProfilePic={connectProfile.profilePic}
+            connectId={connectId}
             isActive={isActive}
             lastSeen={lastSeen}
             room={room}
@@ -1350,7 +1350,7 @@ const Chat = () => {
                   <SingleMessage
                     key={msg._id ? `${msg._id}-${index}` : `msg-${index}`}
                     msg={msg}
-                    friendProfile={friendProfile}
+                    connectProfile={connectProfile}
                     messages={messages}
                     setMessages={setMessages}
                     isActive={isActive}
@@ -1369,15 +1369,15 @@ const Chat = () => {
               <div className="chat-empty-conversation">
                 <div className="chat-empty-avatar">
                   <UserPP
-                    profilePic={friendProfile.profilePic}
-                    profile={friendProfile._id}
+                    profilePic={connectProfile.profilePic}
+                    profile={connectProfile._id}
                     active={isActive}
                     size="full"
                   />
                 </div>
                 <h3 className="chat-empty-name">
-                  {friendProfile?.fullName ||
-                    `${friendProfile?.user?.firstName || ""} ${friendProfile?.user?.surname || ""}`.trim() ||
+                  {connectProfile?.fullName ||
+                    `${connectProfile?.user?.firstName || ""} ${connectProfile?.user?.surname || ""}`.trim() ||
                     "This user"}
                 </h3>
                 <p className="chat-empty-subtitle">
@@ -1392,9 +1392,9 @@ const Chat = () => {
               >
                 <div className="chat-message-profilePic">
                   <UserPP
-                    profilePic={`${friendProfile.profilePic}`}
-                    profile={friendProfile._id}
-                    active={friendProfile.isActive}
+                    profilePic={`${connectProfile.profilePic}`}
+                    profile={connectProfile._id}
+                    active={connectProfile.isActive}
                   ></UserPP>
                 </div>
                 <div className="chat-message">
@@ -1428,8 +1428,8 @@ const Chat = () => {
             >
               <p className="text-center text-danger fs-6 mb-0 py-2">
                 {isBlockedMe
-                  ? `${friendProfile.fullName || "This user"} blocked you`
-                  : `You blocked ${friendProfile.fullName || "this user"}`}
+                  ? `${connectProfile.fullName || "This user"} blocked you`
+                  : `You blocked ${connectProfile.fullName || "this user"}`}
               </p>
             </div>
           )}

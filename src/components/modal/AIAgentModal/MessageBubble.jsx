@@ -1,6 +1,6 @@
 import React from "react";
 import { motion } from "framer-motion";
-import FriendResultCard from "./FriendResultCard";
+import ConnectResultCard from "./ConnectResultCard";
 import VideoResultCard from "./VideoResultCard";
 
 /**
@@ -9,7 +9,7 @@ import VideoResultCard from "./VideoResultCard";
  * Supports message types:
  *   'user'         – standard user text bubble
  *   'agent'        – standard agent text bubble
- *   'friend-picker'– agent bubble + list of FriendResultCards
+ *   'connect-picker'– agent bubble + list of ConnectResultCards
  *   'action-result'– agent bubble showing result of an executed action
  */
 const MessageBubble = ({
@@ -19,7 +19,7 @@ const MessageBubble = ({
   onDownloadYoutube,
 }) => {
   const isUser = message.type === "user";
-  const isFriendPicker = message.type === "friend-picker";
+  const isConnectPicker = message.type === "connect-picker";
   const isActionResult = message.type === "action-result";
   const isVideoResults = message.type === "video-results";
   const isSearchResults = message.type === "search-results";
@@ -79,10 +79,10 @@ const MessageBubble = ({
     );
   }
 
-  // ── Friend picker bubble ──────────────────────────────────────────────────────
-  if (isFriendPicker) {
-    const { friends, action, onAction, content } = message;
-    const isMultiple = friends && friends.length > 1;
+  // ── Connect picker bubble ──────────────────────────────────────────────────────
+  if (isConnectPicker) {
+    const { connects, action, onAction, content } = message;
+    const isMultiple = connects && connects.length > 1;
 
     return (
       <motion.div
@@ -99,13 +99,13 @@ const MessageBubble = ({
           >
             <p>{content}</p>
 
-            {/* Friend result cards */}
-            <div className="friend-picker-cards">
-              {friends &&
-                friends.map((friend) => (
-                  <FriendResultCard
-                    key={friend._id}
-                    friend={friend}
+            {/* Connect result cards */}
+            <div className="connect-picker-cards">
+              {connects &&
+                connects.map((connect) => (
+                  <ConnectResultCard
+                    key={connect._id}
+                    connect={connect}
                     action={action}
                     actionLabel={message.actionLabel}
                     onAction={onAction}
@@ -152,7 +152,7 @@ const MessageBubble = ({
           >
             <p>{content}</p>
             {videos && videos.length > 0 && (
-              <div className="friend-picker-cards">
+              <div className="connect-picker-cards">
                 {videos.map((video) => (
                   <VideoResultCard
                     key={video._id || video.videoId || video.url}
@@ -194,11 +194,11 @@ const MessageBubble = ({
           >
             <p style={{ whiteSpace: "pre-wrap" }}>{content}</p>
             {users?.length > 0 && (
-              <div className="friend-picker-cards">
+              <div className="connect-picker-cards">
                 {users.slice(0, 8).map((user) => (
-                  <FriendResultCard
+                  <ConnectResultCard
                     key={user._id}
-                    friend={user}
+                    connect={user}
                     action="VIEW_PROFILE"
                     actionLabel="Open"
                     onAction={onOpenUser}
@@ -208,7 +208,7 @@ const MessageBubble = ({
               </div>
             )}
             {posts?.length > 0 && (
-              <div className="friend-picker-cards">
+              <div className="connect-picker-cards">
                 {posts.slice(0, 6).map((post) => (
                   <button
                     key={post._id}
@@ -223,7 +223,7 @@ const MessageBubble = ({
               </div>
             )}
             {videos?.length > 0 && (
-              <div className="friend-picker-cards">
+              <div className="connect-picker-cards">
                 {videos.slice(0, 6).map((video) => (
                   <VideoResultCard
                     key={video._id || video.videoId || video.url}
@@ -328,7 +328,7 @@ const MessageBubble = ({
           </p>
 
           {Array.isArray(message.actions) && message.actions.length > 0 && (
-            <div className="friend-picker-cards" style={{ marginTop: 8 }}>
+            <div className="connect-picker-cards" style={{ marginTop: 8 }}>
               {message.actions.map((action, index) => (
                 <button
                   key={action.label || index}

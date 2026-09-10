@@ -7,7 +7,7 @@ const VideoCallPage = () => {
   const myProfile = useSelector((state) => state.profile);
 
   const [myId, setMyId] = useState("");
-  const [friendId, setFriendId] = useState("");
+  const [connectId, setConnectId] = useState("");
   const [inCall, setInCall] = useState(false);
   const [currentChannel, setCurrentChannel] = useState(null);
 
@@ -123,16 +123,16 @@ const VideoCallPage = () => {
     });
   };
 
-  // Call a friend
-  const callFriend = async () => {
-    if (!friendId) return alert("Enter friend's ID");
-    const channelName = `${myId}-${friendId}`;
+  // Call a connect
+  const callConnect = async () => {
+    if (!connectId) return alert("Enter connect's ID");
+    const channelName = `${myId}-${connectId}`;
     setCurrentChannel(channelName);
     
     try {
       // Initiate call via HTTP
-      await api.post('/call/initiate', { to: friendId, channelName });
-      console.log('Call initiated to:', friendId);
+      await api.post('/call/initiate', { to: connectId, channelName });
+      console.log('Call initiated to:', connectId);
     } catch (error) {
       console.error('Error initiating call:', error);
       alert('Failed to initiate call');
@@ -163,11 +163,11 @@ const VideoCallPage = () => {
         <>
           <input
             type="text"
-            placeholder="Friend ID"
-            value={friendId}
-            onChange={(e) => setFriendId(e.target.value)}
+            placeholder="Connect ID"
+            value={connectId}
+            onChange={(e) => setConnectId(e.target.value)}
           />
-          <button onClick={callFriend}>Call {friendId}</button>
+          <button onClick={callConnect}>Call {connectId}</button>
         </>
       ) : (
         <div className="flex gap-4">
@@ -179,7 +179,7 @@ const VideoCallPage = () => {
             />
           </div>
           <div>
-            <h3>Friend</h3>
+            <h3>Connect</h3>
             <div
               ref={remoteContainer}
               style={{ width: "400px", height: "300px", background: "#222" }}

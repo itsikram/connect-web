@@ -832,7 +832,7 @@
     }
 }
 
-/* Friend-picker agent bubbles should be wider */
+/* Connect-picker agent bubbles should be wider */
 .ai-agent-message.agent-message .ai-agent-bubble.wide {
     max-width: 96%;
 }
@@ -1002,9 +1002,9 @@
 }
 
 /* ══════════════════════════════════════════════════
-   11. FRIEND PICKER CARDS (in agent bubble)
+   11. CONNECT PICKER CARDS (in agent bubble)
    ══════════════════════════════════════════════════ */
-.friend-picker-cards {
+.connect-picker-cards {
     display: flex;
     flex-direction: column;
     gap: 6px;

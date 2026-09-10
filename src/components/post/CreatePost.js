@@ -68,7 +68,7 @@ let CreatePost = ({ setPosts = null }) => {
     const getAudienceLabel = (audience) => {
         switch(audience) {
             case 1: return 'Public'
-            case 2: return 'Friends'
+            case 2: return 'Connects'
             case 3: return 'Only Me'
             default: return 'Only Me'
         }
@@ -492,8 +492,8 @@ let CreatePost = ({ setPosts = null }) => {
                                             >
                                                 <i className="fas fa-users"></i>
                                                 <div className="audience-option-content">
-                                                    <span className="audience-option-title">Friends</span>
-                                                    <span className="audience-option-desc">Only your friends can see this</span>
+                                                    <span className="audience-option-title">Connects</span>
+                                                    <span className="audience-option-desc">Only your connects can see this</span>
                                                 </div>
                                                 {postData.audience === 2 && <i className="fas fa-check"></i>}
                                             </div>

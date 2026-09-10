@@ -19,7 +19,7 @@ Save chat messages to the database.
   "messages": [
     {
       "id": "unique-message-id",
-      "type": "user|agent|friend-picker|video-results|actions",
+      "type": "user|agent|connect-picker|video-results|actions",
       "content": "message text",
       "timestamp": "2024-01-01T12:00:00.000Z",
       "// ... other message properties"
@@ -50,7 +50,7 @@ Fetch the most recent chat session for the current user.
   "messages": [
     {
       "id": "unique-message-id",
-      "type": "user|agent|friend-picker|video-results|actions",
+      "type": "user|agent|connect-picker|video-results|actions",
       "content": "message text",
       "timestamp": "2024-01-01T12:00:00.000Z"
       "// ... other message properties"

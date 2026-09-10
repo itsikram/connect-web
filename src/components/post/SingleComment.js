@@ -379,14 +379,14 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode, parentType = 
 
                 {!isLoadingReplies && visibleReplies.length > 0 && (
                     <div className="replies-thread">
-                        {visibleReplies.map((item) => (
+                        {visibleReplies.map((item, index) => (
                             <SingleReply
                                 isEditMode={isEditMode}
                                 setReplies={setReplies}
                                 replies={visibleReplies}
                                 comment={comment}
                                 item={item}
-                                key={item._id || item.createdAt}
+                                key={item._id || item.createdAt || `reply-${index}`}
                                 myProfile={myProfile}
                             />
                         ))}

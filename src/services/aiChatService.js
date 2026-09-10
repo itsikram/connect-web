@@ -27,7 +27,7 @@ export const saveAIChat = async (messages) => {
       delete next.onOpenPost;
       delete next.onPlay;
       delete next.intent;
-      if (Array.isArray(next.friends)) next.friends = next.friends.map(slimPerson);
+      if (Array.isArray(next.connects)) next.connects = next.connects.map(slimPerson);
       if (Array.isArray(next.users)) next.users = next.users.map(slimPerson);
       return next;
     });

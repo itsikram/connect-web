@@ -4,7 +4,7 @@ import { Link,useParams } from 'react-router-dom';
 import api from '../../api/api';
 import { useSelector } from 'react-redux';
 import checkImgLoading from '../../utils/checkImgLoading';
-import ImageSkleton from '../../skletons/friend/ImageSkleton';
+import ImageSkleton from '../../skletons/connect/ImageSkleton';
 import config from "../../config/config.json";
 import ReportModal from '../modal/ReportModal';
 import VerifiedName from '../feed/VerifiedName';
@@ -12,22 +12,22 @@ const default_pp_src = config?.defaultProfile;
 
 
 const PFI = (props) => {
-    let friend = props.friend
+    let connect = props.connect
     let myProfile = useSelector(state => state.profile)
     let [isPpLoaded, setIsPpLoaded] = useState(false);
-    let [profilePic, setProfilePic] = useState(friend.profilePic || default_pp_src);
+    let [profilePic, setProfilePic] = useState(connect.profilePic || default_pp_src);
     let params = useParams();
 
-    let [isFriend, setIsFriend] = useState(false)
+    let [isConnect, setIsConnect] = useState(false)
     let [isReportOpen, setIsReportOpen] = useState(false)
 
     useEffect(() => {
-        myProfile.friends && myProfile.friends.filter(singleFrnd => {
-            if (singleFrnd._id === friend._id) {
-                setIsFriend(true)
+        myProfile.connects && myProfile.connects.filter(singleConnect => {
+            if (singleConnect._id === connect._id) {
+                setIsConnect(true)
             }
         })
-        checkImgLoading(friend.profilePic, setIsPpLoaded)
+        checkImgLoading(connect.profilePic, setIsPpLoaded)
 
                 
     },[params])
@@ -35,13 +35,13 @@ const PFI = (props) => {
     useEffect(() => {
 
         if(isPpLoaded) {
-            setProfilePic(friend.profilePic)
+            setProfilePic(connect.profilePic)
         }
 
     }, [isPpLoaded])
 
 
-    let friendFullName = friend.fullName ? friend.fullName : friend.user && friend.user.firstName + " " + friend.user.surname
+    let connectFullName = connect.fullName ? connect.fullName : connect.user && connect.user.firstName + " " + connect.user.surname
 
 
 
@@ -49,17 +49,17 @@ const PFI = (props) => {
     let handleFrndOptionClick = (e) => {
         let target = e.currentTarget
 
-        $(target).children('.friend-options-menu').toggle()
+        $(target).children('.connect-options-menu').toggle()
     }
 
     let clickRemoveFrndOption = async (e) => {
         try {
 
-            let res = await api.post('/friend/removeFriend', {
-                profile: friend._id
+            let res = await api.post('/connects/removeConnect', {
+                profile: connect._id
             })
             if(res.status == 200) {
-                $(e.currentTarget).parents('.friend-item').fadeOut()
+                $(e.currentTarget).parents('.connect-item').fadeOut()
 
             }
 
@@ -72,9 +72,9 @@ const PFI = (props) => {
         try {
 
             let target = e.currentTarget
-            let res = await api.post('/friend/sendRequest/', { profile: friend._id })
+            let res = await api.post('/connects/sendRequest/', { profile: connect._id })
             if(res.status == 200) {
-                $(target).parents('.friend-item').hide()
+                $(target).parents('.connect-item').hide()
 
             }
 
@@ -84,22 +84,22 @@ const PFI = (props) => {
     }
     return (
         <>
-            <div className='friend-item'>
+            <div className='connect-item'>
 
-                <div className='friend-info'>
-                    <Link to={'/' + friend._id}>
-                        <div className='friend-profilePic'>
+                <div className='connect-info'>
+                    <Link to={'/' + connect._id}>
+                        <div className='connect-profilePic'>
                             {
-                                isPpLoaded ? <img src={profilePic} alt={friendFullName} referrerPolicy="no-referrer" ></img> : <ImageSkleton />
+                                isPpLoaded ? <img src={profilePic} alt={connectFullName} referrerPolicy="no-referrer" ></img> : <ImageSkleton />
                             }
                             
                         </div>
-                        <div className='friend-details'>
-                            <h4 className='friend-name text-capitalize'>
-                                <VerifiedName profile={friend}>{friendFullName}</VerifiedName>
+                        <div className='connect-details'>
+                            <h4 className='connect-name text-capitalize'>
+                                <VerifiedName profile={connect}>{connectFullName}</VerifiedName>
                             </h4>
                             {
-                                friend.mutual && <span className='friend-mutual'> 20 Mutual Friends</span>
+                                connect.mutual && <span className='connect-mutual'> 20 Mutual Connects</span>
                             }
 
                         </div>
@@ -107,34 +107,34 @@ const PFI = (props) => {
 
 
                 </div>
-                <div className='friend-options' onClick={handleFrndOptionClick}>
+                <div className='connect-options' onClick={handleFrndOptionClick}>
                     <i className='far fa-ellipsis-h'></i>
 
-                    <div className='friend-options-menu'>
+                    <div className='connect-options-menu'>
                         {
-                            isFriend ?
-                                <div onClick={clickRemoveFrndOption} className='friend-options-menu-item'>
+                            isConnect ?
+                                <div onClick={clickRemoveFrndOption} className='connect-options-menu-item'>
                                     <div className='menu-item-icon'>
                                         <i className="fas fa-user-times"></i>
                                     </div>
-                                    <div className='menu-item-text'>Remove Friend</div>
+                                    <div className='menu-item-text'>Remove Connect</div>
                                 </div>
 
                                 :
-                                <div onClick={clickAddFrndOption} className='friend-options-menu-item'>
+                                <div onClick={clickAddFrndOption} className='connect-options-menu-item'>
                                     <div className='menu-item-icon'>
                                         <i className="fas fa-user-plus"></i>
                                     </div>
-                                    <div className='menu-item-text'>Add Friend</div>
+                                    <div className='menu-item-text'>Add Connect</div>
                                 </div>
                         }
-                        {friend._id !== myProfile._id && (
+                        {connect._id !== myProfile._id && (
                             <div
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     setIsReportOpen(true);
                                 }}
-                                className='friend-options-menu-item'
+                                className='connect-options-menu-item'
                             >
                                 <div className='menu-item-icon'>
                                     <i className="fas fa-flag"></i>
@@ -147,13 +147,13 @@ const PFI = (props) => {
 
                 </div>
             </div>
-            {isReportOpen && friend?._id && (
+            {isReportOpen && connect?._id && (
                 <ReportModal
                     isOpen={isReportOpen}
                     onRequestClose={() => setIsReportOpen(false)}
                     type="profile"
-                    targetId={friend._id}
-                    targetLabel={friendFullName || 'this profile'}
+                    targetId={connect._id}
+                    targetLabel={connectFullName || 'this profile'}
                 />
             )}
         </>

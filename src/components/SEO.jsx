@@ -9,9 +9,9 @@ const SEO = ({
   ogType = 'website',
   twitterCard = 'summary_large_image'
 }) => {
-  const defaultTitle = 'Connect BD - Social Media App in Bangladesh | Connect with Friends';
+  const defaultTitle = 'Connect BD - Social Media App in Bangladesh | Connect with Connects';
   const defaultDescription = 'Connect BD by Ikramul is a modern social media platform for Bangladesh users to connect, chat, share moments, make video calls, and grow communities online.';
-  const defaultKeywords = 'Connect BD, connect bd, connect app, connect by ikramul, social media app Bangladesh, social networking platform, chat app, video calls, community app, connect with friends, online community';
+  const defaultKeywords = 'Connect BD, connect bd, connect app, connect by ikramul, social media app Bangladesh, social networking platform, chat app, video calls, community app, connect with connects, online community';
   const defaultOgImage = ogImage || 'https://connect-bd.online/logo512.png';
   const defaultCanonical = canonical || 'https://connect-bd.online' + window.location.pathname;
 

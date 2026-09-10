@@ -6,7 +6,7 @@
 export const getIosProfileUrl = () => {
   const server = (process.env.REACT_APP_SERVER_ADDR || "").replace(/\/$/, "");
   if (server) {
-    return `${server}/api/connect/ios-profile`;
+    return `${server}/api/connects/ios-profile`;
   }
   return `${process.env.PUBLIC_URL || ""}/connect.mobileconfig`;
 };

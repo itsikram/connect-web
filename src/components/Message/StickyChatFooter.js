@@ -9,24 +9,24 @@ import ComposerContextPreview from "./ComposerContextPreview";
 import ComposerMicMenu from "./ComposerMicMenu";
 import useComposerLiveTranscribe from "../../hooks/useComposerLiveTranscribe";
 import { mergeTranscriptChunk } from "../../hooks/transcriptText";
-import useFriendChatSettings from "../../hooks/useFriendChatSettings";
+import useConnectChatSettings from "../../hooks/useConnectChatSettings";
 
 const StickyChatFooter = ({
   room,
-  friendId,
+  connectId,
   setIsTyping,
   userId,
   replyData,
   setReplyData,
   setIsReplying,
   messages,
-  friendProfile,
+  connectProfile,
   msgListRef,
   isAi = false,
   sendMessage,
 }) => {
   const settings = useSelector((state) => state.setting);
-  const { settings: chatAppearance } = useFriendChatSettings(friendId);
+  const { settings: chatAppearance } = useConnectChatSettings(connectId);
 
   const [inputValue, setInputValue] = useState("");
   const [attachmentUrl, setAttachmentUrl] = useState(false);
@@ -89,19 +89,19 @@ const StickyChatFooter = ({
 
   const emitTyping = useCallback(
     (typing, value = "") => {
-      const roomId = room || [userId, friendId].sort().join("_");
-      if (!roomId || !friendId || !userId) return;
+      const roomId = room || [userId, connectId].sort().join("_");
+      if (!roomId || !connectId || !userId) return;
       if (!settings?.showIsTyping) return;
 
       socket.emit("typing", {
         room: roomId,
         isTyping: typing,
         type: typing ? value : "",
-        receiverId: friendId,
+        receiverId: connectId,
         senderId: userId,
       });
     },
-    [room, userId, friendId, settings?.showIsTyping],
+    [room, userId, connectId, settings?.showIsTyping],
   );
 
   const removeTyping = useCallback(() => {
@@ -229,13 +229,13 @@ const StickyChatFooter = ({
       setIsSendingMessage(true);
       stopTranscription();
 
-      const roomId = room || [userId, friendId].sort().join("_");
+      const roomId = room || [userId, connectId].sort().join("_");
       const messageContent = inputValue.trim();
 
       const data = {
         room: roomId,
         senderId: userId,
-        receiverId: friendId,
+        receiverId: connectId,
         message: messageContent,
         attachment: attachmentUrl,
         parent: replyData.messageId || false,
@@ -273,7 +273,7 @@ const StickyChatFooter = ({
       attachmentUrl,
       room,
       userId,
-      friendId,
+      connectId,
       replyData,
       isAi,
       setIsTyping,
@@ -307,11 +307,11 @@ const StickyChatFooter = ({
   };
 
   const likeButtonClick = () => {
-    const roomId = room || [userId, friendId].sort().join("_");
+    const roomId = room || [userId, connectId].sort().join("_");
     const data = {
       room: roomId,
       senderId: userId,
-      receiverId: friendId,
+      receiverId: connectId,
       message: actionEmoji,
       attachment: false,
       parent: false,
@@ -521,11 +521,11 @@ const StickyChatFooter = ({
         });
 
         if (res.status === 200 && res.data?.secure_url) {
-          const roomId = room || [userId, friendId].sort().join("_");
+          const roomId = room || [userId, connectId].sort().join("_");
           const data = {
             room: roomId,
             senderId: userId,
-            receiverId: friendId,
+            receiverId: connectId,
             message: "",
             attachment: res.data.secure_url,
             parent: false,
@@ -547,7 +547,7 @@ const StickyChatFooter = ({
         setIsUploadingAudio(false);
       }
     },
-    [room, userId, friendId, isAi, msgListRef, sendMessage],
+    [room, userId, connectId, isAi, msgListRef, sendMessage],
   );
 
   const msToClock = (ms) => {
@@ -617,7 +617,7 @@ const StickyChatFooter = ({
       <ComposerContextPreview
         replyData={replyData}
         userId={userId}
-        friendProfile={friendProfile}
+        connectProfile={connectProfile}
         attachmentUrl={attachmentUrl}
         onCancelReply={() => {
           setIsReplying?.(false);

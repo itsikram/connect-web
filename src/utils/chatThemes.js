@@ -258,7 +258,7 @@ export const isRomanticMessage = (text) => {
   return false;
 };
 
-export const DEFAULT_FRIEND_CHAT_SETTINGS = {
+export const DEFAULT_CONNECT_CHAT_SETTINGS = {
   themeId: DEFAULT_CHAT_THEME_ID,
   wallpaperSource: "global",
   customBackground: null,
@@ -484,7 +484,7 @@ export const CHAT_THEMES = [
 export const getChatTheme = (themeId) =>
   CHAT_THEMES.find((theme) => theme.id === themeId) || CHAT_THEMES[0];
 
-export const normalizeFriendChatSettings = (raw = {}) => {
+export const normalizeConnectChatSettings = (raw = {}) => {
   const themeId = CHAT_THEMES.some((theme) => theme.id === raw.themeId)
     ? raw.themeId
     : DEFAULT_CHAT_THEME_ID;
@@ -494,7 +494,7 @@ export const normalizeFriendChatSettings = (raw = {}) => {
     ? raw.wallpaperSource
     : raw.customBackground
       ? "custom"
-      : DEFAULT_FRIEND_CHAT_SETTINGS.wallpaperSource;
+      : DEFAULT_CONNECT_CHAT_SETTINGS.wallpaperSource;
 
   return {
     themeId,
@@ -513,12 +513,12 @@ export const normalizeFriendChatSettings = (raw = {}) => {
 };
 
 export const resolveChatWallpaper = (
-  friendSettings,
+  connectSettings,
   theme,
   globalBackground,
   fallbackImage,
 ) => {
-  const settings = normalizeFriendChatSettings(friendSettings);
+  const settings = normalizeConnectChatSettings(connectSettings);
 
   if (settings.wallpaperSource === "custom" && settings.customBackground) {
     return {

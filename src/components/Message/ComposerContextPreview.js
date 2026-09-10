@@ -9,7 +9,7 @@ import {
 const ComposerContextPreview = ({
   replyData,
   userId,
-  friendProfile,
+  connectProfile,
   attachmentUrl,
   uploadPlaceholder,
   onCancelReply,
@@ -22,7 +22,7 @@ const ComposerContextPreview = ({
   const isMine = String(replyData?.senderId) === String(userId);
   const targetName = isMine
     ? "yourself"
-    : getProfileDisplayName(friendProfile, "them");
+    : getProfileDisplayName(connectProfile, "them");
   const snippet = getMessageSnippet(replyData);
   const uploading = Boolean(
     attachmentUrl && uploadPlaceholder && attachmentUrl === uploadPlaceholder,

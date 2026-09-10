@@ -3,44 +3,44 @@ import { useDispatch, useSelector } from "react-redux";
 import api from "../api/api";
 import { loadSettings } from "../services/actions/settingsActions";
 import {
-  DEFAULT_FRIEND_CHAT_SETTINGS,
+  DEFAULT_CONNECT_CHAT_SETTINGS,
   getChatTheme,
-  normalizeFriendChatSettings,
+  normalizeConnectChatSettings,
   resolveChatWallpaper,
 } from "../utils/chatThemes";
 import defaultChatBackground from "../assets/images/default-chat-bg.svg";
 import {
-  FRIEND_CHAT_SETTINGS_EVENT,
-  getFriendChatSettings,
-  mergeServerFriendChatMap,
-  readFriendChatSettingsMap,
-  setFriendChatSettingsLocal,
-} from "../utils/friendChatSettings";
+  CONNECT_CHAT_SETTINGS_EVENT,
+  getConnectChatSettings,
+  mergeServerConnectChatMap,
+  readConnectChatSettingsMap,
+  setConnectChatSettingsLocal,
+} from "../utils/connectChatSettings";
 
-const useFriendChatSettings = (friendId) => {
+const useConnectChatSettings = (connectId) => {
   const dispatch = useDispatch();
   const userId = useSelector((state) => state.profile?._id);
   const globalSettings = useSelector((state) => state.setting);
   const persistTimer = useRef(null);
 
   const [settings, setSettings] = useState(() =>
-    getFriendChatSettings(userId, friendId, globalSettings?.friendChatSettings),
+    getConnectChatSettings(userId, connectId, globalSettings?.connectChatSettings),
   );
 
   useEffect(() => {
-    if (!userId || !friendId) {
-      setSettings({ ...DEFAULT_FRIEND_CHAT_SETTINGS });
+    if (!userId || !connectId) {
+      setSettings({ ...DEFAULT_CONNECT_CHAT_SETTINGS });
       return;
     }
     setSettings(
-      getFriendChatSettings(userId, friendId, globalSettings?.friendChatSettings),
+      getConnectChatSettings(userId, connectId, globalSettings?.connectChatSettings),
     );
-  }, [userId, friendId, globalSettings?.friendChatSettings]);
+  }, [userId, connectId, globalSettings?.connectChatSettings]);
 
   useEffect(() => {
-    if (!userId || !globalSettings?.friendChatSettings) return;
-    mergeServerFriendChatMap(userId, globalSettings.friendChatSettings);
-  }, [userId, globalSettings?.friendChatSettings]);
+    if (!userId || !globalSettings?.connectChatSettings) return;
+    mergeServerConnectChatMap(userId, globalSettings.connectChatSettings);
+  }, [userId, globalSettings?.connectChatSettings]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -49,33 +49,33 @@ const useFriendChatSettings = (friendId) => {
       const detail = event.detail || {};
       if (
         String(detail.userId) !== String(userId) ||
-        String(detail.friendId) !== String(friendId)
+        String(detail.connectId) !== String(connectId)
       ) {
         return;
       }
-      setSettings(normalizeFriendChatSettings(detail.settings));
+      setSettings(normalizeConnectChatSettings(detail.settings));
     };
 
-    window.addEventListener(FRIEND_CHAT_SETTINGS_EVENT, handleUpdate);
+    window.addEventListener(CONNECT_CHAT_SETTINGS_EVENT, handleUpdate);
     return () =>
-      window.removeEventListener(FRIEND_CHAT_SETTINGS_EVENT, handleUpdate);
-  }, [userId, friendId]);
+      window.removeEventListener(CONNECT_CHAT_SETTINGS_EVENT, handleUpdate);
+  }, [userId, connectId]);
 
   const persistToServer = useCallback(
     (next) => {
-      if (!userId || !friendId) return;
+      if (!userId || !connectId) return;
       if (persistTimer.current) window.clearTimeout(persistTimer.current);
       persistTimer.current = window.setTimeout(async () => {
         try {
           const serverMap =
-            globalSettings?.friendChatSettings &&
-            typeof globalSettings.friendChatSettings === "object"
-              ? globalSettings.friendChatSettings
+            globalSettings?.connectChatSettings &&
+            typeof globalSettings.connectChatSettings === "object"
+              ? globalSettings.connectChatSettings
               : {};
-          const localMap = readFriendChatSettingsMap(userId);
-          const merged = { ...serverMap, ...localMap, [friendId]: next };
+          const localMap = readConnectChatSettingsMap(userId);
+          const merged = { ...serverMap, ...localMap, [connectId]: next };
           const res = await api.post("setting/update", {
-            friendChatSettings: merged,
+            connectChatSettings: merged,
           });
           if (res.status === 200) {
             dispatch(loadSettings(res.data));
@@ -85,7 +85,7 @@ const useFriendChatSettings = (friendId) => {
         }
       }, 280);
     },
-    [userId, friendId, dispatch, globalSettings?.friendChatSettings],
+    [userId, connectId, dispatch, globalSettings?.connectChatSettings],
   );
 
   useEffect(
@@ -97,17 +97,17 @@ const useFriendChatSettings = (friendId) => {
 
   const updateSettings = useCallback(
     (patch) => {
-      const next = normalizeFriendChatSettings({ ...settings, ...patch });
+      const next = normalizeConnectChatSettings({ ...settings, ...patch });
       setSettings(next);
-      setFriendChatSettingsLocal(userId, friendId, next);
+      setConnectChatSettingsLocal(userId, connectId, next);
       persistToServer(next);
       return next;
     },
-    [userId, friendId, settings, persistToServer],
+    [userId, connectId, settings, persistToServer],
   );
 
   const resetSettings = useCallback(() => {
-    return updateSettings({ ...DEFAULT_FRIEND_CHAT_SETTINGS });
+    return updateSettings({ ...DEFAULT_CONNECT_CHAT_SETTINGS });
   }, [updateSettings]);
 
   const theme = useMemo(() => getChatTheme(settings.themeId), [settings.themeId]);
@@ -130,8 +130,8 @@ const useFriendChatSettings = (friendId) => {
     updateSettings,
     resetSettings,
     globalBackground: globalSettings?.chatBackground || null,
-    globalActionEmoji: globalSettings?.actionEmoji || DEFAULT_FRIEND_CHAT_SETTINGS.actionEmoji,
+    globalActionEmoji: globalSettings?.actionEmoji || DEFAULT_CONNECT_CHAT_SETTINGS.actionEmoji,
   };
 };
 
-export default useFriendChatSettings;
+export default useConnectChatSettings;

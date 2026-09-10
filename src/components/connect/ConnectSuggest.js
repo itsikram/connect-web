@@ -1,21 +1,21 @@
 import React, { Fragment, useCallback, useEffect, useState } from "react";
-import FGI from "./FGI";
+import CGI from "./CGI";
 import { useSelector } from "react-redux";
 import api from "../../api/api";
-import FgiSkleton from "../../skletons/friend/FgiSkleton";
-import FriendCacheManager, {
-    FRIEND_CACHE_EVENT,
-} from "../../utils/friendCacheManager";
+import CgiSkleton from "../../skletons/connect/CgiSkleton";
+import ConnectCacheManager, {
+    CONNECT_CACHE_EVENT,
+} from "../../utils/connectCacheManager";
 
 
-let FriendsSuggest = () => {
+let ConnectsSuggest = () => {
     let myProfile = useSelector(state => state.profile)
     const myProfileId = myProfile?._id;
 
     const cachedSuggestions = myProfileId
-        ? FriendCacheManager.getCachedSuggestions(myProfileId)
+        ? ConnectCacheManager.getCachedSuggestions(myProfileId)
         : null;
-    const [friends, setFriends] = useState(
+    const [connects, setConnects] = useState(
         Array.isArray(cachedSuggestions) ? cachedSuggestions : [],
     );
     const [isLoading, setIsLoading] = useState(!Array.isArray(cachedSuggestions));
@@ -24,31 +24,31 @@ let FriendsSuggest = () => {
         async (forceRefresh = false) => {
             if (!myProfileId) return;
 
-            const cached = FriendCacheManager.getCachedSuggestions(myProfileId);
+            const cached = ConnectCacheManager.getCachedSuggestions(myProfileId);
             if (Array.isArray(cached)) {
-                setFriends(cached);
+                setConnects(cached);
                 setIsLoading(false);
             } else {
                 setIsLoading(true);
             }
 
             try {
-                const list = await FriendCacheManager.fetchWithCache({
+                const list = await ConnectCacheManager.fetchWithCache({
                     key: `suggestions:${myProfileId}`,
                     forceRefresh,
                     setCached: (items) =>
-                        FriendCacheManager.setCachedSuggestions(myProfileId, items),
+                        ConnectCacheManager.setCachedSuggestions(myProfileId, items),
                     fetcher: async () => {
-                        const res = await api.get("/friend/getSuggetions/", {
+                        const res = await api.get("/connects/getSuggetions/", {
                             params: { profile: myProfileId },
                         });
                         return Array.isArray(res.data) ? res.data : [];
                     },
                 });
-                setFriends(list);
+                setConnects(list);
             } catch (e) {
                 console.log(e);
-                if (!Array.isArray(cached)) setFriends([]);
+                if (!Array.isArray(cached)) setConnects([]);
             } finally {
                 setIsLoading(false);
             }
@@ -68,41 +68,41 @@ let FriendsSuggest = () => {
             ) {
                 return;
             }
-            setFriends(Array.isArray(event.detail.items) ? event.detail.items : []);
+            setConnects(Array.isArray(event.detail.items) ? event.detail.items : []);
             setIsLoading(false);
         };
 
-        window.addEventListener(FRIEND_CACHE_EVENT, onCacheUpdate);
-        return () => window.removeEventListener(FRIEND_CACHE_EVENT, onCacheUpdate);
+        window.addEventListener(CONNECT_CACHE_EVENT, onCacheUpdate);
+        return () => window.removeEventListener(CONNECT_CACHE_EVENT, onCacheUpdate);
     }, [myProfileId]);
 
-    const showSkeleton = isLoading && friends.length === 0;
+    const showSkeleton = isLoading && connects.length === 0;
 
     return (
         <Fragment>
-            <div id="friends-container" className="mb-5">
+            <div id="connects-container" className="mb-5">
                 <div className="heading">
                     <h4 className="heading-title">People You May Know</h4>
                 </div>
 
-                <div className="friend-grid-container">
+                <div className="connect-grid-container">
                     {showSkeleton ? (
-                        <FgiSkleton count={8} />
-                    ) : friends.length > 0 ? (
-                        friends.map((friend) => {
-                            if (!friend.user) return null;
+                        <CgiSkleton count={8} />
+                    ) : connects.length > 0 ? (
+                        connects.map((connect) => {
+                            if (!connect.user) return null;
 
-                            const fullName = `${friend.user.firstName || ""} ${friend.user.surname || ""}`.trim() || "User";
-                            const isIncomingReq = myProfile.friendReqs?.includes(friend._id);
+                            const fullName = `${connect.user.firstName || ""} ${connect.user.surname || ""}`.trim() || "User";
+                            const isIncomingReq = myProfile.connectReqs?.includes(connect._id);
 
                             return (
-                                <FGI
-                                    key={friend._id}
-                                    profileReqs={friend.friendReqs}
+                                <CGI
+                                    key={connect._id}
+                                    profileReqs={connect.connectReqs}
                                     type={isIncomingReq ? "req" : "sug"}
-                                    id={friend._id}
-                                    profilePic={friend.profilePic}
-                                    isVerified={friend.isVerified}
+                                    id={connect._id}
+                                    profilePic={connect.profilePic}
+                                    isVerified={connect.isVerified}
                                     fullName={fullName}
                                 />
                             );
@@ -118,4 +118,4 @@ let FriendsSuggest = () => {
     )
 }
 
-export default FriendsSuggest;
+export default ConnectsSuggest;

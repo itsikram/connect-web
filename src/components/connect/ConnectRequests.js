@@ -1,20 +1,20 @@
 import React, { Fragment, useCallback, useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useSelector } from "react-redux";
-import FGI from "./FGI";
+import CGI from "./CGI";
 import api from "../../api/api";
-import FgiSkleton from "../../skletons/friend/FgiSkleton";
-import FriendCacheManager, {
-    FRIEND_CACHE_EVENT,
-} from "../../utils/friendCacheManager";
+import CgiSkleton from "../../skletons/connect/CgiSkleton";
+import ConnectCacheManager, {
+    CONNECT_CACHE_EVENT,
+} from "../../utils/connectCacheManager";
 
-let FriendRequests = () => {
+let ConnectRequests = () => {
     const location = useLocation();
-    const isRequestsPage = location.pathname.includes("/friends/requests");
+    const isRequestsPage = location.pathname.includes("/connects/requests");
     const myProfileId = useSelector((state) => state.profile?._id);
 
     const cachedRequests = myProfileId
-        ? FriendCacheManager.getCachedRequests(myProfileId)
+        ? ConnectCacheManager.getCachedRequests(myProfileId)
         : null;
     const [reqData, setReqData] = useState(
         Array.isArray(cachedRequests) ? cachedRequests : [],
@@ -25,7 +25,7 @@ let FriendRequests = () => {
         async (forceRefresh = false) => {
             if (!myProfileId) return;
 
-            const cached = FriendCacheManager.getCachedRequests(myProfileId);
+            const cached = ConnectCacheManager.getCachedRequests(myProfileId);
             if (Array.isArray(cached)) {
                 setReqData(cached);
                 setIsLoading(false);
@@ -34,13 +34,13 @@ let FriendRequests = () => {
             }
 
             try {
-                const list = await FriendCacheManager.fetchWithCache({
+                const list = await ConnectCacheManager.fetchWithCache({
                     key: `requests:${myProfileId}`,
                     forceRefresh,
                     setCached: (items) =>
-                        FriendCacheManager.setCachedRequests(myProfileId, items),
+                        ConnectCacheManager.setCachedRequests(myProfileId, items),
                     fetcher: async () => {
-                        const res = await api.get("/friend/getRequest/");
+                        const res = await api.get("/connects/getRequest/");
                         return Array.isArray(res.data) ? res.data : [];
                     },
                 });
@@ -73,28 +73,28 @@ let FriendRequests = () => {
             setIsLoading(false);
         };
 
-        window.addEventListener(FRIEND_CACHE_EVENT, onCacheUpdate);
-        return () => window.removeEventListener(FRIEND_CACHE_EVENT, onCacheUpdate);
+        window.addEventListener(CONNECT_CACHE_EVENT, onCacheUpdate);
+        return () => window.removeEventListener(CONNECT_CACHE_EVENT, onCacheUpdate);
     }, [myProfileId]);
 
     const showSkeleton = isLoading && reqData.length === 0;
 
     return (
         <Fragment>
-            <div id="friends-container">
+            <div id="connects-container">
                 <div className="heading">
-                    <h4 className="heading-title">Friend Requests</h4>
+                    <h4 className="heading-title">Connect Requests</h4>
                     {!isRequestsPage && (
-                        <Link to="/friends/requests" className="view-more-btn">See All</Link>
+                        <Link to="/connects/requests" className="view-more-btn">See All</Link>
                     )}
                 </div>
 
-                <div className="friend-grid-container">
+                <div className="connect-grid-container">
                     {showSkeleton ? (
-                        <FgiSkleton count={8} />
+                        <CgiSkleton count={8} />
                     ) : reqData.length > 0 ? (
                         reqData.map((req) => (
-                            <FGI
+                            <CGI
                                 key={req._id}
                                 id={req._id}
                                 profilePic={req.profilePic}
@@ -105,7 +105,7 @@ let FriendRequests = () => {
                         ))
                     ) : (
                         <h4 className="data-not-found text-center">
-                            You don&apos;t have any friend requests right now
+                            You don&apos;t have any connect requests right now
                         </h4>
                     )}
                 </div>
@@ -116,4 +116,4 @@ let FriendRequests = () => {
 
 
 
-export default FriendRequests;
+export default ConnectRequests;

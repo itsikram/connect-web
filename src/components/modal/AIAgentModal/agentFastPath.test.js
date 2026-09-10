@@ -57,7 +57,7 @@ describe("agent fast path", () => {
     expect(
       describeUpcomingAction(
         { action: "AUDIO_CALL", targetName: "Atik" },
-        { friendName: "Atik", lang: "bn" },
+        { connectName: "Atik", lang: "bn" },
       ),
     ).toMatch(/কল/);
     expect(

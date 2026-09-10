@@ -8,40 +8,40 @@ let ProfileDetails = (props) => {
     let mySettings = useSelector(state => state.setting)
     let myProfile = useSelector(state => state.profile)
     let [settings, setSettings] = useState(false)
-    let [friendProfile, setFriendProfile] = useState(false)
+    let [connectProfile, setConnectProfile] = useState(false)
     let [workPlaces, setWorkPlaces] = useState([])
     let [schools, setSchools] = useState([])
     let [presentAddress, setPresentAddress] = useState('')
     let [permanentAddress, setPermanentAddress] = useState('')
     let params = useParams(); 
-    let friendId = params.profile
+    let connectId = params.profile
 
 
     useEffect(() => {
-        if (friendProfile?.presentAddress) {
-            setPresentAddress(friendProfile.presentAddress)
+        if (connectProfile?.presentAddress) {
+            setPresentAddress(connectProfile.presentAddress)
         }
-        if (friendProfile?.permanentAddress) {
-            setPermanentAddress(friendProfile.permanentAddress)
+        if (connectProfile?.permanentAddress) {
+            setPermanentAddress(connectProfile.permanentAddress)
         }
-        if (friendProfile?.schools) {
-            setSchools(friendProfile.schools)
+        if (connectProfile?.schools) {
+            setSchools(connectProfile.schools)
         }
-        if (friendProfile?.workPlaces) {
-            setWorkPlaces(friendProfile.workPlaces)
+        if (connectProfile?.workPlaces) {
+            setWorkPlaces(connectProfile.workPlaces)
         }
-    }, [friendProfile])
+    }, [connectProfile])
 
 
     useEffect(() => {
-        if (!friendId) return;
+        if (!connectId) return;
 
-        fetchProfileCached(friendId, { ttlMs: 60000, storageTtlMs: 300000 })
+        fetchProfileCached(connectId, { ttlMs: 60000, storageTtlMs: 300000 })
             .then((profileResponse) => {
-                setFriendProfile(profileResponse)
+                setConnectProfile(profileResponse)
             }).catch(e => console.log(e))
 
-    }, [friendId])
+    }, [connectId])
 
 
 
@@ -101,7 +101,7 @@ let ProfileDetails = (props) => {
                 <div className="details-list-item">
                     <i className="fas fa-clock"></i>
                     <span>
-                        Joined  <b><Moment format="MMMM YYYY">{friendProfile?.user?.createdAt}</Moment></b>
+                        Joined  <b><Moment format="MMMM YYYY">{connectProfile?.user?.createdAt}</Moment></b>
                     </span>
                 </div>
 

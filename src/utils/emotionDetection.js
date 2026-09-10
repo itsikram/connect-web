@@ -132,7 +132,7 @@ const createExpressionValidator = (emotions, detectionQualityRef, emotionHistory
 };
 
 // Detect emotions from video element
-export const detectEmotionsFromVideo = async (videoElement, refs, socket, profileId, friendId) => {
+export const detectEmotionsFromVideo = async (videoElement, refs, socket, profileId, connectId) => {
     const {
         faceModelsReadyRef,
         emotionHistoryRef,

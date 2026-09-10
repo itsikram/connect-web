@@ -9,8 +9,8 @@ let RightSidebar = () => {
     let { profile } = JSON.parse(userJson)
     let myProfile = useSelector(state => state.profile)
     let myContacts = useSelector(state => state.message) // Get contacts with messages from Redux
-    const [activeFriends, setActiveFriends] = useState([]);
-    const [friendProfileStatusMap, setFriendProfileStatusMap] = useState({});
+    const [activeConnects, setActiveConnects] = useState([]);
+    const [connectProfileStatusMap, setConnectProfileStatusMap] = useState({});
     const [cachedContacts, setCachedContacts] = useState(() => {
         try {
             const userData = JSON.parse(localStorage.getItem('user') || '{}')
@@ -69,19 +69,19 @@ let RightSidebar = () => {
         return getStoredContacts();
     }, [cachedContacts, reduxContacts, getStoredContacts]);
 
-    const sidebarFriends = useMemo(() => {
-        if (Array.isArray(myProfile.friends) && myProfile.friends.length > 0) {
-            return myProfile.friends;
+    const sidebarConnects = useMemo(() => {
+        if (Array.isArray(myProfile.connects) && myProfile.connects.length > 0) {
+            return myProfile.connects;
         }
 
         return contactsData
             .map(contact => contact?.person)
-            .filter(friend => friend?._id);
-    }, [myProfile.friends, contactsData]);
+            .filter(connect => connect?._id);
+    }, [myProfile.connects, contactsData]);
 
-    const sidebarFriendIdsKey = useMemo(
-        () => sidebarFriends.map((friend) => friend?._id).filter(Boolean).join(','),
-        [sidebarFriends]
+    const sidebarConnectIdsKey = useMemo(
+        () => sidebarConnects.map((connect) => connect?._id).filter(Boolean).join(','),
+        [sidebarConnects]
     );
 
     const contactStatusMap = useMemo(() => {
@@ -101,9 +101,9 @@ let RightSidebar = () => {
         return statusMap;
     }, [contactsData]);
 
-    // Sort friends by last message timestamp
-    const sortedFriendsData = useMemo(() => {
-        if (!sidebarFriends || !Array.isArray(sidebarFriends) || sidebarFriends.length === 0) return [];
+    // Sort connects by last message timestamp
+    const sortedConnectsData = useMemo(() => {
+        if (!sidebarConnects || !Array.isArray(sidebarConnects) || sidebarConnects.length === 0) return [];
 
         // Create a map of contact IDs to their last message timestamp
         const contactMessageMap = new Map();
@@ -113,8 +113,8 @@ let RightSidebar = () => {
             }
         });
 
-        // Sort friends: those with messages first (by timestamp), then those without messages
-        const sorted = [...sidebarFriends].sort((a, b) => {
+        // Sort connects: those with messages first (by timestamp), then those without messages
+        const sorted = [...sidebarConnects].sort((a, b) => {
             const aTimestamp = contactMessageMap.get(a._id) || 0;
             const bTimestamp = contactMessageMap.get(b._id) || 0;
 
@@ -130,7 +130,7 @@ let RightSidebar = () => {
         });
 
         return sorted;
-    }, [sidebarFriends, contactStatusMap]);
+    }, [sidebarConnects, contactStatusMap]);
 
     // Get online status from contacts data (same source used by message UI)
     const getOnlineStatusFromContacts = useCallback((profileId) => {
@@ -140,9 +140,9 @@ let RightSidebar = () => {
         }
 
         const storedContacts = getStoredContacts();
-        const friendContact = storedContacts.find(contact => contact?.person?._id === profileId);
-        if (friendContact) {
-            return Boolean(friendContact.isOnline);
+        const connectContact = storedContacts.find(contact => contact?.person?._id === profileId);
+        if (connectContact) {
+            return Boolean(connectContact.isOnline);
         }
 
         return undefined;
@@ -173,45 +173,45 @@ let RightSidebar = () => {
     }, [reduxContacts, persistContactsCache]);
 
     const refreshOnlineStatuses = useCallback(async () => {
-        const friends = Array.isArray(sidebarFriends) ? sidebarFriends : [];
-        if (friends.length === 0) {
-            setActiveFriends([]);
-            setFriendProfileStatusMap({});
+        const connects = Array.isArray(sidebarConnects) ? sidebarConnects : [];
+        if (connects.length === 0) {
+            setActiveConnects([]);
+            setConnectProfileStatusMap({});
             return;
         }
 
-        const cachedOnlineFriends = friends
-            .map(friend => friend?._id)
-            .filter(friendId => getOnlineStatusFromContacts(friendId) === true);
+        const cachedOnlineConnects = connects
+            .map(connect => connect?._id)
+            .filter(connectId => getOnlineStatusFromContacts(connectId) === true);
 
-        if (cachedOnlineFriends.length > 0) {
-            setActiveFriends(prev => {
-                const merged = new Set([...(Array.isArray(prev) ? prev : []), ...cachedOnlineFriends]);
+        if (cachedOnlineConnects.length > 0) {
+            setActiveConnects(prev => {
+                const merged = new Set([...(Array.isArray(prev) ? prev : []), ...cachedOnlineConnects]);
                 return Array.from(merged);
             });
         }
 
-        const friendIds = friends.map((friend) => friend?._id).filter(Boolean);
+        const connectIds = connects.map((connect) => connect?._id).filter(Boolean);
         if (typeof document !== 'undefined' && document.hidden) {
             return;
         }
-        const statuses = await fetchOnlineStatusesCached(friendIds, { ttlMs: 30000 });
+        const statuses = await fetchOnlineStatusesCached(connectIds, { ttlMs: 30000 });
         const nextStatusMap = {};
-        const liveOnlineFriends = [];
+        const liveOnlineConnects = [];
 
-        friendIds.forEach((profileId) => {
+        connectIds.forEach((profileId) => {
             const isOnline = Boolean(
                 statuses[profileId]?.isActive ?? getOnlineStatusFromContacts(profileId)
             );
             nextStatusMap[profileId] = isOnline;
             if (isOnline) {
-                liveOnlineFriends.push(profileId);
+                liveOnlineConnects.push(profileId);
             }
         });
 
-        setFriendProfileStatusMap(nextStatusMap);
-        setActiveFriends(liveOnlineFriends);
-    }, [sidebarFriends, getOnlineStatusFromContacts]);
+        setConnectProfileStatusMap(nextStatusMap);
+        setActiveConnects(liveOnlineConnects);
+    }, [sidebarConnects, getOnlineStatusFromContacts]);
 
     // On-demand online status checking (only when opening chat)
     const checkOnlineStatusOnDemand = useCallback(async (profileId) => {
@@ -231,7 +231,7 @@ let RightSidebar = () => {
     }, [getOnlineStatusFromContacts]);
 
     useEffect(() => {
-        if (!effectiveProfileId || !sidebarFriends || !Array.isArray(sidebarFriends) || sidebarFriends.length === 0) {
+        if (!effectiveProfileId || !sidebarConnects || !Array.isArray(sidebarConnects) || sidebarConnects.length === 0) {
             if (statusIntervalRef.current) {
                 clearInterval(statusIntervalRef.current);
                 statusIntervalRef.current = null;
@@ -270,7 +270,7 @@ let RightSidebar = () => {
                 contactsIntervalRef.current = null;
             }
         };
-    }, [effectiveProfileId, sidebarFriendIdsKey, reduxContacts.length, refreshContacts, refreshOnlineStatuses])
+    }, [effectiveProfileId, sidebarConnectIdsKey, reduxContacts.length, refreshContacts, refreshOnlineStatuses])
 
     // Remove duplicate message polling since it's already handled above
 
@@ -284,11 +284,11 @@ let RightSidebar = () => {
         // Check online status on-demand when opening chat
         const isOnline = await checkOnlineStatusOnDemand(profileId);
 
-        // Update active friends state with fresh status
-        if (isOnline && !activeFriends.includes(profileId)) {
-            setActiveFriends(prev => [...prev, profileId]);
-        } else if (!isOnline && activeFriends.includes(profileId)) {
-            setActiveFriends(prev => prev.filter(id => id !== profileId));
+        // Update active connects state with fresh status
+        if (isOnline && !activeConnects.includes(profileId)) {
+            setActiveConnects(prev => [...prev, profileId]);
+        } else if (!isOnline && activeConnects.includes(profileId)) {
+            setActiveConnects(prev => prev.filter(id => id !== profileId));
         }
 
         // Dispatch custom event to open sticky chat box
@@ -296,7 +296,7 @@ let RightSidebar = () => {
             detail: { profileId, isOnline }
         });
         window.dispatchEvent(event);
-    }, [activeFriends, checkOnlineStatusOnDemand]);
+    }, [activeConnects, checkOnlineStatusOnDemand]);
 
     return (
         <Fragment>
@@ -304,15 +304,15 @@ let RightSidebar = () => {
                 <h3 className="rs-nav-title">Contacts</h3>
                 <ul className="rs-nav-menu">
                     {
-                        sortedFriendsData && sortedFriendsData.length > 0 ? sortedFriendsData.map((data, index) => {
+                        sortedConnectsData && sortedConnectsData.length > 0 ? sortedConnectsData.map((data, index) => {
 
-                            const profileIsActive = friendProfileStatusMap[data._id];
+                            const profileIsActive = connectProfileStatusMap[data._id];
                             let isFrndActive = Boolean(
                                 profileIsActive !== undefined
                                     ? profileIsActive
                                     : data?.isActive !== undefined
                                         ? data.isActive
-                                        : activeFriends.includes(data._id)
+                                        : activeConnects.includes(data._id)
                             );
                             let displayName = data.fullName || [data.user?.firstName, data.user?.surname].filter(Boolean).join(' ');
                             if (!displayName) displayName = 'Unknown User';

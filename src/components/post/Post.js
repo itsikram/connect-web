@@ -1390,19 +1390,19 @@ const Post = React.memo(
                     }}
                   >
                     <i
-                      className="far fa-user-friends"
+                      className="far fa-user-connects"
                       style={{
                         fontSize: "20px",
                         color: "var(--post-accent)",
                       }}
                     ></i>
                     <div>
-                      <strong>Friends</strong>
+                      <strong>Connects</strong>
                       <p
                         className="mb-0 text-muted"
                         style={{ fontSize: "14px" }}
                       >
-                        Only your friends can see this post
+                        Only your connects can see this post
                       </p>
                     </div>
                     {selectedAudience === 2 && (

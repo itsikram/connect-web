@@ -14,7 +14,7 @@ import CommentSkeleton from "../loading/CommentSkeleton";
 import LoadingSpinner, { TypingIndicator } from "../loading/LoadingSpinner";
 import "./CommentStyles.css";
 import config from "../../config/config.json";
-import { generateSmartReplies, generateCaptionRoast } from "../../services/geminiService";
+import { generateSmartReplies } from "../../services/geminiService";
 
 const loadingUrl = config?.loadingUrl;
 
@@ -75,13 +75,6 @@ const PostComment = ({
   ]);
   const [smartRepliesLoaded, setSmartRepliesLoaded] = useState(false);
   const [isLoadingReplies, setIsLoadingReplies] = useState(false);
-  const [roastDraft, setRoastDraft] = useState("");
-  const [isRoasting, setIsRoasting] = useState(false);
-
-  const isOwnPost =
-    String(myProfile?._id || "") ===
-    String(post?.author?._id || post?.author || "");
-
   const syncParentComments = useCallback(
     (next) => {
       if (typeof setAllCommentsProp === "function") {
@@ -312,20 +305,6 @@ const PostComment = ({
 
   const hasCommentText = Boolean((commentData.body || "").trim());
 
-  const handleRoastCaption = async () => {
-    if (isRoasting || !post?.caption) return;
-    setIsRoasting(true);
-    try {
-      const roast = await generateCaptionRoast(post.caption);
-      setRoastDraft(roast);
-      setCommentData((s) => ({ ...s, body: roast }));
-    } catch (error) {
-      console.warn("Roast failed:", error);
-    } finally {
-      setIsRoasting(false);
-    }
-  };
-
   return (
     <Fragment>
       <div className="comments">
@@ -333,13 +312,13 @@ const PostComment = ({
 
         {!isLoadingInitial &&
           commentsToRender.map(
-            (comment) =>
+            (comment, index) =>
               comment && (
                 <SingleComment
                   isEditMode={isEditMode}
                   comment={comment}
                   postData={post}
-                  key={comment._id || comment.createdAt}
+                  key={comment._id || comment.createdAt || `comment-${index}`}
                   myProfile={myProfile}
                 />
               ),
@@ -400,16 +379,6 @@ const PostComment = ({
               </button>
             ))}
           </div>
-        )}
-        {isOwnPost && post?.caption && (
-          <button
-            type="button"
-            className="smart-reply-chip roast-chip"
-            onClick={handleRoastCaption}
-            disabled={isRoasting}
-          >
-            {isRoasting ? "Writing roast…" : roastDraft ? "Roast again" : "Roast my caption"}
-          </button>
         )}
         {isLoadingReplies && !smartRepliesLoaded ? (
           <span className="smart-reply-hint">Suggestions loading…</span>

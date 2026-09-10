@@ -1,6 +1,6 @@
 /**
  * Message Cache Manager
- * Handles caching of individual chat messages with profileId and friendId
+ * Handles caching of individual chat messages with profileId and connectId
  */
 
 const CACHE_KEYS = {
@@ -31,35 +31,35 @@ class MessageCacheManager {
   /**
    * Generate cache key for a specific conversation
    * @param {string} profileId - Current user's profile ID
-   * @param {string} friendId - Friend's profile ID
+   * @param {string} connectId - Connect's profile ID
    * @returns {string} Cache key for the conversation
    */
-  static getCacheKey(profileId, friendId) {
-    return `${CACHE_KEYS.MESSAGE_PREFIX}${profileId}_${friendId}`;
+  static getCacheKey(profileId, connectId) {
+    return `${CACHE_KEYS.MESSAGE_PREFIX}${profileId}_${connectId}`;
   }
 
   /**
    * Generate timestamp key for a conversation
    * @param {string} profileId - Current user's profile ID
-   * @param {string} friendId - Friend's profile ID
+   * @param {string} connectId - Connect's profile ID
    * @returns {string} Timestamp key
    */
-  static getTimestampKey(profileId, friendId) {
-    return `${CACHE_KEYS.MESSAGE_TIMESTAMP_PREFIX}${profileId}_${friendId}`;
+  static getTimestampKey(profileId, connectId) {
+    return `${CACHE_KEYS.MESSAGE_TIMESTAMP_PREFIX}${profileId}_${connectId}`;
   }
 
   /**
    * Get cached messages for a conversation
    * @param {string} profileId - Current user's profile ID
-   * @param {string} friendId - Friend's profile ID
+   * @param {string} connectId - Connect's profile ID
    * @returns {Array|null} Cached messages or null if expired/not found
    */
-  static getCachedMessages(profileId, friendId) {
+  static getCachedMessages(profileId, connectId) {
     try {
-      if (!profileId || !friendId) return null;
+      if (!profileId || !connectId) return null;
 
-      const cacheKey = this.getCacheKey(profileId, friendId);
-      const timestampKey = this.getTimestampKey(profileId, friendId);
+      const cacheKey = this.getCacheKey(profileId, connectId);
+      const timestampKey = this.getTimestampKey(profileId, connectId);
       
       const cachedData = localStorage.getItem(cacheKey);
       const timestamp = localStorage.getItem(timestampKey);
@@ -71,7 +71,7 @@ class MessageCacheManager {
       const timeSinceCache = Date.now() - parseInt(timestamp, 10);
       if (timeSinceCache > MESSAGE_CACHE_DURATION) {
         console.log('📦 Message cache expired, clearing');
-        this.clearConversationCache(profileId, friendId);
+        this.clearConversationCache(profileId, connectId);
         return null;
       }
 
@@ -87,19 +87,19 @@ class MessageCacheManager {
   /**
    * Save messages to cache for a conversation
    * @param {string} profileId - Current user's profile ID
-   * @param {string} friendId - Friend's profile ID
+   * @param {string} connectId - Connect's profile ID
    * @param {Array} messages - Messages to cache
    */
-  static setCachedMessages(profileId, friendId, messages) {
+  static setCachedMessages(profileId, connectId, messages) {
     try {
-      if (!profileId || !friendId) return false;
+      if (!profileId || !connectId) return false;
       if (!Array.isArray(messages)) {
         console.warn('Invalid messages format for cache');
         return false;
       }
 
-      const cacheKey = this.getCacheKey(profileId, friendId);
-      const timestampKey = this.getTimestampKey(profileId, friendId);
+      const cacheKey = this.getCacheKey(profileId, connectId);
+      const timestampKey = this.getTimestampKey(profileId, connectId);
 
       localStorage.setItem(cacheKey, JSON.stringify(messages));
       localStorage.setItem(timestampKey, Date.now().toString());
@@ -144,15 +144,15 @@ class MessageCacheManager {
   /**
    * Check if cache is still valid for a conversation
    * @param {string} profileId - Current user's profile ID
-   * @param {string} friendId - Friend's profile ID
+   * @param {string} connectId - Connect's profile ID
    * @returns {boolean} True if cache exists and is not expired
    */
-  static isCacheValid(profileId, friendId) {
+  static isCacheValid(profileId, connectId) {
     try {
-      if (!profileId || !friendId) return false;
+      if (!profileId || !connectId) return false;
 
-      const cacheKey = this.getCacheKey(profileId, friendId);
-      const timestampKey = this.getTimestampKey(profileId, friendId);
+      const cacheKey = this.getCacheKey(profileId, connectId);
+      const timestampKey = this.getTimestampKey(profileId, connectId);
 
       const cachedData = localStorage.getItem(cacheKey);
       const timestamp = localStorage.getItem(timestampKey);
@@ -172,14 +172,14 @@ class MessageCacheManager {
   /**
    * Clear cache for a specific conversation
    * @param {string} profileId - Current user's profile ID
-   * @param {string} friendId - Friend's profile ID
+   * @param {string} connectId - Connect's profile ID
    */
-  static clearConversationCache(profileId, friendId) {
+  static clearConversationCache(profileId, connectId) {
     try {
-      if (!profileId || !friendId) return;
+      if (!profileId || !connectId) return;
 
-      const cacheKey = this.getCacheKey(profileId, friendId);
-      const timestampKey = this.getTimestampKey(profileId, friendId);
+      const cacheKey = this.getCacheKey(profileId, connectId);
+      const timestampKey = this.getTimestampKey(profileId, connectId);
 
       localStorage.removeItem(cacheKey);
       localStorage.removeItem(timestampKey);
@@ -212,17 +212,17 @@ class MessageCacheManager {
   /**
    * Get cache statistics for a conversation
    * @param {string} profileId - Current user's profile ID
-   * @param {string} friendId - Friend's profile ID
+   * @param {string} connectId - Connect's profile ID
    * @returns {Object} Cache stats
    */
-  static getStats(profileId, friendId) {
+  static getStats(profileId, connectId) {
     try {
-      if (!profileId || !friendId) {
+      if (!profileId || !connectId) {
         return { cached: false, count: 0, age: null, expiresIn: null };
       }
 
-      const cacheKey = this.getCacheKey(profileId, friendId);
-      const timestampKey = this.getTimestampKey(profileId, friendId);
+      const cacheKey = this.getCacheKey(profileId, connectId);
+      const timestampKey = this.getTimestampKey(profileId, connectId);
 
       const cachedData = localStorage.getItem(cacheKey);
       const timestamp = localStorage.getItem(timestampKey);

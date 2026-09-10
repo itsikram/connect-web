@@ -1,20 +1,20 @@
 /**
- * Friends page cache (requests + suggestions).
+ * Connects page cache (requests + suggestions).
  * Stale-while-revalidate: show last snapshot immediately, refresh in the background.
  */
 
-export const FRIEND_CACHE_EVENT = "friends-cache-updated";
+export const CONNECT_CACHE_EVENT = "connects-cache-updated";
 
 const CACHE_KEYS = {
-  REQUESTS_PREFIX: "cached_friend_requests_",
-  REQUESTS_TS_PREFIX: "friend_requests_timestamp_",
-  SUGGESTIONS_PREFIX: "cached_friend_suggestions_",
-  SUGGESTIONS_TS_PREFIX: "friend_suggestions_timestamp_",
-  CACHE_VERSION: "friend_cache_version",
+  REQUESTS_PREFIX: "cached_connect_requests_",
+  REQUESTS_TS_PREFIX: "connect_requests_timestamp_",
+  SUGGESTIONS_PREFIX: "cached_connect_suggestions_",
+  SUGGESTIONS_TS_PREFIX: "connect_suggestions_timestamp_",
+  CACHE_VERSION: "connect_cache_version",
 };
 
 const CACHE_VERSION = "1.1";
-const FRIEND_CACHE_DURATION = 15 * 60 * 1000;
+const CONNECT_CACHE_DURATION = 15 * 60 * 1000;
 
 const memoryCache = new Map();
 const inflight = new Map();
@@ -38,7 +38,7 @@ const uniqueById = (items) => {
 const emitUpdate = (profileId, list, items) => {
   if (typeof window === "undefined") return;
   window.dispatchEvent(
-    new CustomEvent(FRIEND_CACHE_EVENT, {
+    new CustomEvent(CONNECT_CACHE_EVENT, {
       detail: { profileId, list, items },
     }),
   );
@@ -52,7 +52,7 @@ const sameIdList = (a, b) => {
   return a.every((item, index) => item?._id === b[index]?._id);
 };
 
-class FriendCacheManager {
+class ConnectCacheManager {
   static requestsKey(profileId) {
     return `${CACHE_KEYS.REQUESTS_PREFIX}${profileId}`;
   }
@@ -77,7 +77,7 @@ class FriendCacheManager {
         localStorage.setItem(CACHE_KEYS.CACHE_VERSION, CACHE_VERSION);
       }
     } catch (error) {
-      console.warn("Friend cache initialization error:", error);
+      console.warn("Connect cache initialization error:", error);
     }
   }
 
@@ -108,7 +108,7 @@ class FriendCacheManager {
     try {
       const memory = memoryCache.get(memoryKey);
       if (memory && Array.isArray(memory.data)) {
-        const expired = now() - memory.timestamp > FRIEND_CACHE_DURATION;
+        const expired = now() - memory.timestamp > CONNECT_CACHE_DURATION;
         if (!expired || allowExpired) return memory.data;
       }
 
@@ -117,7 +117,7 @@ class FriendCacheManager {
       if (!raw || !timestamp) return null;
 
       const age = now() - parseInt(timestamp, 10);
-      if (age > FRIEND_CACHE_DURATION && !allowExpired) {
+      if (age > CONNECT_CACHE_DURATION && !allowExpired) {
         localStorage.removeItem(storageKey);
         localStorage.removeItem(tsKey);
         memoryCache.delete(memoryKey);
@@ -133,7 +133,7 @@ class FriendCacheManager {
       });
       return parsed;
     } catch (error) {
-      console.error("Error reading friend cache:", error);
+      console.error("Error reading connect cache:", error);
       return null;
     }
   }
@@ -154,7 +154,7 @@ class FriendCacheManager {
     } catch (error) {
       memoryCache.set(memoryKey, { timestamp: now(), data: items });
       if (error?.name !== "QuotaExceededError") {
-        console.error("Error writing friend cache:", error);
+        console.error("Error writing connect cache:", error);
       }
       return false;
     }
@@ -272,11 +272,11 @@ class FriendCacheManager {
       });
       memoryCache.clear();
     } catch (error) {
-      console.error("Error clearing friend cache:", error);
+      console.error("Error clearing connect cache:", error);
     }
   }
 }
 
-FriendCacheManager.initialize();
+ConnectCacheManager.initialize();
 
-export default FriendCacheManager;
+export default ConnectCacheManager;

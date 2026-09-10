@@ -9,7 +9,7 @@ const LiveVoiceModal = ({
   duration,
   isConnecting,
   role,
-  friendName,
+  connectName,
   onStop,
   onEnableMicrophone,
   microphoneEnabled = false,
@@ -96,7 +96,7 @@ const LiveVoiceModal = ({
                 )}
               </div>
 
-              {friendName && (
+              {connectName && (
                 <div className="live-voice-participant">
                   <i
                     className={`fas ${
@@ -109,7 +109,7 @@ const LiveVoiceModal = ({
                   ></i>
                   <span>
                     {role === "sender" ? "Sending your voice to" : "Hearing"}:
-                    <strong> {friendName}</strong>
+                    <strong> {connectName}</strong>
                   </span>
                 </div>
               )}

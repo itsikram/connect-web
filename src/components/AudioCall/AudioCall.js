@@ -1043,7 +1043,7 @@ const AudioCall = ({ myId }) => {
         "channel:",
         channelName,
       );
-      console.log("AudioCall - Friend info:", { callerName, callerProfilePic });
+      console.log("AudioCall - Connect info:", { callerName, callerProfilePic });
       // Only allow outgoing call if not already in a call or receiving a call
       if (
         isJoiningOrJoined.current ||
@@ -1058,14 +1058,14 @@ const AudioCall = ({ myId }) => {
       setIsAudioCall(true);
       setReceivingCall(false);
       setCaller(to);
-      setCallerName(callerName || "Friend");
+      setCallerName(callerName || "Connect");
       setCallerProfilePic(callerProfilePic || config?.defaultProfile);
       setCurrentChannel(channelName);
       setIncomingCall({
         from: myId,
         to,
         channelName,
-        name: callerName || "Friend",
+        name: callerName || "Connect",
         profilePic: callerProfilePic,
       });
       console.log(
@@ -1343,58 +1343,58 @@ const AudioCall = ({ myId }) => {
     // Explicitly stop ringtone first
     stopRingtone();
 
-    // Determine the friend ID to notify
+    // Determine the connect ID to notify
     // If we have incomingCall, use incomingCall.from (the person who called us)
     // If we don't have incomingCall, we initiated the call, so use caller (the person we called)
-    let friendIdToNotify;
+    let connectIdToNotify;
     if (incomingCall?.from && incomingCall.from !== myId) {
       // We received this call, so notify the person who called us
-      friendIdToNotify = incomingCall.from;
+      connectIdToNotify = incomingCall.from;
       if (!callAccepted) {
         socket.emit("audio-call-reject", {
-          to: String(friendIdToNotify),
+          to: String(connectIdToNotify),
           channelName: currentChannel,
         });
         console.log(
-          "AudioCall: Emitting audio-call-reject to friend:",
-          friendIdToNotify,
+          "AudioCall: Emitting audio-call-reject to connect:",
+          connectIdToNotify,
         );
         await cleanupAudioCall();
         return;
       }
     } else if (caller && caller !== myId) {
       // We initiated this call, so notify the person we called
-      friendIdToNotify = caller;
+      connectIdToNotify = caller;
       if (!callAccepted) {
         socket.emit("audio-call-cancel", {
-          to: String(friendIdToNotify),
+          to: String(connectIdToNotify),
           channelName: currentChannel,
         });
         console.log(
-          "AudioCall: Emitting audio-call-cancel to friend:",
-          friendIdToNotify,
+          "AudioCall: Emitting audio-call-cancel to connect:",
+          connectIdToNotify,
         );
         await cleanupAudioCall();
         return;
       }
     }
 
-    if (friendIdToNotify && friendIdToNotify !== myId && currentChannel) {
+    if (connectIdToNotify && connectIdToNotify !== myId && currentChannel) {
       socket.emit("audio-call-end", {
-        to: String(friendIdToNotify),
+        to: String(connectIdToNotify),
         channelName: currentChannel,
       });
       console.log(
-        "AudioCall: Successfully emitted audio-call-end to friend:",
-        friendIdToNotify,
+        "AudioCall: Successfully emitted audio-call-end to connect:",
+        connectIdToNotify,
       );
     } else {
       console.log(
-        "AudioCall: No friend ID to notify or trying to notify self, cannot emit audio-call-end",
+        "AudioCall: No connect ID to notify or trying to notify self, cannot emit audio-call-end",
       );
       console.log(
-        "AudioCall: friendIdToNotify:",
-        friendIdToNotify,
+        "AudioCall: connectIdToNotify:",
+        connectIdToNotify,
         "myId:",
         myId,
       );

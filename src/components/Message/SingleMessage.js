@@ -90,13 +90,13 @@ const MessageAttachment = ({ src, alt = "Photo" }) => {
 const ReplyQuote = ({
   parent,
   myId,
-  friendProfile,
+  connectProfile,
   onActivate,
 }) => {
   if (!parent?._id) return null;
 
   const isMine = String(parent.senderId) === String(myId);
-  const name = isMine ? "You" : getProfileDisplayName(friendProfile, "Reply");
+  const name = isMine ? "You" : getProfileDisplayName(connectProfile, "Reply");
   const snippet = getMessageSnippet(parent);
   const showPhotoThumb = hasImageAttachment(parent);
   const showVoice = isAudioMsg(parent);
@@ -139,7 +139,7 @@ const ReplyQuote = ({
 const SingleMessage = ({
   index,
   msg,
-  friendProfile,
+  connectProfile,
   setMessages,
   setReplyData,
   setIsReplying,
@@ -149,12 +149,12 @@ const SingleMessage = ({
 }) => {
   const myProfile = useSelector((state) => state.profile);
   const myId = myProfile._id;
-  const friendId = friendProfile._id;
+  const connectId = connectProfile._id;
   const [isReactedByMe, setIsReactedByMe] = useState(
     (msg.reacts || []).includes(myId),
   );
-  const [isReactedByFriend, setIsReactedByFriend] = useState(
-    (msg.reacts || []).includes(friendId),
+  const [isReactedByConnect, setIsReactedByConnect] = useState(
+    (msg.reacts || []).includes(connectId),
   );
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioDuration, setAudioDuration] = useState(0);
@@ -166,13 +166,13 @@ const SingleMessage = ({
 
   useEffect(() => {
     const reactions = normalizeReactions(msg.reacts);
-    setIsReactedByFriend(
-      reactions.some((reaction) => reactionProfileId(reaction) === String(friendId)),
+    setIsReactedByConnect(
+      reactions.some((reaction) => reactionProfileId(reaction) === String(connectId)),
     );
     setIsReactedByMe(
       reactions.some((reaction) => reactionProfileId(reaction) === String(myId)),
     );
-  }, [msg.reacts, friendId, myId]);
+  }, [msg.reacts, connectId, myId]);
 
   useEffect(() => {
     return () => {
@@ -298,7 +298,7 @@ const SingleMessage = ({
         message.trim() ||
         (messageType === "audio" && attachment);
 
-      if (!hasSpeakableContent || !friendId) {
+      if (!hasSpeakableContent || !connectId) {
         console.warn("Speak failed: the message has no speakable content or recipient");
         return;
       }
@@ -306,7 +306,7 @@ const SingleMessage = ({
       // TTS is device-local, so ask the recipient's connected client to speak it.
       socket.emit("speak_message", {
         msgId: msg?._id,
-        friendId,
+        connectId,
         message,
         attachment,
         messageType,
@@ -573,7 +573,7 @@ const SingleMessage = ({
       <ReplyQuote
         parent={msg.parent}
         myId={myId}
-        friendProfile={friendProfile}
+        connectProfile={connectProfile}
         onActivate={handleParentMsgClick}
       />
 
@@ -649,15 +649,15 @@ const SingleMessage = ({
       {!isMine ? (
         <div
           key={index}
-          className={`chat-message-container message-receive message-id-${msg._id} ${isReactedByMe === true || isReactedByFriend == true ? "message-reacted" : ""} ${msg.isOptimistic ? "message-optimistic" : ""}`}
+          className={`chat-message-container message-receive message-id-${msg._id} ${isReactedByMe === true || isReactedByConnect == true ? "message-reacted" : ""} ${msg.isOptimistic ? "message-optimistic" : ""}`}
           data-toggle="tooltip"
           title={getMessageTime(msg.timestamp)}
         >
           <div className="chat-message-profilePic">
             <UserPP
-              profilePic={`${friendProfile.profilePic}`}
-              profile={friendProfile._id}
-              active={friendProfile.isActive}
+              profilePic={`${connectProfile.profilePic}`}
+              profile={connectProfile._id}
+              active={connectProfile.isActive}
             ></UserPP>
           </div>
           <div className={bubbleClass}>{renderBubbleBody(false)}</div>
@@ -666,7 +666,7 @@ const SingleMessage = ({
       ) : (
         <div
           key={index}
-          className={`chat-message-container message-sent message-id-${msg._id} ${isReactedByMe === true || isReactedByFriend == true ? "message-reacted" : ""} ${msg.isOptimistic ? "message-optimistic" : ""}`}
+          className={`chat-message-container message-sent message-id-${msg._id} ${isReactedByMe === true || isReactedByConnect == true ? "message-reacted" : ""} ${msg.isOptimistic ? "message-optimistic" : ""}`}
           data-toggle="tooltip"
           title={getMessageTime(msg.timestamp)}
           style={{ position: "relative" }}

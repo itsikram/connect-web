@@ -11,39 +11,39 @@ const socket = io.connect(URL)
 
 const ChatBox = (props) => {
 
-    let friendProfile = props.profileData
+    let connectProfile = props.profileData
 
     useEffect(function (param) {  })
 
     // blocked state
     const [isBlocked, setIsBlocked] = useState(false)
-    const [isBlockedByFriend, setIsBlockedByFriend] = useState(false)
+    const [isBlockedByConnect, setIsBlockedByConnect] = useState(false)
 
     useEffect(() => {
-        if(!friendProfile?._id) return;
+        if(!connectProfile?._id) return;
 
         const handleUserBlocked = ({ by, target }) => {
-            if(String(target) === String(friendProfile._id)){
+            if(String(target) === String(connectProfile._id)){
                 setIsBlocked(true)
             }
         }
         const handleBlockedByUser = ({ by, target }) => {
-            if(String(by) === String(friendProfile._id)){
-                setIsBlockedByFriend(true)
+            if(String(by) === String(connectProfile._id)){
+                setIsBlockedByConnect(true)
             }
         }
         const handleUserUnblocked = ({ by, target }) => {
-            if(String(target) === String(friendProfile._id)){
+            if(String(target) === String(connectProfile._id)){
                 setIsBlocked(false)
             }
         }
         const handleUnblockedByUser = ({ by, target }) => {
-            if(String(by) === String(friendProfile._id)){
-                setIsBlockedByFriend(false)
+            if(String(by) === String(connectProfile._id)){
+                setIsBlockedByConnect(false)
             }
         }
         const handleMessageBlocked = ({ receiverId, reason }) => {
-            if(String(receiverId) === String(friendProfile._id)){
+            if(String(receiverId) === String(connectProfile._id)){
                 try{ alert(reason || 'You cannot message this user.'); }catch(e){}
             }
         }
@@ -61,7 +61,7 @@ const ChatBox = (props) => {
             socket.off('unblockedByUser', handleUnblockedByUser)
             socket.off('message_blocked', handleMessageBlocked)
         }
-    },[friendProfile?._id])
+    },[connectProfile?._id])
 
     // handle new messag state
     const [newMessage, setNewMessage] = useState("")
@@ -90,7 +90,7 @@ const ChatBox = (props) => {
 
     }
 
-    // handle new message on change 
+    // handle new message on change
 
     let newMessageChange = async(e) => {
         let value = e.target.value;
@@ -100,11 +100,11 @@ const ChatBox = (props) => {
         setNewMessage(value)
     }
 
-    // handle on click send button 
+    // handle on click send button
 
     let sendButtonClick = async(e) => {
-        if(isBlocked || isBlockedByFriend){
-            try{ alert(isBlockedByFriend ? 'You are blocked by this user' : 'You blocked this user'); }catch(err){}
+        if(isBlocked || isBlockedByConnect){
+            try{ alert(isBlockedByConnect ? 'You are blocked by this user' : 'You blocked this user'); }catch(err){}
             return;
         }
         // TODO: wire actual message send
@@ -112,7 +112,7 @@ const ChatBox = (props) => {
 
 
     // handle socket emit
-        
+
     const [username,setUsername] = useState("")
     const [room,setRoom] = useState("")
 
@@ -135,10 +135,10 @@ const ChatBox = (props) => {
                 <div className='chat-header'>
                     <div className='chat-header-user'>
                         <div className='chat-header-profilePic'>
-                            <UserPP profilePic={`${friendProfile.profilePic}`} profile={friendProfile._id} active={friendProfile.isActive}></UserPP>
+                            <UserPP profilePic={`${connectProfile.profilePic}`} profile={connectProfile._id} active={connectProfile.isActive}></UserPP>
                         </div>
                         <div className='chat-header-user-info'>
-                            <h4 className='chat-header-username'> {`${friendProfile.user && friendProfile.user.firstName} ${friendProfile.user && friendProfile.user.surname}`}</h4>
+                            <h4 className='chat-header-username'> {`${connectProfile.user && connectProfile.user.firstName} ${connectProfile.user && connectProfile.user.surname}`}</h4>
                             <span className='chat-header-active-status'>Active Now</span>
                         </div>
                     </div>
@@ -159,20 +159,20 @@ const ChatBox = (props) => {
                     </div>
 
             </div>
-            <div> 
+            <div>
                 <div className='chat-body'>
-                    <div className='chat-message-list'> 
+                    <div className='chat-message-list'>
                         <div className='chat-message-container message-sent'>
 
                             <div className='chat-message-profilePic'>
-                                <UserPP profile={friendProfile._id} active={friendProfile.isActive}></UserPP>    
+                                <UserPP profile={connectProfile._id} active={connectProfile.isActive}></UserPP>
                             </div>
                         <div className='chat-message'> Message Receive </div>
                             <div className='chat-message-options'>
-                                <div className='chat-message-options-button reply'> 
+                                <div className='chat-message-options-button reply'>
                                     <i className="fas fa-reply"></i>
                                 </div>
-                                <div className='chat-message-options-button reply'> 
+                                <div className='chat-message-options-button reply'>
                                     <i className="fas fa-ellipsis-v"></i>
                                 </div>
                             </div>
@@ -184,10 +184,10 @@ const ChatBox = (props) => {
 
                         <div className='chat-message-container message-receive'>
                             <div className='chat-message-options'>
-                                    <div className='chat-message-options-button reply'> 
+                                    <div className='chat-message-options-button reply'>
                                         <i className="fas fa-reply"></i>
                                     </div>
-                                    <div className='chat-message-options-button reply'> 
+                                    <div className='chat-message-options-button reply'>
                                         <i className="fas fa-ellipsis-v"></i>
                                     </div>
                                 </div>
@@ -202,14 +202,14 @@ const ChatBox = (props) => {
                         <div className='chat-message-container message-sent'>
 
                         <div className='chat-message-profilePic'>
-                            <UserPP profile={friendProfile._id} active={friendProfile.isActive}></UserPP>    
+                            <UserPP profile={connectProfile._id} active={connectProfile.isActive}></UserPP>
                         </div>
                         <div className='chat-message'> Message Receive </div>
                         <div className='chat-message-options'>
-                            <div className='chat-message-options-button reply'> 
+                            <div className='chat-message-options-button reply'>
                                 <i className="fas fa-reply"></i>
                             </div>
-                            <div className='chat-message-options-button reply'> 
+                            <div className='chat-message-options-button reply'>
                                 <i className="fas fa-ellipsis-v"></i>
                             </div>
                         </div>
@@ -221,10 +221,10 @@ const ChatBox = (props) => {
 
                         <div className='chat-message-container message-receive'>
                         <div className='chat-message-options'>
-                                    <div className='chat-message-options-button reply'> 
+                                    <div className='chat-message-options-button reply'>
                                         <i className="fas fa-reply"></i>
                                     </div>
-                                    <div className='chat-message-options-button reply'> 
+                                    <div className='chat-message-options-button reply'>
                                         <i className="fas fa-ellipsis-v"></i>
                                     </div>
                                 </div>
@@ -235,7 +235,7 @@ const ChatBox = (props) => {
                                 </div>
                         </div>
 
- 
+
 
                     </div>
                 </div>
@@ -265,7 +265,7 @@ const ChatBox = (props) => {
                     </div>
                     <div className='new-message-form'>
                         <div className='new-message-input-container'>
-                            <input placeholder='Send Message....' onFocus={newMessageFocus} onKeyUp={newMessageChange} onBlur={newMessageBlur} className='new-message-input' disabled={isBlocked || isBlockedByFriend}/>
+                            <input placeholder='Send Message....' onFocus={newMessageFocus} onKeyUp={newMessageChange} onBlur={newMessageBlur} className='new-message-input' disabled={isBlocked || isBlockedByConnect}/>
                         </div>
                         <div className='message-action-button-container'>
                             <div onClick={sendButtonClick} className='message-action-button send-message'>

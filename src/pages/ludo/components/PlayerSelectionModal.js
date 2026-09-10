@@ -6,12 +6,12 @@ export const PlayerSelectionModal = ({
   selectedPlayerCount,
   onlineMode,
   playWithComputer,
-  friendSearchQuery,
+  connectSearchQuery,
   loadingSearch,
   searchResults,
-  friendList,
-  selectedFriends,
-  invitedStatusByFriendId,
+  connectList,
+  selectedConnects,
+  invitedStatusByConnectId,
   players,
   myProfile,
   joinedGames,
@@ -21,10 +21,10 @@ export const PlayerSelectionModal = ({
   onPlayerCountChange,
   onOnlineModeToggle,
   onPlayWithComputerToggle,
-  onFriendSearchChange,
-  onFriendSelect,
-  onInviteFriend,
-  onAssignFriendOffline,
+  onConnectSearchChange,
+  onConnectSelect,
+  onInviteConnect,
+  onAssignConnectOffline,
   onGetNextOpenSlot,
   onGetInvitedNameForSlot,
   onOpenPlayerEditor,
@@ -51,16 +51,16 @@ export const PlayerSelectionModal = ({
 
   const getInvitedNameForSlot = onGetInvitedNameForSlot || (() => null);
 
-  const maxFriendSlots = Math.max(0, selectedPlayerCount - 1);
-  const friendProgressPct =
-    maxFriendSlots > 0
+  const maxConnectSlots = Math.max(0, selectedPlayerCount - 1);
+  const connectProgressPct =
+    maxConnectSlots > 0
       ? Math.min(
           100,
-          Math.round((selectedFriends.length / maxFriendSlots) * 100),
+          Math.round((selectedConnects.length / maxConnectSlots) * 100),
         )
       : 0;
 
-  const visibleFriends = friendSearchQuery ? searchResults : friendList;
+  const visibleConnects = connectSearchQuery ? searchResults : connectList;
 
   const click =
     (fn) =>
@@ -175,10 +175,10 @@ export const PlayerSelectionModal = ({
                   </span>
                   <div>
                     <div className="ludo-mode-row__title">
-                      Play Online with Friends
+                      Play Online with Connects
                     </div>
                     <div className="ludo-mode-row__desc">
-                      Invite friends to join remotely
+                      Invite connects to join remotely
                     </div>
                   </div>
                 </div>
@@ -199,41 +199,41 @@ export const PlayerSelectionModal = ({
 
           {onlineMode && (
             <section className="ludo-modal__section">
-              <div className="ludo-section-title">Invite Friends</div>
+              <div className="ludo-section-title">Invite Connects</div>
 
               <div className="ludo-search">
                 <span aria-hidden="true" className="ludo-search__icon">
                   ⌕
                 </span>
                 <input
-                  placeholder="Search friends by name..."
-                  value={friendSearchQuery}
-                  onChange={(e) => onFriendSearchChange(e.target.value)}
-                  aria-label="Search friends"
+                  placeholder="Search connects by name..."
+                  value={connectSearchQuery}
+                  onChange={(e) => onConnectSearchChange(e.target.value)}
+                  aria-label="Search connects"
                 />
               </div>
 
-              <div className="ludo-friend-list">
+              <div className="ludo-connect-list">
                 {loadingSearch && (
                   <div className="ludo-empty">
                     <span className="ludo-empty__spinner" aria-hidden="true" />
                     Searching…
                   </div>
                 )}
-                {!loadingSearch && visibleFriends.length === 0 && (
+                {!loadingSearch && visibleConnects.length === 0 && (
                   <div className="ludo-empty">
-                    {friendSearchQuery
-                      ? "No friends match your search"
-                      : "No friends to show yet"}
+                    {connectSearchQuery
+                      ? "No connects match your search"
+                      : "No connects to show yet"}
                   </div>
                 )}
-                {visibleFriends.map((f) => {
+                {visibleConnects.map((f) => {
                   const key =
                     f?._id || String(f?.id) || Math.random().toString(36);
-                  const isSelected = selectedFriends.some(
+                  const isSelected = selectedConnects.some(
                     (sf) => sf._id === f._id,
                   );
-                  const storedInviteStatus = invitedStatusByFriendId[f?._id];
+                  const storedInviteStatus = invitedStatusByConnectId[f?._id];
                   const maxPlayers = Math.max(
                     2,
                     Math.min(4, selectedPlayerCount),
@@ -267,32 +267,32 @@ export const PlayerSelectionModal = ({
                   return (
                     <div
                       key={key}
-                      className={`ludo-friend ${isSelected ? "ludo-friend--selected" : ""}`}
+                      className={`ludo-connect ${isSelected ? "ludo-connect--selected" : ""}`}
                       role="button"
                       tabIndex={0}
-                      onClick={() => onFriendSelect(f, isSelected)}
+                      onClick={() => onConnectSelect(f, isSelected)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          onFriendSelect(f, isSelected);
+                          onConnectSelect(f, isSelected);
                         }
                       }}
                     >
-                      <div className="ludo-friend__left">
-                        <div className="ludo-friend__avatar">
+                      <div className="ludo-connect__left">
+                        <div className="ludo-connect__avatar">
                           {f?.profilePic ? (
                             <img src={f.profilePic} alt="" />
                           ) : (
-                            <span className="ludo-friend__avatar-fallback">
+                            <span className="ludo-connect__avatar-fallback">
                               {initial}
                             </span>
                           )}
                         </div>
-                        <div className="ludo-friend__name">
+                        <div className="ludo-connect__name">
                           {f?.fullName || "Unknown"}
                         </div>
                       </div>
-                      <div className="ludo-friend__right">
+                      <div className="ludo-connect__right">
                         <span
                           className={`ludo-check ${isSelected ? "ludo-check--on" : ""}`}
                           aria-hidden="true"
@@ -304,8 +304,8 @@ export const PlayerSelectionModal = ({
                             e.stopPropagation();
                             onPlaySound("buttonClick");
                             onlineMode
-                              ? onInviteFriend(f)
-                              : onAssignFriendOffline(f);
+                              ? onInviteConnect(f)
+                              : onAssignConnectOffline(f);
                           }}
                           disabled={!canAction}
                         >
@@ -327,15 +327,15 @@ export const PlayerSelectionModal = ({
 
               <div className="ludo-progress">
                 <div className="ludo-progress__label">
-                  <span>Friends selected</span>
+                  <span>Connects selected</span>
                   <span>
-                    {selectedFriends.length} / {maxFriendSlots}
+                    {selectedConnects.length} / {maxConnectSlots}
                   </span>
                 </div>
                 <div className="ludo-progress__track">
                   <div
                     className="ludo-progress__fill"
-                    style={{ width: `${friendProgressPct}%` }}
+                    style={{ width: `${connectProgressPct}%` }}
                   />
                 </div>
               </div>

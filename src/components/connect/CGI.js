@@ -4,11 +4,11 @@ import api from '../../api/api';
 import $ from 'jquery'
 import { useSelector } from 'react-redux';
 import checkImgLoading from '../../utils/checkImgLoading';
-import FriendCacheManager from '../../utils/friendCacheManager';
+import ConnectCacheManager from '../../utils/connectCacheManager';
 import config from "../../config/config.json";
 import VerifiedName from "../feed/VerifiedName";
 
-let FGI = (props) => {
+let CGI = (props) => {
 
     let [isPpLoaded, setIsPpLoaded] = useState(false)
     let [profilePic, setProfilePic] = useState(props?.profilePic || config?.defaultProfile)
@@ -37,17 +37,17 @@ let FGI = (props) => {
         }
     }, [isPpLoaded])
 
-    // handle friend request button clicks
+    // handle connect request button clicks
     let handleAcceptReq = async (e) => {
         setIsAccepting(true)
         try {
-            let res = await api.post('/friend/reqAccept', { profile })
+            let res = await api.post('/connects/reqAccept', { profile })
 
             if (res.status === 200) {
                 $(e.target).text('Request Accepted')
-                $(e.target).parents('.friend-grid-item').hide()
-                FriendCacheManager.removeProfile(myProfile._id, 'requests', profile)
-                FriendCacheManager.removeProfile(myProfile._id, 'suggestions', profile)
+                $(e.target).parents('.connect-grid-item').hide()
+                ConnectCacheManager.removeProfile(myProfile._id, 'requests', profile)
+                ConnectCacheManager.removeProfile(myProfile._id, 'suggestions', profile)
             }
         } catch (error) {
             console.log(error)
@@ -60,10 +60,10 @@ let FGI = (props) => {
         setIsDeleting(true)
         try {
             let target = e.currentTarget
-            let res = await api.post('/friend/reqDelete', { profile })
+            let res = await api.post('/connects/reqDelete', { profile })
 
-            $(target).parents('.friend-grid-item ').hide()
-            FriendCacheManager.removeProfile(myProfile._id, 'requests', profile)
+            $(target).parents('.connect-grid-item ').hide()
+            ConnectCacheManager.removeProfile(myProfile._id, 'requests', profile)
 
         } catch (error) {
             console.log(error)
@@ -73,16 +73,16 @@ let FGI = (props) => {
     }
 
 
-    // handle friend suggetions button clicks 
+    // handle connect suggetions button clicks 
 
-    let handleAddFriend = async (e) => {
+    let handleAddConnect = async (e) => {
         setIsAdding(true)
         try {
             let target = e.target
-            let res = await api.post('/friend/sendRequest', { profile })
+            let res = await api.post('/connects/sendRequest', { profile })
             $(target).text('Request Sent')
-            $(target).parents('.friend-grid-item').fadeOut()
-            FriendCacheManager.removeProfile(myProfile._id, 'suggestions', profile)
+            $(target).parents('.connect-grid-item').fadeOut()
+            ConnectCacheManager.removeProfile(myProfile._id, 'suggestions', profile)
 
         } catch (error) {
             console.log(error)
@@ -91,16 +91,16 @@ let FGI = (props) => {
         }
     }
 
-    let handleRomoveFriend = async (e) => {
+    let handleRomoveConnect = async (e) => {
         setIsRemoving(true)
         let target = e.currentTarget
 
         try {
-            let res = await api.post('/friend/removeRequest', { profile })
+            let res = await api.post('/connects/removeRequest', { profile })
 
-            $(target).siblings('.add-friend').text('Add Friend')
-            !isReq && $(target).parents('.friend-grid-item').fadeOut()
-            FriendCacheManager.removeProfile(myProfile._id, 'suggestions', profile)
+            $(target).siblings('.add-connect').text('Add Connect')
+            !isReq && $(target).parents('.connect-grid-item').fadeOut()
+            ConnectCacheManager.removeProfile(myProfile._id, 'suggestions', profile)
 
         } catch (error) {
             console.log(error)
@@ -118,7 +118,7 @@ let FGI = (props) => {
                 {
                     (isPpLoaded == true) ? (
                         <>
-                            <div className="friend-grid-item request">
+                            <div className="connect-grid-item request">
                                 <Link to={`/${profile}/`}>
                                     <div className="profile-picture" alt="profile pic" style={{ backgroundImage: `url(${profilePic})` }}></div>
                                 </Link>
@@ -147,7 +147,7 @@ let FGI = (props) => {
                             </div>
                         </>
                     ) : (<>
-                        <div className="friend-grid-item request">
+                        <div className="connect-grid-item request">
                             <Link to={`/${profile}/`}>
                                 <div className="profile-picture fgi-skeleton-photo" aria-hidden="true"></div>
                             </Link>
@@ -189,7 +189,7 @@ let FGI = (props) => {
             {
                 isPpLoaded ? (
                     <>
-                        <div className="friend-grid-item suggest">
+                        <div className="connect-grid-item suggest">
                             <Link to={`/${profile}/`}>
                                 <div className="profile-picture" alt="profile pic" style={{ backgroundImage: `url(${profilePic})` }}></div>
                             </Link>
@@ -200,17 +200,17 @@ let FGI = (props) => {
                                 </Link>
 
                                 <div 
-                                    onClick={isAdding || isRemoving ? null : handleAddFriend} 
-                                    className={`primary-button add-friend button ${isAdding || isRemoving ? 'disabled' : ''}`}
+                                    onClick={isAdding || isRemoving ? null : handleAddConnect} 
+                                    className={`primary-button add-connect button ${isAdding || isRemoving ? 'disabled' : ''}`}
                                     style={{ opacity: isAdding || isRemoving ? 0.6 : 1, cursor: isAdding || isRemoving ? 'not-allowed' : 'pointer' }}
                                 >
                                     {
-                                        isAdding ? 'Adding...' : isReq ? 'Request Sent' : 'Add Friend'
+                                        isAdding ? 'Adding...' : isReq ? 'Request Sent' : 'Add Connect'
                                     }
                                 </div>
                                 <div 
-                                    onClick={isAdding || isRemoving ? null : handleRomoveFriend} 
-                                    className={`button remove-friend ${isAdding || isRemoving ? 'disabled' : ''}`}
+                                    onClick={isAdding || isRemoving ? null : handleRomoveConnect} 
+                                    className={`button remove-connect ${isAdding || isRemoving ? 'disabled' : ''}`}
                                     style={{ opacity: isAdding || isRemoving ? 0.6 : 1, cursor: isAdding || isRemoving ? 'not-allowed' : 'pointer' }}
                                 >
                                     {isRemoving ? 'Removing...' : 'Remove'}
@@ -222,7 +222,7 @@ let FGI = (props) => {
                 ) :
                     (
                         <>
-                            <div className="friend-grid-item suggest">
+                            <div className="connect-grid-item suggest">
                                 <Link to={`/${profile}/`}>
                                     <div className="profile-picture fgi-skeleton-photo" aria-hidden="true"></div>
                                 </Link>
@@ -233,17 +233,17 @@ let FGI = (props) => {
                                     </Link>
 
                                     <div 
-                                        onClick={isAdding || isRemoving ? null : handleAddFriend} 
-                                        className={`primary-button add-friend button ${isAdding || isRemoving ? 'disabled' : ''}`}
+                                        onClick={isAdding || isRemoving ? null : handleAddConnect} 
+                                        className={`primary-button add-connect button ${isAdding || isRemoving ? 'disabled' : ''}`}
                                         style={{ opacity: isAdding || isRemoving ? 0.6 : 1, cursor: isAdding || isRemoving ? 'not-allowed' : 'pointer' }}
                                     >
                                         {
-                                            isAdding ? 'Adding...' : isReq ? 'Request Sent' : 'Add Friend'
+                                            isAdding ? 'Adding...' : isReq ? 'Request Sent' : 'Add Connect'
                                         }
                                     </div>
                                     <div 
-                                        onClick={isAdding || isRemoving ? null : handleRomoveFriend} 
-                                        className={`button remove-friend ${isAdding || isRemoving ? 'disabled' : ''}`}
+                                        onClick={isAdding || isRemoving ? null : handleRomoveConnect} 
+                                        className={`button remove-connect ${isAdding || isRemoving ? 'disabled' : ''}`}
                                         style={{ opacity: isAdding || isRemoving ? 0.6 : 1, cursor: isAdding || isRemoving ? 'not-allowed' : 'pointer' }}
                                     >
                                         {isRemoving ? 'Removing...' : 'Remove'}
@@ -260,4 +260,4 @@ let FGI = (props) => {
     )
 }
 
-export default FGI; 
+export default CGI; 

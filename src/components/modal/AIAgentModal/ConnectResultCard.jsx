@@ -1,22 +1,22 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { getActionMeta } from "./agentActions";
-import { getFriendDisplayName } from "./agentIntentParser";
-import "./FriendResultCard.css";
+import { getConnectDisplayName } from "./agentIntentParser";
+import "./ConnectResultCard.css";
 
 /**
- * FriendResultCard
- * Shows a matched friend with an action button.
+ * ConnectResultCard
+ * Shows a matched connect with an action button.
  *
  * Props:
- *   friend      – profile object
+ *   connect      – profile object
  *   action      – action type string (e.g. 'VIDEO_CALL')
  *   actionLabel – optional label override for the button
- *   onAction    – async callback(friend)
+ *   onAction    – async callback(connect)
  *   compact     – smaller layout when multiple cards are shown
  */
-const FriendResultCard = ({
-  friend,
+const ConnectResultCard = ({
+  connect,
   action,
   actionLabel,
   onAction,
@@ -24,8 +24,8 @@ const FriendResultCard = ({
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const meta = getActionMeta(action);
-  const displayName = getFriendDisplayName(friend);
-  const profilePic = friend.profilePic;
+  const displayName = getConnectDisplayName(connect);
+  const profilePic = connect.profilePic;
   const initials = displayName
     .split(" ")
     .map((w) => w[0])
@@ -38,7 +38,7 @@ const FriendResultCard = ({
     if (isLoading) return;
     setIsLoading(true);
     try {
-      await onAction(friend);
+      await onAction(connect);
     } finally {
       setIsLoading(false);
     }
@@ -46,7 +46,7 @@ const FriendResultCard = ({
 
   return (
     <motion.div
-      className={`friend-result-card ${compact ? "compact" : ""}`}
+      className={`connect-result-card ${compact ? "compact" : ""}`}
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ scale: 1.01 }}
@@ -68,8 +68,8 @@ const FriendResultCard = ({
       {/* Info */}
       <div className="frc-info">
         <span className="frc-name">{displayName}</span>
-        {friend.nickname && (
-          <span className="frc-nickname">@{friend.nickname}</span>
+        {connect.nickname && (
+          <span className="frc-nickname">@{connect.nickname}</span>
         )}
       </div>
 
@@ -93,4 +93,4 @@ const FriendResultCard = ({
   );
 };
 
-export default FriendResultCard;
+export default ConnectResultCard;

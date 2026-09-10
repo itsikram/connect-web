@@ -112,8 +112,8 @@ const WatchComment = (props) => {
             <div className="comments">
 
                 {
-                   allComments && allComments.map((comment) => {
-                        return comment && <SingleComment comment={comment} watch={watch} key={comment._id || comment.id} myProfile={myProfile}></SingleComment>
+                   allComments && allComments.map((comment, index) => {
+                        return comment && <SingleComment comment={comment} watch={watch} key={comment._id || comment.id || `comment-${index}`} myProfile={myProfile}></SingleComment>
                     })
                 }
 

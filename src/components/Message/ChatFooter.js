@@ -16,7 +16,7 @@ import ComposerContextPreview from "./ComposerContextPreview";
 import ComposerMicMenu from "./ComposerMicMenu";
 import useComposerLiveTranscribe from "../../hooks/useComposerLiveTranscribe";
 import { mergeTranscriptChunk } from "../../hooks/transcriptText";
-import useFriendChatSettings from "../../hooks/useFriendChatSettings";
+import useConnectChatSettings from "../../hooks/useConnectChatSettings";
 
 const UPLOAD_PLACEHOLDER =
   "https://res.cloudinary.com/dz88yjerw/image/upload/v1743092084/i5lcu63atrbkpcy6oqam.gif";
@@ -25,7 +25,7 @@ const ChatFooter = ({
   chatFooter,
   room,
   isReplying,
-  friendId,
+  connectId,
   setIsTyping,
   chatNewAttachment,
   messageActionButtonContainer,
@@ -38,7 +38,7 @@ const ChatFooter = ({
   isPreview,
   setIsPreview,
   msgListRef,
-  friendProfile,
+  connectProfile,
   sendMessage,
   scrollToLastMessage: scrollToLastMessageProp,
   isChatLoading = false,
@@ -89,7 +89,7 @@ const ChatFooter = ({
   const {
     settings: chatAppearance,
     updateSettings: updateChatAppearance,
-  } = useFriendChatSettings(friendId);
+  } = useConnectChatSettings(connectId);
 
   useEffect(() => {
     if (profile === "ai-chat") setIsAi(true);
@@ -130,19 +130,19 @@ const ChatFooter = ({
 
   const emitTyping = useCallback(
     (typing, value = "") => {
-      const roomId = room || [userId, friendId].sort().join("_");
-      if (!roomId || !friendId || !userId) return;
+      const roomId = room || [userId, connectId].sort().join("_");
+      if (!roomId || !connectId || !userId) return;
       if (!settings?.showIsTyping) return;
 
       socket.emit("typing", {
         room: roomId,
         isTyping: typing,
         type: typing ? value : "",
-        receiverId: friendId,
+        receiverId: connectId,
         senderId: userId,
       });
     },
-    [room, userId, friendId, settings?.showIsTyping],
+    [room, userId, connectId, settings?.showIsTyping],
   );
 
   const removeTyping = useCallback(() => {
@@ -295,7 +295,7 @@ const ChatFooter = ({
       setIsSendingMessage(true);
       stopTranscription();
 
-      const roomId = room || [userId, friendId].sort().join("_");
+      const roomId = room || [userId, connectId].sort().join("_");
 
       if (roomId) {
         const messageContent = typedMessage;
@@ -303,7 +303,7 @@ const ChatFooter = ({
         const messageData = {
           room: roomId,
           senderId: userId,
-          receiverId: friendId,
+          receiverId: connectId,
           message: messageContent,
           attachment: attachmentUrl,
           parent: isReplying ? replyData.messageId : false,
@@ -349,7 +349,7 @@ const ChatFooter = ({
       attachmentUrl,
       room,
       userId,
-      friendId,
+      connectId,
       isReplying,
       replyData,
       isAi,
@@ -382,8 +382,8 @@ const ChatFooter = ({
   const likeButtonClick = () => {
     if (isSendingRef.current || isChatLoadingRef.current) return;
     const emoji = actionEmoji || "❤️";
-    const roomId = room || [userId, friendId].sort().join("_");
-    if (!roomId || !friendId || !userId) return;
+    const roomId = room || [userId, connectId].sort().join("_");
+    if (!roomId || !connectId || !userId) return;
 
     isSendingRef.current = true;
     setIsSendingMessage(true);
@@ -392,7 +392,7 @@ const ChatFooter = ({
     sendMessage({
       room: roomId,
       senderId: userId,
-      receiverId: friendId,
+      receiverId: connectId,
       message: emoji,
       attachment: false,
       parent: false,
@@ -503,7 +503,7 @@ const ChatFooter = ({
     const onLiveVoiceStatus = (event) => {
       const { active, connecting, peerId } = event.detail || {};
       const isThisChat =
-        !peerId || !friendId || String(peerId) === String(friendId);
+        !peerId || !connectId || String(peerId) === String(connectId);
       if (!isThisChat) {
         if (isLiveVoiceActiveRef.current) {
           isLiveVoiceActiveRef.current = false;
@@ -521,7 +521,7 @@ const ChatFooter = ({
     return () => {
       window.removeEventListener("liveVoiceStatus", onLiveVoiceStatus);
     };
-  }, [friendId]);
+  }, [connectId]);
 
   const handleLiveVoiceButtonClick = () => {
     if (isChatLoadingRef.current) return;
@@ -530,22 +530,22 @@ const ChatFooter = ({
       return;
     }
 
-    const channelName = room || [userId, friendId].sort().join("_");
-    if (!channelName || !friendId || !userId) return;
+    const channelName = room || [userId, connectId].sort().join("_");
+    if (!channelName || !connectId || !userId) return;
 
     setIsLiveVoiceConnecting(true);
 
-    const friendName =
-      friendProfile?.fullName ||
-      friendProfile?.user?.firstName ||
-      "Friend";
+    const connectName =
+      connectProfile?.fullName ||
+      connectProfile?.user?.firstName ||
+      "Connect";
 
     window.dispatchEvent(
       new CustomEvent("startLiveVoice", {
         detail: {
-          to: String(friendId),
+          to: String(connectId),
           channelName,
-          friendName,
+          connectName,
         },
       }),
     );
@@ -793,11 +793,11 @@ const ChatFooter = ({
         });
         if (res.status === 200 && res.data?.secure_url) {
           const voiceUrl = res.data.secure_url;
-          const roomId = room || [userId, friendId].sort().join("_");
+          const roomId = room || [userId, connectId].sort().join("_");
           const data = {
             room: roomId,
             senderId: userId,
-            receiverId: friendId,
+            receiverId: connectId,
             message: "",
             attachment: voiceUrl,
             parent: false,
@@ -820,7 +820,7 @@ const ChatFooter = ({
         setIsUploadingAudio(false);
       }
     },
-    [room, userId, friendId, isAi, sendMessage],
+    [room, userId, connectId, isAi, sendMessage],
   );
 
   useEffect(() => {
@@ -970,7 +970,7 @@ const ChatFooter = ({
         <ComposerContextPreview
           replyData={isReplying ? replyData : null}
           userId={userId}
-          friendProfile={friendProfile}
+          connectProfile={connectProfile}
           attachmentUrl={attachmentUrl}
           uploadPlaceholder={UPLOAD_PLACEHOLDER}
           onCancelReply={handleReplyPreviewClose}

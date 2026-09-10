@@ -1,4 +1,4 @@
-import { parseIntent, searchFriendsByName, splitFriendNames } from "./agentIntentParser";
+import { parseIntent, searchConnectsByName, splitConnectNames } from "./agentIntentParser";
 import {
   extractCaptionFromText,
   recoverAgentActions,
@@ -22,7 +22,7 @@ const atikProfile = {
   },
 };
 
-describe("friend profile navigation", () => {
+describe("connect profile navigation", () => {
   test("parses a translated Bengali profile command", () => {
     expect(parseIntent("Go to Atik's profile")).toMatchObject({
       action: "NAVIGATE_PROFILE",
@@ -38,7 +38,7 @@ describe("friend profile navigation", () => {
     });
   });
 
-  test("parses find-profile commands for people who may not be friends", () => {
+  test("parses find-profile commands for people who may not be connects", () => {
     expect(parseIntent("find me harun profile")).toMatchObject({
       action: "VIEW_PROFILE",
       targetName: "harun",
@@ -64,17 +64,17 @@ describe("friend profile navigation", () => {
     });
   });
 
-  test("parses send friend request commands", () => {
-    expect(parseIntent("please send friend request to harun")).toMatchObject({
-      action: "ADD_FRIEND",
+  test("parses send connect request commands", () => {
+    expect(parseIntent("please send connect request to harun")).toMatchObject({
+      action: "ADD_CONNECT",
       targetName: "harun",
     });
-    expect(parseIntent("send friend request to harun")).toMatchObject({
-      action: "ADD_FRIEND",
+    expect(parseIntent("send connect request to harun")).toMatchObject({
+      action: "ADD_CONNECT",
       targetName: "harun",
     });
-    expect(parseIntent("add harun as a friend")).toMatchObject({
-      action: "ADD_FRIEND",
+    expect(parseIntent("add harun as a connect")).toMatchObject({
+      action: "ADD_CONNECT",
       targetName: "harun",
     });
   });
@@ -89,13 +89,13 @@ describe("friend profile navigation", () => {
   test.each(["Atik", "Md Atik", "Football", "mdatikbd", "আতিক"])(
     "finds Atik by %s",
     (query) => {
-      expect(searchFriendsByName([atikProfile], query)).toEqual([atikProfile]);
+      expect(searchConnectsByName([atikProfile], query)).toEqual([atikProfile]);
     },
   );
 });
 
 describe("direct send message parsing", () => {
-  test("parses quoted english message sent to a friend", () => {
+  test("parses quoted english message sent to a connect", () => {
     expect(
       parseIntent('"Ki khobor" send this message to Rahima'),
     ).toMatchObject({
@@ -363,11 +363,11 @@ describe("pending follow-up slots", () => {
     expect(isCancelFollowUp("na")).toBe(true);
   });
 
-  test("switches from a pending friend request to a profile lookup", () => {
+  test("switches from a pending connect request to a profile lookup", () => {
     const switched = parseIntent("find me harun profile");
     const merged = mergeFollowUpIntent({
       pending: {
-        intent: { action: "ADD_FRIEND", targetName: null },
+        intent: { action: "ADD_CONNECT", targetName: null },
         missing: ["targetName"],
       },
       followUpText: "find me harun profile",
@@ -427,7 +427,7 @@ describe("agent action parsing", () => {
     });
   });
 
-  test("parses create ludo with a named friend as an invite", () => {
+  test("parses create ludo with a named connect as an invite", () => {
     expect(parseIntent("create ludo with Atik")).toMatchObject({
       action: "CREATE_LUDO",
       targetName: "Atik",
@@ -438,7 +438,7 @@ describe("agent action parsing", () => {
     });
   });
 
-  test("parses create ludo and invite a friend", () => {
+  test("parses create ludo and invite a connect", () => {
     expect(parseIntent("create a ludo game and invite Rahima")).toMatchObject({
       action: "CREATE_LUDO",
       targetName: "Rahima",
@@ -462,16 +462,16 @@ describe("agent action parsing", () => {
     });
   });
 
-  test("create ludo and invite friends starts a lobby without a name", () => {
-    expect(parseIntent("create ludo and invite friends")).toMatchObject({
+  test("create ludo and invite connects starts a lobby without a name", () => {
+    expect(parseIntent("create ludo and invite connects")).toMatchObject({
       action: "CREATE_LUDO",
       targetName: null,
     });
   });
 
-  test("splits multiple friend names", () => {
-    expect(splitFriendNames("Atik and Rahima")).toEqual(["Atik", "Rahima"]);
-    expect(splitFriendNames("friends")).toEqual([]);
+  test("splits multiple connect names", () => {
+    expect(splitConnectNames("Atik and Rahima")).toEqual(["Atik", "Rahima"]);
+    expect(splitConnectNames("connects")).toEqual([]);
   });
 
   test("parses calendar event with a day", () => {

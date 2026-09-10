@@ -13,7 +13,7 @@ export const PendingInvitesBanner = ({ pendingInvites, onDismissInvite, onAccept
                             {inv.avatar ? <img src={inv.avatar} alt="" /> : null}
                         </div>
                         <div className="ludo-invite-row__meta">
-                            <div className="ludo-invite-row__name">{inv.name || 'Friend'} invited you</div>
+                            <div className="ludo-invite-row__name">{inv.name || 'Connect'} invited you</div>
                             <div className="ludo-invite-row__detail">
                                 Players: {inv.playerCount} · Slot #{(inv.slotIndex ?? 0) + 1}
                             </div>

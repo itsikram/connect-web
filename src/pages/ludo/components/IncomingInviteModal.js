@@ -19,7 +19,7 @@ export const IncomingInviteModal = ({ inviteRequest, onAccept, onDecline }) => {
                             Game Invite
                         </div>
                         <div className="ludo-muted" style={{ textAlign: 'left' }}>
-                            {inviteRequest.name || 'A friend'} invited you to play Ludo
+                            {inviteRequest.name || 'A connect'} invited you to play Ludo
                         </div>
                     </div>
                 </div>

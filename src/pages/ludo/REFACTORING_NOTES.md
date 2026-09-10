@@ -49,7 +49,7 @@ The main `LudoGame.js` file still contains:
 6. Create custom hooks for:
    - `hooks/useGameFlow.js` - rollDice, movePiece, etc.
    - `hooks/useSocketEvents.js` - socket event handlers
-   - `hooks/usePlayerManagement.js` - player invites, friend management
+   - `hooks/usePlayerManagement.js` - player invites, connect management
 
 ## Current Status
 

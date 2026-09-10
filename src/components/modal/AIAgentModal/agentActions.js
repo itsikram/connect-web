@@ -5,11 +5,11 @@
 import api, { invalidateGetCache } from "../../../api/api";
 import socket from "../../../common/socket";
 import {
-  getFriendDisplayName,
-  searchFriendsByName,
-  splitFriendNames,
+  getConnectDisplayName,
+  searchConnectsByName,
+  splitConnectNames,
 } from "./agentIntentParser";
-import { sendBumpToFriend } from "../../../utils/sendBump";
+import { sendBumpToConnect } from "../../../utils/sendBump";
 import {
   extractCaptionFromText,
   isPlaceholderCaption,
@@ -89,7 +89,7 @@ const unwrapList = (payload, keys = []) => {
 };
 
 const formatNamedPerson = (profile) =>
-  getFriendDisplayName(profile) || profile?.username || "Unknown";
+  getConnectDisplayName(profile) || profile?.username || "Unknown";
 
 const MONGO_ID_RE = /^[a-fA-F0-9]{24}$/;
 
@@ -148,7 +148,7 @@ const matchProfileByName = (profiles, name) => {
   if (!query || !Array.isArray(profiles)) return [];
   return profiles.filter((profile) => {
     const haystack = [
-      getFriendDisplayName(profile),
+      getConnectDisplayName(profile),
       profile?.fullName,
       profile?.username,
       profile?.banglaName,
@@ -340,8 +340,8 @@ const startYoutubeDownloadJob = async ({
 const LUDO_AGENT_CREATE_KEY = "ludo_agent_create";
 
 const collectLudoInvitees = ({
-  friend,
-  extraFriends,
+  connect,
+  extraConnects,
   targetName,
   myProfile,
 }) => {
@@ -356,13 +356,13 @@ const collectLudoInvitees = ({
     list.push(profile);
   };
 
-  add(friend);
-  (Array.isArray(extraFriends) ? extraFriends : []).forEach(add);
+  add(connect);
+  (Array.isArray(extraConnects) ? extraConnects : []).forEach(add);
 
-  const names = splitFriendNames(targetName);
-  const friends = Array.isArray(myProfile?.friends) ? myProfile.friends : [];
+  const names = splitConnectNames(targetName);
+  const connects = Array.isArray(myProfile?.connects) ? myProfile.connects : [];
   names.forEach((name) => {
-    const matches = searchFriendsByName(friends, name);
+    const matches = searchConnectsByName(connects, name);
     if (matches[0]) add(matches[0]);
   });
 
@@ -372,9 +372,9 @@ const collectLudoInvitees = ({
 const startOnlineLudo = async ({ invitees = [], myProfile, go }) => {
   const gid = generateGameId();
   const playerCount = Math.min(4, Math.max(2, (invitees.length || 0) + 1));
-  const friendsPayload = invitees.map((item, index) => ({
-    friendId: item._id,
-    friendName: getFriendDisplayName(item),
+  const connectsPayload = invitees.map((item, index) => ({
+    connectId: item._id,
+    connectName: getConnectDisplayName(item),
     friendAvatar: item.profilePic,
     slotIndex: index + 1,
   }));
@@ -386,7 +386,7 @@ const startOnlineLudo = async ({ invitees = [], myProfile, go }) => {
         gameId: gid,
         autoStart: true,
         playerCount,
-        friends: friendsPayload,
+        connects: connectsPayload,
       }),
     );
   } catch (_) {}
@@ -398,7 +398,7 @@ const startOnlineLudo = async ({ invitees = [], myProfile, go }) => {
     );
   } catch (_) {}
 
-  const names = friendsPayload.map((item) => item.friendName).filter(Boolean);
+  const names = connectsPayload.map((item) => item.connectName).filter(Boolean);
   if (names.length === 0) {
     return {
       success: true,
@@ -413,22 +413,22 @@ const startOnlineLudo = async ({ invitees = [], myProfile, go }) => {
       names.length === 1
         ? `🎮 Ludo started and invitation sent to ${names[0]}.`
         : `🎮 Ludo started and invitations sent to ${names.join(", ")}.`,
-    memory: { lastFriendName: names[0] },
+    memory: { lastConnectName: names[0] },
   };
 };
 
 const sendGameInviteNotification = async ({
-  friend,
+  connect,
   myProfile,
   game,
   gameId,
 }) => {
   const isLudo = game === "ludo";
   await api.post("/web-notification/send-to-all-browsers", {
-    profileId: friend._id,
+    profileId: connect._id,
     notificationData: {
       title: isLudo ? "Ludo Invitation" : "Chess Invitation",
-      text: `${myProfile?.fullName || "A friend"} invited you to play ${isLudo ? "Ludo" : "Chess"}`,
+      text: `${myProfile?.fullName || "A connect"} invited you to play ${isLudo ? "Ludo" : "Chess"}`,
       icon: myProfile?.profilePic,
       link: `/${isLudo ? "ludo-game" : "chess-game"}?gameId=${encodeURIComponent(gameId)}`,
       type: isLudo ? "ludo_invite" : "chess_invite",
@@ -446,7 +446,7 @@ const loadQueryData = async ({
   queryType,
   searchQuery,
   targetName,
-  friend,
+  connect,
   myProfile,
 }) => {
   const type = String(queryType || "search").toLowerCase();
@@ -575,24 +575,24 @@ const loadQueryData = async ({
     };
   }
 
-  if (type === "friends" || type === "list_friends") {
-    let friends = Array.isArray(myProfile?.friends) ? myProfile.friends : [];
-    if ((!friends.length || typeof friends[0] !== "object") && myProfile?._id) {
-      const res = await api.get("/friend/getFriends", {
+  if (type === "connects" || type === "list_connects") {
+    let connects = Array.isArray(myProfile?.connects) ? myProfile.connects : [];
+    if ((!connects.length || typeof connects[0] !== "object") && myProfile?._id) {
+      const res = await api.get("/connects/getConnects", {
         params: { profile: myProfile._id },
       });
-      friends = unwrapList(res.data, ["friends"]);
+      connects = unwrapList(res.data, ["connects"]);
     }
-    const names = friends
-      .map((friendProfile) => formatNamedPerson(friendProfile))
+    const names = connects
+      .map((connectProfile) => formatNamedPerson(connectProfile))
       .filter(Boolean);
     return {
-      queryType: "friends",
-      payload: { friends: names.slice(0, 60), count: names.length },
+      queryType: "connects",
+      payload: { connects: names.slice(0, 60), count: names.length },
       summary:
         names.length > 0
-          ? `You have ${names.length} friends: ${names.slice(0, 12).join(", ")}${names.length > 12 ? "…" : ""}`
-          : "Your friends list is empty.",
+          ? `You have ${names.length} connects: ${names.slice(0, 12).join(", ")}${names.length > 12 ? "…" : ""}`
+          : "Your connects list is empty.",
     };
   }
 
@@ -605,26 +605,26 @@ const loadQueryData = async ({
         bio: myProfile?.bio,
         banglaName: myProfile?.banglaName,
         presentAddress: myProfile?.presentAddress,
-        friendCount: Array.isArray(myProfile?.friends)
-          ? myProfile.friends.length
+        friendCount: Array.isArray(myProfile?.connects)
+          ? myProfile.connects.length
           : 0,
       },
       summary: `${formatNamedPerson(myProfile)}${myProfile?.bio ? ` — ${clipText(myProfile.bio, 140)}` : ""}`,
     };
   }
 
-  if (type === "user" && friend) {
+  if (type === "user" && connect) {
     return {
       queryType: type,
       payload: {
-        name: formatNamedPerson(friend),
-        username: friend.username || friend.user?.username,
-        bio: friend.bio,
-        banglaName: friend.banglaName,
-        presentAddress: friend.presentAddress,
-        lastLocation: friend.lastLocation,
+        name: formatNamedPerson(connect),
+        username: connect.username || connect.user?.username,
+        bio: connect.bio,
+        banglaName: connect.banglaName,
+        presentAddress: connect.presentAddress,
+        lastLocation: connect.lastLocation,
       },
-      summary: `${formatNamedPerson(friend)}${friend.bio ? ` — ${clipText(friend.bio, 140)}` : " has no bio on file."}`,
+      summary: `${formatNamedPerson(connect)}${connect.bio ? ` — ${clipText(connect.bio, 140)}` : " has no bio on file."}`,
     };
   }
 
@@ -689,7 +689,7 @@ const loadQueryData = async ({
   }
 
   if (type === "requests") {
-    const res = await api.get("/friend/getRequest/");
+    const res = await api.get("/connects/getRequest/");
     const requests = unwrapList(res.data, ["requests", "data"]);
     return {
       queryType: type,
@@ -698,13 +698,13 @@ const loadQueryData = async ({
       },
       summary:
         requests.length > 0
-          ? `You have ${requests.length} friend requests.`
-          : "You have no pending friend requests.",
+          ? `You have ${requests.length} connect requests.`
+          : "You have no pending connect requests.",
     };
   }
 
   if (type === "suggestions") {
-    const res = await api.get("/friend/getSuggetions/");
+    const res = await api.get("/connects/getSuggetions/");
     const suggestions = unwrapList(res.data, ["suggestions", "data"]);
     return {
       queryType: type,
@@ -716,7 +716,7 @@ const loadQueryData = async ({
       summary:
         suggestions.length > 0
           ? `Here are ${suggestions.length} people you may know.`
-          : "No friend suggestions right now.",
+          : "No connect suggestions right now.",
     };
   }
 
@@ -741,8 +741,8 @@ const loadQueryData = async ({
 const MAX_DIRECTORY_RESULTS = 8;
 
 /**
- * Search all Connect users by name/username (not limited to friends).
- * Used for friend requests and opening profiles of people you don't know yet.
+ * Search all Connect users by name/username (not limited to connects).
+ * Used for connect requests and opening profiles of people you don't know yet.
  */
 export const searchConnectUsers = async (query, { excludeId } = {}) => {
   const q = String(query || "").trim();
@@ -754,7 +754,7 @@ export const searchConnectUsers = async (query, { excludeId } = {}) => {
     const others = users
       .map(toPublicPerson)
       .filter((user) => user && String(user._id) !== exclude);
-    const ranked = searchFriendsByName(others, q);
+    const ranked = searchConnectsByName(others, q);
     const list = ranked.length > 0 ? ranked : others;
     return list.slice(0, MAX_DIRECTORY_RESULTS);
   } catch (_err) {
@@ -767,7 +767,7 @@ export const searchConnectUsers = async (query, { excludeId } = {}) => {
  *
  * @param {object} opts
  * @param {string}   opts.action       – action type constant
- * @param {object}   [opts.friend]     – resolved friend profile
+ * @param {object}   [opts.connect]     – resolved connect profile
  * @param {string}   [opts.targetRoute]– pre-resolved static route (for NAVIGATE)
  * @param {string}   [opts.subPath]    – profile sub-path (for NAVIGATE_PROFILE)
  * @param {string}   [opts.label]      – human-readable destination label
@@ -778,8 +778,8 @@ export const searchConnectUsers = async (query, { excludeId } = {}) => {
  */
 export const executeAction = async ({
   action,
-  friend,
-  extraFriends,
+  connect,
+  extraConnects,
   targetName,
   targetRoute,
   subPath,
@@ -797,7 +797,7 @@ export const executeAction = async ({
   navigate,
   onClose,
 }) => {
-  const friendName = friend ? getFriendDisplayName(friend) : null;
+  const connectName = connect ? getConnectDisplayName(connect) : null;
 
   const go = (path, options) => {
     navigate(path, options);
@@ -950,9 +950,9 @@ export const executeAction = async ({
           return { success: true, message: `👤 Opening your profile…` };
         }
 
-        if (targetRoute === "MY_PROFILE_FRIENDS") {
-          go(`/${myProfile._id}/friends`);
-          return { success: true, message: `👥 Opening your friends list…` };
+        if (targetRoute === "MY_PROFILE_CONNECTS") {
+          go(`/${myProfile._id}/connects`);
+          return { success: true, message: `👥 Opening your connects list…` };
         }
         if (targetRoute === "MY_PROFILE_IMAGES") {
           go(`/${myProfile._id}/images`);
@@ -974,94 +974,94 @@ export const executeAction = async ({
         return { success: false, message: `I couldn't find that page.` };
       }
 
-      // ── Navigation: friend profile / sub-page ───────────────────────────────
+      // ── Navigation: connect profile / sub-page ───────────────────────────────
       case "NAVIGATE_PROFILE": {
-        const path = buildProfilePath(friend, subPath || "");
+        const path = buildProfilePath(connect, subPath || "");
         const sub = subPath ? subPath.replace("/", "") : "profile";
         if (!path) {
           return {
             success: false,
-            message: `I couldn't determine ${friendName || "that user's"} profile link.`,
+            message: `I couldn't determine ${connectName || "that user's"} profile link.`,
           };
         }
         go(path);
         return {
           success: true,
-          message: `🧭 Opening ${friendName}'s ${sub || "profile"}…`,
+          message: `🧭 Opening ${connectName}'s ${sub || "profile"}…`,
         };
       }
 
       // ── Video Call ─────────────────────────────────────────────────────────
       case "VIDEO_CALL": {
-        const channelName = `${myProfile._id}-${friend._id}`;
+        const channelName = `${myProfile._id}-${connect._id}`;
         window.dispatchEvent(
           new CustomEvent("startVideoCall", {
             detail: {
-              to: friend._id,
+              to: connect._id,
               channelName,
-              callerName: friendName,
-              callerProfilePic: friend.profilePic,
+              callerName: connectName,
+              callerProfilePic: connect.profilePic,
             },
           }),
         );
         socket.emit("video-call", {
-          to: friend._id,
+          to: connect._id,
           channelName,
           isAudio: false,
         });
         if (onClose) onClose();
         return {
           success: true,
-          message: `📹 Starting video call with ${friendName}…`,
+          message: `📹 Starting video call with ${connectName}…`,
         };
       }
 
       // ── Audio Call ─────────────────────────────────────────────────────────
       case "AUDIO_CALL": {
-        const channelName = `${myProfile._id}-${friend._id}`;
+        const channelName = `${myProfile._id}-${connect._id}`;
         window.dispatchEvent(
           new CustomEvent("startAudioCall", {
             detail: {
-              to: friend._id,
+              to: connect._id,
               channelName,
-              callerName: friendName,
-              callerProfilePic: friend.profilePic,
+              callerName: connectName,
+              callerProfilePic: connect.profilePic,
             },
           }),
         );
         socket.emit("audio-call", {
-          to: friend._id,
+          to: connect._id,
           channelName,
           isAudio: true,
         });
         if (onClose) onClose();
         return {
           success: true,
-          message: `📞 Starting audio call with ${friendName}…`,
+          message: `📞 Starting audio call with ${connectName}…`,
         };
       }
 
       // ── Open Chat ──────────────────────────────────────────────────────────
       case "SEND_MESSAGE": {
-        openStickyChat(friend._id);
+        openStickyChat(connect._id);
         return {
           success: true,
-          message: `💬 Opening chat with ${friendName}…`,
+          message: `💬 Opening chat with ${connectName}…`,
         };
       }
 
       // ── Bump ───────────────────────────────────────────────────────────────
       case "BUMP": {
-        await sendBumpToFriend(friend._id, myProfile._id);
-        return { success: true, message: `👊 Bump sent to ${friendName}!` };
+        await sendBumpToConnect(connect._id, myProfile._id);
+        return { success: true, message: `👊 Bump sent to ${connectName}!` };
       }
 
       // ── Create / invite Ludo ───────────────────────────────────────────────
       case "CREATE_LUDO":
       case "INVITE_LUDO": {
         const invitees = collectLudoInvitees({
-          friend,
-          extraFriends,
+          connect,
+          extraConnects,
           targetName,
           myProfile,
         });
@@ -1080,9 +1080,9 @@ export const executeAction = async ({
           localStorage.setItem(
             "chess_invite_target",
             JSON.stringify({
-              friendId: friend._id,
-              friendName,
-              friendAvatar: friend.profilePic,
+              connectId: connect._id,
+              connectName,
+              friendAvatar: connect.profilePic,
               gameId: gid,
             }),
           );
@@ -1093,7 +1093,7 @@ export const executeAction = async ({
           avatar: myProfile?.profilePic,
         });
         emitSocket(socket, "chess:invite", {
-          to: friend._id,
+          to: connect._id,
           by: myProfile?._id,
           name: myProfile?.fullName || "Player",
           avatar: myProfile?.profilePic,
@@ -1103,7 +1103,7 @@ export const executeAction = async ({
         });
         try {
           await sendGameInviteNotification({
-            friend,
+            connect,
             myProfile,
             game: "chess",
             gameId: gid,
@@ -1112,128 +1112,128 @@ export const executeAction = async ({
         go(`/chess-game?gameId=${encodeURIComponent(gid)}`);
         return {
           success: true,
-          message: `♟️ Chess started and invitation sent to ${friendName}.`,
-          memory: { lastFriendName: friendName },
+          message: `♟️ Chess started and invitation sent to ${connectName}.`,
+          memory: { lastConnectName: connectName },
         };
       }
 
       // ── Block ──────────────────────────────────────────────────────────────
       case "BLOCK": {
-        const res = await api.post("friend/block", { friendId: friend._id });
+        const res = await api.post("connect/block", { connectId: connect._id });
         return res.status === 200
-          ? { success: true, message: `🚫 ${friendName} has been blocked.` }
-          : { success: false, message: `Failed to block ${friendName}.` };
+          ? { success: true, message: `🚫 ${connectName} has been blocked.` }
+          : { success: false, message: `Failed to block ${connectName}.` };
       }
 
       // ── Unblock ────────────────────────────────────────────────────────────
       case "UNBLOCK": {
-        const res = await api.post("friend/unblock", { friendId: friend._id });
+        const res = await api.post("connect/unblock", { connectId: connect._id });
         return res.status === 200
-          ? { success: true, message: `✅ ${friendName} has been unblocked.` }
-          : { success: false, message: `Failed to unblock ${friendName}.` };
+          ? { success: true, message: `✅ ${connectName} has been unblocked.` }
+          : { success: false, message: `Failed to unblock ${connectName}.` };
       }
 
       // ── View Profile ───────────────────────────────────────────────────────
       case "VIEW_PROFILE": {
-        const path = buildProfilePath(friend);
+        const path = buildProfilePath(connect);
         if (!path) {
           return {
             success: false,
-            message: `I couldn't determine ${friendName || "that user's"} profile link.`,
+            message: `I couldn't determine ${connectName || "that user's"} profile link.`,
           };
         }
         go(path);
         return {
           success: true,
-          message: `👤 Opening ${friendName}'s profile…`,
+          message: `👤 Opening ${connectName}'s profile…`,
         };
       }
 
       // ── Get Location ───────────────────────────────────────────────────────
       case "GET_LOCATION": {
-        const loc = friend.lastLocation || null;
+        const loc = connect.lastLocation || null;
         if (loc?.latitude && loc?.longitude) {
           return {
             success: true,
-            message: `📍 ${friendName}'s last location: ${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`,
+            message: `📍 ${connectName}'s last location: ${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`,
             location: loc,
           };
         }
-        if (friend.presentAddress)
+        if (connect.presentAddress)
           return {
             success: true,
-            message: `📍 ${friendName}'s address: ${friend.presentAddress}`,
+            message: `📍 ${connectName}'s address: ${connect.presentAddress}`,
             location: null,
           };
-        if (friend.permanentAddress)
+        if (connect.permanentAddress)
           return {
             success: true,
-            message: `📍 ${friendName}'s address: ${friend.permanentAddress}`,
+            message: `📍 ${connectName}'s address: ${connect.permanentAddress}`,
             location: null,
           };
         return {
           success: false,
-          message: `📍 ${friendName}'s location is not available.`,
+          message: `📍 ${connectName}'s location is not available.`,
           location: null,
         };
       }
 
       // ── Get Bio / VIO ──────────────────────────────────────────────────────
       case "GET_BIO": {
-        if (friend.bio && friend.bio.trim()) {
+        if (connect.bio && connect.bio.trim()) {
           return {
             success: true,
-            message: `📝 ${friendName}'s bio: "${friend.bio}"`,
+            message: `📝 ${connectName}'s bio: "${connect.bio}"`,
           };
         }
         return {
           success: false,
-          message: `📝 ${friendName} hasn't added a bio yet.`,
+          message: `📝 ${connectName} hasn't added a bio yet.`,
         };
       }
 
-      // ── Add Friend ─────────────────────────────────────────────────────────
-      case "ADD_FRIEND": {
-        const profileId = toProfileId(friend);
+      // ── Add Connect ─────────────────────────────────────────────────────────
+      case "ADD_CONNECT": {
+        const profileId = toProfileId(connect);
         const myId = toProfileId(myProfile);
         if (!profileId) {
           return {
             success: false,
-            message: "I need a person to send the friend request to.",
+            message: "I need a person to send the connect request to.",
           };
         }
         if (myId && profileId === myId) {
           return {
             success: false,
-            message: "You can't send a friend request to yourself.",
+            message: "You can't send a connect request to yourself.",
           };
         }
         try {
-          const res = await api.post("/friend/sendRequest/", {
+          const res = await api.post("/connects/sendRequest/", {
             profile: profileId,
           });
           const body = res?.data || {};
-          if (body.alreadyFriend || body.message === "Already Friend") {
+          if (body.alreadyConnect || body.message === "Already Connect") {
             return {
               success: true,
-              message: `You're already friends with ${friendName}.`,
+              message: `You're already connects with ${connectName}.`,
             };
           }
           if (body.alreadyRequested || body.message === "Already Requested") {
             return {
               success: true,
-              message: `A friend request to ${friendName} is already pending.`,
+              message: `A connect request to ${connectName} is already pending.`,
             };
           }
 
-          const storedOnReceiver = listHasProfileId(body.friendReqs, myId);
+          const storedOnReceiver = listHasProfileId(body.connectReqs, myId);
           if (body.success === true || storedOnReceiver) {
             try {
               invalidateGetCache("profile");
             } catch (_err) {}
             return {
               success: true,
-              message: `✉️ Friend request sent to ${friendName}!`,
+              message: `✉️ Connect request sent to ${connectName}!`,
             };
           }
 
@@ -1241,7 +1241,7 @@ export const executeAction = async ({
             params: { profileId, lite: 1 },
           });
           const confirmed = listHasProfileId(
-            verify?.data?.friendReqs,
+            verify?.data?.connectReqs,
             myId,
           );
           if (confirmed) {
@@ -1250,13 +1250,13 @@ export const executeAction = async ({
             } catch (_err) {}
             return {
               success: true,
-              message: `✉️ Friend request sent to ${friendName}!`,
+              message: `✉️ Connect request sent to ${connectName}!`,
             };
           }
 
           return {
             success: false,
-            message: `Couldn't confirm the friend request to ${friendName}. Try sending it from their profile.`,
+            message: `Couldn't confirm the connect request to ${connectName}. Try sending it from their profile.`,
           };
         } catch (err) {
           const reason =
@@ -1266,31 +1266,31 @@ export const executeAction = async ({
           return {
             success: false,
             message: reason
-              ? `Couldn't send a friend request to ${friendName}: ${reason}`
-              : `Couldn't send a friend request to ${friendName}.`,
+              ? `Couldn't send a connect request to ${connectName}: ${reason}`
+              : `Couldn't send a connect request to ${connectName}.`,
           };
         }
       }
 
       // ── Unfriend ───────────────────────────────────────────────────────────
       case "UNFRIEND": {
-        const profileId = toProfileId(friend);
+        const profileId = toProfileId(connect);
         const myId = toProfileId(myProfile);
         if (!profileId) {
           return {
             success: false,
-            message: "I couldn't identify that friend. Please choose the profile again.",
+            message: "I couldn't identify that connect. Please choose the profile again.",
           };
         }
 
         try {
-          const response = await api.post("/friend/removeFriend", {
+          const response = await api.post("/connects/removeConnect", {
             profile: profileId,
           });
-          if (response?.data?.message !== "Friend removed From your profile") {
+          if (response?.data?.message !== "Connect removed From your profile") {
             return {
               success: false,
-              message: `I couldn't confirm removing ${friendName} from your friends.`,
+              message: `I couldn't confirm removing ${connectName} from your connects.`,
             };
           }
 
@@ -1300,14 +1300,14 @@ export const executeAction = async ({
                 params: { profileId: myId, lite: 1, _ts: Date.now() },
               })
             : null;
-          const stillFriend = listHasProfileId(
-            refreshed?.data?.friends,
+          const stillConnect = listHasProfileId(
+            refreshed?.data?.connects,
             profileId,
           );
-          if (stillFriend) {
+          if (stillConnect) {
             return {
               success: false,
-              message: `The server did not confirm removing ${friendName}. Please try again.`,
+              message: `The server did not confirm removing ${connectName}. Please try again.`,
             };
           }
 
@@ -1316,7 +1316,7 @@ export const executeAction = async ({
           }
           return {
             success: true,
-            message: `❌ ${friendName} removed from your friends.`,
+            message: `❌ ${connectName} removed from your connects.`,
           };
         } catch (error) {
           const reason =
@@ -1324,17 +1324,17 @@ export const executeAction = async ({
           return {
             success: false,
             message: reason
-              ? `Couldn't remove ${friendName} from your friends: ${reason}`
-              : `Couldn't remove ${friendName} from your friends.`,
+              ? `Couldn't remove ${connectName} from your connects: ${reason}`
+              : `Couldn't remove ${connectName} from your connects.`,
           };
         }
       }
 
-      // ── List Friends / Open Friends ────────────────────────────────────────
-      case "LIST_FRIENDS":
-      case "OPEN_FRIENDS": {
-        go("/friends");
-        return { success: true, message: "👥 Opening friends page…" };
+      // ── List Connects / Open Connects ────────────────────────────────────────
+      case "LIST_CONNECTS":
+      case "OPEN_CONNECTS": {
+        go("/connects");
+        return { success: true, message: "👥 Opening connects page…" };
       }
 
       // ── Open Messages ──────────────────────────────────────────────────
@@ -1350,7 +1350,7 @@ export const executeAction = async ({
       }
 
       case "OPEN_SEARCH": {
-        go("/friends/suggestions");
+        go("/connects/suggestions");
         return { success: true, message: "🔍 Opening people suggestions…" };
       }
 
@@ -2080,10 +2080,10 @@ export const executeAction = async ({
         };
       }
 
-      case "ACCEPT_FRIEND":
-      case "DECLINE_FRIEND": {
+      case "ACCEPT_CONNECT":
+      case "DECLINE_CONNECT": {
         const requestName = (searchQuery || label || "").trim();
-        const reqRes = await api.get("/friend/getRequest/");
+        const reqRes = await api.get("/connects/getRequest/");
         const requests = unwrapList(reqRes.data, ["requests", "data"]);
         const matched = requestName
           ? matchProfileByName(requests, requestName)
@@ -2092,20 +2092,20 @@ export const executeAction = async ({
           return {
             success: false,
             message: requestName
-              ? `No friend request from "${requestName}".`
-              : "You have no pending friend requests.",
+              ? `No connect request from "${requestName}".`
+              : "You have no pending connect requests.",
           };
         }
         const target = matched[0];
         const endpoint =
-          action === "ACCEPT_FRIEND" ? "/friend/reqAccept" : "/friend/reqDelete";
+          action === "ACCEPT_CONNECT" ? "/connects/reqAccept" : "/connects/reqDelete";
         await api.post(endpoint, { profile: target._id });
         return {
           success: true,
           message:
-            action === "ACCEPT_FRIEND"
-              ? `✅ Accepted ${formatNamedPerson(target)}'s friend request.`
-              : `Ignored ${formatNamedPerson(target)}'s friend request.`,
+            action === "ACCEPT_CONNECT"
+              ? `✅ Accepted ${formatNamedPerson(target)}'s connect request.`
+              : `Ignored ${formatNamedPerson(target)}'s connect request.`,
         };
       }
 
@@ -2163,14 +2163,14 @@ export const executeAction = async ({
             message: "What message would you like to send?",
           };
         }
-        if (!friend) {
+        if (!connect) {
           return {
             success: false,
             message: "Please specify which user to send the message to.",
           };
         }
         try {
-          const room = [String(myProfile._id), String(friend._id)]
+          const room = [String(myProfile._id), String(connect._id)]
             .sort()
             .join("_");
           try {
@@ -2179,7 +2179,7 @@ export const executeAction = async ({
           const response = await api.post("/message/send", {
             room,
             senderId: myProfile._id,
-            receiverId: friend._id,
+            receiverId: connect._id,
             message: messageContent,
             attachment: "",
             parent: false,
@@ -2192,10 +2192,10 @@ export const executeAction = async ({
             } catch (_) {}
           }
 
-          openStickyChat(friend._id);
+          openStickyChat(connect._id);
           return {
             success: true,
-            message: `✅ Message sent to ${friendName}: “${clipText(messageContent, 80)}”. Opening chat…`,
+            message: `✅ Message sent to ${connectName}: “${clipText(messageContent, 80)}”. Opening chat…`,
           };
         } catch (err) {
           return {
@@ -2260,7 +2260,7 @@ export const executeAction = async ({
       case "LIST_NOTIFICATIONS":
       case "LIST_HABITS":
       case "LIST_EVENTS":
-      case "LIST_FRIENDS_INFO":
+      case "LIST_CONNECTS_INFO":
       case "GET_MY_DETAILS":
       case "QUERY_CONTENT": {
         const data = await loadQueryData({
@@ -2276,14 +2276,14 @@ export const executeAction = async ({
                     ? "habits"
                     : action === "LIST_EVENTS"
                       ? "calendar"
-                      : action === "LIST_FRIENDS_INFO"
-                        ? "friends"
+                      : action === "LIST_CONNECTS_INFO"
+                        ? "connects"
                         : action === "GET_MY_DETAILS"
                           ? "profile"
                           : queryType || "search"),
           searchQuery: searchQuery || label || "",
-          targetName: friend ? formatNamedPerson(friend) : searchQuery || "",
-          friend,
+          targetName: connect ? formatNamedPerson(connect) : searchQuery || "",
+          connect,
           myProfile,
         });
         return {
@@ -2358,7 +2358,7 @@ export const getActionMeta = (action) => {
     },
     LIST_HABITS: { label: "Habits", icon: "fa-check-double", color: "#00c851" },
     LIST_EVENTS: { label: "Calendar", icon: "fa-calendar-alt", color: "#00d4ff" },
-    LIST_FRIENDS_INFO: { label: "Friends", icon: "fa-users", color: "#00d4ff" },
+    LIST_CONNECTS_INFO: { label: "Connects", icon: "fa-users", color: "#00d4ff" },
     GET_MY_DETAILS: { label: "My Details", icon: "fa-id-card", color: "#00d4ff" },
     FITNESS_DASHBOARD: { label: "Fitness Dashboard", icon: "fa-heartbeat", color: "#00c851" },
     FITNESS_RECOMMENDATIONS: { label: "Food Recommendations", icon: "fa-utensils", color: "#00c851" },
@@ -2367,12 +2367,12 @@ export const getActionMeta = (action) => {
     LOG_FITNESS_WEIGHT: { label: "Log Fitness Weight", icon: "fa-weight", color: "#00d4ff" },
     CREATE_FITNESS_REMINDER: { label: "Fitness Reminder", icon: "fa-bell", color: "#f59e0b" },
     ASK_FITNESS_COACH: { label: "Fitness Coach", icon: "fa-user-md", color: "#00c851" },
-    ACCEPT_FRIEND: {
+    ACCEPT_CONNECT: {
       label: "Accept Request",
       icon: "fa-user-check",
       color: "#00c851",
     },
-    DECLINE_FRIEND: {
+    DECLINE_CONNECT: {
       label: "Decline Request",
       icon: "fa-user-times",
       color: "#ef4444",
@@ -2412,12 +2412,12 @@ export const getActionMeta = (action) => {
       icon: "fa-file-alt",
       color: "#29b1a9",
     },
-    ADD_FRIEND: { label: "Add Friend", icon: "fa-user-plus", color: "#00d4ff" },
+    ADD_CONNECT: { label: "Add Connect", icon: "fa-user-plus", color: "#00d4ff" },
     UNFRIEND: { label: "Unfriend", icon: "fa-user-times", color: "#ef4444" },
     NAVIGATE: { label: "Go", icon: "fa-arrow-right", color: "#00d4ff" },
-    LIST_FRIENDS: { label: "Friends Page", icon: "fa-users", color: "#00d4ff" },
+    LIST_CONNECTS: { label: "Connects Page", icon: "fa-users", color: "#00d4ff" },
     OPEN_MESSAGES: { label: "Messages", icon: "fa-envelope", color: "#00d4ff" },
-    OPEN_FRIENDS: { label: "Friends Page", icon: "fa-users", color: "#00d4ff" },
+    OPEN_CONNECTS: { label: "Connects Page", icon: "fa-users", color: "#00d4ff" },
     CREATE_NOTE: {
       label: "Create Note",
       icon: "fa-sticky-note",

@@ -143,7 +143,7 @@ const MessageSetting = () => {
                         <div className="form-check-label-group">
                             <label className="form-check-label" htmlFor="showTyping">Show Typing</label>
                             <small className="form-text text-muted">
-                                Show your typing indicator to friends before you send a message
+                                Show your typing indicator to connects before you send a message
                             </small>
                         </div>
                     </div>

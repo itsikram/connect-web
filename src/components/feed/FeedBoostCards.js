@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import api from "../../api/api";
-import FriendCacheManager from "../../utils/friendCacheManager";
+import ConnectCacheManager from "../../utils/connectCacheManager";
 import { openCreatePost } from "../../utils/openComposer";
 import {
   formatBilingualPrompt,
@@ -70,12 +70,12 @@ const FeedBoostCards = ({ postCount = 0, feedLoaded = false }) => {
 
     const loadSuggestions = async () => {
       try {
-        const list = await FriendCacheManager.fetchWithCache({
+        const list = await ConnectCacheManager.fetchWithCache({
           key: `suggestions:${myProfileId}`,
           setCached: (items) =>
-            FriendCacheManager.setCachedSuggestions(myProfileId, items),
+            ConnectCacheManager.setCachedSuggestions(myProfileId, items),
           fetcher: async () => {
-            const res = await api.get("/friend/getSuggetions/", {
+            const res = await api.get("/connects/getSuggetions/", {
               params: { profile: myProfileId },
             });
             return Array.isArray(res.data) ? res.data : [];
@@ -182,8 +182,8 @@ const FeedBoostCards = ({ postCount = 0, feedLoaded = false }) => {
           <p className="feed-boost-kicker">Welcome to Connect</p>
           <h3>Make this feed yours</h3>
           <div className="feed-boost-actions">
-            <Link to="/friends/suggestions" className="feed-boost-chip">
-              <i className="fas fa-user-plus" /> Add friends
+            <Link to="/connects/suggestions" className="feed-boost-chip">
+              <i className="fas fa-user-plus" /> Add connects
             </Link>
             <button
               type="button"
@@ -238,7 +238,7 @@ const FeedBoostCards = ({ postCount = 0, feedLoaded = false }) => {
               );
             })}
           </div>
-          <Link to="/friends/suggestions" className="feed-boost-link">
+          <Link to="/connects/suggestions" className="feed-boost-link">
             See all suggestions
           </Link>
         </section>
@@ -315,9 +315,9 @@ const FeedBoostCards = ({ postCount = 0, feedLoaded = false }) => {
             {digest.postsThisWeek || 0} posts · {digest.reactsReceived || 0} reacts ·{" "}
             {digest.commentsReceived || 0} comments
           </p>
-          {digest.topFriendPost?.caption ? (
+          {digest.topConnectPost?.caption ? (
             <p className="feed-boost-hint">
-              Friends are talking about: “{String(digest.topFriendPost.caption).slice(0, 80)}”
+              Connects are talking about: “{String(digest.topConnectPost.caption).slice(0, 80)}”
             </p>
           ) : null}
           <button

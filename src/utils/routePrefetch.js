@@ -1,6 +1,6 @@
 const routeLoaders = [
   { matches: (path) => path === "/menu" || path === "/menu/", load: () => import("../pages/Menu") },
-  { matches: (path) => path === "/friends" || path.startsWith("/friends/"), load: () => import("../pages/Friends") },
+  { matches: (path) => path === "/connects" || path.startsWith("/connects/"), load: () => import("../pages/Connects") },
   { matches: (path) => path === "/watch" || path.startsWith("/watch/"), load: () => import("../pages/Video.js") },
   { matches: (path) => path === "/message" || path.startsWith("/message/"), load: () => import("../pages/Message") },
   { matches: (path) => path === "/settings" || path.startsWith("/settings/"), load: () => import("../pages/Settings") },

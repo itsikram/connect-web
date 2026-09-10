@@ -15,8 +15,8 @@ const BANGLA_DESTINATIONS = {
   মেসেজ: "messages",
   ইনবক্স: "messages",
   চ্যাট: "messages",
-  বন্ধু: "friends",
-  ফ্রেন্ডস: "friends",
+  বন্ধু: "connects",
+  ফ্রেন্ডস: "connects",
   নোটিফিকেশন: "notifications",
   লুডো: "ludo",
   হোম: "home",
@@ -67,7 +67,7 @@ const BANGLA_COMMAND_REWRITES = [
   ],
   [
     /^(?:বন্ধু(?:দের)?|ফ্রেন্ডস?)(?:\s*পেজ)?(?:ে)?\s*(?:যাও|খোলো)$/u,
-    () => "go to friends",
+    () => "go to connects",
   ],
 ];
 
@@ -91,7 +91,7 @@ export const normalizeBanglaCommand = (text = "") => {
 };
 
 const CONNECT_NOUNS =
-  /\b(settings?|profile|account|privacy|notification|inbox|messages?|friends?|watch|notes?|tasks?|calendar|health|rehab|youtube|ludo|chess|post|story|video player|yt-download)\b/i;
+  /\b(settings?|profile|account|privacy|notification|inbox|messages?|connects?|watch|notes?|tasks?|calendar|health|rehab|youtube|ludo|chess|post|story|video player|yt-download)\b/i;
 
 export const looksLikeAppCommand = (text = "") => {
   const source = String(text || "").trim();
@@ -153,7 +153,7 @@ export const looksLikePersonalChat = (text = "") => {
     return true;
   }
   if (
-    /\b(i (feel|felt|am|i'?m|think|need advice|need help|don'?t know|do not know|want to talk|want your opinion)|i'?m (sad|happy|anxious|stressed|lonely|tired|confused|angry|depressed|bored)|my (life|day|mood|girlfriend|boyfriend|wife|husband|job|boss|exam|school|family|parents|friend)|why (do|does|is|are|can'?t|did)|how (do i|can i|should i|would you)|what should i|what would you|meaning of|joke|story|opinion|advice)\b/i.test(
+    /\b(i (feel|felt|am|i'?m|think|need advice|need help|don'?t know|do not know|want to talk|want your opinion)|i'?m (sad|happy|anxious|stressed|lonely|tired|confused|angry|depressed|bored)|my (life|day|mood|girlfriend|boyfriend|wife|husband|job|boss|exam|school|family|parents|connect)|why (do|does|is|are|can'?t|did)|how (do i|can i|should i|would you)|what should i|what would you|meaning of|joke|story|opinion|advice)\b/i.test(
       source,
     )
   ) {
@@ -244,17 +244,17 @@ export const getInstantAgentReply = (text = "") => {
       raw,
     )
   ) {
-    return "I can open pages, message friends, start Ludo, download YouTube, and more. Try “create ludo game” or “atik ke call koro”.";
+    return "I can open pages, message connects, start Ludo, download YouTube, and more. Try “create ludo game” or “atik ke call koro”.";
   }
   return null;
 };
 
 export const describeUpcomingAction = (
   intent,
-  { friendName = "", lang = "en" } = {},
+  { connectName = "", lang = "en" } = {},
 ) => {
   if (!intent?.action) return "";
-  const name = String(friendName || intent.targetName || "").trim();
+  const name = String(connectName || intent.targetName || "").trim();
   const place = String(intent.label || intent.targetRoute || "").trim();
   const caption = String(intent.messageText || intent.searchQuery || "").trim();
   const mode = String(lang || "en").toLowerCase();
@@ -366,11 +366,11 @@ export const describeUpcomingAction = (
         `এখন ${name || "তাকে"} আনব্লক করছি।`,
         `Ekhon ${name || "taake"} unblock korchi.`,
       );
-    case "ADD_FRIEND":
+    case "ADD_CONNECT":
       return line(
-        `Sending a friend request to ${name || "them"}.`,
+        `Sending a connect request to ${name || "them"}.`,
         `${name || "তাকে"} ফ্রেন্ড রিকোয়েস্ট পাঠাচ্ছি।`,
-        `${name || "taake"} friend request pathacchi.`,
+        `${name || "taake"} connect request pathacchi.`,
       );
     case "BUMP":
       return line(
@@ -380,9 +380,9 @@ export const describeUpcomingAction = (
       );
     case "OPEN_MESSAGES":
       return line("Opening messages.", "মেসেজ খুলছি।", "Message khulchi.");
-    case "OPEN_FRIENDS":
-    case "LIST_FRIENDS":
-      return line("Opening friends.", "ফ্রেন্ডস খুলছি।", "Friends khulchi.");
+    case "OPEN_CONNECTS":
+    case "LIST_CONNECTS":
+      return line("Opening connects.", "ফ্রেন্ডস খুলছি।", "Connects khulchi.");
     default: {
       const label = String(intent.label || intent.action || "that")
         .replace(/_/g, " ")

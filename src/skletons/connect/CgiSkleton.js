@@ -2,12 +2,12 @@ import React from "react";
 
 const NAME_WIDTHS = ["68%", "78%", "58%", "72%"];
 
-const FgiSkleton = ({ count = 8 }) => {
+const CgiSkleton = ({ count = 8 }) => {
     return Array(count)
         .fill(0)
         .map((_, index) => (
             <div
-                className="friend-grid-item fgi-skeleton"
+                className="connect-grid-item fgi-skeleton"
                 key={index}
                 aria-hidden="true"
             >
@@ -26,4 +26,4 @@ const FgiSkleton = ({ count = 8 }) => {
         ));
 };
 
-export default FgiSkleton;
+export default CgiSkleton;

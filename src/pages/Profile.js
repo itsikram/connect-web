@@ -23,7 +23,7 @@ let Profile = (props) => {
 
     const profileIdentifier = params.profile
     const isAuth = profileData?._id === myProfileId || profileData?.username === myProfileData.username
-    const isFriend = Array.isArray(myProfileData.friends) && myProfileData.friends.some(friendData => friendData._id === profileIdentifier)
+    const isConnect = Array.isArray(myProfileData.connects) && myProfileData.connects.some(connectData => connectData._id === profileIdentifier)
 
     useEffect(() => {
         let active = true
@@ -117,13 +117,13 @@ let Profile = (props) => {
                                                 {profileData?.nickname && (<span className="nickname">({ profileData.nickname})</span>)}
                                             </VerifiedName>
                                         </h3>
-                                        <div className="friends-count">
-                                            <Link className='text-decoration-none' to={`/${profileData._id}/friends`}>
-                                                {profileData.friends && profileData.friends.length} Friends
+                                        <div className="connects-count">
+                                            <Link className='text-decoration-none' to={`/${profileData._id}/connects`}>
+                                                {profileData.connects && profileData.connects.length} Connects
                                             </Link>
                                         </div>
                                     </div>
-                                    <ProfileButtons profileData={profileData} isAuth={isAuth} isFriend={isFriend}></ProfileButtons>
+                                    <ProfileButtons profileData={profileData} isAuth={isAuth} isConnect={isConnect}></ProfileButtons>
                                 </div>
                             </div>
                             <div className="profile-info-tab-navigator">
@@ -131,7 +131,7 @@ let Profile = (props) => {
                                     <div className="header-nav-menu-container">
                                         <NavLink to={profilePath} onClick={profileTabItemClick} className="header-nav-menu-item">Posts</NavLink>
                                         <NavLink to={profilePath + "about"} onClick={profileTabItemClick} className="header-nav-menu-item">About</NavLink>
-                                        <NavLink to={profilePath + "friends"} onClick={profileTabItemClick} className="header-nav-menu-item"> Friends</NavLink>
+                                        <NavLink to={profilePath + "connects"} onClick={profileTabItemClick} className="header-nav-menu-item"> Connects</NavLink>
                                         <NavLink to={profilePath + "images"} onClick={profileTabItemClick} className="header-nav-menu-item">Images</NavLink>
                                         <NavLink to={profilePath + "videos"} onClick={profileTabItemClick} className="header-nav-menu-item">Videos</NavLink>
                                     </div>

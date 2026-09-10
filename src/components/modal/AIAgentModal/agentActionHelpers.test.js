@@ -125,11 +125,11 @@ describe("agent memory", () => {
     );
   });
 
-  test("fills him/her from the last friend", () => {
+  test("fills him/her from the last connect", () => {
     rememberUserText(profileId, "invite Atik later");
     const memoryKey = `connect_ai_agent_memory_${profileId}`;
     const current = JSON.parse(localStorage.getItem(memoryKey));
-    current.lastFriendName = "Atik";
+    current.lastConnectName = "Atik";
     localStorage.setItem(memoryKey, JSON.stringify(current));
     const filled = applyMemoryToIntent(
       { action: "INVITE_LUDO", targetName: "him" },

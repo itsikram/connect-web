@@ -29,7 +29,7 @@ const LiveVoice = ({ myId }) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [duration, setDuration] = useState(0);
   const [role, setRole] = useState("sender");
-  const [friendName, setFriendName] = useState("Friend");
+  const [connectName, setConnectName] = useState("Connect");
   const [connectionQuality, setConnectionQuality] = useState(4);
   const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
   const [microphonePending, setMicrophonePending] = useState(false);
@@ -208,7 +208,7 @@ const LiveVoice = ({ myId }) => {
     async ({
       to,
       channelName,
-      friendName: name,
+      connectName: name,
       sessionRole = "sender",
       notifyPeer = true,
     }) => {
@@ -234,7 +234,7 @@ const LiveVoice = ({ myId }) => {
       channelRef.current = channelName;
       roleRef.current = sessionRole;
       setRole(sessionRole);
-      setFriendName(name || "Friend");
+      setConnectName(name || "Connect");
       setIsOpen(true);
       setIsConnecting(true);
       setIsActive(false);
@@ -385,7 +385,7 @@ const LiveVoice = ({ myId }) => {
       startSessionRef.current({
         to: from,
         channelName,
-        friendName: callerName,
+        connectName: callerName,
         sessionRole: "receiver",
         notifyPeer: false,
       });
@@ -418,11 +418,11 @@ const LiveVoice = ({ myId }) => {
     };
 
     const onOutgoing = (event) => {
-      const { to, channelName, friendName: name } = event.detail || {};
+      const { to, channelName, connectName: name } = event.detail || {};
       startSessionRef.current({
         to,
         channelName,
-        friendName: name,
+        connectName: name,
         sessionRole: "sender",
         notifyPeer: true,
       });
@@ -459,7 +459,7 @@ const LiveVoice = ({ myId }) => {
       duration={duration}
       isConnecting={isConnecting}
       role={role}
-      friendName={friendName}
+      connectName={connectName}
       connectionQuality={connectionQuality}
       onStop={() => stopSession(true)}
       onEnableMicrophone={() => enableMicrophone()}

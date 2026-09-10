@@ -9,12 +9,12 @@ import ModalHeader from "./ModalHeader";
 import { sendToGeminiStream } from "../../../services/geminiService";
 import {
   parseIntent,
-  searchFriendsByName,
-  splitFriendNames,
-  getFriendDisplayName,
+  searchConnectsByName,
+  splitConnectNames,
+  getConnectDisplayName,
   getActionResponseMode,
-  FRIEND_REQUIRED_ACTIONS,
-  NO_FRIEND_ACTIONS,
+  CONNECT_REQUIRED_ACTIONS,
+  NO_CONNECT_ACTIONS,
   findStaticRoute,
   stripCommandFiller,
 } from "./agentIntentParser";
@@ -110,8 +110,8 @@ const getInitialAutoRunActions = () => {
 };
 
 const getSingleMessageAction = (message) => {
-  if (message?.type === "friend-picker" && message.friends?.length === 1) {
-    return () => message.onAction?.(message.friends[0]);
+  if (message?.type === "connect-picker" && message.connects?.length === 1) {
+    return () => message.onAction?.(message.connects[0]);
   }
 
   if (message?.type === "search-results") {
@@ -169,7 +169,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   const pendingIntentRef = useRef(null);
   const skipSaveRef = useRef(false);
   const sendGenerationRef = useRef(0);
-  const friendsCacheRef = useRef([]);
+  const connectsCacheRef = useRef([]);
   const messagesRef = useRef(messages);
   const streamAbortRef = useRef(null);
   const streamRafRef = useRef(0);
@@ -262,18 +262,18 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   }, [isOpen, isMinimized]);
 
   useEffect(() => {
-    const local = Array.isArray(myProfile?.friends) ? myProfile.friends : [];
-    if (local.length) friendsCacheRef.current = local;
-  }, [myProfile?.friends]);
+    const local = Array.isArray(myProfile?.connects) ? myProfile.connects : [];
+    if (local.length) connectsCacheRef.current = local;
+  }, [myProfile?.connects]);
 
   useEffect(() => {
     if (!isOpen || !myProfile?._id) return undefined;
     let cancelled = false;
     api
-      .get("/friend/getFriends", { params: { profile: myProfile._id } })
+      .get("/connects/getConnects", { params: { profile: myProfile._id } })
       .then((response) => {
         if (cancelled || !Array.isArray(response.data)) return;
-        friendsCacheRef.current = response.data;
+        connectsCacheRef.current = response.data;
       })
       .catch(() => {});
     return () => {
@@ -342,11 +342,11 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   }, []);
 
   const announceUpcomingAction = useCallback(
-    async (intent, friend = null, langHint = "") => {
+    async (intent, connect = null, langHint = "") => {
       if (!liveTalkOnRef.current) return;
       const language = detectAgentLanguage(langHint);
       const line = describeUpcomingAction(intent, {
-        friendName: getFriendDisplayName(friend) || intent?.targetName || "",
+        connectName: getConnectDisplayName(connect) || intent?.targetName || "",
         lang: language,
       });
       if (!line) return;
@@ -402,7 +402,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
     return () => clearTimeout(timer);
   }, [messages, isFetchingHistory]);
 
-  // ── Execute after friend resolved ───────────────────────────────────────────
+  // ── Execute after connect resolved ───────────────────────────────────────────
   const handlePlayVideo = useCallback(
     async (video) => {
       if (!video?._id) return;
@@ -467,12 +467,12 @@ const AIAgentModal = ({ isOpen, onClose }) => {
     [addMessage, announceUpcomingAction, handleMinimize, myProfile, navigate],
   );
 
-  const handleFriendAction = useCallback(
-    async (friend, action, intent) => {
+  const handleConnectAction = useCallback(
+    async (connect, action, intent) => {
       const result = await executeAction({
         action,
-        friend,
-        extraFriends: intent?.extraFriends,
+        connect,
+        extraConnects: intent?.extraConnects,
         targetName: intent?.targetName ?? null,
         targetRoute: intent?.targetRoute ?? null,
         subPath: intent?.subPath ?? null,
@@ -494,7 +494,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       });
       rememberActionResult(myProfile?._id, {
         action,
-        friendName: getFriendDisplayName(friend),
+        connectName: getConnectDisplayName(connect),
         result,
       });
     },
@@ -625,7 +625,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             },
             signal: abort.signal,
             voice: liveTalkOnRef.current,
-            userName: getFriendDisplayName(myProfile),
+            userName: getConnectDisplayName(myProfile),
             memory: getMemoryPromptBlock(myProfile?._id),
           });
           if (!stillCurrent()) return;
@@ -694,7 +694,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         if (!result || !stillCurrent()) return;
         rememberActionResult(myProfile?._id, {
           action: intent?.action,
-          friendName: intent?.targetName,
+          connectName: intent?.targetName,
           result,
           userText: originalText,
         });
@@ -753,7 +753,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
                 { action: "VIEW_PROFILE" },
                 user,
               );
-              handleFriendAction(user, "VIEW_PROFILE", {
+              handleConnectAction(user, "VIEW_PROFILE", {
                 action: "VIEW_PROFILE",
               });
             },
@@ -777,22 +777,22 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         });
       };
 
-      const resolveFriends = async (intent) => {
-        const localFriends = Array.isArray(myProfile?.friends)
-          ? myProfile.friends
+      const resolveConnects = async (intent) => {
+        const localConnects = Array.isArray(myProfile?.connects)
+          ? myProfile.connects
           : [];
-        const cached = Array.isArray(friendsCacheRef.current)
-          ? friendsCacheRef.current
+        const cached = Array.isArray(connectsCacheRef.current)
+          ? connectsCacheRef.current
           : [];
-        const friends = cached.length >= localFriends.length ? cached : localFriends;
-        let matched = searchFriendsByName(friends, intent.targetName);
+        const connects = cached.length >= localConnects.length ? cached : localConnects;
+        let matched = searchConnectsByName(connects, intent.targetName);
         if (matched.length === 0) {
-          const names = splitFriendNames(intent.targetName);
+          const names = splitConnectNames(intent.targetName);
           if (names.length > 1) {
             const seen = new Set();
             matched = [];
             names.forEach((name) => {
-              searchFriendsByName(friends, name).forEach((profile) => {
+              searchConnectsByName(connects, name).forEach((profile) => {
                 const id = String(profile?._id || "");
                 if (!id || seen.has(id)) return;
                 seen.add(id);
@@ -801,7 +801,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             });
           }
         }
-        return { matched, searchableFriends: friends };
+        return { matched, searchableConnects: connects };
       };
 
       const pauseForInput = (intent, slots, question) => {
@@ -816,15 +816,15 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         });
       };
 
-      const speakUpcomingAction = async (intent, friend = null) => {
+      const speakUpcomingAction = async (intent, connect = null) => {
         if (!stillCurrent()) return;
-        await announceUpcomingAction(intent, friend, originalText);
+        await announceUpcomingAction(intent, connect, originalText);
       };
 
       const runIntent = async (intent, replyOverride = "", options = {}) => {
         const hadTypedLudoInvitee =
           ["CREATE_LUDO", "INVITE_LUDO"].includes(intent?.action) &&
-          splitFriendNames(intent?.targetName).length > 0;
+          splitConnectNames(intent?.targetName).length > 0;
         const nextIntent = applyMemoryToIntent(
           hydrateIntent({
             ...intent,
@@ -851,23 +851,23 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         const ludoInviteNames = ["CREATE_LUDO", "INVITE_LUDO"].includes(
           nextIntent.action,
         )
-          ? splitFriendNames(nextIntent.targetName)
+          ? splitConnectNames(nextIntent.targetName)
           : [];
 
-        const needsFriend =
-          FRIEND_REQUIRED_ACTIONS.has(nextIntent.action) ||
+        const needsConnect =
+          CONNECT_REQUIRED_ACTIONS.has(nextIntent.action) ||
           (nextIntent.action === "CREATE_LUDO" && hadTypedLudoInvitee) ||
           (nextIntent.action === "QUERY_CONTENT" &&
             String(nextIntent.queryType || "").toLowerCase() === "user");
 
-        if (needsFriend) {
-          let { matched } = await resolveFriends(nextIntent);
-          const foundInFriends = matched.length > 0;
+        if (needsConnect) {
+          let { matched } = await resolveConnects(nextIntent);
+          const foundInConnects = matched.length > 0;
           const canSearchDirectory = DIRECTORY_LOOKUP_ACTIONS.has(
             nextIntent.action,
           );
 
-          if (!foundInFriends && canSearchDirectory) {
+          if (!foundInConnects && canSearchDirectory) {
             matched = await searchConnectUsers(nextIntent.targetName, {
               excludeId: myProfile?._id,
             });
@@ -880,35 +880,35 @@ const AIAgentModal = ({ isOpen, onClose }) => {
               ["targetName"],
               canSearchDirectory
                 ? `I couldn't find anyone named "${askedName}" on Connect. Try a username or full name.`
-                : `I couldn't find "${askedName}" in your friends list. Who did you mean?`,
+                : `I couldn't find "${askedName}" in your connects list. Who did you mean?`,
             );
             return true;
           }
 
-          if (nextIntent.action === "ADD_FRIEND" && foundInFriends) {
+          if (nextIntent.action === "ADD_CONNECT" && foundInConnects) {
             pendingIntentRef.current = null;
             if (matched.length === 1) {
               addMessage({
                 type: "action-result",
                 success: true,
-                content: `You're already friends with ${getFriendDisplayName(matched[0])}.`,
+                content: `You're already connects with ${getConnectDisplayName(matched[0])}.`,
               });
               return true;
             }
             addMessage({
-              type: "friend-picker",
-              content: `You're already friends with these people matching "${nextIntent.targetName}". Open a profile?`,
-              friends: matched,
+              type: "connect-picker",
+              content: `You're already connects with these people matching "${nextIntent.targetName}". Open a profile?`,
+              connects: matched,
               action: "VIEW_PROFILE",
               actionLabel: "View Profile",
               intent: { ...nextIntent, action: "VIEW_PROFILE" },
-              onAction: async (friend) => {
+              onAction: async (connect) => {
                 pendingIntentRef.current = null;
                 await speakUpcomingAction(
                   { ...nextIntent, action: "VIEW_PROFILE" },
-                  friend,
+                  connect,
                 );
-                handleFriendAction(friend, "VIEW_PROFILE", {
+                handleConnectAction(connect, "VIEW_PROFILE", {
                   ...nextIntent,
                   action: "VIEW_PROFILE",
                 });
@@ -927,8 +927,8 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             await speakUpcomingAction(nextIntent, matched[0]);
             const result = await executeAction({
               ...nextIntent,
-              friend: matched[0],
-              extraFriends: matched.slice(1),
+              connect: matched[0],
+              extraConnects: matched.slice(1),
               hintText: replyOverride,
               sourceText: originalText,
               myProfile,
@@ -949,7 +949,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             if (LOOKUP_ACTIONS.has(nextIntent.action)) {
               const result = await executeAction({
                 ...nextIntent,
-                friend: matched[0],
+                connect: matched[0],
                 hintText: replyOverride,
                 sourceText: originalText,
                 myProfile,
@@ -959,7 +959,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
               await presentResult(result, replyOverride, nextIntent);
               return true;
             }
-            await handleFriendAction(
+            await handleConnectAction(
               matched[0],
               nextIntent.action,
               nextIntent,
@@ -984,36 +984,36 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             : null;
 
           addMessage({
-            type: "friend-picker",
+            type: "connect-picker",
             content:
               replyOverride && looksLikeQuestion(replyOverride)
                 ? replyOverride
                 : nextIntent.action === "SEND_MESSAGE_TO_USER"
                   ? matched.length === 1
-                    ? `Ready to send "${previewText}" to ${getFriendDisplayName(matched[0])}. ${autoRun ? "Running now." : "Click below to send it."}`
+                    ? `Ready to send "${previewText}" to ${getConnectDisplayName(matched[0])}. ${autoRun ? "Running now." : "Click below to send it."}`
                     : `Found ${matched.length} people matching "${nextIntent.targetName}". Which one should receive "${previewText}"?`
                   : matched.length === 1
-                    ? `Found ${getFriendDisplayName(matched[0])}! ${autoRun ? "Running now." : "Click below to continue."}`
+                    ? `Found ${getConnectDisplayName(matched[0])}! ${autoRun ? "Running now." : "Click below to continue."}`
                     : `Found ${matched.length} people named "${nextIntent.targetName}". Which one?`,
-            friends: matched,
+            connects: matched,
             action: nextIntent.action,
             actionLabel: cardLabel,
             intent: nextIntent,
-            onAction: async (friend) => {
+            onAction: async (connect) => {
               pendingIntentRef.current = null;
-              await speakUpcomingAction(nextIntent, friend);
-              handleFriendAction(friend, nextIntent.action, nextIntent);
+              await speakUpcomingAction(nextIntent, connect);
+              handleConnectAction(connect, nextIntent.action, nextIntent);
             },
           });
           return true;
         }
 
-        if (NO_FRIEND_ACTIONS.has(nextIntent.action)) {
+        if (NO_CONNECT_ACTIONS.has(nextIntent.action)) {
           pendingIntentRef.current = null;
           await speakUpcomingAction(nextIntent);
           const result = await executeAction({
             ...nextIntent,
-            friend: null,
+            connect: null,
             hintText: replyOverride,
             sourceText: originalText,
             myProfile,
@@ -1109,7 +1109,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       navigate,
       handleMinimize,
       addMessage,
-      handleFriendAction,
+      handleConnectAction,
       handlePlayVideo,
       handleDownloadYoutube,
       cancelSpeech,

@@ -328,7 +328,7 @@ const Home = () => {
                                         : feedLoaded ? (
                                             <div className="no-posts-message text-center py-4">
                                                 <h4>Your feed is waiting</h4>
-                                                <p>Post something, add a friend, or answer today's question above.</p>
+                                                <p>Post something, add a connect, or answer today's question above.</p>
                                             </div>
                                         ) : (
                                             <PostSkeleton count={3} />

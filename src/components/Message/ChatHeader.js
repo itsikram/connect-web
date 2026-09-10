@@ -29,7 +29,7 @@ import {
   playAudioWithWebAudio,
   initializeAudioUnlock,
 } from "../../utils/audioUnlock";
-import { sendBumpToFriend } from "../../utils/sendBump";
+import { sendBumpToConnect } from "../../utils/sendBump";
 import {
   showCallNotification,
   closeCallNotification,
@@ -41,19 +41,19 @@ import "./UserInfoModal.css";
 // Using Agora RTC SDK instead of simple-peer
 
 const ChatHeader = ({
-  friendProfile,
+  connectProfile,
   room,
   lastSeen,
-  friendProfilePic,
-  friendId: routeFriendId,
+  connectProfilePic,
+  connectId: routeConnectId,
   isChatLoading = false,
 }) => {
   const [emotion, setEmotion] = useState(false);
-  const [expression, setExpression] = useState(null); // Store friend's expression
+  const [expression, setExpression] = useState(null); // Store connect's expression
   const [myEmotion, setMyEmotion] = useState("");
-  const [friendId, setFriendId] = useState(null);
+  const [connectId, setConnectId] = useState(null);
   const [isLoaded, setIsLoaded] = useState(false);
-  const [friendPP, setFriendPP] = useState(friendProfilePic);
+  const [connectPP, setConnectPP] = useState(connectProfilePic);
   const [isMicrophone, setIsMicrophone] = useState(true);
   // const [isBackCamera, setIsBackCamera] = useState(false); // Commented out as it's unused
   const [isCameraOn, setIsCameraOn] = useState(true);
@@ -63,7 +63,7 @@ const ChatHeader = ({
   const [incomingCall, setIncomingCall] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [currentChannel, setCurrentChannel] = useState(null);
-  const [filterFriendVideo, setFilterFriendVideo] = useState(false);
+  const [filterConnectVideo, setFilterConnectVideo] = useState(false);
   const [filterMyVideo, setFilterMyVideo] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
@@ -71,7 +71,7 @@ const ChatHeader = ({
   const [isUserInfoModalOpen, setIsUserInfoModalOpen] = useState(false);
   const [userInfoData, setUserInfoData] = useState(null);
   const [loadingUserInfo, setLoadingUserInfo] = useState(false);
-  const [friendLocation, setFriendLocation] = useState(null);
+  const [connectLocation, setConnectLocation] = useState(null);
   const [isCallDropdownOpen, setIsCallDropdownOpen] = useState(false);
   const [isReportModal, setIsReportModal] = useState(false);
   const [isChatSettingsOpen, setIsChatSettingsOpen] = useState(false);
@@ -157,7 +157,7 @@ const ChatHeader = ({
   const { minimizeCall, endMinimizedCall, updateMinimizedCall } =
     useCallMinimize();
 
-  const currentFriendId = friendId || routeFriendId || friendProfile?._id || null;
+  const currentConnectId = connectId || routeConnectId || connectProfile?._id || null;
 
   const listHasId = useCallback((list, id) => {
     if (!id || !Array.isArray(list)) return false;
@@ -173,20 +173,20 @@ const ChatHeader = ({
         ? currentProfile.blockedUsers
         : [];
       const alreadyBlocked = listHasId(current, id);
-      const isCurrentFriend = String(id) === String(currentFriendId);
+      const isCurrentConnect = String(id) === String(currentConnectId);
       if (shouldBlock === alreadyBlocked) {
-        if (isCurrentFriend) setIsBlocked(shouldBlock);
+        if (isCurrentConnect) setIsBlocked(shouldBlock);
         return;
       }
       const next = shouldBlock
         ? [...current, id]
         : current.filter((item) => String(item) !== String(id));
-      if (isCurrentFriend) setIsBlocked(shouldBlock);
+      if (isCurrentConnect) setIsBlocked(shouldBlock);
       dispatch(getProfileSuccess({ ...currentProfile, blockedUsers: next }));
       window.dispatchEvent(
         new CustomEvent("connect:block-status", {
           detail: {
-            friendId: id,
+            connectId: id,
             by: currentProfile?._id,
             target: id,
             iBlocked: shouldBlock,
@@ -204,16 +204,16 @@ const ChatHeader = ({
       }
       invalidateGetCache("/profile");
     },
-    [currentFriendId, dispatch, listHasId],
+    [currentConnectId, dispatch, listHasId],
   );
 
   useEffect(() => {
-    if (!currentFriendId) {
+    if (!currentConnectId) {
       setIsBlocked(false);
       return;
     }
-    setIsBlocked(listHasId(profile?.blockedUsers, currentFriendId));
-  }, [currentFriendId, listHasId, profile?.blockedUsers]);
+    setIsBlocked(listHasId(profile?.blockedUsers, currentConnectId));
+  }, [currentConnectId, listHasId, profile?.blockedUsers]);
 
   useEffect(() => {
     if (!profileId) return undefined;
@@ -230,7 +230,7 @@ const ChatHeader = ({
       if (String(target) !== String(profileId)) return;
       window.dispatchEvent(
         new CustomEvent("connect:block-status", {
-          detail: { by, target, friendId: by, blockedMe: true },
+          detail: { by, target, connectId: by, blockedMe: true },
         }),
       );
     };
@@ -238,7 +238,7 @@ const ChatHeader = ({
       if (String(target) !== String(profileId)) return;
       window.dispatchEvent(
         new CustomEvent("connect:block-status", {
-          detail: { by, target, friendId: by, blockedMe: false },
+          detail: { by, target, connectId: by, blockedMe: false },
         }),
       );
     };
@@ -870,7 +870,7 @@ const ChatHeader = ({
     setIsMinimized(false);
     setCallDuration(0);
     setFilterMyVideo("");
-    setFilterFriendVideo("");
+    setFilterConnectVideo("");
     setIsMicrophone(true);
     setIsCameraOn(true);
     if (minimizedDurationInterval.current) {
@@ -897,7 +897,7 @@ const ChatHeader = ({
 
     if (!callAccepted) {
       socket.emit("video-call-cancel", {
-        to: String(friendId),
+        to: String(connectId),
         channelName: currentChannel,
       });
       await cleanupVideoCall();
@@ -905,16 +905,16 @@ const ChatHeader = ({
     }
     // Emit to server (server will broadcast to both users)
     socket.emit("video-call-end", {
-      to: String(friendId),
+      to: String(connectId),
       channelName: currentChannel,
     });
     // Do local cleanup
     await cleanupVideoCall();
-  }, [friendId, cleanupVideoCall, callAccepted, currentChannel]);
+  }, [connectId, cleanupVideoCall, callAccepted, currentChannel]);
 
   useEffect(() => {
     const handleUpdatedCallStatus = ({ from, status }) => {
-      if (!callAccepted && isVideoCalling && from === friendId) {
+      if (!callAccepted && isVideoCalling && from === connectId) {
         setOutgoingCallStatus(status || "");
       }
     };
@@ -922,9 +922,9 @@ const ChatHeader = ({
 
     const onApplyVideoFilter = ({ filter }) => {
       if (filter !== "") {
-        setFilterFriendVideo(filter);
+        setFilterConnectVideo(filter);
       } else {
-        setFilterFriendVideo("");
+        setFilterConnectVideo("");
       }
     };
 
@@ -934,19 +934,19 @@ const ChatHeader = ({
       socket.off("apply-video-filter", onApplyVideoFilter);
       socket.off("updated-call-status", handleUpdatedCallStatus);
     };
-  }, [isVideoCalling, callAccepted, friendId]);
+  }, [isVideoCalling, callAccepted, connectId]);
 
   // Notify caller when user focuses the tab during an incoming ringing call
   const notifyFocusDuringIncomingCall = useCallback(() => {
     if (incomingCall && !callAccepted) {
-      const to = incomingCall.from || friendId;
+      const to = incomingCall.from || connectId;
       if (to) {
         try {
           socket.emit("update-call-status", { to, status: "Call Seen" });
         } catch (_) {}
       }
     }
-  }, [incomingCall, callAccepted, friendId]);
+  }, [incomingCall, callAccepted, connectId]);
 
   // Resume ringtone playback when tab becomes visible
   useEffect(() => {
@@ -1061,15 +1061,15 @@ const ChatHeader = ({
     }
   }, [settings, incomingCall]);
 
-  // Call a friend using Agora
-  const callFriend = useCallback(
-    async (friendId) => {
-      if (!friendId) return;
-      const channelName = `${profileId}-${friendId}`;
+  // Call a connect using Agora
+  const callConnect = useCallback(
+    async (connectId) => {
+      if (!connectId) return;
+      const channelName = `${profileId}-${connectId}`;
       setCurrentChannel(channelName);
       console.log(
         "Initiating Agora call to:",
-        friendId,
+        connectId,
         "with channel:",
         channelName,
       );
@@ -1089,7 +1089,7 @@ const ChatHeader = ({
         console.error("Failed to start local video for outgoing call:", error);
       }
 
-      socket.emit("video-call", { to: String(friendId), channelName });
+      socket.emit("video-call", { to: String(connectId), channelName });
       playCallingBeep();
     },
     [profileId],
@@ -1098,9 +1098,9 @@ const ChatHeader = ({
   const handleVideoCallBtn = useCallback(
     (e) => {
       if (isChatLoadingRef.current) return;
-      const id = friendId || e.currentTarget.dataset.id;
+      const id = connectId || e.currentTarget.dataset.id;
       if (!id) {
-        console.error("Video call: No friend ID available");
+        console.error("Video call: No connect ID available");
         return;
       }
       setIncomingCall(null);
@@ -1115,10 +1115,10 @@ const ChatHeader = ({
             to: id,
             channelName,
             callerName:
-              friendProfile.fullName ||
-              `${friendProfile.user?.firstName || ""} ${friendProfile.user?.surname || ""}`.trim() ||
-              "Friend",
-            callerProfilePic: friendProfile.profilePic,
+              connectProfile.fullName ||
+              `${connectProfile.user?.firstName || ""} ${connectProfile.user?.surname || ""}`.trim() ||
+              "Connect",
+            callerProfilePic: connectProfile.profilePic,
           },
         }),
       );
@@ -1129,15 +1129,15 @@ const ChatHeader = ({
         isAudio: false,
       });
     },
-    [profileId, friendProfile, friendId],
+    [profileId, connectProfile, connectId],
   );
 
   const handleAudioCallBtn = useCallback(
     (e) => {
       if (isChatLoadingRef.current) return;
-      const id = friendId || e.currentTarget.dataset.id;
+      const id = connectId || e.currentTarget.dataset.id;
       if (!id) {
-        console.error("Audio call: No friend ID available");
+        console.error("Audio call: No connect ID available");
         return;
       }
       setIncomingCall(null);
@@ -1151,17 +1151,17 @@ const ChatHeader = ({
             to: id,
             channelName,
             callerName:
-              friendProfile.fullName ||
-              `${friendProfile.user?.firstName || ""} ${friendProfile.user?.surname || ""}`.trim() ||
-              "Friend",
-            callerProfilePic: friendProfile.profilePic,
+              connectProfile.fullName ||
+              `${connectProfile.user?.firstName || ""} ${connectProfile.user?.surname || ""}`.trim() ||
+              "Connect",
+            callerProfilePic: connectProfile.profilePic,
           },
         }),
       );
 
       socket.emit("audio-call", { to: String(id), channelName, isAudio: true });
     },
-    [profileId, friendProfile, friendId],
+    [profileId, connectProfile, connectId],
   );
 
   const minimizeVideoCall = useCallback(() => {
@@ -1172,11 +1172,11 @@ const ChatHeader = ({
       id: callId,
       type: "video",
       callerName:
-        friendProfile?.fullName ||
-        `${friendProfile?.user?.firstName} ${friendProfile?.user?.surname}` ||
+        connectProfile?.fullName ||
+        `${connectProfile?.user?.firstName} ${connectProfile?.user?.surname}` ||
         "Unknown Caller",
-      callerProfilePic: friendProfile?.profilePic,
-      callerId: friendId,
+      callerProfilePic: connectProfile?.profilePic,
+      callerId: connectId,
       status: "connected",
       duration: callDuration,
       isMuted: !isMicrophone,
@@ -1202,8 +1202,8 @@ const ChatHeader = ({
   }, [
     callAccepted,
     currentChannel,
-    friendProfile,
-    friendId,
+    connectProfile,
+    connectId,
     callDuration,
     isMicrophone,
     isCameraOn,
@@ -1527,11 +1527,11 @@ const ChatHeader = ({
         error: data?.error,
       });
 
-      // Use friendProfile._id directly if friendId state is not yet set
-      const currentFriendId = friendId || friendProfile?._id;
-      if (!currentFriendId) {
+      // Use connectProfile._id directly if connectId state is not yet set
+      const currentConnectId = connectId || connectProfile?._id;
+      if (!currentConnectId) {
         console.warn(
-          "[ChatHeader] ⚠️ No friendId available, skipping emotion response",
+          "[ChatHeader] ⚠️ No connectId available, skipping emotion response",
         );
         return;
       }
@@ -1638,12 +1638,12 @@ const ChatHeader = ({
         features: features,
       };
 
-      // Update expression state for display (set my expression, not friend's)
+      // Update expression state for display (set my expression, not connect's)
       // Note: This is MY expression from my own camera detection
-      // Friend's expression comes via socket.on('emotion_change')
+      // Connect's expression comes via socket.on('emotion_change')
       if (dominantExpression && dominantExpression !== "none") {
         // We could store my own expression here if needed, but for now
-        // we only display friend's expression from socket events
+        // we only display connect's expression from socket events
       }
 
       // FAST EMISSION: Emit immediately if emotion changed (before majority window)
@@ -1655,9 +1655,9 @@ const ChatHeader = ({
         lastMajorityLabelRef.current = label;
         setMyEmotion(`${emoji} ${label}`);
 
-        // Use friendProfile._id directly if friendId state is not yet set
-        const currentFriendId = friendId || friendProfile?._id;
-        if (profileId && currentFriendId) {
+        // Use connectProfile._id directly if connectId state is not yet set
+        const currentConnectId = connectId || connectProfile?._id;
+        if (profileId && currentConnectId) {
           try {
             // Get the latest expression data from the most recent response
             const latestExpressionData = expressionDataRef.current || {};
@@ -1671,7 +1671,7 @@ const ChatHeader = ({
               emotion: `${emoji} ${label}`,
               emotionText: label,
               emoji,
-              friendId: currentFriendId,
+              connectId: currentConnectId,
               confidence: Math.round(confidence * 100) / 100, // Use current frame confidence for immediate emission
               quality: Math.round(confidence * 100) / 100,
               // Include expression data
@@ -1689,7 +1689,7 @@ const ChatHeader = ({
               emotionScores: latestExpressionData.allEmotions || {},
             });
             console.log(
-              `[ChatHeader] 📤 ⚡ FAST Emotion & Expression emitted immediately to friendId: ${currentFriendId}`,
+              `[ChatHeader] 📤 ⚡ FAST Emotion & Expression emitted immediately to connectId: ${currentConnectId}`,
               {
                 emotion: `${emoji} ${label}`,
                 expression: latestExpressionData.dominantExpression || "none",
@@ -1751,7 +1751,7 @@ const ChatHeader = ({
         }
       }
     },
-    [profileId, friendId, friendProfile?._id],
+    [profileId, connectId, connectProfile?._id],
   );
 
   // Update ref whenever handler changes
@@ -1778,11 +1778,11 @@ const ChatHeader = ({
         return; // Skip if request already in flight
       }
 
-      // Use friendProfile._id directly if friendId state is not yet set
-      const currentFriendId = friendId || friendProfile?._id;
-      if (!currentFriendId) {
+      // Use connectProfile._id directly if connectId state is not yet set
+      const currentConnectId = connectId || connectProfile?._id;
+      if (!currentConnectId) {
         console.warn(
-          "[ChatHeader] Cannot detect emotion - friendId not available",
+          "[ChatHeader] Cannot detect emotion - connectId not available",
         );
         return;
       }
@@ -1834,7 +1834,7 @@ const ChatHeader = ({
       }
       // Note: Response will be handled by handleEmotionServerResponse via socket listener
     },
-    [profileId, friendId, friendProfile?._id, initializeEmotionServerSocket],
+    [profileId, connectId, connectProfile?._id, initializeEmotionServerSocket],
   );
 
   const detectEmotions = useCallback(() => {
@@ -1852,24 +1852,24 @@ const ChatHeader = ({
       if (document.hidden || captureInFlightRef.current) {
         return;
       }
-      // Use friendProfile._id directly if friendId state is not yet set
-      const currentFriendId = friendId || friendProfile?._id;
+      // Use connectProfile._id directly if connectId state is not yet set
+      const currentConnectId = connectId || connectProfile?._id;
 
-      // Guard check: stop detection if profileId or friendId become unavailable
+      // Guard check: stop detection if profileId or connectId become unavailable
       if (
         !profileId ||
         typeof profileId !== "string" ||
         profileId.length === 0 ||
-        !currentFriendId ||
-        typeof currentFriendId !== "string" ||
-        currentFriendId.length === 0
+        !currentConnectId ||
+        typeof currentConnectId !== "string" ||
+        currentConnectId.length === 0
       ) {
         console.warn("⚠️ Stopping emotion detection - invalid IDs:", {
           profileId: profileId || "missing",
           profileIdType: typeof profileId,
-          friendId: currentFriendId || "missing",
-          friendIdType: typeof currentFriendId,
-          friendProfileId: friendProfile?._id || "missing",
+          connectId: currentConnectId || "missing",
+          connectIdType: typeof currentConnectId,
+          connectProfileId: connectProfile?._id || "missing",
         });
         if (emotionIntervalRef.current) {
           clearInterval(emotionIntervalRef.current);
@@ -1909,32 +1909,32 @@ const ChatHeader = ({
     }, detectionInterval);
   }, [
     profileId,
-    friendId,
-    friendProfile?._id,
+    connectId,
+    connectProfile?._id,
     captureFrameAsBase64,
     detectEmotionFromServer,
   ]);
 
   // No need to load models on client side - server handles it
   const startEmotionDetection = useCallback(() => {
-    // Use friendProfile._id directly if friendId state is not yet set
-    const currentFriendId = friendId || friendProfile?._id;
+    // Use connectProfile._id directly if connectId state is not yet set
+    const currentConnectId = connectId || connectProfile?._id;
 
     // Don't start detection if we don't have required IDs
     if (
       !profileId ||
       typeof profileId !== "string" ||
       profileId.length === 0 ||
-      !currentFriendId ||
-      typeof currentFriendId !== "string" ||
-      currentFriendId.length === 0
+      !currentConnectId ||
+      typeof currentConnectId !== "string" ||
+      currentConnectId.length === 0
     ) {
       console.warn("⚠️ Not starting emotion detection - invalid IDs:", {
         profileId: profileId || "missing",
         profileIdType: typeof profileId,
-        friendId: currentFriendId || "missing",
-        friendIdType: typeof currentFriendId,
-        friendProfileId: friendProfile?._id || "missing",
+        connectId: currentConnectId || "missing",
+        connectIdType: typeof currentConnectId,
+        connectProfileId: connectProfile?._id || "missing",
       });
       return;
     }
@@ -1946,8 +1946,8 @@ const ChatHeader = ({
     detectEmotions();
   }, [
     profileId,
-    friendId,
-    friendProfile?._id,
+    connectId,
+    connectProfile?._id,
     detectEmotions,
     initializeEmotionServerSocket,
   ]);
@@ -1957,12 +1957,12 @@ const ChatHeader = ({
     e?.stopPropagation?.();
     if (isChatLoadingRef.current) return;
     if (bumpInFlightRef.current) return;
-    const targetFriendId = friendProfile?._id || friendId;
+    const targetConnectId = connectProfile?._id || connectId;
     const myId = profile?._id;
-    if (!targetFriendId || !myId) return;
+    if (!targetConnectId || !myId) return;
     bumpInFlightRef.current = true;
     try {
-      await sendBumpToFriend(targetFriendId, myId);
+      await sendBumpToConnect(targetConnectId, myId);
       setIsChatOptionMenu(false);
     } catch (error) {
       console.error("Error sending bump:", error);
@@ -1971,24 +1971,24 @@ const ChatHeader = ({
         bumpInFlightRef.current = false;
       }, 800);
     }
-  }, [friendProfile, friendId, profile]);
+  }, [connectProfile, connectId, profile]);
 
   useEffect(() => {
-    // Use friendProfile._id directly if friendId state is not yet set
-    // Wait for friendProfile to be loaded before starting detection
-    if (!friendProfile || !friendProfile._id) {
-      // friendProfile not loaded yet, don't start detection
+    // Use connectProfile._id directly if connectId state is not yet set
+    // Wait for connectProfile to be loaded before starting detection
+    if (!connectProfile || !connectProfile._id) {
+      // connectProfile not loaded yet, don't start detection
       return;
     }
 
-    const currentFriendId = friendId || friendProfile._id;
+    const currentConnectId = connectId || connectProfile._id;
     const hasValidIds =
       profileId &&
       typeof profileId === "string" &&
       profileId.length > 0 &&
-      currentFriendId &&
-      typeof currentFriendId === "string" &&
-      currentFriendId.length > 0;
+      currentConnectId &&
+      typeof currentConnectId === "string" &&
+      currentConnectId.length > 0;
 
     if (room && settings.isShareEmotion && hasValidIds) {
       // Only start if camera is not already running (prevent unnecessary restarts)
@@ -1998,8 +1998,8 @@ const ChatHeader = ({
             console.log(
               "✅ Starting server-side emotion detection with profileId:",
               profileId,
-              "friendId:",
-              currentFriendId,
+              "connectId:",
+              currentConnectId,
             );
             await startVideo();
             if (cameraVideoRef.current && isCameraRunningRef.current) {
@@ -2030,8 +2030,8 @@ const ChatHeader = ({
     room,
     settings.isShareEmotion,
     profileId,
-    friendId,
-    friendProfile,
+    connectId,
+    connectProfile,
     startVideo,
     startEmotionDetection,
   ]);
@@ -2081,32 +2081,32 @@ const ChatHeader = ({
   }, []);
 
   useEffect(() => {
-    const resolvedFriendId = friendProfile?._id || routeFriendId || null;
-    if (!resolvedFriendId) {
+    const resolvedConnectId = connectProfile?._id || routeConnectId || null;
+    if (!resolvedConnectId) {
       setIsLoaded(false);
       return;
     }
 
-    setFriendId(resolvedFriendId);
+    setConnectId(resolvedConnectId);
     setIsLoaded(true);
-    if (friendProfile?.profilePic) {
-      setFriendPP(friendProfile.profilePic);
+    if (connectProfile?.profilePic) {
+      setConnectPP(connectProfile.profilePic);
     }
-    socket.emit("last_emotion", { friendId: resolvedFriendId, profileId });
-  }, [friendProfile, routeFriendId, profileId]);
+    socket.emit("last_emotion", { connectId: resolvedConnectId, profileId });
+  }, [connectProfile, routeConnectId, profileId]);
 
   useEffect(() => {
-    if (isValidUrl(friendPP))
-      checkImgLoading(friendPP, () => {}); // Removed unused setIsPpLoaded
-    else setFriendPP("");
-  }, [friendPP]);
+    if (isValidUrl(connectPP))
+      checkImgLoading(connectPP, () => {}); // Removed unused setIsPpLoaded
+    else setConnectPP("");
+  }, [connectPP]);
 
   useEffect(() => {
-    if (myEmotion && friendId) {
+    if (myEmotion && connectId) {
       console.log("my emotion");
-      // socket.emit('emotion_change', { profileId, emotion: myEmotion, friendId });
+      // socket.emit('emotion_change', { profileId, emotion: myEmotion, connectId });
     }
-  }, [myEmotion, friendId, profileId]);
+  }, [myEmotion, connectId, profileId]);
 
   useEffect(() => {
     const handleEmotionChange = (data) => {
@@ -2140,33 +2140,33 @@ const ChatHeader = ({
 
     socket.on("emotion_change", handleEmotionChange);
 
-    // Handle friend location updates
-    const handleFriendLocationUpdate = (data) => {
-      const { profileId: friendProfileId, location } = data;
+    // Handle connect location updates
+    const handleConnectLocationUpdate = (data) => {
+      const { profileId: connectProfileId, location } = data;
       if (
-        friendProfileId &&
+        connectProfileId &&
         location &&
-        friendProfileId === friendProfile?._id
+        connectProfileId === connectProfile?._id
       ) {
         console.log(
-          "📍 Friend location update received:",
-          friendProfileId,
+          "📍 Connect location update received:",
+          connectProfileId,
           location,
         );
-        setFriendLocation({
+        setConnectLocation({
           latitude: location.latitude,
           longitude: location.longitude,
           timestamp: location.timestamp || Date.now(),
         });
       }
     };
-    socket.on("friend_location_update", handleFriendLocationUpdate);
+    socket.on("connect_location_update", handleConnectLocationUpdate);
 
     return () => {
       socket.off("emotion_change", handleEmotionChange);
-      socket.off("friend_location_update", handleFriendLocationUpdate);
+      socket.off("connect_location_update", handleConnectLocationUpdate);
     };
-  }, [friendProfile]);
+  }, [connectProfile]);
 
   // const handleSwitchClick = useCallback(async () => {
   //     const videoTrack = localTracks.current.find(track => track.kind === 'video');
@@ -2218,8 +2218,8 @@ const ChatHeader = ({
     const nextIndex = (currentIndex + 1) % filters.length;
     const newFilter = filters[nextIndex];
     setFilterMyVideo(newFilter);
-    socket.emit("filter-video", { to: friendId, filter: newFilter });
-  }, [filterMyVideo, friendId]);
+    socket.emit("filter-video", { to: connectId, filter: newFilter });
+  }, [filterMyVideo, connectId]);
 
   const toggleFullscreen = useCallback(async () => {
     if (!isFullscreen) {
@@ -2348,16 +2348,16 @@ const ChatHeader = ({
     if (isChatLoadingRef.current) return;
     // Dispatch event to open sticky chat box
     const openChatEvent = new CustomEvent("openStickyChat", {
-      detail: { profileId: friendId },
+      detail: { profileId: connectId },
     });
     window.dispatchEvent(openChatEvent);
-  }, [friendId]);
+  }, [connectId]);
   const handleBlockUser = useCallback(async () => {
-    const targetId = currentFriendId;
+    const targetId = currentConnectId;
     if (!targetId || isBlocking) return;
     setIsBlocking(true);
     try {
-      const res = await api.post("friend/block", { friendId: targetId });
+      const res = await api.post("connect/block", { connectId: targetId });
       if (res.status === 200) {
         patchMyBlockedUsers(true, targetId);
         setIsChatOptionMenu(false);
@@ -2370,14 +2370,14 @@ const ChatHeader = ({
     } finally {
       setIsBlocking(false);
     }
-  }, [currentFriendId, isBlocking, patchMyBlockedUsers]);
+  }, [currentConnectId, isBlocking, patchMyBlockedUsers]);
 
   const handleUnBlockUser = useCallback(async () => {
-    const targetId = currentFriendId;
+    const targetId = currentConnectId;
     if (!targetId || isBlocking) return;
     setIsBlocking(true);
     try {
-      const res = await api.post("friend/unblock", { friendId: targetId });
+      const res = await api.post("connect/unblock", { connectId: targetId });
       if (res.status === 200) {
         patchMyBlockedUsers(false, targetId);
         setIsChatOptionMenu(false);
@@ -2390,21 +2390,21 @@ const ChatHeader = ({
     } finally {
       setIsBlocking(false);
     }
-  }, [currentFriendId, isBlocking, patchMyBlockedUsers]);
+  }, [currentConnectId, isBlocking, patchMyBlockedUsers]);
 
   const handleViewProfile = useCallback(
-    () => navigate(`/${friendId}`),
-    [navigate, friendId],
+    () => navigate(`/${connectId}`),
+    [navigate, connectId],
   );
 
   // Removed Google Maps initialization - using Leaflet map component instead
 
   useEffect(() => {
-    if (!isUserInfoModalOpen || !friendId) return undefined;
+    if (!isUserInfoModalOpen || !connectId) return undefined;
 
     let cancelled = false;
     setLoadingUserInfo(true);
-    fetchProfileCached(friendId, { ttlMs: 60000, storageTtlMs: 300000 })
+    fetchProfileCached(connectId, { ttlMs: 60000, storageTtlMs: 300000 })
       .then((profileData) => {
         if (cancelled || !profileData) return;
         setUserInfoData(profileData);
@@ -2412,7 +2412,7 @@ const ChatHeader = ({
           profileData?.lastLocation?.latitude &&
           profileData?.lastLocation?.longitude
         ) {
-          setFriendLocation({
+          setConnectLocation({
             latitude: profileData.lastLocation.latitude,
             longitude: profileData.lastLocation.longitude,
             timestamp: profileData.lastLocation.timestamp || Date.now(),
@@ -2429,7 +2429,7 @@ const ChatHeader = ({
     return () => {
       cancelled = true;
     };
-  }, [isUserInfoModalOpen, friendId]);
+  }, [isUserInfoModalOpen, connectId]);
 
   // Handle map loading state when modal opens
   useEffect(() => {
@@ -2439,9 +2439,9 @@ const ChatHeader = ({
     }
 
     const location =
-      friendLocation ||
+      connectLocation ||
       userInfoData?.lastLocation ||
-      friendProfile?.lastLocation;
+      connectProfile?.lastLocation;
     if (!location || !location.latitude || !location.longitude) {
       setMapLoading(false);
       return;
@@ -2458,9 +2458,9 @@ const ChatHeader = ({
     };
   }, [
     isUserInfoModalOpen,
-    friendLocation,
+    connectLocation,
     userInfoData?.lastLocation,
-    friendProfile?.lastLocation,
+    connectProfile?.lastLocation,
   ]);
 
   // Format last active time
@@ -2493,32 +2493,32 @@ const ChatHeader = ({
 
   // Get user location
   const getUserLocation = useCallback(() => {
-    if (friendLocation) {
-      return `${friendLocation.latitude.toFixed(6)}, ${friendLocation.longitude.toFixed(6)}`;
+    if (connectLocation) {
+      return `${connectLocation.latitude.toFixed(6)}, ${connectLocation.longitude.toFixed(6)}`;
     }
-    const data = userInfoData || friendProfile;
+    const data = userInfoData || connectProfile;
     if (data?.lastLocation?.latitude && data?.lastLocation?.longitude) {
       return `${data.lastLocation.latitude.toFixed(6)}, ${data.lastLocation.longitude.toFixed(6)}`;
     }
     if (data?.presentAddress) return data.presentAddress;
     if (data?.permanentAddress) return data.permanentAddress;
     return "Not available";
-  }, [userInfoData, friendProfile, friendLocation]);
+  }, [userInfoData, connectProfile, connectLocation]);
 
   // Get user emotion
   const getUserEmotion = useCallback(() => {
     if (emotion) return emotion;
-    const data = userInfoData || friendProfile;
+    const data = userInfoData || connectProfile;
     if (data?.lastEmotion) return data.lastEmotion;
     if (data?.lastEmotionText && data?.lastEmotionEmoji) {
       return `${data.lastEmotionEmoji} ${data.lastEmotionText}`;
     }
     return "No emotion detected";
-  }, [emotion, userInfoData, friendProfile]);
+  }, [emotion, userInfoData, connectProfile]);
 
   // Get last action (inferred from recent activity)
   const getLastAction = useCallback(() => {
-    const data = userInfoData || friendProfile;
+    const data = userInfoData || connectProfile;
     if (emotion) {
       return "Sharing emotion";
     }
@@ -2536,29 +2536,29 @@ const ChatHeader = ({
       return "Last seen recently";
     }
     return "Unknown";
-  }, [emotion, userInfoData, friendProfile, lastSeen]);
+  }, [emotion, userInfoData, connectProfile, lastSeen]);
 
   const getUserName = useCallback(() => {
-    const data = userInfoData || friendProfile;
+    const data = userInfoData || connectProfile;
     return (
       data?.fullName ||
       (data?.user?.firstName && data?.user?.surname
         ? `${data.user.firstName} ${data.user.surname}`
         : "Unknown User")
     );
-  }, [userInfoData, friendProfile]);
+  }, [userInfoData, connectProfile]);
 
   const getUserProfilePic = useCallback(() => {
-    const data = userInfoData || friendProfile;
-    return sanitizeProfileImageUrl(data?.profilePic || friendPP || "", 200);
-  }, [userInfoData, friendProfile, friendPP]);
+    const data = userInfoData || connectProfile;
+    return sanitizeProfileImageUrl(data?.profilePic || connectPP || "", 200);
+  }, [userInfoData, connectProfile, connectPP]);
 
   const displayName =
-    friendProfile === true
-      ? friendProfile?.fullName || ""
-      : friendProfile?.user
-        ? `${friendProfile.user.firstName} ${friendProfile.user.surname}`
-        : friendProfile?.fullName || "";
+    connectProfile === true
+      ? connectProfile?.fullName || ""
+      : connectProfile?.user
+        ? `${connectProfile.user.firstName} ${connectProfile.user.surname}`
+        : connectProfile?.fullName || "";
 
   return (
     <>
@@ -2583,11 +2583,11 @@ const ChatHeader = ({
               </div>
             ) : (
               <UserPP
-                profilePic={`${friendPP || friendProfilePic || ""}`}
+                profilePic={`${connectPP || connectProfilePic || ""}`}
                 size="full"
                 hasStory={false}
-                profile={friendProfile?._id || routeFriendId}
-                active={friendProfile.isActive}
+                profile={connectProfile?._id || routeConnectId}
+                active={connectProfile.isActive}
               ></UserPP>
             )}
           </div>
@@ -2691,7 +2691,7 @@ const ChatHeader = ({
                 }
                 role="button"
                 tabIndex={isChatLoading ? -1 : 0}
-                data-id={friendId}
+                data-id={connectId}
                 className={`call-button action-button${isChatLoading ? " disabled" : ""}`}
                 title="Audio call"
                 aria-label="Audio call"
@@ -2912,7 +2912,7 @@ const ChatHeader = ({
                           className="fas fa-unlock"
                           style={{ marginRight: "8px" }}
                         ></i>
-                        Unblock {friendProfile.user.firstName}
+                        Unblock {connectProfile.user.firstName}
                       </li>
                     ) : (
                       <li
@@ -2930,7 +2930,7 @@ const ChatHeader = ({
                           className="fas fa-ban"
                           style={{ marginRight: "8px" }}
                         ></i>
-                        Block {friendProfile.user.firstName}
+                        Block {connectProfile.user.firstName}
                       </li>
                     )}
                     <li
@@ -2951,7 +2951,7 @@ const ChatHeader = ({
                         className="fas fa-flag"
                         style={{ marginRight: "8px" }}
                       ></i>
-                      Report {friendProfile.user.firstName}
+                      Report {connectProfile.user.firstName}
                     </li>
                   </ul>
                 </div>
@@ -3005,7 +3005,7 @@ const ChatHeader = ({
           >
             {
               <h2 className="text-center vc-modal-heading">
-                Video Call - {friendProfile && friendProfile.fullName}
+                Video Call - {connectProfile && connectProfile.fullName}
                 {callAccepted ? ` • ${formatDuration(callDuration)}` : ""}
               </h2>
             }
@@ -3016,7 +3016,7 @@ const ChatHeader = ({
                     <>{incomingCall.name || "Someone"} is calling you</>
                   ) : (
                     <>
-                      Calling {friendProfile && friendProfile.fullName}
+                      Calling {connectProfile && connectProfile.fullName}
                       {outgoingCallStatus ? ` • ${outgoingCallStatus}` : ""}
                     </>
                   ))}
@@ -3033,17 +3033,17 @@ const ChatHeader = ({
             >
               <div
                 ref={userVideo}
-                className={`receive-friends-video ${filterFriendVideo}`}
+                className={`receive-connects-video ${filterConnectVideo}`}
                 style={{
                   width: "100%",
                   height: "100%",
                   minHeight: "400px",
                   display: callAccepted ? "block" : "none",
                   background: "#000",
-                  border: filterFriendVideo ? "3px solid #29B1A9" : "none", // Green border when filter is active
+                  border: filterConnectVideo ? "3px solid #29B1A9" : "none", // Green border when filter is active
                   objectFit: "contain",
                 }}
-                data-video-type="friend-remote-video"
+                data-video-type="connect-remote-video"
               />
               <div
                 ref={myVideo}
@@ -3295,12 +3295,12 @@ const ChatHeader = ({
                           "https://via.placeholder.com/120?text=User";
                       }}
                     />
-                    {friendProfile?.isActive && (
+                    {connectProfile?.isActive && (
                       <span className="user-info-status-badge active"></span>
                     )}
                   </div>
                   <h2 className="user-info-name">{getUserName()}</h2>
-                  {friendProfile?.isActive ? (
+                  {connectProfile?.isActive ? (
                     <span className="user-info-status-text active">Online</span>
                   ) : (
                     <span className="user-info-status-text">Offline</span>
@@ -3328,26 +3328,26 @@ const ChatHeader = ({
                       </div>
                       <div className="user-info-card-content">
                         <h3 className="user-info-card-label">
-                          {friendLocation ||
+                          {connectLocation ||
                           userInfoData?.lastLocation ||
-                          friendProfile?.lastLocation
+                          connectProfile?.lastLocation
                             ? "Current Location"
                             : "Last Location"}
                         </h3>
                         <p className="user-info-card-value">
                           {getUserLocation()}
                         </p>
-                        {(friendLocation ||
+                        {(connectLocation ||
                           userInfoData?.lastLocation ||
-                          friendProfile?.lastLocation) && (
+                          connectProfile?.lastLocation) && (
                           <button
                             type="button"
                             className="user-info-maps-btn"
                             onClick={() => {
                               const loc =
-                                friendLocation ||
+                                connectLocation ||
                                 userInfoData?.lastLocation ||
-                                friendProfile?.lastLocation;
+                                connectProfile?.lastLocation;
                               if (loc) {
                                 window.open(
                                   `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`,
@@ -3361,19 +3361,19 @@ const ChatHeader = ({
                         )}
                       </div>
                     </div>
-                    {(friendLocation ||
+                    {(connectLocation ||
                       userInfoData?.lastLocation ||
-                      friendProfile?.lastLocation) && (
+                      connectProfile?.lastLocation) && (
                       <LocationMap
                         latitude={
-                          friendLocation?.latitude ||
+                          connectLocation?.latitude ||
                           userInfoData?.lastLocation?.latitude ||
-                          friendProfile?.lastLocation?.latitude
+                          connectProfile?.lastLocation?.latitude
                         }
                         longitude={
-                          friendLocation?.longitude ||
+                          connectLocation?.longitude ||
                           userInfoData?.lastLocation?.longitude ||
-                          friendProfile?.lastLocation?.longitude
+                          connectProfile?.lastLocation?.longitude
                         }
                         userName={getUserName()}
                         isLoading={mapLoading}
@@ -3486,15 +3486,15 @@ const ChatHeader = ({
         </ModalContainer>
         )}
 
-        {isReportModal && (friendId || friendProfile?._id) && (
+        {isReportModal && (connectId || connectProfile?._id) && (
           <ReportModal
             isOpen={isReportModal}
             onRequestClose={() => setIsReportModal(false)}
             type="profile"
-            targetId={friendId || friendProfile._id}
+            targetId={connectId || connectProfile._id}
             targetLabel={
-              friendProfile?.user
-                ? `${friendProfile.user.firstName || ""} ${friendProfile.user.surname || ""}`.trim()
+              connectProfile?.user
+                ? `${connectProfile.user.firstName || ""} ${connectProfile.user.surname || ""}`.trim()
                 : "this profile"
             }
           />
@@ -3503,8 +3503,8 @@ const ChatHeader = ({
         <ChatSettingsModal
           isOpen={isChatSettingsOpen}
           onRequestClose={() => setIsChatSettingsOpen(false)}
-          friendId={friendId || routeFriendId || friendProfile?._id}
-          friendProfile={friendProfile}
+          connectId={connectId || routeConnectId || connectProfile?._id}
+          connectProfile={connectProfile}
         />
 
       </div>

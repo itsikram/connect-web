@@ -61,13 +61,13 @@ const CreateWatch = ({ setWatches = null }) => {
 
     const profileName = profileData.user
         ? `${profileData.user.firstName || ''} ${profileData.user.surname || ''}`.trim()
-        : (profileData.fullName || 'Friend')
+        : (profileData.fullName || 'Connect')
     const textInputPlaceHoder = `Share a Watch video, ${profileName}`
 
     const getAudienceLabel = (audience) => {
         switch (audience) {
             case 1: return 'Public'
-            case 2: return 'Friends'
+            case 2: return 'Connects'
             case 3: return 'Only Me'
             default: return 'Public'
         }
@@ -304,7 +304,7 @@ const CreateWatch = ({ setWatches = null }) => {
                                         <div className="cpm-audience-menu">
                                             {[
                                                 { id: 1, icon: 'fas fa-globe', title: 'Public', desc: 'Anyone can see this Watch' },
-                                                { id: 2, icon: 'fas fa-users', title: 'Friends', desc: 'Only your friends can see this' },
+                                                { id: 2, icon: 'fas fa-users', title: 'Connects', desc: 'Only your connects can see this' },
                                                 { id: 3, icon: 'fas fa-lock', title: 'Only Me', desc: 'Only you can see this Watch' },
                                             ].map(opt => (
                                                 <div

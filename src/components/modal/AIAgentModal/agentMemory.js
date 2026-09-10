@@ -8,7 +8,7 @@ const emptyMemory = () => ({
   lastUserText: "",
   lastAgentText: "",
   lastAction: "",
-  lastFriendName: "",
+  lastConnectName: "",
   lastYoutubeUrl: "",
   lastCaption: "",
   lastNote: null,
@@ -60,11 +60,11 @@ export const rememberUserText = (profileId, text) => {
 
 export const rememberActionResult = (
   profileId,
-  { action, friendName, result, userText } = {},
+  { action, connectName, result, userText } = {},
 ) => {
   const memory = loadAgentMemory(profileId);
   if (action) memory.lastAction = action;
-  if (friendName) memory.lastFriendName = friendName;
+  if (connectName) memory.lastConnectName = connectName;
   if (userText) memory.lastUserText = String(userText).slice(0, 500);
   if (result?.message) memory.lastAgentText = String(result.message).slice(0, 500);
   if (result?.memory && typeof result.memory === "object") {
@@ -77,7 +77,7 @@ export const rememberActionResult = (
   );
   if (youtube) memory.lastYoutubeUrl = youtube;
   if (action && result?.success) {
-    pushFact(memory, `${action}${friendName ? ` with ${friendName}` : ""}`);
+    pushFact(memory, `${action}${connectName ? ` with ${connectName}` : ""}`);
   }
   saveAgentMemory(profileId, memory);
   return memory;
@@ -91,7 +91,7 @@ export const getMemoryPromptBlock = (profileId) => {
     if (Array.isArray(value) && value.length === 0) return;
     compact[key] = value;
   };
-  assign("friend", memory.lastFriendName);
+  assign("connect", memory.lastConnectName);
   assign("yt", memory.lastYoutubeUrl);
   assign("caption", memory.lastCaption);
   assign("note", memory.lastNote);
@@ -114,7 +114,7 @@ export const getMemoryPromptBlock = (profileId) => {
 };
 
 const isPronounName = (value) =>
-  /^(him|her|them|that|it|this|the same|same person|the friend)$/i.test(
+  /^(him|her|them|that|it|this|the same|same person|the connect)$/i.test(
     String(value || "").trim(),
   );
 
@@ -123,8 +123,8 @@ export const applyMemoryToIntent = (intent, profileId) => {
   const memory = loadAgentMemory(profileId);
   const next = { ...intent };
 
-  if ((!next.targetName || isPronounName(next.targetName)) && memory.lastFriendName) {
-    next.targetName = memory.lastFriendName;
+  if ((!next.targetName || isPronounName(next.targetName)) && memory.lastConnectName) {
+    next.targetName = memory.lastConnectName;
   }
 
   if (

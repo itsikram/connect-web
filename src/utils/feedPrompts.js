@@ -18,7 +18,7 @@ const ICEBREAKERS = [
 
 const EVENING_PROMPTS = [
   { en: "Photo of the day — what did you see?", bn: "আজকের ছবি — কী দেখলে?" },
-  { en: "Challenge a friend to Ludo tonight.", bn: "আজ রাতে কাউকে লুডুতে চ্যালেঞ্জ করো।" },
+  { en: "Challenge a connect to Ludo tonight.", bn: "আজ রাতে কাউকে লুডুতে চ্যালেঞ্জ করো।" },
   { en: "How did today actually go?", bn: "আজকের দিনটা আসলে কেমন কাটল?" },
   { en: "One thing you'll do better tomorrow.", bn: "কালকে একটা জিনিস ভালো করবে।" },
   { en: "Share a screenshot of something that made you laugh.", bn: "যা তোমাকে হাসিয়েছে তার স্ক্রিনশট দাও।" },

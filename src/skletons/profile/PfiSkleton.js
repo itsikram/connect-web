@@ -6,18 +6,18 @@ const PfiSkleton = ({ count = 1 }) => {
 
     return Array(count).fill(0).map((_, index) => (
 
-        <div key={index} className='friend-item skeleton-card'>
+        <div key={index} className='connect-item skeleton-card'>
 
-            <div className='friend-info'>
+            <div className='connect-info'>
                 <Link to={'/'}>
-                    <div className='friend-profilePic'>
+                    <div className='connect-profilePic'>
                         <>
                             <ImageSkleton />
                         </>
                         {/* <div className="skeleton-avatar" /> */}
 
                     </div>
-                    <div className='friend-details'>
+                    <div className='connect-details'>
                         <div className="skeleton-lines">
                             <div className="skeleton-line short" />
                             <div className="skeleton-line medium" />
@@ -25,25 +25,25 @@ const PfiSkleton = ({ count = 1 }) => {
                     </div>
                 </Link>
             </div>
-            <div className='friend-options'>
+            <div className='connect-options'>
                 <i className='far fa-ellipsis-h'></i>
 
-                {/* <div className='friend-options-menu'>
+                {/* <div className='connect-options-menu'>
                         {
-                            isFriend ?
-                                <div onClick={clickRemoveFrndOption} className='friend-options-menu-item'>
+                            isConnect ?
+                                <div onClick={clickRemoveFrndOption} className='connect-options-menu-item'>
                                     <div className='menu-item-icon'>
                                         <i className="fas fa-user-times"></i>
                                     </div>
-                                    <div className='menu-item-text'>Remove Friend</div>
+                                    <div className='menu-item-text'>Remove Connect</div>
                                 </div>
 
                                 :
-                                <div onClick={clickAddFrndOption} className='friend-options-menu-item'>
+                                <div onClick={clickAddFrndOption} className='connect-options-menu-item'>
                                     <div className='menu-item-icon'>
                                         <i className="fas fa-user-plus"></i>
                                     </div>
-                                    <div className='menu-item-text'>Add Friend</div>
+                                    <div className='menu-item-text'>Add Connect</div>
                                 </div>
                         }
 

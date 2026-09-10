@@ -111,7 +111,7 @@ export function getNotificationLink(notification) {
 
     if (postId) return `/post/${postId}`;
 
-    if ((notification?.type === 'friendReq' || notification?.type === 'friendReqAccept') && senderId) {
+    if ((notification?.type === 'connectReq' || notification?.type === 'connectReqAccept') && senderId) {
         return `/${senderId}`;
     }
 
@@ -137,8 +137,8 @@ const TYPE_META = {
     commentReply: { label: 'Reply', icon: 'fas fa-reply', color: '#45BD62' },
     postReact: { label: 'Reaction', icon: 'fas fa-thumbs-up', color: '#2078F4' },
     storyReact: { label: 'Story reaction', icon: 'fas fa-heart', color: '#F33E58' },
-    friendReq: { label: 'Friend request', icon: 'fas fa-user-plus', color: '#2078F4' },
-    friendReqAccept: { label: 'Friend', icon: 'fas fa-user-check', color: '#2078F4' },
+    connectReq: { label: 'Connect request', icon: 'fas fa-user-plus', color: '#2078F4' },
+    connectReqAccept: { label: 'Connect', icon: 'fas fa-user-check', color: '#2078F4' },
     message: { label: 'Message', icon: 'fas fa-comment-alt', color: '#2078F4' },
     general: { label: 'Update', icon: 'fas fa-bell', color: '#F7B928' },
     test: { label: 'Update', icon: 'fas fa-bell', color: '#F7B928' },
@@ -232,11 +232,11 @@ export function getNotificationDisplayParts(notification) {
             case 'storyReact':
                 headline = `${actorName} reacted to your story`;
                 break;
-            case 'friendReq':
-                headline = `${actorName} sent you a friend request`;
+            case 'connectReq':
+                headline = `${actorName} sent you a connect request`;
                 break;
-            case 'friendReqAccept':
-                headline = `${actorName} accepted your friend request`;
+            case 'connectReqAccept':
+                headline = `${actorName} accepted your connect request`;
                 break;
             case 'message':
                 headline = actorName;

@@ -146,8 +146,8 @@ body {
   border: 3px solid #29B1A9;
   transition: 0.5s;
 }
-#videoCallModal .video-call-container .friends-video,
-#videoCallModal .video-call-container .receive-friends-video {
+#videoCallModal .video-call-container .connects-video,
+#videoCallModal .video-call-container .receive-connects-video {
   border-radius: 10px;
   border: 3px solid #29B1A9;
   transition: 0.5s;
@@ -170,8 +170,8 @@ body {
   border-radius: 10px;
   border: 3px solid #29B1A9;
 }
-#videoCallModal .video-call-container.mobile .friends-video,
-#videoCallModal .video-call-container.mobile .receive-friends-video {
+#videoCallModal .video-call-container.mobile .connects-video,
+#videoCallModal .video-call-container.mobile .receive-connects-video {
   border-radius: 10px;
   border: 3px solid #29B1A9;
 }
@@ -192,8 +192,8 @@ body {
   border: 3px solid #29B1A9;
   transition: 0.5s;
 }
-#videoCallModal .call-accepted .video-call-container .friends-video,
-#videoCallModal .call-accepted .video-call-container .receive-friends-video {
+#videoCallModal .call-accepted .video-call-container .connects-video,
+#videoCallModal .call-accepted .video-call-container .receive-connects-video {
   border-radius: 10px;
   border: 3px solid #29B1A9;
   transition: 0.5s;
@@ -216,8 +216,8 @@ body {
   border-radius: 10px;
   border: 3px solid #29B1A9;
 }
-#videoCallModal .call-accepted .video-call-container.mobile .friends-video,
-#videoCallModal .call-accepted .video-call-container.mobile .receive-friends-video {
+#videoCallModal .call-accepted .video-call-container.mobile .connects-video,
+#videoCallModal .call-accepted .video-call-container.mobile .receive-connects-video {
   border-radius: 10px;
   border: 3px solid #29B1A9;
 }
@@ -285,8 +285,8 @@ body {
   background: #0b0f17;
 }
 
-#videoCallModal.fullscreen-modal .fullscreen-content .friends-video,
-#videoCallModal.fullscreen-modal .fullscreen-content .receive-friends-video {
+#videoCallModal.fullscreen-modal .fullscreen-content .connects-video,
+#videoCallModal.fullscreen-modal .fullscreen-content .receive-connects-video {
   position: absolute;
   top: 0;
   left: 0;
@@ -846,7 +846,7 @@ body {
   background-size: 38px 570px;
   transform: scale(0.8);
 }
-#left-sidebar .ls-nav-menu .ls-nav-menu-item .ls-icon.lsi-friends {
+#left-sidebar .ls-nav-menu .ls-nav-menu-item .ls-icon.lsi-connects {
   background-position: 0 -304px;
 }
 #left-sidebar .ls-nav-menu .ls-nav-menu-item .ls-icon.lsi-group {
@@ -3494,11 +3494,11 @@ body {
 #profile .profile-header .profile-info-container .profile-info .profile-name .full-name span {
   font-weight: 400;
 }
-#profile .profile-header .profile-info-container .profile-info .profile-name .friends-count a {
+#profile .profile-header .profile-info-container .profile-info .profile-name .connects-count a {
   font-weight: bold;
   color: #DFE1E6;
 }
-#profile .profile-header .profile-info-container .profile-info .profile-name .friends-count a:hover {
+#profile .profile-header .profile-info-container .profile-info .profile-name .connects-count a:hover {
   color: #B0B3B8;
   text-decoration: underline !important;
 }
@@ -3524,7 +3524,7 @@ body {
 #profile .profile-header .profile-info-container .profile-info .profile-buttons .normal-btn {
   background-color: #3B3C3C;
 }
-#profile .profile-header .profile-info-container .profile-info .profile-buttons .friend-options-menu {
+#profile .profile-header .profile-info-container .profile-info .profile-buttons .connect-options-menu {
   position: absolute;
   min-width: 200px;
   background: #3B3C3C;
@@ -3535,24 +3535,24 @@ body {
   margin-top: 2px;
   display: flex;
 }
-#profile .profile-header .profile-info-container .profile-info .profile-buttons .friend-options-menu .friend-options-menu-item {
+#profile .profile-header .profile-info-container .profile-info .profile-buttons .connect-options-menu .connect-options-menu-item {
   padding: 5px;
   border-radius: 4px;
   display: flex;
   align-items: center;
   width: 100%;
 }
-#profile .profile-header .profile-info-container .profile-info .profile-buttons .friend-options-menu .friend-options-menu-item .menu-item-icon {
+#profile .profile-header .profile-info-container .profile-info .profile-buttons .connect-options-menu .connect-options-menu-item .menu-item-icon {
   margin-right: 5px;
 }
-#profile .profile-header .profile-info-container .profile-info .profile-buttons .friend-options-menu .friend-options-menu-item .menu-item-text {
+#profile .profile-header .profile-info-container .profile-info .profile-buttons .connect-options-menu .connect-options-menu-item .menu-item-text {
   font-size: 18px;
 }
-#profile .profile-header .profile-info-container .profile-info .profile-buttons .friend-options-menu .friend-options-menu-item:hover {
+#profile .profile-header .profile-info-container .profile-info .profile-buttons .connect-options-menu .connect-options-menu-item:hover {
   background-color: #29B1A9;
   color: #DFE1E6;
 }
-#profile .profile-header .profile-info-container .profile-info .profile-buttons .friend-options-menu.hide {
+#profile .profile-header .profile-info-container .profile-info .profile-buttons .connect-options-menu.hide {
   display: none;
 }
 #profile .profile-header .profile-info-tab-navigator {
@@ -3727,7 +3727,7 @@ body {
 #profile #profile-about-content .tab-content {
   width: 60%;
 }
-#profile #profile-friends-content {
+#profile #profile-connects-content {
   width: 70%;
   margin: auto;
   min-height: 100px;
@@ -3735,16 +3735,16 @@ body {
   padding: 15px;
   border-radius: 10px;
 }
-#profile #profile-friends-content .section-title {
+#profile #profile-connects-content .section-title {
   font-size: 20px;
   font-weight: 500;
   color: #DFE1E6;
 }
-#profile #profile-friends-content .friend-items-container {
+#profile #profile-connects-content .connect-items-container {
   display: block;
   overflow-y: auto;
 }
-#profile #profile-friends-content .friend-items-container .friend-item {
+#profile #profile-connects-content .connect-items-container .connect-item {
   display: flex;
   justify-content: space-between;
   border: 1px solid #3B3C3C;
@@ -3755,34 +3755,34 @@ body {
   float: left;
   align-items: center;
 }
-#profile #profile-friends-content .friend-items-container .friend-item .friend-info a {
+#profile #profile-connects-content .connect-items-container .connect-item .connect-info a {
   text-decoration: none;
   display: flex;
   justify-content: flex-start;
   align-items: center;
 }
-#profile #profile-friends-content .friend-items-container .friend-item .friend-info a .friend-profilePic {
+#profile #profile-connects-content .connect-items-container .connect-item .connect-info a .connect-profilePic {
   border-radius: 5px;
   max-height: 100px;
   max-width: 100px;
   overflow: hidden;
   margin-right: 10px;
 }
-#profile #profile-friends-content .friend-items-container .friend-item .friend-info a .friend-profilePic img {
+#profile #profile-connects-content .connect-items-container .connect-item .connect-info a .connect-profilePic img {
   max-width: 100%;
 }
-#profile #profile-friends-content .friend-items-container .friend-item .friend-info a .friend-details .friend-name {
+#profile #profile-connects-content .connect-items-container .connect-item .connect-info a .connect-details .connect-name {
   font-size: 16px;
   color: #DFE1E6;
   margin: 0;
   margin-bottom: -5px;
 }
-#profile #profile-friends-content .friend-items-container .friend-item .friend-info a .friend-details .friend-mutual {
+#profile #profile-connects-content .connect-items-container .connect-item .connect-info a .connect-details .connect-mutual {
   font-size: 12px;
   font-weight: 400;
   color: #B0B3B8;
 }
-#profile #profile-friends-content .friend-items-container .friend-item .friend-options {
+#profile #profile-connects-content .connect-items-container .connect-item .connect-options {
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -3794,10 +3794,10 @@ body {
   cursor: pointer;
   position: relative;
 }
-#profile #profile-friends-content .friend-items-container .friend-item .friend-options:hover {
+#profile #profile-connects-content .connect-items-container .connect-item .connect-options:hover {
   background-color: #3B3C3C;
 }
-#profile #profile-friends-content .friend-items-container .friend-item .friend-options-menu {
+#profile #profile-connects-content .connect-items-container .connect-item .connect-options-menu {
   position: absolute;
   width: 200px;
   background-color: #3B3C3C;
@@ -3809,19 +3809,19 @@ body {
   z-index: 999;
   display: none;
 }
-#profile #profile-friends-content .friend-items-container .friend-item .friend-options-menu .friend-options-menu-item {
+#profile #profile-connects-content .connect-items-container .connect-item .connect-options-menu .connect-options-menu-item {
   padding: 5px;
   border-radius: 4px;
   display: flex;
   align-items: center;
 }
-#profile #profile-friends-content .friend-items-container .friend-item .friend-options-menu .friend-options-menu-item .menu-item-icon {
+#profile #profile-connects-content .connect-items-container .connect-item .connect-options-menu .connect-options-menu-item .menu-item-icon {
   margin-right: 5px;
 }
-#profile #profile-friends-content .friend-items-container .friend-item .friend-options-menu .friend-options-menu-item .menu-item-text {
+#profile #profile-connects-content .connect-items-container .connect-item .connect-options-menu .connect-options-menu-item .menu-item-text {
   font-size: 18px;
 }
-#profile #profile-friends-content .friend-items-container .friend-item .friend-options-menu .friend-options-menu-item:hover {
+#profile #profile-connects-content .connect-items-container .connect-item .connect-options-menu .connect-options-menu-item:hover {
   background-color: #29B1A9;
   color: #DFE1E6;
 }
@@ -3952,21 +3952,21 @@ body {
   margin-right: 5px;
 }
 
-#friends {
+#connects {
   display: flex;
   align-items: flex-start;
 }
-#friends .friends-sidebar {
+#connects .connects-sidebar {
   width: 29%;
   margin-right: 1%;
   background-color: #242526;
   padding: 15PX;
   border-right: 1px solid #3B3C3C;
 }
-#friends .friends-sidebar .friends-sidebar-menu {
+#connects .connects-sidebar .connects-sidebar-menu {
   min-height: 78vh;
 }
-#friends .friends-sidebar .friends-sidebar-menu .friends-sidebar-menu-item {
+#connects .connects-sidebar .connects-sidebar-menu .connects-sidebar-menu-item {
   display: block;
   padding: 7px;
   color: #DFE1E6;
@@ -3974,7 +3974,7 @@ body {
   border-radius: 5px;
   margin: 3px 0;
 }
-#friends .friends-sidebar .friends-sidebar-menu .friends-sidebar-menu-item .icon {
+#connects .connects-sidebar .connects-sidebar-menu .connects-sidebar-menu-item .icon {
   display: inline-block;
   background-color: #3B3C3C;
   text-align: center;
@@ -3982,46 +3982,46 @@ body {
   border-radius: 50%;
   margin-right: 5px;
 }
-#friends .friends-sidebar .friends-sidebar-menu .friends-sidebar-menu-item .icon i {
+#connects .connects-sidebar .connects-sidebar-menu .connects-sidebar-menu-item .icon i {
   font-size: 20px;
 }
-#friends .friends-sidebar .friends-sidebar-menu .friends-sidebar-menu-item:hover {
+#connects .connects-sidebar .connects-sidebar-menu .connects-sidebar-menu-item:hover {
   background-color: #3B3C3C;
 }
-#friends .friends-sidebar .friends-sidebar-menu .friends-sidebar-menu-item.active {
+#connects .connects-sidebar .connects-sidebar-menu .connects-sidebar-menu-item.active {
   background-color: #3B3C3C;
 }
-#friends .friends-sidebar .friends-sidebar-menu .friends-sidebar-menu-item.active .icon {
+#connects .connects-sidebar .connects-sidebar-menu .connects-sidebar-menu-item.active .icon {
   background-color: #29B1A9;
 }
-#friends .friends-content {
+#connects .connects-content {
   width: 70%;
   padding: 10px;
 }
 
-#friends-container .heading {
+#connects-container .heading {
   display: flex;
   justify-content: space-between;
   width: 100%;
 }
-#friends-container .heading .heading-title {
+#connects-container .heading .heading-title {
   font-size: 20px;
   color: #DFE1E6;
 }
-#friends-container .heading .view-more-btn {
+#connects-container .heading .view-more-btn {
   text-decoration: none;
   font-weight: 600;
   color: #29B1A9;
   cursor: poi;
 }
-#friends-container .friend-grid-container {
+#connects-container .connect-grid-container {
   width: 100%;
   border-bottom: 1px solid #3B3C3C;
   overflow: hidden;
   margin-bottom: 10px;
   padding-bottom: 10px;
 }
-#friends-container .friend-grid-item {
+#connects-container .connect-grid-item {
   width: 24%;
   display: block;
   border: 1px solid #3B3C3C;
@@ -4032,32 +4032,32 @@ body {
   border-radius: 10px;
   min-height: 380px;
 }
-#friends-container .friend-grid-item a {
+#connects-container .connect-grid-item a {
   display: block;
   text-align: center;
 }
-#friends-container .friend-grid-item a .profile-picture {
+#connects-container .connect-grid-item a .profile-picture {
   min-height: 260px;
   background-position: center;
   background-size: contain;
   background-repeat: no-repeat;
   border-radius: 10px;
 }
-#friends-container .friend-grid-item .grid-body {
+#connects-container .connect-grid-item .grid-body {
   padding: 10px;
 }
-#friends-container .friend-grid-item .grid-body a {
+#connects-container .connect-grid-item .grid-body a {
   text-decoration: none;
   color: unset;
 }
-#friends-container .friend-grid-item .grid-body a .profile-name {
+#connects-container .connect-grid-item .grid-body a .profile-name {
   color: #DFE1E6;
   text-decoration: none !important;
   font-size: 16px;
   font-weight: 600;
   text-transform: capitalize;
 }
-#friends-container .friend-grid-item .grid-body .button {
+#connects-container .connect-grid-item .grid-body .button {
   text-align: center;
   font-size: 14px;
   font-weight: 600;
@@ -4067,11 +4067,11 @@ body {
   background-color: #3B3C3C;
   cursor: pointer;
 }
-#friends-container .friend-grid-item .grid-body .primary-button {
+#connects-container .connect-grid-item .grid-body .primary-button {
   background-color: #29B1A9 !important;
   margin-bottom: 5px;
 }
-#friends-container .friend-grid-item::after {
+#connects-container .connect-grid-item::after {
   clear: both;
 }
 
@@ -5992,17 +5992,17 @@ body {
   #profile #profile-about-content .tab-content {
     width: 100%;
   }
-  #friends {
+  #connects {
     flex-direction: column;
   }
-  #friends .friends-sidebar {
+  #connects .connects-sidebar {
     width: 100%;
     height: 300px;
   }
-  #friends .friends-content {
+  #connects .connects-content {
     width: 100%;
   }
-  #friends .friends-content .friend-grid-item {
+  #connects .connects-content .connect-grid-item {
     width: 49%;
   }
   #login #login-form {
@@ -6013,10 +6013,10 @@ body {
     width: 95% !important;
     padding-top: 20px;
   }
-  #profile-friends-content {
+  #profile-connects-content {
     width: 95% !important;
   }
-  #profile-friends-content .friend-item {
+  #profile-connects-content .connect-item {
     width: 98% !important;
     float: none !important;
   }

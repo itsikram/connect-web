@@ -274,8 +274,8 @@ select {
       transition: 0.5s;
     }
 
-    .friends-video,
-    .receive-friends-video {
+    .connects-video,
+    .receive-connects-video {
       border-radius: 10px;
       border: 3px solid $pc;
       transition: 0.5s;
@@ -327,8 +327,8 @@ select {
       border: 3px solid $pc;
     }
 
-    .friends-video,
-    .receive-friends-video {
+    .connects-video,
+    .receive-connects-video {
       border-radius: 10px;
       border: 3px solid $pc;
     }
@@ -355,8 +355,8 @@ select {
         transition: 0.5s;
       }
 
-      .friends-video,
-      .receive-friends-video {
+      .connects-video,
+      .receive-connects-video {
         border-radius: 10px;
         border: 3px solid $pc;
         transition: 0.5s;
@@ -383,8 +383,8 @@ select {
         border: 3px solid $pc;
       }
 
-      .friends-video,
-      .receive-friends-video {
+      .connects-video,
+      .receive-connects-video {
         border-radius: 10px;
         border: 3px solid $pc;
       }
@@ -1754,7 +1754,7 @@ select {
         background-image: unset !important;
       }
 
-      .ls-icon.lsi-friends {
+      .ls-icon.lsi-connects {
         background-position: 0 -304px;
       }
 
@@ -5255,12 +5255,12 @@ html[data-theme="light"],
             }
           }
 
-          .friends-count a {
+          .connects-count a {
             font-weight: bold;
             color: $tc;
           }
 
-          .friends-count a:hover {
+          .connects-count a:hover {
             color: $mtc;
             text-decoration: underline !important;
           }
@@ -5292,7 +5292,7 @@ html[data-theme="light"],
             background-color: $bc;
           }
 
-          .friend-options-menu {
+          .connect-options-menu {
             position: absolute;
             min-width: 200px;
             background: $bc;
@@ -5303,7 +5303,7 @@ html[data-theme="light"],
             margin-top: 2px;
             display: flex;
 
-            .friend-options-menu-item {
+            .connect-options-menu-item {
               padding: 5px;
               border-radius: 4px;
               display: flex;
@@ -5319,13 +5319,13 @@ html[data-theme="light"],
               }
             }
 
-            .friend-options-menu-item:hover {
+            .connect-options-menu-item:hover {
               background-color: $pc;
               color: $tc;
             }
           }
 
-          .friend-options-menu.hide {
+          .connect-options-menu.hide {
             display: none;
           }
         }
@@ -5537,7 +5537,7 @@ html[data-theme="light"],
     }
   }
 
-  #profile-friends-content {
+  #profile-connects-content {
     width: 70%;
     margin: auto;
     min-height: 100px;
@@ -5551,11 +5551,11 @@ html[data-theme="light"],
       color: $tc;
     }
 
-    .friend-items-container {
+    .connect-items-container {
       display: block;
       overflow-y: auto;
 
-      .friend-item {
+      .connect-item {
         display: flex;
         justify-content: space-between;
         border: 1px solid $bc;
@@ -5566,14 +5566,14 @@ html[data-theme="light"],
         float: left;
         align-items: center;
 
-        .friend-info {
+        .connect-info {
           a {
             text-decoration: none;
             display: flex;
             justify-content: flex-start;
             align-items: center;
 
-            .friend-profilePic {
+            .connect-profilePic {
               border-radius: 5px;
               max-height: 100px;
               max-width: 100px;
@@ -5585,15 +5585,15 @@ html[data-theme="light"],
               }
             }
 
-            .friend-details {
-              .friend-name {
+            .connect-details {
+              .connect-name {
                 font-size: 16px;
                 color: $tc;
                 margin: 0;
                 margin-bottom: -5px;
               }
 
-              .friend-mutual {
+              .connect-mutual {
                 font-size: 12px;
                 font-weight: 400;
                 color: $mtc;
@@ -5602,7 +5602,7 @@ html[data-theme="light"],
           }
         }
 
-        .friend-options {
+        .connect-options {
           border-radius: 50%;
           display: flex;
           align-items: center;
@@ -5615,11 +5615,11 @@ html[data-theme="light"],
           position: relative;
         }
 
-        .friend-options:hover {
+        .connect-options:hover {
           background-color: $bc;
         }
 
-        .friend-options-menu {
+        .connect-options-menu {
           position: absolute;
           width: 200px;
           background-color: $bc;
@@ -5631,7 +5631,7 @@ html[data-theme="light"],
           z-index: 999;
           display: none;
 
-          .friend-options-menu-item {
+          .connect-options-menu-item {
             padding: 5px;
             border-radius: 4px;
             display: flex;
@@ -5646,7 +5646,7 @@ html[data-theme="light"],
             }
           }
 
-          .friend-options-menu-item:hover {
+          .connect-options-menu-item:hover {
             background-color: $pc;
             color: $tc;
           }
@@ -5805,21 +5805,21 @@ html[data-theme="light"],
   }
 }
 
-#friends {
+#connects {
   display: flex;
   align-items: flex-start;
 
-  .friends-sidebar {
+  .connects-sidebar {
     width: 29%;
     margin-right: 1%;
     background-color: $profilebg;
     padding: 15px;
     border-right: 1px solid $bc;
 
-    .friends-sidebar-menu {
+    .connects-sidebar-menu {
       min-height: 78vh;
 
-      .friends-sidebar-menu-item {
+      .connects-sidebar-menu-item {
         display: block;
         padding: 7px;
         color: $tc;
@@ -5841,11 +5841,11 @@ html[data-theme="light"],
         }
       }
 
-      .friends-sidebar-menu-item:hover {
+      .connects-sidebar-menu-item:hover {
         background-color: $bc;
       }
 
-      .friends-sidebar-menu-item.active {
+      .connects-sidebar-menu-item.active {
         background-color: $bc;
 
         .icon {
@@ -5855,13 +5855,13 @@ html[data-theme="light"],
     }
   }
 
-  .friends-content {
+  .connects-content {
     width: 70%;
     padding: 10px;
   }
 }
 
-#friends-container {
+#connects-container {
   .heading {
     display: flex;
     justify-content: space-between;
@@ -5880,7 +5880,7 @@ html[data-theme="light"],
     }
   }
 
-  .friend-grid-container {
+  .connect-grid-container {
     width: 100%;
     border-bottom: 1px solid $bc;
     overflow: hidden;
@@ -5888,7 +5888,7 @@ html[data-theme="light"],
     padding-bottom: 10px;
   }
 
-  .friend-grid-item {
+  .connect-grid-item {
     width: 24%;
     display: block;
     border: 1px solid $bc;
@@ -5947,7 +5947,7 @@ html[data-theme="light"],
     }
   }
 
-  .friend-grid-item::after {
+  .connect-grid-item::after {
     clear: both;
   }
 }
@@ -8956,18 +8956,18 @@ html[data-theme="light"],
     }
   }
 
-  #friends {
+  #connects {
     flex-direction: column;
 
-    .friends-sidebar {
+    .connects-sidebar {
       width: 100%;
       height: 300px;
     }
 
-    .friends-content {
+    .connects-content {
       width: 100%;
 
-      .friend-grid-item {
+      .connect-grid-item {
         width: 49%;
       }
     }
@@ -8985,10 +8985,10 @@ html[data-theme="light"],
     padding-top: 20px;
   }
 
-  #profile-friends-content {
+  #profile-connects-content {
     width: 95% !important;
 
-    .friend-item {
+    .connect-item {
       width: 98% !important;
       float: none !important;
     }

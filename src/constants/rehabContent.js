@@ -71,7 +71,7 @@ export const COPING_STRATEGIES = [
         title: 'Distraction Techniques',
         description: 'Redirect your mind to something engaging',
         instructions: [
-            'Call a friend or family member',
+            'Call a connect or family member',
             'Watch a movie or TV show',
             'Play a game or hobby you enjoy',
             'Read a book or browse the internet',
@@ -110,7 +110,7 @@ export const COPING_STRATEGIES = [
         title: 'Social Support',
         description: 'Connect with others who understand your struggle',
         instructions: [
-            'Text or call a trusted friend',
+            'Text or call a trusted connect',
             'Join a support group meeting',
             'Share your feelings with someone you trust',
             'Ask for accountability and encouragement',
@@ -335,7 +335,7 @@ export const RELAPSE_PREVENTION = [
 export const COMMON_TRIGGERS = [
     { trigger: 'Social situations', strategy: 'Practice saying "no", bring a support person, have an exit plan' },
     { trigger: 'Stress and anxiety', strategy: 'Use coping strategies like breathing, exercise, or meditation' },
-    { trigger: 'Boredom', strategy: 'Find new hobbies, exercise, call a friend, volunteer' },
+    { trigger: 'Boredom', strategy: 'Find new hobbies, exercise, call a connect, volunteer' },
     { trigger: 'Certain places', strategy: 'Avoid them at first, gradually build tolerance with support' },
     { trigger: 'Specific people', strategy: 'Set boundaries, limit contact, surround yourself with supportive people' },
     { trigger: 'Negative emotions', strategy: 'Talk to someone, journal, practice self-compassion' },

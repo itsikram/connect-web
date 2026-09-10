@@ -202,7 +202,7 @@ const HeaderMessageMenu = ({ menuStyle, onChatSelect }) => {
   }, [navigate, onChatSelect]);
 
   const goToNewChat = useCallback(() => {
-    navigate("/friends/suggestions");
+    navigate("/connects/suggestions");
     if (onChatSelect) onChatSelect();
   }, [navigate, onChatSelect]);
 

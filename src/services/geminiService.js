@@ -89,7 +89,7 @@ const extractJsonObject = (text = "") => {
 const AGENT_JSON_PROMPT = `Connect command parser. Return JSON only:
 {"reply":"","actions":[],"ask":{"field":null,"question":null}}
 Use at most 1 action. Never guess names; resolve him/that/yes from context.
-NAVIGATE routes: / /message /friends /watch /notes /tasks /settings /ludo-game /yt-download.`;
+NAVIGATE routes: / /message /connects /watch /notes /tasks /settings /ludo-game /yt-download.`;
 
 const omitEmpty = (value) => {
   if (Array.isArray(value)) {
@@ -110,7 +110,7 @@ const omitEmpty = (value) => {
 };
 
 const compactInterpreterContext = (appContext = {}, slim = false) => {
-  const friends = Array.isArray(appContext.friends) ? appContext.friends : [];
+  const connects = Array.isArray(appContext.connects) ? appContext.connects : [];
   const memory = appContext.memory && typeof appContext.memory === "object"
     ? {
         ...appContext.memory,
@@ -121,9 +121,9 @@ const compactInterpreterContext = (appContext = {}, slim = false) => {
     : undefined;
   return omitEmpty({
     me: appContext.user?.name || undefined,
-    friends: friends
+    connects: connects
       .slice(0, slim ? 8 : 12)
-      .map((friend) => friend?.name || friend)
+      .map((connect) => connect?.name || connect)
       .filter(Boolean),
     pending: appContext.pendingIntent || undefined,
     mem: memory,
@@ -223,23 +223,6 @@ export const generateSmartReplies = async ({
   }
 };
 
-export const generateCaptionRoast = async (caption = "") => {
-  if (!hasConfiguredApiKey()) {
-    return "This caption is doing the most and I respect the confidence.";
-  }
-  let roast = (
-    await completeChat({
-      system: `Write one playful roast of this social caption. Keep it kind, never cruel, never about appearance. Max 140 characters. Return ONLY the roast.`,
-      messages: [{ role: "user", content: String(caption || "this post").slice(0, 400) }],
-      temperature: 0.9,
-      maxTokens: 80,
-      operationLabel: "Caption roast",
-    })
-  ).trim();
-  roast = roast.replace(/^['"‘’“”]+/, "").replace(/['"‘’“”]+$/, "").trim();
-  return roast.slice(0, 280);
-};
-
 const fallbackPostCaption = (userRequest = "") => {
   const request = String(userRequest || "").trim().toLowerCase();
   if (request.includes("funny") || request.includes("witty")) {
@@ -258,12 +241,13 @@ const fallbackPostCaption = (userRequest = "") => {
 };
 
 export const generatePostCaption = async (userRequest = "") => {
-  if (!hasConfiguredApiKey()) {
-    try {
-      await fetchAiProviderStatus();
-    } catch (_) {
-      // Ignore provider-refresh failures and fall back to a local caption.
-    }
+  // Refresh the live provider before checking readiness. The initial web
+  // settings default to Ollama, which is considered configured locally and
+  // would otherwise prevent the admin Gemini configuration from loading.
+  try {
+    await fetchAiProviderStatus();
+  } catch (_) {
+    // Keep the local fallback available when the provider status endpoint is unavailable.
   }
 
   if (!hasConfiguredApiKey()) {
@@ -336,7 +320,7 @@ export const sendToGeminiStream = async (
   if (userName) extra.push(`User: ${userName}.`);
   if (!voice && memory && typeof memory === "object") {
     const compact = omitEmpty({
-      friend: memory.friend,
+      connect: memory.connect,
       yt: memory.yt,
       action: memory.action,
       caption: memory.caption,
@@ -467,7 +451,6 @@ const geminiService = {
   interpretAgentCommand,
   generatePostCaption,
   generateSmartReplies,
-  generateCaptionRoast,
   answerFromAppData,
   getAICapabilities,
   getModelInfo,

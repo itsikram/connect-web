@@ -45,14 +45,14 @@
   color: #9aa3b2;
 }
 
-.chess-friend-list {
+.chess-connect-list {
   max-height: 220px;
   overflow: auto;
   margin-top: 8px;
   text-align: left;
 }
 
-.chess-friend {
+.chess-connect {
   width: 100%;
   display: flex;
   align-items: center;
@@ -65,14 +65,14 @@
   margin-bottom: 6px;
 }
 
-.chess-friend__left {
+.chess-connect__left {
   display: flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
 }
 
-.chess-friend__avatar {
+.chess-connect__avatar {
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -86,13 +86,13 @@
   color: #e5e7eb;
 }
 
-.chess-friend__avatar img {
+.chess-connect__avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.chess-friend__name {
+.chess-connect__name {
   font-size: 14px;
   font-weight: 600;
   color: #e5e7eb;

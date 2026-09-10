@@ -35,7 +35,7 @@
     padding: 4px 18px 8px !important;
 }
 
-.chat-settings-friend {
+.chat-settings-connect {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -46,19 +46,19 @@
     border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.chat-settings-friend .user-profile-img-container,
-.chat-settings-friend .user-profile-img,
-.chat-settings-friend img {
+.chat-settings-connect .user-profile-img-container,
+.chat-settings-connect .user-profile-img,
+.chat-settings-connect img {
     width: 42px;
     height: 42px;
 }
 
-.chat-settings-friend strong {
+.chat-settings-connect strong {
     display: block;
     font-size: 0.95rem;
 }
 
-.chat-settings-friend span {
+.chat-settings-connect span {
     display: block;
     color: #9aa0a6;
     font-size: 0.78rem;

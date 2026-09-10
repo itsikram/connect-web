@@ -1,6 +1,6 @@
-/* ── Friend Result Card ─────────────────────────────────────────────── */
+/* ── Connect Result Card ─────────────────────────────────────────────── */
 
-.friend-result-card {
+.connect-result-card {
     display: flex;
     align-items: center;
     gap: 9px;
@@ -13,12 +13,12 @@
     -webkit-tap-highlight-color: transparent;
 }
 
-.friend-result-card:hover,
-.friend-result-card:active {
+.connect-result-card:hover,
+.connect-result-card:active {
     background: rgba(0, 212, 255, 0.08);
     border-color: rgba(0, 212, 255, 0.22);
 }
-.friend-result-card.compact {
+.connect-result-card.compact {
     padding: 7px 9px;
 }
 
@@ -31,7 +31,7 @@
     overflow: hidden;
 }
 
-.friend-result-card.compact .frc-avatar {
+.connect-result-card.compact .frc-avatar {
     width: 30px;
     height: 30px;
 }
@@ -110,7 +110,7 @@
 
 /* Very small screens: stack vertically */
 @media (max-width: 360px) {
-    .friend-result-card {
+    .connect-result-card {
         flex-wrap: wrap;
         gap: 7px;
     }

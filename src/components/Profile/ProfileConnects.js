@@ -4,11 +4,11 @@ import api from '../../api/api';
 import { useSelector } from 'react-redux'
 import PFI from './PFI';
 import PfiSkleton from '../../skletons/profile/PfiSkleton';
-const ProfileFriends = () => {
+const ProfileConnects = () => {
 
     let myProfile = useSelector(state => state.profile)
-    let [friendsData, setFriendsData] = useState([])
-    let [hasFriendsData, setHasFriendsData] = useState(true)
+    let [connectsData, setConnectsData] = useState([])
+    let [hasConnectsData, setHasConnectsData] = useState(true)
     let [isAuth, setIsAuth] = useState(false)
 
     let params = useParams()
@@ -18,25 +18,25 @@ const ProfileFriends = () => {
         setIsAuth(isAuth)
         if (isAuth) {
             const seen = new Set()
-            return setFriendsData((myProfile.friends || []).filter((friend) => {
-                if (!friend?._id || seen.has(friend._id)) return false
-                seen.add(friend._id)
+            return setConnectsData((myProfile.connects || []).filter((connect) => {
+                if (!connect?._id || seen.has(connect._id)) return false
+                seen.add(connect._id)
                 return true
             }))
 
         }
 
-        api.get('/friend/getFriends', {
+        api.get('/connects/getConnects', {
             params: {
                 profile: params.profile
             }
 
         }).then(res => {
-            setHasFriendsData(res.data.length > 0 ? true : false)
+            setHasConnectsData(res.data.length > 0 ? true : false)
             const seen = new Set()
-            setFriendsData((Array.isArray(res.data) ? res.data : []).filter((friend) => {
-                if (!friend?._id || seen.has(friend._id)) return false
-                seen.add(friend._id)
+            setConnectsData((Array.isArray(res.data) ? res.data : []).filter((connect) => {
+                if (!connect?._id || seen.has(connect._id)) return false
+                seen.add(connect._id)
                 return true
             }))
         }).catch(e => console.log(e))
@@ -47,22 +47,22 @@ const ProfileFriends = () => {
     return (
         <Fragment>
 
-            <div id='profile-friends-content'>
+            <div id='profile-connects-content'>
                 <h4 className='section-title'>
-                    Friends
+                    Connects
                 </h4>
                 {
-                    friendsData.length > 0 ?
+                    connectsData.length > 0 ?
                         <>
-                            <div className='friend-items-container'>
+                            <div className='connect-items-container'>
 
                                 {
-                                    friendsData.map((friend, index) => {
+                                    connectsData.map((connect, index) => {
                                         if (!isAuth) {
-                                            return <PFI key={index} friend={friend}></PFI>
+                                            return <PFI key={index} connect={connect}></PFI>
 
-                                        } else if (friend._id !== myProfile._id) {
-                                            return <PFI key={index} friend={friend}></PFI>
+                                        } else if (connect._id !== myProfile._id) {
+                                            return <PFI key={index} connect={connect}></PFI>
 
                                         }
                                     })
@@ -72,7 +72,7 @@ const ProfileFriends = () => {
                         :
                         <>
                             {
-                                hasFriendsData && <div className='friend-items-container'>
+                                hasConnectsData && <div className='connect-items-container'>
                                     <PfiSkleton count={6} />
                                 </div>
                             }
@@ -87,5 +87,5 @@ const ProfileFriends = () => {
     )
 }
 
-export default ProfileFriends;
+export default ProfileConnects;
 

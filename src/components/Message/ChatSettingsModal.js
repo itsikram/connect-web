@@ -8,14 +8,14 @@ import {
   CHAT_THEMES,
   QUICK_REACTION_PRESETS,
 } from "../../utils/chatThemes";
-import useFriendChatSettings from "../../hooks/useFriendChatSettings";
+import useConnectChatSettings from "../../hooks/useConnectChatSettings";
 import "./ChatSettingsModal.css";
 
 const ChatSettingsModal = ({
   isOpen,
   onRequestClose,
-  friendId,
-  friendProfile,
+  connectId,
+  connectProfile,
 }) => {
   const {
     settings,
@@ -23,15 +23,15 @@ const ChatSettingsModal = ({
     wallpaper,
     updateSettings,
     resetSettings,
-  } = useFriendChatSettings(friendId);
+  } = useConnectChatSettings(connectId);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null);
   const pickerRef = useRef(null);
 
-  const friendName =
-    friendProfile?.fullName ||
-    `${friendProfile?.user?.firstName || ""} ${friendProfile?.user?.surname || ""}`.trim() ||
+  const connectName =
+    connectProfile?.fullName ||
+    `${connectProfile?.user?.firstName || ""} ${connectProfile?.user?.surname || ""}`.trim() ||
     "this chat";
 
   useEffect(() => {
@@ -151,7 +151,7 @@ const ChatSettingsModal = ({
           <div className="chat-settings-heading">
             <h3 className="modal-title">Chat appearance</h3>
             <p className="chat-settings-subtitle">
-              Customize this conversation with {friendName}
+              Customize this conversation with {connectName}
             </p>
           </div>
           <button
@@ -165,15 +165,15 @@ const ChatSettingsModal = ({
         </div>
 
         <div className="app-modal-body chat-settings-body">
-          <div className="chat-settings-friend">
+          <div className="chat-settings-connect">
             <UserPP
-              profilePic={friendProfile?.profilePic}
-              profile={friendId || friendProfile?._id}
-              active={friendProfile?.isActive}
+              profilePic={connectProfile?.profilePic}
+              profile={connectId || connectProfile?._id}
+              active={connectProfile?.isActive}
               size={42}
             />
             <div>
-              <strong>{friendName}</strong>
+              <strong>{connectName}</strong>
               <span>Settings apply only to this chat</span>
             </div>
           </div>

@@ -7,7 +7,7 @@ import { parseProfilePatch, parseSettingsPatch } from "./agentActionHelpers";
 
 export const QUERY_TYPES = [
   "search",
-  "friends",
+  "connects",
   "posts",
   "videos",
   "notes",
@@ -32,10 +32,10 @@ export const AGENT_ACTIONS = {
   BUMP: "BUMP",
   BLOCK: "BLOCK",
   UNBLOCK: "UNBLOCK",
-  ADD_FRIEND: "ADD_FRIEND",
+  ADD_CONNECT: "ADD_CONNECT",
   UNFRIEND: "UNFRIEND",
-  ACCEPT_FRIEND: "ACCEPT_FRIEND",
-  DECLINE_FRIEND: "DECLINE_FRIEND",
+  ACCEPT_CONNECT: "ACCEPT_CONNECT",
+  DECLINE_CONNECT: "DECLINE_CONNECT",
   VIEW_PROFILE: "VIEW_PROFILE",
   NAVIGATE_PROFILE: "NAVIGATE_PROFILE",
   GET_LOCATION: "GET_LOCATION",
@@ -47,8 +47,8 @@ export const AGENT_ACTIONS = {
   NAVIGATE: "NAVIGATE",
   CREATE_LUDO: "CREATE_LUDO",
   CREATE_CHESS: "CREATE_CHESS",
-  LIST_FRIENDS: "LIST_FRIENDS",
-  OPEN_FRIENDS: "OPEN_FRIENDS",
+  LIST_CONNECTS: "LIST_CONNECTS",
+  OPEN_CONNECTS: "OPEN_CONNECTS",
   OPEN_MESSAGES: "OPEN_MESSAGES",
   OPEN_NOTIFICATIONS: "OPEN_NOTIFICATIONS",
   OPEN_SEARCH: "OPEN_SEARCH",
@@ -90,7 +90,7 @@ export const AGENT_ACTIONS = {
   LIST_NOTIFICATIONS: "LIST_NOTIFICATIONS",
   LIST_HABITS: "LIST_HABITS",
   LIST_EVENTS: "LIST_EVENTS",
-  LIST_FRIENDS_INFO: "LIST_FRIENDS_INFO",
+  LIST_CONNECTS_INFO: "LIST_CONNECTS_INFO",
   GET_MY_DETAILS: "GET_MY_DETAILS",
   FITNESS_DASHBOARD: "FITNESS_DASHBOARD",
   FITNESS_RECOMMENDATIONS: "FITNESS_RECOMMENDATIONS",
@@ -103,7 +103,7 @@ export const AGENT_ACTIONS = {
 
 export const ALLOWED_ACTIONS = new Set(Object.values(AGENT_ACTIONS));
 
-export const FRIEND_REQUIRED_ACTIONS = new Set([
+export const CONNECT_REQUIRED_ACTIONS = new Set([
   AGENT_ACTIONS.VIDEO_CALL,
   AGENT_ACTIONS.AUDIO_CALL,
   AGENT_ACTIONS.SEND_MESSAGE,
@@ -116,26 +116,26 @@ export const FRIEND_REQUIRED_ACTIONS = new Set([
   AGENT_ACTIONS.VIEW_PROFILE,
   AGENT_ACTIONS.GET_LOCATION,
   AGENT_ACTIONS.GET_BIO,
-  AGENT_ACTIONS.ADD_FRIEND,
+  AGENT_ACTIONS.ADD_CONNECT,
   AGENT_ACTIONS.UNFRIEND,
   AGENT_ACTIONS.NAVIGATE_PROFILE,
 ]);
 
-/** People lookups that should search Connect globally, not just friends. */
+/** People lookups that should search Connect globally, not just connects. */
 export const DIRECTORY_LOOKUP_ACTIONS = new Set([
-  AGENT_ACTIONS.ADD_FRIEND,
+  AGENT_ACTIONS.ADD_CONNECT,
   AGENT_ACTIONS.VIEW_PROFILE,
   AGENT_ACTIONS.NAVIGATE_PROFILE,
   AGENT_ACTIONS.GET_BIO,
   AGENT_ACTIONS.SEARCH_USERS,
 ]);
 
-export const NO_FRIEND_ACTIONS = new Set([
+export const NO_CONNECT_ACTIONS = new Set([
   AGENT_ACTIONS.CREATE_LUDO,
   AGENT_ACTIONS.CREATE_CHESS,
-  AGENT_ACTIONS.LIST_FRIENDS,
+  AGENT_ACTIONS.LIST_CONNECTS,
   AGENT_ACTIONS.OPEN_MESSAGES,
-  AGENT_ACTIONS.OPEN_FRIENDS,
+  AGENT_ACTIONS.OPEN_CONNECTS,
   AGENT_ACTIONS.OPEN_NOTIFICATIONS,
   AGENT_ACTIONS.OPEN_SEARCH,
   AGENT_ACTIONS.NAVIGATE,
@@ -166,8 +166,8 @@ export const NO_FRIEND_ACTIONS = new Set([
   AGENT_ACTIONS.LOG_HEALTH,
   AGENT_ACTIONS.LOG_RECOVERY,
   AGENT_ACTIONS.RECOVERY_SUPPORT,
-  AGENT_ACTIONS.ACCEPT_FRIEND,
-  AGENT_ACTIONS.DECLINE_FRIEND,
+  AGENT_ACTIONS.ACCEPT_CONNECT,
+  AGENT_ACTIONS.DECLINE_CONNECT,
   AGENT_ACTIONS.ADD_RECOVERY_DATA,
   AGENT_ACTIONS.UPDATE_LANGUAGE_SETTINGS,
   AGENT_ACTIONS.LIST_NOTES,
@@ -175,7 +175,7 @@ export const NO_FRIEND_ACTIONS = new Set([
   AGENT_ACTIONS.LIST_NOTIFICATIONS,
   AGENT_ACTIONS.LIST_HABITS,
   AGENT_ACTIONS.LIST_EVENTS,
-  AGENT_ACTIONS.LIST_FRIENDS_INFO,
+  AGENT_ACTIONS.LIST_CONNECTS_INFO,
   AGENT_ACTIONS.GET_MY_DETAILS,
   AGENT_ACTIONS.FITNESS_DASHBOARD,
   AGENT_ACTIONS.FITNESS_RECOMMENDATIONS,
@@ -198,7 +198,7 @@ export const LOOKUP_ACTIONS = new Set([
   AGENT_ACTIONS.LIST_NOTIFICATIONS,
   AGENT_ACTIONS.LIST_HABITS,
   AGENT_ACTIONS.LIST_EVENTS,
-  AGENT_ACTIONS.LIST_FRIENDS_INFO,
+  AGENT_ACTIONS.LIST_CONNECTS_INFO,
   AGENT_ACTIONS.GET_MY_DETAILS,
   AGENT_ACTIONS.GET_BIO,
   AGENT_ACTIONS.GET_LOCATION,
@@ -207,15 +207,15 @@ export const LOOKUP_ACTIONS = new Set([
 export const CONNECT_ROUTES = [
   { route: "/", label: "Home / News feed" },
   { route: "MY_PROFILE", label: "My profile" },
-  { route: "MY_PROFILE_FRIENDS", label: "My friends list on profile" },
+  { route: "MY_PROFILE_CONNECTS", label: "My connects list on profile" },
   { route: "MY_PROFILE_IMAGES", label: "My photos" },
   { route: "MY_PROFILE_VIDEOS", label: "My videos" },
   { route: "MY_PROFILE_ABOUT", label: "My about / bio page" },
   { route: "/message", label: "Messages / inbox" },
-  { route: "/friends/", label: "Friends page" },
-  { route: "/friends/requests", label: "Friend requests" },
-  { route: "/friends/suggestions", label: "Friend suggestions" },
-  { route: "/friends/places", label: "Places near you" },
+  { route: "/connects/", label: "Connects page" },
+  { route: "/connects/requests", label: "Connect requests" },
+  { route: "/connects/suggestions", label: "Connect suggestions" },
+  { route: "/connects/places", label: "Places near you" },
   { route: "/watch", label: "Watch videos" },
   { route: "/story/", label: "Stories" },
   { route: "/ludo-game", label: "Ludo" },
@@ -322,7 +322,7 @@ export const normalizeAgentAction = (action) => {
     LOG_CRAVING: "LOG_RECOVERY",
     RECOVERY_LOG: "LOG_RECOVERY",
     REHAB_SUPPORT: "RECOVERY_SUPPORT",
-    FRIEND_REQUESTS: "LIST_FRIENDS",
+    CONNECT_REQUESTS: "LIST_CONNECTS",
   };
 
   return aliases[value] || null;
@@ -537,7 +537,7 @@ const CONTENT_SLOT_ACTIONS = new Set([
 const ASK_FIELD_ALIASES = {
   name: "targetName",
   person: "targetName",
-  friend: "targetName",
+  connect: "targetName",
   target: "targetName",
   targetname: "targetName",
   who: "targetName",
@@ -606,7 +606,7 @@ export const getMissingIntentSlots = (intent) => {
   const action = intent.action;
 
   if (
-    (FRIEND_REQUIRED_ACTIONS.has(action) ||
+    (CONNECT_REQUIRED_ACTIONS.has(action) ||
       (action === AGENT_ACTIONS.QUERY_CONTENT &&
         String(intent.queryType || "").toLowerCase() === "user")) &&
     !hasValue(intent.targetName)
@@ -715,8 +715,8 @@ export const getSlotQuestion = (intent, slots = []) => {
     if (action === "VIEW_PROFILE" || action === "NAVIGATE_PROFILE") {
       return "Whose profile should I open?";
     }
-    if (action === "ADD_FRIEND") {
-      return "Who should I send a friend request to?";
+    if (action === "ADD_CONNECT") {
+      return "Who should I send a connect request to?";
     }
     return "Who should I do that with? Type their name.";
   }

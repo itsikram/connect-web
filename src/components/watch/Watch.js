@@ -815,13 +815,13 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
                   style={{ display: "flex", alignItems: "center", gap: "12px" }}
                 >
                   <i
-                    className="far fa-user-friends"
+                    className="far fa-user-connects"
                     style={{ fontSize: "20px", color: APP_PRIMARY_COLOR }}
                   ></i>
                   <div>
-                    <strong>Friends</strong>
+                    <strong>Connects</strong>
                     <p className="mb-0 text-muted" style={{ fontSize: "14px" }}>
-                      Only your friends can see this video
+                      Only your connects can see this video
                     </p>
                   </div>
                   {selectedAudience === 2 && (

@@ -60,7 +60,8 @@ import IosAddToHomeScreen from "../components/IosAddToHomeScreen";
 import WatchPipPlayer from "../components/watch/WatchPipPlayer";
 import { useDispatch, useSelector } from "react-redux";
 import api from "../api/api";
-import FriendCacheManager from "../utils/friendCacheManager";
+import Wallet from "./Wallet";
+import ConnectCacheManager from "../utils/connectCacheManager";
 import { fetchChatListCached, fetchProfileCached, primeCachedResource } from "../utils/requestCache";
 import {
   getCachedProfile,
@@ -81,7 +82,7 @@ import { prefetchNavigationTarget } from "../utils/routePrefetch";
 import { speakMessageText } from "../utils/speakMessage";
 
 const Profile = lazy(() => import("./Profile"));
-const Friends = lazy(() => import("./Friends"));
+const Connects = lazy(() => import("./Connects"));
 const Video = lazy(() => import("./Video.js"));
 const Marketplace = lazy(() => import("./Marketplace"));
 const Groups = lazy(() => import("./Groups"));
@@ -95,7 +96,7 @@ const SingleStory = lazy(() => import("../components/story/SingleStory"));
 const SingleWatch = lazy(() => import("../components/watch/SingleWatch.js"));
 const ProfileAbout = lazy(() => import("../components/Profile/ProfileAbout"));
 const PorfilePosts = lazy(() => import("../components/Profile/PorfilePosts"));
-const ProfileFriends = lazy(() => import("../components/Profile/ProfileFriends"));
+const ProfileConnects = lazy(() => import("../components/Profile/ProfileConnects"));
 const ProfileImages = lazy(() => import("../components/Profile/ProfileImages.js"));
 const ProfileVideos = lazy(() => import("../components/Profile/ProfileVideos.js"));
 const VideoCall = lazy(() => import("../components/VideoCall/VideoCall.js"));
@@ -111,10 +112,10 @@ const PortfolioHome = lazy(() => import("./portfolio/PortfolioHome.js"));
 const PortfolioAbout = lazy(() => import("./portfolio/PortfolioAbout.js"));
 const PortfolioBlog = lazy(() => import("./portfolio/PortfolioBlog.js"));
 const PortfolioResume = lazy(() => import("./portfolio/PortfolioResume.js"));
-const FriendRequests = lazy(() => import("../components/friend/FriendRequests"));
-const FriendSuggest = lazy(() => import("../components/friend/FriendSuggest"));
-const FriendHome = lazy(() => import("../components/friend/FriendHome"));
-const PlacesNearYou = lazy(() => import("../components/friend/PlacesNearYou"));
+const ConnectRequests = lazy(() => import("../components/connect/ConnectRequests"));
+const ConnectSuggest = lazy(() => import("../components/connect/ConnectSuggest"));
+const ConnectHome = lazy(() => import("../components/connect/ConnectHome"));
+const PlacesNearYou = lazy(() => import("../components/connect/PlacesNearYou"));
 const Settings = lazy(() => import("./Settings"));
 const ProfileSetting = lazy(() => import("../components/setting/ProfileSetting.js"));
 const AccountSetting = lazy(() => import("../components/setting/AccountSetting.js"));
@@ -341,7 +342,7 @@ const Main = () => {
   const seoPages = [
     {
       match: /^\/$/,
-      title: "Connect BD - Social Media App in Bangladesh | Connect with Friends",
+      title: "Connect BD - Social Media App in Bangladesh | Connect with Connects",
       description:
         "Connect BD by Ikramul is a modern social media app for Bangladesh users to connect, share moments, make video calls, and build communities online.",
     },
@@ -349,7 +350,7 @@ const Main = () => {
       match: /^\/login$/,
       title: "Login | Connect BD by Ikramul",
       description:
-        "Sign in to Connect BD by Ikramul to chat, share moments, and stay connected with friends and communities in Bangladesh.",
+        "Sign in to Connect BD by Ikramul to chat, share moments, and stay connected with connects and communities in Bangladesh.",
     },
     {
       match: /^\/signup$/,
@@ -361,7 +362,7 @@ const Main = () => {
       match: /^\/forgot-password$/,
       title: "Reset Password | Connect BD",
       description:
-        "Reset your Connect BD password and get back to messaging, sharing, and calling your friends on the Connect social media app.",
+        "Reset your Connect BD password and get back to messaging, sharing, and calling your connects on the Connect social media app.",
     },
     // /portfolio/* SEO is owned by PortfolioSEO (name-focused Person schema)
   ];
@@ -964,16 +965,16 @@ const Main = () => {
 
           // Update sender's online status
           if (updatedMessage.senderId) {
-            const friendOnlineEvent = new CustomEvent("friend_online_client", {
+            const connectOnlineEvent = new CustomEvent("connect_online_client", {
               detail: { profileId: updatedMessage.senderId },
             });
-            window.dispatchEvent(friendOnlineEvent);
+            window.dispatchEvent(connectOnlineEvent);
           }
 
           // Show notification only if message is not empty
           const messageText = String(updatedMessage.message || "").trim();
           if (messageText) {
-            const senderName = updatedMessage.senderName || "Friend";
+            const senderName = updatedMessage.senderName || "Connect";
             const senderPP = updatedMessage.senderPP || "/default-avatar.png";
             notify(
               truncateToTenWords(messageText),
@@ -1040,10 +1041,10 @@ const Main = () => {
 
         // Update sender's online status
         if (updatedMessage.senderId) {
-          const friendOnlineEvent = new CustomEvent("friend_online_client", {
+          const connectOnlineEvent = new CustomEvent("connect_online_client", {
             detail: { profileId: updatedMessage.senderId },
           });
-          window.dispatchEvent(friendOnlineEvent);
+          window.dispatchEvent(connectOnlineEvent);
         }
 
         // Client-side deduplication: skip if already notified
@@ -1072,7 +1073,7 @@ const Main = () => {
         // Show notification only if message is not empty
         const messageText = String(updatedMessage.message || "").trim();
         if (messageText) {
-          const senderName = data.senderName || "Friend";
+          const senderName = data.senderName || "Connect";
           const senderPP = data.senderPP || "/default-avatar.png";
           notify(
             truncateToTenWords(messageText),
@@ -1290,12 +1291,12 @@ const Main = () => {
   }, [profileId, isAuthenticated]);
 
   // Refresh the authenticated profile immediately after a relationship changes.
-  // Profile pages derive the Friend/Confirm/Cancel button from this Redux value.
+  // Profile pages derive the Connect/Confirm/Cancel button from this Redux value.
   useEffect(() => {
     if (!profileId || !isAuthenticated) return;
 
     const handleRelationshipUpdate = (event) => {
-      if (event?.status !== "friends" && event?.status !== "none") return;
+      if (event?.status !== "connects" && event?.status !== "none") return;
       if (
         String(event?.actorId) !== String(profileId) &&
         String(event?.targetId) !== String(profileId)
@@ -1313,12 +1314,12 @@ const Main = () => {
           }
         })
         .catch((error) => {
-          console.error("Failed to refresh profile after friend update:", error);
+          console.error("Failed to refresh profile after connect update:", error);
         });
     };
 
-    socket.on("friendRelationshipUpdate", handleRelationshipUpdate);
-    return () => socket.off("friendRelationshipUpdate", handleRelationshipUpdate);
+    socket.on("connectRelationshipUpdate", handleRelationshipUpdate);
+    return () => socket.off("connectRelationshipUpdate", handleRelationshipUpdate);
   }, [profileId, isAuthenticated, dispatch]);
 
   // Realtime in-app notification feed (bell menu)
@@ -1349,11 +1350,11 @@ const Main = () => {
     };
   }, [profileId, isAuthenticated, dispatch]);
 
-  // Keep friend request/suggestion caches synchronized while the app is open.
+  // Keep connect request/suggestion caches synchronized while the app is open.
   useEffect(() => {
     if (!profileId || !isAuthenticated) return;
 
-    const handleFriendCacheUpdate = async (event) => {
+    const handleConnectCacheUpdate = async (event) => {
       if (String(event?.profileId) !== String(profileId)) return;
       const list = event?.list === "requests" || event?.list === "suggestions"
         ? event.list
@@ -1361,25 +1362,25 @@ const Main = () => {
       if (!list) return;
 
       if (event.action === "remove" && event.targetProfileId) {
-        FriendCacheManager.removeProfile(profileId, list, event.targetProfileId);
+        ConnectCacheManager.removeProfile(profileId, list, event.targetProfileId);
         return;
       }
 
       if (event.action === "refresh") {
         const response = list === "requests"
-          ? await api.get("/friend/getRequest/")
-          : await api.get("/friend/getSuggetions/", { params: { profile: profileId } });
+          ? await api.get("/connects/getRequest/")
+          : await api.get("/connects/getSuggetions/", { params: { profile: profileId } });
         const items = Array.isArray(response.data) ? response.data : [];
         if (list === "requests") {
-          FriendCacheManager.setCachedRequests(profileId, items);
+          ConnectCacheManager.setCachedRequests(profileId, items);
         } else {
-          FriendCacheManager.setCachedSuggestions(profileId, items);
+          ConnectCacheManager.setCachedSuggestions(profileId, items);
         }
       }
     };
 
-    socket.on("friendCacheUpdate", handleFriendCacheUpdate);
-    return () => socket.off("friendCacheUpdate", handleFriendCacheUpdate);
+    socket.on("connectCacheUpdate", handleConnectCacheUpdate);
+    return () => socket.off("connectCacheUpdate", handleConnectCacheUpdate);
   }, [profileId, isAuthenticated]);
 
   // Global ludo game invitation handlers - work throughout the entire app
@@ -1591,7 +1592,7 @@ const Main = () => {
 
         // Show toast notification
         const toastId = showLudoInviteToast(
-          payload.name || "A friend",
+          payload.name || "A connect",
           payload.avatar,
           () => {
             acceptLudoInvite(invite);
@@ -1727,7 +1728,7 @@ const Main = () => {
         if (newInvites.length > 0) {
           const inv = newInvites[0]; // Only show the first one
           const toastId = showLudoInviteToast(
-            inv.name || "A friend",
+            inv.name || "A connect",
             inv.avatar,
             () => {
               acceptLudoInvite(inv);
@@ -2015,7 +2016,7 @@ const Main = () => {
         dismissInviteToast();
 
         const toastId = showChessInviteToast(
-          payload.name || "A friend",
+          payload.name || "A connect",
           payload.avatar,
           () => {
             acceptChessInvite(invite);
@@ -2106,7 +2107,7 @@ const Main = () => {
         if (newInvites.length > 0) {
           const inv = newInvites[0];
           const toastId = showChessInviteToast(
-            inv.name || "A friend",
+            inv.name || "A connect",
             inv.avatar,
             () => {
               acceptChessInvite(inv);
@@ -2444,6 +2445,7 @@ const Main = () => {
         <Routes>
           <Route path="/">
             <Route path="menu" element={<Menu />}></Route>
+            <Route path="wallet" element={<ProtectedRoute><Wallet /></ProtectedRoute>}></Route>
             <Route
               path="video-call"
               element={<VideoCallPage socket={socket} />}
@@ -2487,7 +2489,7 @@ const Main = () => {
             >
               <Route index element={<PorfilePosts />} />
               <Route path="about" element={<ProfileAbout />} />
-              <Route path="friends" element={<ProfileFriends />}></Route>
+              <Route path="connects" element={<ProfileConnects />}></Route>
               <Route path="images" element={<ProfileImages />}></Route>
               <Route path="videos" element={<ProfileVideos />}></Route>
             </Route>
@@ -2551,16 +2553,16 @@ const Main = () => {
             </Route>
 
             <Route
-              path="/friends/"
+              path="/connects/"
               element={
                 <ProtectedRoute>
-                  <Friends />
+                  <Connects />
                 </ProtectedRoute>
               }
             >
-              <Route index element={<FriendHome />}></Route>
-              <Route path="requests" element={<FriendRequests />}></Route>
-              <Route path="suggestions" element={<FriendSuggest />}></Route>
+              <Route index element={<ConnectHome />}></Route>
+              <Route path="requests" element={<ConnectRequests />}></Route>
+              <Route path="suggestions" element={<ConnectSuggest />}></Route>
               <Route path="places" element={<PlacesNearYou />}></Route>
             </Route>
             <Route

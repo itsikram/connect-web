@@ -140,12 +140,12 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
   }, [effectiveProfileId]);
 
   const [contacts, setContacts] = useState(() => cachedContacts);
-  const [activeFriends, setActiveFriends] = useState(() => {
+  const [activeConnects, setActiveConnects] = useState(() => {
     return cachedContacts
       .filter((contact) => contact?.isOnline && contact.person?._id)
       .map((contact) => contact.person._id);
   });
-  const [friendProfileStatusMap, setFriendProfileStatusMap] = useState({});
+  const [connectProfileStatusMap, setConnectProfileStatusMap] = useState({});
   const [loading, setLoading] = useState(() => cachedContacts.length === 0);
 
   // HTTP-based contacts fetching (now includes online status)
@@ -171,13 +171,13 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
           return merged;
         });
 
-        // Extract online friends from the response (no separate API calls needed)
-        const onlineFriends = contactsData
+        // Extract online connects from the response (no separate API calls needed)
+        const onlineConnects = contactsData
           .filter((contact) => contact.isOnline && contact.person?._id)
           .map((contact) => contact.person._id);
-        setActiveFriends(onlineFriends);
+        setActiveConnects(onlineConnects);
 
-        ContactCacheManager.setCachedActiveFriends(effectiveProfileId, onlineFriends);
+        ContactCacheManager.setCachedActiveConnects(effectiveProfileId, onlineConnects);
       } catch (error) {
         console.error("Error fetching contacts:", error);
         // IMPORTANT: don't clear the existing list on transient failures.
@@ -199,11 +199,11 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
       setLoading(false);
       console.log('📦 Loaded contacts from cache:', cachedContacts.length);
 
-      // Also restore active friends from cache
-      const cachedActiveFriends =
-        ContactCacheManager.getCachedActiveFriends(effectiveProfileId);
-      if (cachedActiveFriends && cachedActiveFriends.length > 0) {
-        setActiveFriends(cachedActiveFriends);
+      // Also restore active connects from cache
+      const cachedActiveConnects =
+        ContactCacheManager.getCachedActiveConnects(effectiveProfileId);
+      if (cachedActiveConnects && cachedActiveConnects.length > 0) {
+        setActiveConnects(cachedActiveConnects);
       }
     }
   }, [effectiveProfileId]);
@@ -215,7 +215,7 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
     lastEffectiveProfileIdRef.current = effectiveProfileId;
     if (cachedContacts.length > 0) {
       setContacts(cachedContacts);
-      setActiveFriends(
+      setActiveConnects(
         cachedContacts
           .filter((contact) => contact?.isOnline && contact.person?._id)
           .map((contact) => contact.person._id),
@@ -225,7 +225,7 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
     }
     // Don't clear the UI if we already have contacts in state; only clear on user change.
     setContacts((prev) => (profileChanged ? [] : prev));
-    setActiveFriends((prev) => (profileChanged ? [] : prev));
+    setActiveConnects((prev) => (profileChanged ? [] : prev));
     setLoading(true);
   }, [effectiveProfileId, cachedContacts]);
 
@@ -306,13 +306,13 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
     };
 
     const onConversationDeleted = (data) => {
-      const { profileId, friendId } = data || {};
-      if (!profileId || !friendId) return;
+      const { profileId, connectId } = data || {};
+      if (!profileId || !connectId) return;
       if (String(profileId) !== String(myId)) return;
 
       setContacts((prev) => {
         const next = prev.filter(
-          (contact) => String(contact?.person?._id) !== String(friendId),
+          (contact) => String(contact?.person?._id) !== String(connectId),
         );
         if (next.length !== prev.length) {
           writeContactCache(next);
@@ -347,7 +347,7 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
       .filter((person) => person?._id);
 
     if (contactPeople.length === 0) {
-      setFriendProfileStatusMap({});
+      setConnectProfileStatusMap({});
       return;
     }
 
@@ -361,18 +361,18 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
     );
 
     const nextStatusMap = {};
-    const nextActiveFriends = [];
+    const nextActiveConnects = [];
 
     contactPeople.forEach((person) => {
       const isActive = Boolean(results[person._id]?.isActive);
       nextStatusMap[person._id] = isActive;
       if (isActive) {
-        nextActiveFriends.push(person._id);
+        nextActiveConnects.push(person._id);
       }
     });
 
-    setFriendProfileStatusMap(nextStatusMap);
-    setActiveFriends(nextActiveFriends);
+    setConnectProfileStatusMap(nextStatusMap);
+    setActiveConnects(nextActiveConnects);
   }, [contacts]);
 
   useEffect(() => {
@@ -612,12 +612,12 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
                     : contactMessages[0].isSeen
                   : true;
                 const isActive = idOf(contactPerson._id) === idOf(params.profile);
-                const profileIsActive = friendProfileStatusMap[contactPerson._id];
+                const profileIsActive = connectProfileStatusMap[contactPerson._id];
                 const isOnline =
                   profileIsActive !== undefined
                     ? profileIsActive
                     : contactItem.isOnline ||
-                      activeFriends.includes(contactPerson._id);
+                      activeConnects.includes(contactPerson._id);
                 const unreadCount = (contactMessages || []).reduce(
                   (count, m) => {
                     return (
@@ -730,7 +730,7 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
           <button
             className="footer-action-btn"
             onClick={() => {
-              navigate("/friends/suggestions");
+              navigate("/connects/suggestions");
               onChatSelect && onChatSelect();
             }}
           >
@@ -753,7 +753,7 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
               <div className="online-indicator" aria-live="polite">
                 <span className="indicator-dot"></span>
                 <span className="indicator-text">
-                  Online • {activeFriends.length}
+                  Online • {activeConnects.length}
                 </span>
               </div>
             </div>
@@ -886,12 +886,12 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
                     : true;
                   const isActive =
                     idOf(contactPerson._id) === idOf(params.profile);
-                  const profileIsActive = friendProfileStatusMap[contactPerson._id];
+                  const profileIsActive = connectProfileStatusMap[contactPerson._id];
                   const isOnline =
                     profileIsActive !== undefined
                       ? profileIsActive
                       : contactItem.isOnline ||
-                        activeFriends.includes(contactPerson._id);
+                        activeConnects.includes(contactPerson._id);
                   const unreadCount = (contactMessages || []).reduce(
                     (count, m) => {
                       return (
@@ -1032,7 +1032,7 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
         <div className="chat-list-footer">
           <button
             className="footer-action-btn"
-            onClick={() => navigate("/friends/suggestions")}
+            onClick={() => navigate("/connects/suggestions")}
           >
             <i className="fas fa-plus"></i>
             <span>New Chat</span>

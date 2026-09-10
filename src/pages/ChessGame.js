@@ -72,14 +72,14 @@ const ChessGame = () => {
   const [opponentDisconnected, setOpponentDisconnected] = useState(false);
   const [joinGameIdInput, setJoinGameIdInput] = useState('');
   const [inviteCopied, setInviteCopied] = useState(false);
-  const [invitedFriend, setInvitedFriend] = useState(null);
+  const [invitedConnect, setInvitedConnect] = useState(null);
   const [inviteStatus, setInviteStatus] = useState('idle');
 
-  const [friendSearchQuery, setFriendSearchQuery] = useState('');
+  const [connectSearchQuery, setConnectSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [loadingSearch, setLoadingSearch] = useState(false);
-  const [friendList, setFriendList] = useState([]);
-  const [loadingFriends, setLoadingFriends] = useState(false);
+  const [connectList, setConnectList] = useState([]);
+  const [loadingConnects, setLoadingConnects] = useState(false);
 
   const isProcessingRemoteMove = useRef(false);
   const lastLocalMoveRef = useRef(null);
@@ -226,16 +226,16 @@ const ChessGame = () => {
     if (!profileId) return;
     let cancelled = false;
     (async () => {
-      setLoadingFriends(true);
+      setLoadingConnects(true);
       try {
-        const res = await api.get('/friend/getFriends', { params: { profile: profileId } });
+        const res = await api.get('/connects/getConnects', { params: { profile: profileId } });
         if (cancelled) return;
-        const friends = Array.isArray(res.data) ? res.data : [];
-        setFriendList(friends.filter((f) => f && String(f._id) !== String(profileId)));
+        const connects = Array.isArray(res.data) ? res.data : [];
+        setConnectList(connects.filter((f) => f && String(f._id) !== String(profileId)));
       } catch (_e) {
-        if (!cancelled) setFriendList([]);
+        if (!cancelled) setConnectList([]);
       } finally {
-        if (!cancelled) setLoadingFriends(false);
+        if (!cancelled) setLoadingConnects(false);
       }
     })();
     return () => {
@@ -243,8 +243,8 @@ const ChessGame = () => {
     };
   }, [showOnlineSetup, waitingForOpponent, profileId]);
 
-  const onChangeFriendSearch = (text) => {
-    setFriendSearchQuery(text);
+  const onChangeConnectSearch = (text) => {
+    setConnectSearchQuery(text);
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
       searchTimeoutRef.current = null;
@@ -579,11 +579,11 @@ const ChessGame = () => {
     return newGameId;
   }, [emitJoin, emitWhenReady, myIdentity, persistActiveGame]);
 
-  const sendInviteNotificationToFriend = async (friend, gid) => {
+  const sendInviteNotificationToConnect = async (connect, gid) => {
     try {
       const notificationData = {
         title: 'Chess Invitation',
-        text: `${profile?.fullName || 'A friend'} invited you to play Chess`,
+        text: `${profile?.fullName || 'A connect'} invited you to play Chess`,
         icon: profile?.profilePic || siteConfig.logo,
         link: `/chess-game?gameId=${encodeURIComponent(gid)}`,
         type: 'chess_invite',
@@ -596,20 +596,20 @@ const ChessGame = () => {
         },
       };
       await api.post('/web-notification/send-to-all-browsers', {
-        profileId: friend?._id,
+        profileId: connect?._id,
         notificationData,
       });
     } catch (_e) {}
   };
 
-  const inviteFriend = useCallback(async (friend, options = {}) => {
-    if (!friend?._id || !profileId) return;
+  const inviteConnect = useCallback(async (connect, options = {}) => {
+    if (!connect?._id || !profileId) return;
     const gid = gameIdRef.current || startOnlineGame();
-    setInvitedFriend(friend);
+    setInvitedConnect(connect);
     setInviteStatus('invited');
     const identity = myIdentity();
     emitWhenReady('chess:invite', {
-      to: friend._id,
+      to: connect._id,
       by: profileId,
       name: identity.name,
       avatar: identity.avatar,
@@ -619,7 +619,7 @@ const ChessGame = () => {
       ts: Date.now(),
     });
     try {
-      await sendInviteNotificationToFriend(friend, gid);
+      await sendInviteNotificationToConnect(connect, gid);
     } catch (_e) {}
   }, [profileId, startOnlineGame, myIdentity, emitWhenReady, profile?.coverPic, profile?.fullName, profile?.profilePic, profile?._id]);
 
@@ -630,14 +630,14 @@ const ChessGame = () => {
       if (!raw) return;
       localStorage.removeItem('chess_invite_target');
       const target = JSON.parse(raw);
-      if (!target?.friendId) return;
-      inviteFriend({
-        _id: target.friendId,
-        fullName: target.friendName,
+      if (!target?.connectId) return;
+      inviteConnect({
+        _id: target.connectId,
+        fullName: target.connectName,
         profilePic: target.friendAvatar,
       });
     } catch (_e) {}
-  }, [profileId, inviteFriend]);
+  }, [profileId, inviteConnect]);
 
   const joinGameById = (id) => {
     if (!id) return;
@@ -670,7 +670,7 @@ const ChessGame = () => {
     navigate('/menu');
   };
 
-  const visibleFriends = friendSearchQuery.trim().length >= 2 ? searchResults : friendList;
+  const visibleConnects = connectSearchQuery.trim().length >= 2 ? searchResults : connectList;
 
   const renderSquare = (row, col) => {
     const isDark = (row + col) % 2 === 1;
@@ -754,8 +754,8 @@ const ChessGame = () => {
 
     if (gameMode === 'online') {
       if (waitingForOpponent) {
-        return invitedFriend
-          ? `Waiting for ${invitedFriend.fullName || invitedFriend.displayName || 'opponent'}...`
+        return invitedConnect
+          ? `Waiting for ${invitedConnect.fullName || invitedConnect.displayName || 'opponent'}...`
           : 'Waiting for opponent...';
       }
 
@@ -1012,44 +1012,44 @@ const ChessGame = () => {
     borderColor: 'rgba(255,255,255,0.2)',
   };
 
-  const renderFriendPicker = (allowInvite) => (
+  const renderConnectPicker = (allowInvite) => (
     <>
-      <div className="chess-section-title">Invite a friend</div>
+      <div className="chess-section-title">Invite a connect</div>
       <div className="chess-search">
         <span aria-hidden="true">⌕</span>
         <input
-          placeholder="Search friends by name..."
-          value={friendSearchQuery}
-          onChange={(e) => onChangeFriendSearch(e.target.value)}
-          aria-label="Search friends"
+          placeholder="Search connects by name..."
+          value={connectSearchQuery}
+          onChange={(e) => onChangeConnectSearch(e.target.value)}
+          aria-label="Search connects"
         />
       </div>
-      <div className="chess-friend-list">
-        {(loadingSearch || loadingFriends) && (
+      <div className="chess-connect-list">
+        {(loadingSearch || loadingConnects) && (
           <div className="chess-empty">Searching…</div>
         )}
-        {!loadingSearch && !loadingFriends && visibleFriends.length === 0 && (
+        {!loadingSearch && !loadingConnects && visibleConnects.length === 0 && (
           <div className="chess-empty">
-            {friendSearchQuery ? 'No friends match your search' : 'No friends to show yet'}
+            {connectSearchQuery ? 'No connects match your search' : 'No connects to show yet'}
           </div>
         )}
-        {visibleFriends.map((f) => {
+        {visibleConnects.map((f) => {
           const key = f?._id || String(f?.id);
-          const invited = invitedFriend && String(invitedFriend._id) === String(f._id);
+          const invited = invitedConnect && String(invitedConnect._id) === String(f._id);
           const initial = (f?.fullName || '?').trim().charAt(0).toUpperCase();
           return (
-            <div key={key} className="chess-friend">
-              <div className="chess-friend__left">
-                <div className="chess-friend__avatar">
+            <div key={key} className="chess-connect">
+              <div className="chess-connect__left">
+                <div className="chess-connect__avatar">
                   {f?.profilePic ? <img src={f.profilePic} alt="" /> : initial}
                 </div>
-                <div className="chess-friend__name">{f?.fullName || 'Unknown'}</div>
+                <div className="chess-connect__name">{f?.fullName || 'Unknown'}</div>
               </div>
               {allowInvite && (
                 <button
                   type="button"
                   style={inviteBtnStyle}
-                  onClick={() => inviteFriend(f, { reinvite: invited })}
+                  onClick={() => inviteConnect(f, { reinvite: invited })}
                 >
                   {invited && inviteStatus === 'invited' ? 'Resend' : invited && inviteStatus === 'joined' ? 'Joined' : 'Invite'}
                 </button>
@@ -1100,7 +1100,7 @@ const ChessGame = () => {
                   onMouseEnter={(e) => Object.assign(e.currentTarget.style, buttonHoverStyle)}
                   onMouseLeave={(e) => Object.assign(e.currentTarget.style, winnerButtonStyle)}
                 >
-                  Play Online with Friends
+                  Play Online with Connects
                 </button>
                 <button
                   style={{ ...winnerButtonStyle, backgroundColor: 'rgba(255, 0, 0, 0.2)' }}
@@ -1113,7 +1113,7 @@ const ChessGame = () => {
               </div>
             ) : (
               <div className="chess-setup-actions">
-                {renderFriendPicker(true)}
+                {renderConnectPicker(true)}
                 <button
                   style={{ ...winnerButtonStyle, backgroundColor: '#2E7D32' }}
                   onClick={() => startOnlineGame()}
@@ -1241,9 +1241,9 @@ const ChessGame = () => {
             <div className="chess-waiting-banner__text">
               <div className="chess-waiting-banner__title">Waiting for opponent</div>
               <div className="chess-waiting-banner__sub">
-                {invitedFriend
-                  ? `Invite sent to ${invitedFriend.fullName || 'your friend'}. They’ll join when they accept.`
-                  : 'Invite a friend or share the link to start playing.'}
+                {invitedConnect
+                  ? `Invite sent to ${invitedConnect.fullName || 'your connect'}. They’ll join when they accept.`
+                  : 'Invite a connect or share the link to start playing.'}
               </div>
             </div>
             <button style={buttonStyle} onClick={copyInviteLink}>
@@ -1254,7 +1254,7 @@ const ChessGame = () => {
 
         {gameMode === 'online' && waitingForOpponent && (
           <div style={{ width: '100%', maxWidth: boardSize, marginBottom: 12 }}>
-            {renderFriendPicker(true)}
+            {renderConnectPicker(true)}
           </div>
         )}
 

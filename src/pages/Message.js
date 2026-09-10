@@ -4,12 +4,12 @@ import { useParams } from "react-router-dom";
 import MessageList from "../components/Message/MessageList";
 import MessageBody from "../components/Message/MessageBody";
 import MessageOptions from "../components/Message/MessageOptions.";
-import useFriendChatSettings from "../hooks/useFriendChatSettings";
+import useConnectChatSettings from "../hooks/useConnectChatSettings";
 import "./Message.css";
 
 const Message = (props) => {
-  const { profile: friendId } = useParams();
-  const { theme } = useFriendChatSettings(friendId);
+  const { profile: connectId } = useParams();
+  const { theme } = useConnectChatSettings(connectId);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [showMobileNav, setShowMobileNav] = useState(false);
 

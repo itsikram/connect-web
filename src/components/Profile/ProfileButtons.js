@@ -11,24 +11,24 @@ const ProfileButtons = (props) => {
     const myProfile = useSelector(state => state.profile);
     const profileData = props.profileData;
     const isAuth = props.isAuth;
-    const isFriend = props.isFriend;
-    const isReqSent = profileData.friendReqs && profileData.friendReqs.includes(myProfile._id);
-    const isReqRecived = myProfile.friendReqs && myProfile.friendReqs.includes(profileData._id);
+    const isConnect = props.isConnect;
+    const isReqSent = profileData.connectReqs && profileData.connectReqs.includes(myProfile._id);
+    const isReqRecived = myProfile.connectReqs && myProfile.connectReqs.includes(profileData._id);
     const isReq = isReqSent || isReqRecived;
     const [isStoryModal, setIsStoryModal] = useState(false);
-    const [isAddingFriend, setIsAddingFriend] = useState(false);
+    const [isAddingConnect, setIsAddingConnect] = useState(false);
     const [isCancelingReq, setIsCancelingReq] = useState(false);
     const [isConfirmingReq, setIsConfirmingReq] = useState(false);
-    const [isUnfriending, setIsUnfriending] = useState(false);
+    const [isRemovingConnect, setIsRemovingConnect] = useState(false);
     const [isReportOpen, setIsReportOpen] = useState(false);
 
-    const clickAddFriendBtn = async (e) => {
+    const clickAddConnectBtn = async (e) => {
         const target = e.currentTarget;
 
         if (!$(target).hasClass('sent')) {
-            setIsAddingFriend(true);
+            setIsAddingConnect(true);
             try {
-                await api.post('/friend/sendRequest/', {
+                await api.post('/connects/sendRequest/', {
                     profile: profileData._id,
                 });
                 $(target).children('span').text('Request Sent');
@@ -36,14 +36,14 @@ const ProfileButtons = (props) => {
             } catch (err) {
                 console.log(err);
             } finally {
-                setIsAddingFriend(false);
+                setIsAddingConnect(false);
             }
         }
     };
 
-    const clickFriendBtn = (e) => {
+    const clickConnectBtn = (e) => {
         const target = e.currentTarget;
-        $(target).children('.friend-options-menu').toggleClass('hide');
+        $(target).children('.connect-options-menu').toggleClass('hide');
     };
 
     const clickMessageBtn = () => {
@@ -56,7 +56,7 @@ const ProfileButtons = (props) => {
         if (!$(target).hasClass('removed')) {
             setIsCancelingReq(true);
             try {
-                await api.post('/friend/removeRequest', { profile: profileData._id });
+                await api.post('/connects/removeRequest', { profile: profileData._id });
                 $(target).addClass('removed');
                 $(target).children('span').text('Request Canceled');
             } catch (error) {
@@ -72,9 +72,9 @@ const ProfileButtons = (props) => {
         if (!$(target).hasClass('accepted')) {
             setIsConfirmingReq(true);
             try {
-                await api.post('/friend/reqAccept', { profile: profileData._id });
+                await api.post('/connects/reqAccept', { profile: profileData._id });
                 $(target).children('span').text('Accepted');
-                $(target).addClass('Friend Accepted');
+                $(target).addClass('Connect Accepted');
             } catch (error) {
                 console.log(error);
             } finally {
@@ -83,16 +83,16 @@ const ProfileButtons = (props) => {
         }
     };
 
-    const clickUnFrndBtn = async (e) => {
+    const clickRemoveConnectBtn = async (e) => {
         const target = e.currentTarget;
-        setIsUnfriending(true);
+        setIsRemovingConnect(true);
         try {
-            await api.post('/friend/removeFriend', { profile: profileData._id });
-            $(target).parents('.friend').hide();
+            await api.post('/connects/removeConnect', { profile: profileData._id });
+            $(target).parents('.connect').hide();
         } catch (error) {
             console.log(error);
         } finally {
-            setIsUnfriending(false);
+            setIsRemovingConnect(false);
         }
     };
 
@@ -117,22 +117,22 @@ const ProfileButtons = (props) => {
                             <span>Edit Profile</span>
                         </div>
                     </div>
-                ) : isFriend ? (
+                ) : isConnect ? (
                     <div className="profile-buttons">
-                        <div onClick={clickFriendBtn} className="button normal-btn friend">
+                        <div onClick={clickConnectBtn} className="button normal-btn connect">
                             <i className="fas fa-user-check" />
-                            <span>Friend</span>
-                            <div className="friend-options-menu hide">
+                            <span>Connect</span>
+                            <div className="connect-options-menu hide">
                                 <div
-                                    onClick={isUnfriending ? null : clickUnFrndBtn}
-                                    className={`friend-options-menu-item ${isUnfriending ? 'disabled' : ''}`}
-                                    style={{ opacity: isUnfriending ? 0.6 : 1, cursor: isUnfriending ? 'not-allowed' : 'pointer' }}
+                                    onClick={isRemovingConnect ? null : clickRemoveConnectBtn}
+                                    className={`connect-options-menu-item ${isRemovingConnect ? 'disabled' : ''}`}
+                                    style={{ opacity: isRemovingConnect ? 0.6 : 1, cursor: isRemovingConnect ? 'not-allowed' : 'pointer' }}
                                 >
                                     <div className="menu-item-icon">
                                         <i className="fas fa-user-times" />
                                     </div>
                                     <div className="menu-item-text">
-                                        {isUnfriending ? 'Removing...' : 'Remove Friend'}
+                                        {isRemovingConnect ? 'Removing...' : 'Remove Connect'}
                                     </div>
                                 </div>
                                 <div
@@ -140,7 +140,7 @@ const ProfileButtons = (props) => {
                                         e.stopPropagation();
                                         setIsReportOpen(true);
                                     }}
-                                    className="friend-options-menu-item"
+                                    className="connect-options-menu-item"
                                 >
                                     <div className="menu-item-icon">
                                         <i className="fas fa-flag" />
@@ -157,12 +157,12 @@ const ProfileButtons = (props) => {
                 ) : !isReq ? (
                     <div className="profile-buttons">
                         <div
-                            onClick={isAddingFriend ? null : clickAddFriendBtn}
-                            className={`highligh-btn button add-friend ${isAddingFriend ? 'disabled' : ''}`}
-                            style={{ opacity: isAddingFriend ? 0.6 : 1, cursor: isAddingFriend ? 'not-allowed' : 'pointer' }}
+                            onClick={isAddingConnect ? null : clickAddConnectBtn}
+                            className={`highligh-btn button add-connect ${isAddingConnect ? 'disabled' : ''}`}
+                            style={{ opacity: isAddingConnect ? 0.6 : 1, cursor: isAddingConnect ? 'not-allowed' : 'pointer' }}
                         >
                             <i className="fas fa-user-check" />
-                            <span>{isAddingFriend ? 'Adding...' : 'Add Friend'}</span>
+                            <span>{isAddingConnect ? 'Adding...' : 'Add Connect'}</span>
                         </div>
                         <div onClick={clickMessageBtn} className="normal-btn button message-button">
                             <i className="fas fa-comment-dots" />
@@ -173,7 +173,7 @@ const ProfileButtons = (props) => {
                     <div className="profile-buttons">
                         <div
                             onClick={isCancelingReq ? null : handleCencleReq}
-                            className={`normal-btn button cencel-friend ${isCancelingReq ? 'disabled' : ''}`}
+                            className={`normal-btn button cencel-connect ${isCancelingReq ? 'disabled' : ''}`}
                             style={{ opacity: isCancelingReq ? 0.6 : 1, cursor: isCancelingReq ? 'not-allowed' : 'pointer' }}
                         >
                             <i className="fas fa-user-check" />
@@ -188,7 +188,7 @@ const ProfileButtons = (props) => {
                     <div className="profile-buttons">
                         <div
                             onClick={isConfirmingReq ? null : handleConfirmReq}
-                            className={`highligh-btn button confirm-friend ${isConfirmingReq ? 'disabled' : ''}`}
+                            className={`highligh-btn button confirm-connect ${isConfirmingReq ? 'disabled' : ''}`}
                             style={{ opacity: isConfirmingReq ? 0.6 : 1, cursor: isConfirmingReq ? 'not-allowed' : 'pointer' }}
                         >
                             <i className="fas fa-user-check" />

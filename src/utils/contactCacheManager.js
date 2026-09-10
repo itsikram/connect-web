@@ -6,8 +6,8 @@
 const CACHE_KEYS = {
   CONTACTS_PREFIX: 'cached_message_contacts_',
   CONTACTS_TIMESTAMP_PREFIX: 'message_contacts_timestamp_',
-  ACTIVE_FRIENDS_PREFIX: 'cached_active_friends_',
-  ACTIVE_FRIENDS_TIMESTAMP_PREFIX: 'active_friends_timestamp_',
+  ACTIVE_CONNECTS_PREFIX: 'cached_active_connects_',
+  ACTIVE_CONNECTS_TIMESTAMP_PREFIX: 'active_connects_timestamp_',
   CACHE_VERSION: 'contact_cache_version',
 };
 
@@ -23,12 +23,12 @@ class ContactCacheManager {
     return `${CACHE_KEYS.CONTACTS_TIMESTAMP_PREFIX}${profileId}`;
   }
 
-  static getActiveFriendsKey(profileId) {
-    return `${CACHE_KEYS.ACTIVE_FRIENDS_PREFIX}${profileId}`;
+  static getActiveConnectsKey(profileId) {
+    return `${CACHE_KEYS.ACTIVE_CONNECTS_PREFIX}${profileId}`;
   }
 
-  static getActiveFriendsTimestampKey(profileId) {
-    return `${CACHE_KEYS.ACTIVE_FRIENDS_TIMESTAMP_PREFIX}${profileId}`;
+  static getActiveConnectsTimestampKey(profileId) {
+    return `${CACHE_KEYS.ACTIVE_CONNECTS_TIMESTAMP_PREFIX}${profileId}`;
   }
 
   /**
@@ -105,15 +105,15 @@ class ContactCacheManager {
   }
 
   /**
-   * Get cached active friends (online friends list)
-   * @returns {Array|null} Cached active friend IDs or null if expired/not found
+   * Get cached active connects (online connects list)
+   * @returns {Array|null} Cached active connect IDs or null if expired/not found
    */
-  static getCachedActiveFriends(profileId) {
+  static getCachedActiveConnects(profileId) {
     try {
       if (!profileId) return null;
 
-      const cachedData = localStorage.getItem(this.getActiveFriendsKey(profileId));
-      const timestamp = localStorage.getItem(this.getActiveFriendsTimestampKey(profileId));
+      const cachedData = localStorage.getItem(this.getActiveConnectsKey(profileId));
+      const timestamp = localStorage.getItem(this.getActiveConnectsTimestampKey(profileId));
 
       if (!cachedData || !timestamp) {
         return null;
@@ -121,38 +121,38 @@ class ContactCacheManager {
 
       const timeSinceCache = Date.now() - parseInt(timestamp, 10);
       if (timeSinceCache > CONTACT_CACHE_DURATION) {
-        console.log('📦 Active friends cache expired, clearing');
-        this.clearActiveFriendsCache(profileId);
+        console.log('📦 Active connects cache expired, clearing');
+        this.clearActiveConnectsCache(profileId);
         return null;
       }
 
-      const activeFriends = JSON.parse(cachedData);
-      console.log('✅ Retrieved active friends from cache:', activeFriends.length);
-      return Array.isArray(activeFriends) ? activeFriends : null;
+      const activeConnects = JSON.parse(cachedData);
+      console.log('✅ Retrieved active connects from cache:', activeConnects.length);
+      return Array.isArray(activeConnects) ? activeConnects : null;
     } catch (error) {
-      console.error('Error retrieving cached active friends:', error);
+      console.error('Error retrieving cached active connects:', error);
       return null;
     }
   }
 
   /**
-   * Save active friends to cache
-   * @param {Array} activeFriends - Active friend IDs to cache
+   * Save active connects to cache
+   * @param {Array} activeConnects - Active connect IDs to cache
    */
-  static setCachedActiveFriends(profileId, activeFriends) {
+  static setCachedActiveConnects(profileId, activeConnects) {
     try {
       if (!profileId) return false;
-      if (!Array.isArray(activeFriends)) {
-        console.warn('Invalid active friends format for cache');
+      if (!Array.isArray(activeConnects)) {
+        console.warn('Invalid active connects format for cache');
         return false;
       }
 
-      localStorage.setItem(this.getActiveFriendsKey(profileId), JSON.stringify(activeFriends));
-      localStorage.setItem(this.getActiveFriendsTimestampKey(profileId), Date.now().toString());
-      console.log('💾 Active friends cached successfully:', activeFriends.length);
+      localStorage.setItem(this.getActiveConnectsKey(profileId), JSON.stringify(activeConnects));
+      localStorage.setItem(this.getActiveConnectsTimestampKey(profileId), Date.now().toString());
+      console.log('💾 Active connects cached successfully:', activeConnects.length);
       return true;
     } catch (error) {
-      console.error('Error caching active friends:', error);
+      console.error('Error caching active connects:', error);
       return false;
     }
   }
@@ -210,15 +210,15 @@ class ContactCacheManager {
   }
 
   /**
-   * Clear all cached contacts and active friends
+   * Clear all cached contacts and active connects
    */
   static clearCache(profileId = null) {
     try {
       if (profileId) {
         localStorage.removeItem(this.getContactsKey(profileId));
         localStorage.removeItem(this.getContactsTimestampKey(profileId));
-        localStorage.removeItem(this.getActiveFriendsKey(profileId));
-        localStorage.removeItem(this.getActiveFriendsTimestampKey(profileId));
+        localStorage.removeItem(this.getActiveConnectsKey(profileId));
+        localStorage.removeItem(this.getActiveConnectsTimestampKey(profileId));
         return;
       }
 
@@ -227,8 +227,8 @@ class ContactCacheManager {
         if (
           key.startsWith(CACHE_KEYS.CONTACTS_PREFIX) ||
           key.startsWith(CACHE_KEYS.CONTACTS_TIMESTAMP_PREFIX) ||
-          key.startsWith(CACHE_KEYS.ACTIVE_FRIENDS_PREFIX) ||
-          key.startsWith(CACHE_KEYS.ACTIVE_FRIENDS_TIMESTAMP_PREFIX)
+          key.startsWith(CACHE_KEYS.ACTIVE_CONNECTS_PREFIX) ||
+          key.startsWith(CACHE_KEYS.ACTIVE_CONNECTS_TIMESTAMP_PREFIX)
         ) {
           localStorage.removeItem(key);
         }
@@ -240,16 +240,16 @@ class ContactCacheManager {
   }
 
   /**
-   * Clear only active friends cache
+   * Clear only active connects cache
    */
-  static clearActiveFriendsCache(profileId) {
+  static clearActiveConnectsCache(profileId) {
     try {
       if (!profileId) return;
-      localStorage.removeItem(this.getActiveFriendsKey(profileId));
-      localStorage.removeItem(this.getActiveFriendsTimestampKey(profileId));
-      console.log('🗑️ Active friends cache cleared');
+      localStorage.removeItem(this.getActiveConnectsKey(profileId));
+      localStorage.removeItem(this.getActiveConnectsTimestampKey(profileId));
+      console.log('🗑️ Active connects cache cleared');
     } catch (error) {
-      console.error('Error clearing active friends cache:', error);
+      console.error('Error clearing active connects cache:', error);
     }
   }
 
@@ -262,7 +262,7 @@ class ContactCacheManager {
       if (!profileId) {
         return {
           contacts: { cached: false, count: 0, age: null, expiresIn: null },
-          activeFriends: { cached: false, count: 0 },
+          activeConnects: { cached: false, count: 0 },
         };
       }
 
@@ -272,7 +272,7 @@ class ContactCacheManager {
       if (!cachedData || !timestamp) {
         return {
           contacts: { cached: false, count: 0, age: null, expiresIn: null },
-          activeFriends: { cached: false, count: 0 },
+          activeConnects: { cached: false, count: 0 },
         };
       }
 
@@ -282,8 +282,8 @@ class ContactCacheManager {
       const age = now - cacheTime;
       const expiresIn = Math.max(0, CONTACT_CACHE_DURATION - age);
 
-      const activeFriendsData = localStorage.getItem(this.getActiveFriendsKey(profileId));
-      const activeFriends = activeFriendsData ? JSON.parse(activeFriendsData) : [];
+      const activeConnectsData = localStorage.getItem(this.getActiveConnectsKey(profileId));
+      const activeConnects = activeConnectsData ? JSON.parse(activeConnectsData) : [];
 
       return {
         contacts: {
@@ -293,16 +293,16 @@ class ContactCacheManager {
           expiresIn: expiresIn,
           isExpired: age > CONTACT_CACHE_DURATION,
         },
-        activeFriends: {
-          cached: activeFriends.length > 0,
-          count: activeFriends.length,
+        activeConnects: {
+          cached: activeConnects.length > 0,
+          count: activeConnects.length,
         },
       };
     } catch (error) {
       console.error('Error getting contact cache stats:', error);
       return {
         contacts: { cached: false, count: 0, age: null, expiresIn: null },
-        activeFriends: { cached: false, count: 0 },
+        activeConnects: { cached: false, count: 0 },
       };
     }
   }

@@ -19,7 +19,7 @@ const StickyChatBoxContainer = () => {
     useEffect(() => {
         window.isStickyChatOpen = (profileId) => {
             // Check if chat is already open or currently being opened
-            const isChatOpen = openChatsRef.current.some(chat => chat.friendProfile?._id === profileId);
+            const isChatOpen = openChatsRef.current.some(chat => chat.connectProfile?._id === profileId);
             const isPending = pendingOpensRef.current.has(profileId);
             return isChatOpen || isPending;
         };
@@ -29,7 +29,7 @@ const StickyChatBoxContainer = () => {
     }, []);
 
     const closeChat = useCallback((profileId) => {
-        setOpenChats(prev => prev.filter(chat => chat.friendProfile?._id !== profileId));
+        setOpenChats(prev => prev.filter(chat => chat.connectProfile?._id !== profileId));
     }, []);
 
     const openChat = useCallback(async (profileId) => {
@@ -38,11 +38,11 @@ const StickyChatBoxContainer = () => {
             return true; // Chat is already being opened
         }
 
-        const existingChat = openChatsRef.current.find(chat => chat.friendProfile?._id === profileId);
-        if (existingChat && existingChat.friendProfile?._id) {
+        const existingChat = openChatsRef.current.find(chat => chat.connectProfile?._id === profileId);
+        if (existingChat && existingChat.connectProfile?._id) {
             // If minimized, maximize it
-            setOpenChats(prev => prev.map(chat => 
-                chat.friendProfile?._id === profileId 
+            setOpenChats(prev => prev.map(chat =>
+                chat.connectProfile?._id === profileId
                     ? { ...chat, isMinimized: false }
                     : chat
             ));
@@ -53,13 +53,13 @@ const StickyChatBoxContainer = () => {
         pendingOpensRef.current.add(profileId);
 
         // Remove all minimized chats of the same user before opening new chat
-        const minimizedChatsOfSameUser = openChatsRef.current.filter(chat => 
-            chat.isMinimized && chat.friendProfile?._id === profileId
+        const minimizedChatsOfSameUser = openChatsRef.current.filter(chat =>
+            chat.isMinimized && chat.connectProfile?._id === profileId
         );
-        
+
         if (minimizedChatsOfSameUser.length > 0) {
-            setOpenChats(prev => prev.filter(chat => 
-                !(chat.isMinimized && chat.friendProfile?._id === profileId)
+            setOpenChats(prev => prev.filter(chat =>
+                !(chat.isMinimized && chat.connectProfile?._id === profileId)
             ));
         }
 
@@ -67,10 +67,10 @@ const StickyChatBoxContainer = () => {
         if (openChatsRef.current.length >= maxChats) {
             const minimizedChat = openChatsRef.current.find(chat => chat.isMinimized);
             if (minimizedChat) {
-                setOpenChats(prev => prev.filter(chat => chat.friendProfile?._id !== minimizedChat.friendProfile?._id));
+                setOpenChats(prev => prev.filter(chat => chat.connectProfile?._id !== minimizedChat.connectProfile?._id));
             } else {
                 const lastChat = openChatsRef.current[openChatsRef.current.length - 1];
-                setOpenChats(prev => prev.filter(chat => chat.friendProfile?._id !== lastChat.friendProfile?._id));
+                setOpenChats(prev => prev.filter(chat => chat.connectProfile?._id !== lastChat.connectProfile?._id));
             }
         }
 
@@ -88,14 +88,14 @@ const StickyChatBoxContainer = () => {
 
         const newChat = {
             id: Date.now(),
-            friendProfile: loadingProfile,
+            connectProfile: loadingProfile,
             isMinimized: false,
             isLoading: true
         };
 
         setOpenChats(prev => [...prev, newChat]);
 
-        // Fetch friend profile in background
+        // Fetch connect profile in background
         try {
             const profileData = await fetchProfileCached(profileId, {
                 ttlMs: 60000,
@@ -104,9 +104,9 @@ const StickyChatBoxContainer = () => {
             });
 
             // Update the chat with real profile data
-            setOpenChats(prev => prev.map(chat => 
+            setOpenChats(prev => prev.map(chat =>
                 chat.id === newChat.id
-                    ? { ...chat, friendProfile: profileData, isLoading: false }
+                    ? { ...chat, connectProfile: profileData, isLoading: false }
                     : chat
             ));
         } catch (error) {
@@ -121,8 +121,8 @@ const StickyChatBoxContainer = () => {
     }, [maxChats]);
 
     const minimizeChat = useCallback((profileId) => {
-        setOpenChats(prev => prev.map(chat => 
-            chat.friendProfile?._id === profileId 
+        setOpenChats(prev => prev.map(chat =>
+            chat.connectProfile?._id === profileId
                 ? { ...chat, isMinimized: !chat.isMinimized }
                 : chat
         ));
@@ -178,9 +178,9 @@ const StickyChatBoxContainer = () => {
                         }}
                     >
                         <StickyChatBox
-                            friendProfile={chat.friendProfile}
-                            onClose={() => closeChat(chat.friendProfile?._id)}
-                            onMinimize={() => minimizeChat(chat.friendProfile?._id)}
+                            connectProfile={chat.connectProfile}
+                            onClose={() => closeChat(chat.connectProfile?._id)}
+                            onMinimize={() => minimizeChat(chat.connectProfile?._id)}
                             isMinimized={chat.isMinimized}
                             zIndex={zIndex}
                             isLoading={chat.isLoading}

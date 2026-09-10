@@ -1,12 +1,12 @@
 import {
-  FRIEND_REQUIRED_ACTIONS,
-  NO_FRIEND_ACTIONS,
+  CONNECT_REQUIRED_ACTIONS,
+  NO_CONNECT_ACTIONS,
   DIRECTORY_LOOKUP_ACTIONS,
 } from "./agentCatalog";
 import { normalizeBanglishCommand } from "./banglish";
 import { normalizeBanglaCommand } from "./agentFastPath";
 
-export { FRIEND_REQUIRED_ACTIONS, NO_FRIEND_ACTIONS, DIRECTORY_LOOKUP_ACTIONS };
+export { CONNECT_REQUIRED_ACTIONS, NO_CONNECT_ACTIONS, DIRECTORY_LOOKUP_ACTIONS };
 
 /**
  * How the agent should respond when it confidently understands the user's intent.
@@ -29,13 +29,13 @@ export const ACTION_RESPONSE_MODE = {
   LIST_NOTIFICATIONS: "reply",
   LIST_HABITS: "reply",
   LIST_EVENTS: "reply",
-  LIST_FRIENDS_INFO: "reply",
+  LIST_CONNECTS_INFO: "reply",
   VIEW_PROFILE: "navigate",
   NAVIGATE_PROFILE: "navigate",
   NAVIGATE: "navigate",
   OPEN_MESSAGES: "navigate",
-  OPEN_FRIENDS: "navigate",
-  LIST_FRIENDS: "navigate",
+  OPEN_CONNECTS: "navigate",
+  LIST_CONNECTS: "navigate",
   CREATE_POST: "navigate",
   DELETE_POST: "navigate",
   CREATE_STORY: "navigate",
@@ -55,7 +55,7 @@ export const ACTION_RESPONSE_MODE = {
   INVITE_CHESS: "confirm",
   BLOCK: "confirm",
   UNBLOCK: "confirm",
-  ADD_FRIEND: "confirm",
+  ADD_CONNECT: "confirm",
   UNFRIEND: "confirm",
 };
 
@@ -153,9 +153,9 @@ const STATIC_ROUTE_MAP = [
     label: "My Profile",
   },
   {
-    keys: ["my friends", "my friend list", "all my friends"],
-    route: "MY_PROFILE_FRIENDS",
-    label: "My Friends List",
+    keys: ["my connects", "my connect list", "all my connects"],
+    route: "MY_PROFILE_CONNECTS",
+    label: "My Connects List",
   },
   {
     keys: ["my images", "my photos", "my pictures", "my gallery"],
@@ -173,16 +173,16 @@ const STATIC_ROUTE_MAP = [
     label: "My About",
   },
 
-  // ── Friends section ───────────────────────────────────────────────────────
+  // ── Connects section ───────────────────────────────────────────────────────
   {
-    keys: ["friend requests", "friend request", "pending requests", "requests"],
-    route: "/friends/requests",
-    label: "Friend Requests",
+    keys: ["connect requests", "connect request", "pending requests", "requests"],
+    route: "/connects/requests",
+    label: "Connect Requests",
   },
   {
-    keys: ["friend suggestions", "people you may know", "suggestions"],
-    route: "/friends/suggestions",
-    label: "Friend Suggestions",
+    keys: ["connect suggestions", "people you may know", "suggestions"],
+    route: "/connects/suggestions",
+    label: "Connect Suggestions",
   },
   {
     keys: [
@@ -191,13 +191,13 @@ const STATIC_ROUTE_MAP = [
       "places near me",
       "nearby places",
     ],
-    route: "/friends/places",
+    route: "/connects/places",
     label: "Places Near You",
   },
   {
-    keys: ["friends page", "friends section", "friends"],
-    route: "/friends/",
-    label: "Friends",
+    keys: ["connects page", "connects section", "connects"],
+    route: "/connects/",
+    label: "Connects",
   },
 
   // ── Messages ──────────────────────────────────────────────────────────────
@@ -370,7 +370,7 @@ const NAV_PATTERNS = [
 ];
 
 /**
- * Words that are definitely NOT friend names.
+ * Words that are definitely NOT connect names.
  * If detectProfileSubNav captures one of these, the match is discarded.
  */
 const NON_NAME_WORDS = new Set([
@@ -406,18 +406,18 @@ const NON_NAME_WORDS = new Set([
 ]);
 
 /**
- * Friend profile sub-page patterns.
+ * Connect profile sub-page patterns.
  * Possessive patterns (John's profile) are tried first.
- * Non-possessive patterns (go to atik profile, open atik friends) follow.
+ * Non-possessive patterns (go to atik profile, open atik connects) follow.
  * ALL captured names pass through detectProfileSubNav's NON_NAME_WORDS guard
  * so pronouns like "my", "your", "the" are always rejected.
  */
 const PROFILE_SUB_PATTERNS = [
   // ── Possessive sub-pages (require apostrophe 's) ──────────────────────────
   {
-    regex: /(.+?)'s\s+friends(?:\s+list)?/i,
-    subPath: "/friends",
-    subLabel: "Friends",
+    regex: /(.+?)'s\s+connects(?:\s+list)?/i,
+    subPath: "/connects",
+    subLabel: "Connects",
   },
   {
     regex: /(.+?)'s\s+(?:images|photos|pictures|gallery)/i,
@@ -436,9 +436,9 @@ const PROFILE_SUB_PATTERNS = [
   },
 
   // ── Non-possessive sub-pages ──────────────────────────────────────────────
-  // "go to atik profile", "open atik friends", "view atik photos", etc.
+  // "go to atik profile", "open atik connects", "view atik photos", etc.
   // These fire AFTER findStaticRoute has already rejected the message, so
-  // static routes like /friends/ and /watch are never reached from here.
+  // static routes like /connects/ and /watch are never reached from here.
   {
     regex:
       /(?:go\s+to|visit|open|view|show(?:\s+me)?|take\s+me\s+to)\s+(.+?)\s+profile$/i,
@@ -452,9 +452,9 @@ const PROFILE_SUB_PATTERNS = [
     subLabel: "Profile",
   },
   {
-    regex: /(?:go\s+to|visit|open|view)\s+(.+?)\s+friends(?:\s+list)?$/i,
-    subPath: "/friends",
-    subLabel: "Friends",
+    regex: /(?:go\s+to|visit|open|view)\s+(.+?)\s+connects(?:\s+list)?$/i,
+    subPath: "/connects",
+    subLabel: "Connects",
   },
   {
     regex:
@@ -572,7 +572,7 @@ const isGenericMessageText = (value = "") =>
 
 const parseDirectSendMessageIntent = (message) => {
   if (
-    /(?:send|make|add)\s+(?:a\s+)?friend\s+request\b/i.test(message) ||
+    /(?:send|make|add)\s+(?:a\s+)?connect\s+request\b/i.test(message) ||
     /\bfriend\s+request\s+to\b/i.test(message)
   ) {
     return null;
@@ -843,7 +843,7 @@ const INTENT_PATTERNS = [
     action: "AUDIO_CALL",
     noCapture: true,
     patterns: [
-      /^(?:please\s+)?(?:make\s+)?(?:a\s+)?(?:phone\s+|voice\s+|audio\s+)?call(?:\s+(?:someone|a friend))?[.!?]*$/i,
+      /^(?:please\s+)?(?:make\s+)?(?:a\s+)?(?:phone\s+|voice\s+|audio\s+)?call(?:\s+(?:someone|a connect))?[.!?]*$/i,
     ],
   },
   {
@@ -889,7 +889,7 @@ const INTENT_PATTERNS = [
     ],
   },
 
-  // ── Create Ludo with named friends (before generic invite/create) ──────────
+  // ── Create Ludo with named connects (before generic invite/create) ──────────
   {
     action: "CREATE_LUDO",
     patterns: [
@@ -991,13 +991,13 @@ const INTENT_PATTERNS = [
       /(?:set|change|switch|turn(?:\s+on)?|update)\s+(?:to\s+)?(?:dark|light|default)\s+(?:mode|theme)/i,
       /(?:enable|disable|turn\s+on|turn\s+off|mute|unmute)\s+(?:my\s+)?(?:email\s+)?(?:notifications?|location(?:\s+sharing)?)/i,
       /(?:hide|share|stop sharing|show)\s+(?:my\s+)?location/i,
-      /(?:make\s+)?(?:my\s+)?posts?\s+(?:public|private|only\s+me|friends?\s+only|friends of friends)/i,
-      /(?:set|change|update)\s+(?:my\s+)?(?:posts?|post visibility|privacy)\s+(?:to\s+)?(?:public|private|only\s+me|friends?\s+only)/i,
-      /(?:who can (?:see my posts|send (?:me )?(?:a )?friend request|post on my timeline))\s*(.*)/i,
+      /(?:make\s+)?(?:my\s+)?posts?\s+(?:public|private|only\s+me|connects?\s+only|connects of connects)/i,
+      /(?:set|change|update)\s+(?:my\s+)?(?:posts?|post visibility|privacy)\s+(?:to\s+)?(?:public|private|only\s+me|connects?\s+only)/i,
+      /(?:who can (?:see my posts|send (?:me )?(?:a )?connect request|post on my timeline))\s*(.*)/i,
       /(?:hide|show|enable|disable|turn\s+on|turn\s+off)\s+(?:the\s+)?(?:typing(?:\s+indicator)?|face mode|emotion sharing|share(?:ing)? (?:my )?emotions?)/i,
       /(?:set|change|update)\s+(?:my\s+)?ringtone(?:\s+to)?\s*(.*)/i,
       /(?:set|change|update|edit)\s+(?:my\s+)?(?:nickname|nick name|display name|bangla name|bengali name|username|user name|first name|surname|last name|present address|permanent address)\s*(.*)/i,
-      /(?:turn\s+off|disable|mute)\s+(?:my\s+)?(?:message|post|story|watch|friend request)\s+notifications?/i,
+      /(?:turn\s+off|disable|mute)\s+(?:my\s+)?(?:message|post|story|watch|connect request)\s+notifications?/i,
       /(?:update|change)\s+(?:my\s+)?settings(?:\s+to|\s+for)?\s*(.*)/i,
       /(?:open)\s+(?:my\s+)?settings\s+(?:to|for)\s+(.+)/i,
     ],
@@ -1069,7 +1069,7 @@ const INTENT_PATTERNS = [
 
   // ── View Profile (pure, no sub-page) ──────────────────────────────────────
   // Requires possessive 's so "view my profile" goes to the static route map
-  // (MY_PROFILE) instead of treating "my" as a friend name.
+  // (MY_PROFILE) instead of treating "my" as a connect name.
   {
     action: "VIEW_PROFILE",
     patterns: [
@@ -1110,14 +1110,14 @@ const INTENT_PATTERNS = [
     ],
   },
 
-  // ── Add Friend ─────────────────────────────────────────────────────────────
+  // ── Add Connect ─────────────────────────────────────────────────────────────
   {
-    action: "ADD_FRIEND",
+    action: "ADD_CONNECT",
     patterns: [
-      /(?:add|send)\s+(?:a\s+)?friend\s+(?:request\s+(?:to\s+)?)?(.+)/i,
-      /add\s+(.+?)\s+as\s+(?:a\s+)?friend/i,
-      /(?:send|make)\s+(.+?)\s+(?:a\s+)?friend\s+request/i,
-      /friend\s+request\s+to\s+(.+)/i,
+      /(?:add|send)\s+(?:a\s+)?connect\s+(?:request\s+(?:to\s+)?)?(.+)/i,
+      /add\s+(.+?)\s+as\s+(?:a\s+)?connect/i,
+      /(?:send|make)\s+(.+?)\s+(?:a\s+)?connect\s+request/i,
+      /connect\s+request\s+to\s+(.+)/i,
     ],
   },
 
@@ -1126,18 +1126,18 @@ const INTENT_PATTERNS = [
     action: "UNFRIEND",
     patterns: [
       /unfriend\s+(.+)/i,
-      /remove\s+(.+?)\s+(?:from\s+(?:my\s+)?friends|as\s+(?:a\s+)?friend)/i,
-      /(?:delete|remove)\s+friend\s+(.+)/i,
+      /remove\s+(.+?)\s+(?:from\s+(?:my\s+)?connects|as\s+(?:a\s+)?connect)/i,
+      /(?:delete|remove)\s+connect\s+(.+)/i,
     ],
   },
 
-  // ── List Friends ───────────────────────────────────────────────────────────
+  // ── List Connects ───────────────────────────────────────────────────────────
   {
-    action: "LIST_FRIENDS",
+    action: "LIST_CONNECTS",
     noCapture: true,
     patterns: [
-      /(?:list|show|see|view|display)\s+(?:my\s+)?friends/i,
-      /who\s+(?:are\s+)?my\s+friends/i,
+      /(?:list|show|see|view|display)\s+(?:my\s+)?connects/i,
+      /who\s+(?:are\s+)?my\s+connects/i,
     ],
   },
 
@@ -1152,13 +1152,13 @@ const INTENT_PATTERNS = [
     ],
   },
 
-  // ── Open Friends ───────────────────────────────────────────────────────────
+  // ── Open Connects ───────────────────────────────────────────────────────────
   {
-    action: "OPEN_FRIENDS",
+    action: "OPEN_CONNECTS",
     noCapture: true,
     patterns: [
-      /(?:open|go\s+to|show|navigate\s+to)\s+(?:the\s+)?friends?\s+page/i,
-      /^friends?\s+page$/i,
+      /(?:open|go\s+to|show|navigate\s+to)\s+(?:the\s+)?connects?\s+page/i,
+      /^connects?\s+page$/i,
     ],
   },
 ];
@@ -1188,7 +1188,7 @@ export const findStaticRoute = (query) => {
 
   // Partial / "contains" pass.
   // The key must cover at least 60 % of the query length to avoid accidental
-  // matches like "friends" (7) hitting "atik friends" (12) → 58 % < 60 %.
+  // matches like "connects" (7) hitting "atik connects" (12) → 58 % < 60 %.
   for (const entry of STATIC_ROUTE_MAP) {
     for (const key of entry.keys) {
       if (q.includes(key) && key.length > bestLength) {
@@ -1204,7 +1204,7 @@ export const findStaticRoute = (query) => {
 };
 
 /**
- * Try to detect a "go to <X>'s <sub-page>" intent for a friend profile.
+ * Try to detect a "go to <X>'s <sub-page>" intent for a connect profile.
  * Returns { targetName, subPath, subLabel } or null.
  */
 const detectProfileSubNav = (message) => {
@@ -1316,7 +1316,7 @@ const parseIntentOnce = (trimmed) => {
     for (const pattern of patterns) {
       const match = trimmed.match(pattern);
       if (match) {
-        // SEARCH_VIDEO: capture group is a search query, not a friend name
+        // SEARCH_VIDEO: capture group is a search query, not a connect name
         if (searchCapture && match[1]) {
           const searchQuery = match[1]
             .trim()
@@ -1347,14 +1347,14 @@ const parseIntentOnce = (trimmed) => {
             .replace(/[?.!,;:]+$/, "")
             .replace(/\s+(now|please|for\s+me)$/i, "")
             .trim();
-          if (action === "ADD_FRIEND" && targetName) {
+          if (action === "ADD_CONNECT" && targetName) {
             targetName = targetName.replace(/^(?:to|for)\s+/i, "").trim();
           }
           if (
             targetName &&
             (action === "VIEW_PROFILE" ||
               action === "NAVIGATE_PROFILE" ||
-              action === "ADD_FRIEND" ||
+              action === "ADD_CONNECT" ||
               action === "GET_BIO") &&
             NON_NAME_WORDS.has(targetName.toLowerCase())
           ) {
@@ -1366,7 +1366,7 @@ const parseIntentOnce = (trimmed) => {
         if (
           (action === "INVITE_LUDO" || action === "CREATE_LUDO") &&
           targetName &&
-          /^(?:(?:invite\s+)?(?:my\s+)?friends?|everyone|all(?:\s+friends?)?)$/i.test(
+          /^(?:(?:invite\s+)?(?:my\s+)?connects?|everyone|all(?:\s+connects?)?)$/i.test(
             targetName,
           )
         ) {
@@ -1405,7 +1405,7 @@ const parseIntentOnce = (trimmed) => {
 
   // ── 2. Try navigation intents (static route matching) — BEFORE profile nav ─
   // This ensures "go to my profile", "go to settings" etc. are never mistaken
-  // for friend-profile navigation.
+  // for connect-profile navigation.
   for (const navPattern of NAV_PATTERNS) {
     const match = trimmed.match(navPattern);
     if (match && match[1]) {
@@ -1442,7 +1442,7 @@ const parseIntentOnce = (trimmed) => {
     };
   }
 
-  // ── 4. Try "[friend]'s [sub-page]" profile navigation — AFTER static routes ─
+  // ── 4. Try "[connect]'s [sub-page]" profile navigation — AFTER static routes ─
   // Only reaches here if the message didn't match any known static route.
   const profileSubNav = detectProfileSubNav(trimmed);
   if (profileSubNav && profileSubNav.targetName) {
@@ -1515,12 +1515,12 @@ export const parseIntent = (message) => {
   return null;
 };
 
-// ── Friend search ──────────────────────────────────────────────────────────────
+// ── Connect search ──────────────────────────────────────────────────────────────
 
-const FRIEND_NAME_MATCH_THRESHOLD = 0.4; // Lowered to catch more matches (surnames, partial names)
-const MIN_FRIEND_NAME_QUERY_LENGTH = 3;
+const CONNECT_NAME_MATCH_THRESHOLD = 0.4; // Lowered to catch more matches (surnames, partial names)
+const MIN_CONNECT_NAME_QUERY_LENGTH = 3;
 
-const normalizeFriendName = (value = "") =>
+const normalizeConnectName = (value = "") =>
   String(value)
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -1592,18 +1592,18 @@ const getNameSimilarity = (query, candidate) => {
 };
 
 /**
- * Split a captured friend phrase into individual names.
- * "Atik and Rahima" → ["Atik", "Rahima"]. Generic "friends" → [].
+ * Split a captured connect phrase into individual names.
+ * "Atik and Rahima" → ["Atik", "Rahima"]. Generic "connects" → [].
  */
-export const splitFriendNames = (value) => {
+export const splitConnectNames = (value) => {
   const text = String(value || "")
     .trim()
-    .replace(/^(?:invite\s+)?(?:my\s+)?friends?\s*(?:named\s+)?/i, "")
+    .replace(/^(?:invite\s+)?(?:my\s+)?connects?\s*(?:named\s+)?/i, "")
     .replace(/\s+(?:please|now)$/i, "")
     .trim();
   if (
     !text ||
-    /^(?:(?:my\s+)?friends?|everyone|all(?:\s+friends?)?)$/i.test(text)
+    /^(?:(?:my\s+)?connects?|everyone|all(?:\s+connects?)?)$/i.test(text)
   ) {
     return [];
   }
@@ -1612,35 +1612,35 @@ export const splitFriendNames = (value) => {
     .map((part) => part.replace(/^[\s.]+|[\s.]+$/g, "").trim())
     .filter(
       (part) =>
-        part && !/^(?:(?:my\s+)?friends?|everyone|all)$/i.test(part),
+        part && !/^(?:(?:my\s+)?connects?|everyone|all)$/i.test(part),
     );
 };
 
 /**
- * Search a friend list by name (partial / full / nickname).
- * @param {Array} friends  – myProfile.friends array
+ * Search a connect list by name (partial / full / nickname).
+ * @param {Array} connects  – myProfile.connects array
  * @param {string} query
  * @returns {Array} – sorted: exact matches first, then partial
  */
-export const searchFriendsByName = (friends, query) => {
-  if (!friends || !Array.isArray(friends) || !query) return [];
+export const searchConnectsByName = (connects, query) => {
+  if (!connects || !Array.isArray(connects) || !query) return [];
 
-  const normalizedQuery = normalizeFriendName(query);
+  const normalizedQuery = normalizeConnectName(query);
   const queryCharacterCount = normalizedQuery.replace(/\s/g, "").length;
-  if (queryCharacterCount < MIN_FRIEND_NAME_QUERY_LENGTH) return [];
+  if (queryCharacterCount < MIN_CONNECT_NAME_QUERY_LENGTH) return [];
 
   const matches = [];
   const queryTokens = normalizedQuery.split(/\s+/).filter(Boolean);
 
-  for (const friend of friends) {
-    if (!friend) continue;
+  for (const connect of connects) {
+    if (!connect) continue;
 
-    const firstName = friend.user?.firstName || friend.firstName || "";
-    const surname = friend.user?.surname || friend.surname || "";
-    const displayName = friend.user?.displayName || friend.displayName || "";
-    const nickname = friend.user?.nickname || friend.nickname || "";
-    const banglaName = friend.banglaName || "";
-    const username = friend.user?.username || friend.username || "";
+    const firstName = connect.user?.firstName || connect.firstName || "";
+    const surname = connect.user?.surname || connect.surname || "";
+    const displayName = connect.user?.displayName || connect.displayName || "";
+    const nickname = connect.user?.nickname || connect.nickname || "";
+    const banglaName = connect.banglaName || "";
+    const username = connect.user?.username || connect.username || "";
     const composedFullName = `${firstName} ${surname}`.trim();
 
     // Primary fields for 3+ character matching: Name, DisplayName, Nickname, BanglaName
@@ -1652,14 +1652,14 @@ export const searchFriendsByName = (friends, query) => {
       nickname,
       banglaName,
       username,
-      friend.name,
-      friend.user?.name,
-      friend.fullName,
-      friend.user?.fullName,
+      connect.name,
+      connect.user?.name,
+      connect.fullName,
+      connect.user?.fullName,
     ];
 
     const candidateNames = primaryFields
-      .map(normalizeFriendName)
+      .map(normalizeConnectName)
       .filter(Boolean);
 
     // Calculate best match score
@@ -1750,34 +1750,34 @@ export const searchFriendsByName = (friends, query) => {
     // Lower threshold slightly for better matching
     const threshold = 0.4; // Changed from 0.5 to catch more matches
     if (bestScore >= threshold) {
-      matches.push({ friend, score: bestScore });
+      matches.push({ connect, score: bestScore });
     }
   }
 
-  return matches.sort((a, b) => b.score - a.score).map(({ friend }) => friend);
+  return matches.sort((a, b) => b.score - a.score).map(({ connect }) => connect);
 };
 
 /**
- * Get a display name for a friend profile object.
+ * Get a display name for a connect profile object.
  */
-export const getFriendDisplayName = (friend) => {
-  if (!friend) return "Unknown";
-  if (friend.fullName) return friend.fullName;
-  if (friend.user?.fullName) return friend.user.fullName;
-  const first = friend.user?.firstName || friend.firstName || "";
-  const last = friend.user?.surname || friend.surname || "";
+export const getConnectDisplayName = (connect) => {
+  if (!connect) return "Unknown";
+  if (connect.fullName) return connect.fullName;
+  if (connect.user?.fullName) return connect.user.fullName;
+  const first = connect.user?.firstName || connect.firstName || "";
+  const last = connect.user?.surname || connect.surname || "";
   const full = `${first} ${last}`.trim();
   return (
     full ||
-    friend.username ||
-    friend.displayName ||
-    friend.user?.displayName ||
-    friend.nickname ||
-    friend.user?.nickname ||
-    friend.name ||
-    friend.user?.name ||
-    friend.username ||
-    friend.user?.username ||
+    connect.username ||
+    connect.displayName ||
+    connect.user?.displayName ||
+    connect.nickname ||
+    connect.user?.nickname ||
+    connect.name ||
+    connect.user?.name ||
+    connect.username ||
+    connect.user?.username ||
     "Unknown"
   );
 };
@@ -1785,10 +1785,10 @@ export const getFriendDisplayName = (friend) => {
 const agentIntentParser = {
   parseIntent,
   stripCommandFiller,
-  searchFriendsByName,
-  getFriendDisplayName,
-  FRIEND_REQUIRED_ACTIONS,
-  NO_FRIEND_ACTIONS,
+  searchConnectsByName,
+  getConnectDisplayName,
+  CONNECT_REQUIRED_ACTIONS,
+  NO_CONNECT_ACTIONS,
   DIRECTORY_LOOKUP_ACTIONS,
 };
 

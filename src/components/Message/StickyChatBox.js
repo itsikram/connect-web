@@ -13,7 +13,7 @@ import UserPP from "../UserPP";
 import api from "../../api/api";
 import { fetchOnlineStatusesCached, fetchProfileCached } from "../../utils/requestCache";
 import socket from "../../common/socket";
-import { sendBumpToFriend } from "../../utils/sendBump";
+import { sendBumpToConnect } from "../../utils/sendBump";
 import { newMessage, seenMessage } from "../../services/actions/messageActions";
 import SingleMessage from "./SingleMessage";
 import ChatHeader from "./ChatHeader";
@@ -22,7 +22,7 @@ import SingleMsgSkleton from "../../skletons/message/SingleMsgSkleton";
 import ModalContainer from "../modal/ModalContainer";
 import ChatSettingsModal from "./ChatSettingsModal";
 import useIsMobile from "../../utils/useIsMobile";
-import useFriendChatSettings from "../../hooks/useFriendChatSettings";
+import useConnectChatSettings from "../../hooks/useConnectChatSettings";
 import { isRomanticMessage } from "../../utils/chatThemes";
 import LoveEmojiRain from "./LoveEmojiRain";
 import "./StickyChatBox.css";
@@ -40,7 +40,7 @@ import {
 const NEAR_BOTTOM_PX = 80;
 
 const StickyChatBox = ({
-  friendProfile,
+  connectProfile,
   onClose,
   onMinimize,
   isMinimized,
@@ -51,9 +51,9 @@ const StickyChatBox = ({
   const dispatch = useDispatch();
   const myProfile = useSelector((state) => state.profile);
   const userId = myProfile._id;
-  const friendId = friendProfile?._id;
-  const { theme, wallpaper, settings: chatAppearance } = useFriendChatSettings(
-    friendId,
+  const connectId = connectProfile?._id;
+  const { theme, wallpaper, settings: chatAppearance } = useConnectChatSettings(
+    connectId,
   );
   const [loveRainBurst, setLoveRainBurst] = useState(0);
 
@@ -76,7 +76,7 @@ const StickyChatBox = ({
   const [isChatSettingsOpen, setIsChatSettingsOpen] = useState(false);
   const [userInfoData, setUserInfoData] = useState(null);
   const [loadingUserInfo, setLoadingUserInfo] = useState(false);
-  const [friendLocation, setFriendLocation] = useState(null);
+  const [connectLocation, setConnectLocation] = useState(null);
   const [isLiveVoiceActive, setIsLiveVoiceActive] = useState(false);
   const [emotion, setEmotion] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -184,7 +184,7 @@ const StickyChatBox = ({
   const fetchMessages = async () => {
     try {
       const response = await api.get("/message/getChatHistory", {
-        params: { profileId: userId, friendId },
+        params: { profileId: userId, connectId },
       });
       return response.data.messages || [];
     } catch (error) {
@@ -201,7 +201,7 @@ const StickyChatBox = ({
       const response = await api.get("/message/getOldMessages", {
         params: {
           profileId: userId,
-          friendId: friendId,
+          connectId: connectId,
           beforeTimestamp,
           limit: 20,
         },
@@ -230,7 +230,7 @@ const StickyChatBox = ({
       _id: tempId,
       tempId,
       senderId: userId,
-      receiverId: friendId,
+      receiverId: connectId,
       message: messageData.message,
       attachment: messageData.attachment,
       parent: messageData.parent,
@@ -323,7 +323,7 @@ const StickyChatBox = ({
     });
   };
 
-  // Mark unseen messages from the friend as seen in one batched request
+  // Mark unseen messages from the connect as seen in one batched request
   const markMessageAsSeen = async (messageIds) => {
     const ids = (Array.isArray(messageIds) ? messageIds : [messageIds])
       .map((id) => String(id || ""))
@@ -369,14 +369,14 @@ const StickyChatBox = ({
 
   // Check if user is active - HTTP-based polling
   useEffect(() => {
-    if (!friendId || !userId || isLoading) return;
+    if (!connectId || !userId || isLoading) return;
 
-    if (friendProfile?.isActive) {
+    if (connectProfile?.isActive) {
       setIsActive(true);
     }
 
     const checkStatus = async () => {
-      const isOnline = await checkOnlineStatus(friendId);
+      const isOnline = await checkOnlineStatus(connectId);
       setIsActive(isOnline);
 
       if (!isOnline) {
@@ -389,18 +389,18 @@ const StickyChatBox = ({
     const interval = setInterval(checkStatus, 90000);
 
     return () => clearInterval(interval);
-  }, [friendId, userId, isLoading]);
+  }, [connectId, userId, isLoading]);
 
   // Check if blocked
   useEffect(() => {
-    if (friendProfile && !isLoading) {
+    if (connectProfile && !isLoading) {
       setIsBlockedMe(
-        friendProfile.blockedUsers
-          ? friendProfile.blockedUsers.includes(userId)
+        connectProfile.blockedUsers
+          ? connectProfile.blockedUsers.includes(userId)
           : false,
       );
     }
-  }, [friendProfile, userId, isLoading]);
+  }, [connectProfile, userId, isLoading]);
 
   // Calculate menu position and handle click outside
   useEffect(() => {
@@ -442,7 +442,7 @@ const StickyChatBox = ({
 
   // Handle chat info click
   const handleChatInfoClick = async () => {
-    if (!friendId) return;
+    if (!connectId) return;
     setShowOptionsMenu(false);
     if (isUserInfoModalOpen) {
       setIsUserInfoModalOpen(false);
@@ -451,7 +451,7 @@ const StickyChatBox = ({
     setIsUserInfoModalOpen(true);
     setLoadingUserInfo(true);
     try {
-      const profileData = await fetchProfileCached(friendId, {
+      const profileData = await fetchProfileCached(connectId, {
         ttlMs: 60000,
         storageTtlMs: 300000,
       });
@@ -461,7 +461,7 @@ const StickyChatBox = ({
           profileData?.lastLocation?.latitude &&
           profileData?.lastLocation?.longitude
         ) {
-          setFriendLocation({
+          setConnectLocation({
             latitude: profileData.lastLocation.latitude,
             longitude: profileData.lastLocation.longitude,
             timestamp: profileData.lastLocation.timestamp || Date.now(),
@@ -470,15 +470,15 @@ const StickyChatBox = ({
       }
     } catch (error) {
       console.error("Error fetching user info:", error);
-      setUserInfoData(friendProfile);
+      setUserInfoData(connectProfile);
       if (
-        friendProfile?.lastLocation?.latitude &&
-        friendProfile?.lastLocation?.longitude
+        connectProfile?.lastLocation?.latitude &&
+        connectProfile?.lastLocation?.longitude
       ) {
-        setFriendLocation({
-          latitude: friendProfile.lastLocation.latitude,
-          longitude: friendProfile.lastLocation.longitude,
-          timestamp: friendProfile.lastLocation.timestamp || Date.now(),
+        setConnectLocation({
+          latitude: connectProfile.lastLocation.latitude,
+          longitude: connectProfile.lastLocation.longitude,
+          timestamp: connectProfile.lastLocation.timestamp || Date.now(),
         });
       }
     } finally {
@@ -490,7 +490,7 @@ const StickyChatBox = ({
     const onLiveVoiceStatus = (event) => {
       const { active, peerId } = event.detail || {};
       const isThisChat =
-        !peerId || !friendId || String(peerId) === String(friendId);
+        !peerId || !connectId || String(peerId) === String(connectId);
       if (!isThisChat) {
         setIsLiveVoiceActive(false);
         return;
@@ -502,25 +502,25 @@ const StickyChatBox = ({
     return () => {
       window.removeEventListener("liveVoiceStatus", onLiveVoiceStatus);
     };
-  }, [friendId]);
+  }, [connectId]);
 
   const handleLiveVoiceButtonClick = () => {
-    if (!friendId || !room) return;
+    if (!connectId || !room) return;
 
     if (isLiveVoiceActive) {
       window.dispatchEvent(new CustomEvent("stopLiveVoice"));
       return;
     }
 
-    const friendName =
-      friendProfile?.fullName || friendProfile?.user?.firstName || "Friend";
+    const connectName =
+      connectProfile?.fullName || connectProfile?.user?.firstName || "Connect";
 
     window.dispatchEvent(
       new CustomEvent("startLiveVoice", {
         detail: {
-          to: String(friendId),
+          to: String(connectId),
           channelName: room,
-          friendName,
+          connectName,
         },
       }),
     );
@@ -528,7 +528,7 @@ const StickyChatBox = ({
 
   // Helper functions for user info modal
   const getUserName = () => {
-    const data = userInfoData || friendProfile;
+    const data = userInfoData || connectProfile;
     return (
       data?.fullName ||
       (data?.user?.firstName && data?.user?.surname
@@ -538,7 +538,7 @@ const StickyChatBox = ({
   };
 
   const getUserProfilePic = () => {
-    const data = userInfoData || friendProfile;
+    const data = userInfoData || connectProfile;
     return sanitizeProfileImageUrl(data?.profilePic || "", 200);
   };
 
@@ -568,10 +568,10 @@ const StickyChatBox = ({
   };
 
   const getUserLocation = () => {
-    if (friendLocation) {
-      return `${friendLocation.latitude.toFixed(6)}, ${friendLocation.longitude.toFixed(6)}`;
+    if (connectLocation) {
+      return `${connectLocation.latitude.toFixed(6)}, ${connectLocation.longitude.toFixed(6)}`;
     }
-    const data = userInfoData || friendProfile;
+    const data = userInfoData || connectProfile;
     if (data?.lastLocation?.latitude && data?.lastLocation?.longitude) {
       return `${data.lastLocation.latitude.toFixed(6)}, ${data.lastLocation.longitude.toFixed(6)}`;
     }
@@ -582,7 +582,7 @@ const StickyChatBox = ({
 
   const getUserEmotion = () => {
     if (emotion) return emotion;
-    const data = userInfoData || friendProfile;
+    const data = userInfoData || connectProfile;
     if (data?.lastEmotion) return data.lastEmotion;
     if (data?.lastEmotionText && data?.lastEmotionEmoji) {
       return `${data.lastEmotionEmoji} ${data.lastEmotionText}`;
@@ -591,7 +591,7 @@ const StickyChatBox = ({
   };
 
   const getLastAction = () => {
-    const data = userInfoData || friendProfile;
+    const data = userInfoData || connectProfile;
     if (emotion) return "Sharing emotion";
     if (data?.isActive || isActive) return "Currently active";
     if (lastSeen) {
@@ -610,11 +610,11 @@ const StickyChatBox = ({
   // Fetch initial messages once the profile is ready. Kept separate from the
   // socket effect so isLoading flipping false does not leave/rejoin the room.
   useEffect(() => {
-    if (!friendId || !userId || isLoading || !friendProfile?._id) return;
+    if (!connectId || !userId || isLoading || !connectProfile?._id) return;
 
     const onSameChatPage =
       typeof window !== "undefined" &&
-      window.location.pathname === `/message/${friendId}`;
+      window.location.pathname === `/message/${connectId}`;
     if (onSameChatPage) return;
 
     let cancelled = false;
@@ -629,7 +629,7 @@ const StickyChatBox = ({
         const response = await api.get("/message/getChatHistory", {
           params: {
             profileId: userId,
-            friendId: friendId,
+            connectId: connectId,
             limit: 20,
           },
         });
@@ -657,13 +657,13 @@ const StickyChatBox = ({
     return () => {
       cancelled = true;
     };
-  }, [friendId, userId, isLoading, friendProfile?._id]);
+  }, [connectId, userId, isLoading, connectProfile?._id]);
 
   // Real-time socket listeners for this conversation
   useEffect(() => {
-    if (!friendId || !userId) return;
+    if (!connectId || !userId) return;
 
-    const newRoom = [userId, friendId].sort().join("_");
+    const newRoom = [userId, connectId].sort().join("_");
     setRoom(newRoom);
 
     const roomId = newRoom;
@@ -685,7 +685,7 @@ const StickyChatBox = ({
       emitChatMessage(updatedMessage);
       dispatch(newMessage(updatedMessage, userId));
 
-      if (idOf(updatedMessage.senderId) === idOf(friendId)) {
+      if (idOf(updatedMessage.senderId) === idOf(connectId)) {
         setIsActive(true);
         triggerLoveRain(updatedMessage.message);
       }
@@ -694,7 +694,7 @@ const StickyChatBox = ({
     const handleNewMessage = (data) => {
       if (
         data?.updatedMessage &&
-        isConversationMessage(data.updatedMessage, userId, friendId)
+        isConversationMessage(data.updatedMessage, userId, connectId)
       ) {
         appendIncomingMessage(data.updatedMessage);
       }
@@ -703,7 +703,7 @@ const StickyChatBox = ({
     const handleNewMessageToUser = (data) => {
       if (
         data?.updatedMessage &&
-        isConversationMessage(data.updatedMessage, userId, friendId)
+        isConversationMessage(data.updatedMessage, userId, connectId)
       ) {
         appendIncomingMessage(data.updatedMessage);
       }
@@ -712,7 +712,7 @@ const StickyChatBox = ({
     const handleMessageSent = (data) => {
       if (
         data?.updatedMessage &&
-        isConversationMessage(data.updatedMessage, userId, friendId)
+        isConversationMessage(data.updatedMessage, userId, connectId)
       ) {
         appendIncomingMessage(data.updatedMessage);
       }
@@ -763,7 +763,7 @@ const StickyChatBox = ({
       const updatedMessage = payload?.message || payload;
       if (
         !updatedMessage?._id ||
-        !isConversationMessage(updatedMessage, userId, friendId)
+        !isConversationMessage(updatedMessage, userId, connectId)
       ) {
         return;
       }
@@ -807,7 +807,7 @@ const StickyChatBox = ({
       }
       socket.emit("leaveRoom", roomId);
     };
-  }, [friendId, userId, triggerLoveRain]);
+  }, [connectId, userId, triggerLoveRain]);
 
   // Load Google Maps script
   useEffect(() => {
@@ -847,9 +847,9 @@ const StickyChatBox = ({
     if (!isUserInfoModalOpen || !mapRef.current) return;
 
     const location =
-      friendLocation ||
+      connectLocation ||
       userInfoData?.lastLocation ||
-      friendProfile?.lastLocation;
+      connectProfile?.lastLocation;
     if (!location || !location.latitude || !location.longitude) return;
 
     let checkInterval = null;
@@ -880,9 +880,9 @@ const StickyChatBox = ({
     };
   }, [
     isUserInfoModalOpen,
-    friendLocation,
+    connectLocation,
     userInfoData?.lastLocation,
-    friendProfile?.lastLocation,
+    connectProfile?.lastLocation,
   ]);
 
   const initializeMap = (location) => {
@@ -933,7 +933,7 @@ const StickyChatBox = ({
       mapInstanceRef.current = mapInstance;
       setMap(mapInstance);
 
-      // Add marker for friend's location
+      // Add marker for connect's location
       const useAdvancedMarker =
         window.google.maps.marker &&
         window.google.maps.marker.AdvancedMarkerElement &&
@@ -983,22 +983,22 @@ const StickyChatBox = ({
   // not minimized), so the header unread badge updates in real time — mirrors
   // the behavior of the main chat page.
   useEffect(() => {
-    if (!canMarkAsSeen || isLoading || !friendId) return;
-    dispatch(seenMessage(friendId));
-  }, [friendId, canMarkAsSeen, isLoading, dispatch]);
+    if (!canMarkAsSeen || isLoading || !connectId) return;
+    dispatch(seenMessage(connectId));
+  }, [connectId, canMarkAsSeen, isLoading, dispatch]);
 
   // Mark messages as seen - HTTP-based. Only runs while the chat is actually
   // visible (not minimized), so we never mark a message as read before the
   // user has had a chance to see it.
   useEffect(() => {
     if (!canMarkAsSeen) return;
-    if (messages.length > 0 && friendId && friendProfile?._id) {
+    if (messages.length > 0 && connectId && connectProfile?._id) {
       const timeoutId = setTimeout(() => {
         const unseenIds = messages
           .filter(
             (msg) =>
               msg &&
-              String(msg.senderId) === String(friendId) &&
+              String(msg.senderId) === String(connectId) &&
               !msg.isSeen &&
               !msg.isOptimistic,
           )
@@ -1006,11 +1006,11 @@ const StickyChatBox = ({
           .filter(Boolean);
         if (unseenIds.length === 0) return;
         markMessageAsSeen(unseenIds);
-        dispatch(seenMessage(friendId));
+        dispatch(seenMessage(connectId));
       }, 300);
       return () => clearTimeout(timeoutId);
     }
-  }, [messages, friendId, friendProfile, userId, canMarkAsSeen, dispatch]);
+  }, [messages, connectId, connectProfile, userId, canMarkAsSeen, dispatch]);
 
   // Keep a live ref of messages so scroll/pagination logic never closes over stale state.
   useEffect(() => {
@@ -1171,7 +1171,7 @@ const StickyChatBox = ({
     if (
       isMinimized ||
       isLoading ||
-      !friendProfile?._id ||
+      !connectProfile?._id ||
       messages.length === 0
     )
       return;
@@ -1181,12 +1181,12 @@ const StickyChatBox = ({
   }, [
     isMinimized,
     isLoading,
-    friendProfile?._id,
+    connectProfile?._id,
     messages.length,
     scrollToLastMessage,
   ]);
 
-  // Keep typing indicator visible while friend is typing.
+  // Keep typing indicator visible while connect is typing.
   useEffect(() => {
     if (isMinimized || isLoading || !isTyping) return;
     scrollToLastMessage("smooth");
@@ -1194,14 +1194,14 @@ const StickyChatBox = ({
 
   const footerProps = {
     room,
-    friendId,
+    connectId,
     setIsTyping,
     userId,
     replyData,
     setReplyData,
     setIsReplying,
     messages,
-    friendProfile,
+    connectProfile,
     msgListRef,
     isAi: false,
     sendMessage,
@@ -1231,8 +1231,8 @@ const StickyChatBox = ({
               <div className="sticky-chat-skeleton-avatar"></div>
             ) : (
               <UserPP
-                profilePic={friendProfile?.profilePic}
-                profile={friendId}
+                profilePic={connectProfile?.profilePic}
+                profile={connectId}
                 active={isActive}
               />
             )}
@@ -1245,8 +1245,8 @@ const StickyChatBox = ({
                   style={{ width: "100px", height: "14px" }}
                 ></div>
               ) : (
-                friendProfile?.fullName ||
-                `${friendProfile?.user?.firstName || ""} ${friendProfile?.user?.surname || ""}`.trim() ||
+                connectProfile?.fullName ||
+                `${connectProfile?.user?.firstName || ""} ${connectProfile?.user?.surname || ""}`.trim() ||
                 "Loading..."
               )}
             </div>
@@ -1311,8 +1311,8 @@ const StickyChatBox = ({
               <div className="sticky-chat-skeleton-avatar"></div>
             ) : (
               <UserPP
-                profilePic={friendProfile?.profilePic}
-                profile={friendId}
+                profilePic={connectProfile?.profilePic}
+                profile={connectId}
                 active={isActive}
               />
             )}
@@ -1325,8 +1325,8 @@ const StickyChatBox = ({
                   style={{ width: "120px", height: "15px" }}
                 ></div>
               ) : (
-                friendProfile?.fullName ||
-                `${friendProfile?.user?.firstName || ""} ${friendProfile?.user?.surname || ""}`.trim() ||
+                connectProfile?.fullName ||
+                `${connectProfile?.user?.firstName || ""} ${connectProfile?.user?.surname || ""}`.trim() ||
                 "Loading..."
               )}
             </div>
@@ -1410,7 +1410,7 @@ const StickyChatBox = ({
               <SingleMessage
                 key={msg._id ? `${msg._id}-${index}` : `msg-${index}`}
                 msg={msg}
-                friendProfile={friendProfile}
+                connectProfile={connectProfile}
                 messages={messages}
                 setMessages={setMessages}
                 isActive={isActive}
@@ -1426,15 +1426,15 @@ const StickyChatBox = ({
             <div className="sticky-chat-empty-conversation">
               <div className="sticky-chat-empty-avatar">
                 <UserPP
-                  profilePic={friendProfile.profilePic}
-                  profile={friendId}
+                  profilePic={connectProfile.profilePic}
+                  profile={connectId}
                   active={isActive}
                   size="full"
                 />
               </div>
               <h4 className="sticky-chat-empty-name">
-                {friendProfile?.fullName ||
-                  `${friendProfile?.user?.firstName || ""} ${friendProfile?.user?.surname || ""}`.trim() ||
+                {connectProfile?.fullName ||
+                  `${connectProfile?.user?.firstName || ""} ${connectProfile?.user?.surname || ""}`.trim() ||
                   "This user"}
               </h4>
               <p className="sticky-chat-empty-subtitle">
@@ -1449,8 +1449,8 @@ const StickyChatBox = ({
             >
               <div className="chat-message-profilePic">
                 <UserPP
-                  profilePic={friendProfile.profilePic}
-                  profile={friendId}
+                  profilePic={connectProfile.profilePic}
+                  profile={connectId}
                   active={isActive}
                 />
               </div>
@@ -1508,8 +1508,8 @@ const StickyChatBox = ({
           <div className="sticky-chat-blocked-message">
             <i className="fas fa-ban"></i>
             <span>
-              {friendProfile?.fullName ||
-                `${friendProfile?.user?.firstName || ""} ${friendProfile?.user?.surname || ""}`}{" "}
+              {connectProfile?.fullName ||
+                `${connectProfile?.user?.firstName || ""} ${connectProfile?.user?.surname || ""}`}{" "}
               Blocked You
             </span>
           </div>
@@ -1530,15 +1530,15 @@ const StickyChatBox = ({
               className="sticky-chat-option-item"
               onClick={() => {
                 // Audio Call - dispatch custom event and notify other user
-                const channelName = `${userId}-${friendId}`;
+                const channelName = `${userId}-${connectId}`;
                 const callData = {
-                  to: friendId,
+                  to: connectId,
                   channelName,
                   callerName:
-                    friendProfile?.fullName ||
-                    `${friendProfile?.user?.firstName} ${friendProfile?.user?.surname}` ||
-                    "Friend",
-                  callerProfilePic: friendProfile?.profilePic,
+                    connectProfile?.fullName ||
+                    `${connectProfile?.user?.firstName} ${connectProfile?.user?.surname}` ||
+                    "Connect",
+                  callerProfilePic: connectProfile?.profilePic,
                 };
 
                 // Dispatch custom event for AudioCall component
@@ -1550,7 +1550,7 @@ const StickyChatBox = ({
 
                 // Emit socket event to notify the other user
                 socket.emit("audio-call", {
-                  to: friendId,
+                  to: connectId,
                   channelName,
                   isAudio: true,
                   callerName: callData.callerName,
@@ -1567,15 +1567,15 @@ const StickyChatBox = ({
               className="sticky-chat-option-item"
               onClick={() => {
                 // Video Call - dispatch custom event and notify other user
-                const channelName = `${userId}-${friendId}`;
+                const channelName = `${userId}-${connectId}`;
                 const callData = {
-                  to: friendId,
+                  to: connectId,
                   channelName,
                   callerName:
-                    friendProfile?.fullName ||
-                    `${friendProfile?.user?.firstName} ${friendProfile?.user?.surname}` ||
-                    "Friend",
-                  callerProfilePic: friendProfile?.profilePic,
+                    connectProfile?.fullName ||
+                    `${connectProfile?.user?.firstName} ${connectProfile?.user?.surname}` ||
+                    "Connect",
+                  callerProfilePic: connectProfile?.profilePic,
                   isAudio: false,
                 };
 
@@ -1588,7 +1588,7 @@ const StickyChatBox = ({
 
                 // Emit socket event to notify the other user
                 socket.emit("video-call", {
-                  to: friendId,
+                  to: connectId,
                   channelName,
                   isAudio: false,
                   callerName: callData.callerName,
@@ -1606,7 +1606,7 @@ const StickyChatBox = ({
               type="button"
               onClick={async () => {
                 try {
-                  await sendBumpToFriend(friendId, userId);
+                  await sendBumpToConnect(connectId, userId);
                 } catch (error) {
                   console.error("Error sending bump:", error);
                 }
@@ -1653,7 +1653,7 @@ const StickyChatBox = ({
             <button
               className="sticky-chat-option-item"
               onClick={() => {
-                window.location.href = `/profile/${friendId}`;
+                window.location.href = `/profile/${connectId}`;
                 setShowOptionsMenu(false);
               }}
             >
@@ -1663,7 +1663,7 @@ const StickyChatBox = ({
             <button
               className="sticky-chat-option-item"
               onClick={() => {
-                navigate(`/message/${friendId}`);
+                navigate(`/message/${connectId}`);
                 setShowOptionsMenu(false);
               }}
             >
@@ -1706,18 +1706,18 @@ const StickyChatBox = ({
                   try {
                     await api.post("/message/deleteConversation", {
                       profileId: userId,
-                      friendId,
+                      connectId,
                     });
 
                     setMessages([]);
                     window.dispatchEvent(
                       new CustomEvent("conversationDeleted", {
-                        detail: { profileId: userId, friendId },
+                        detail: { profileId: userId, connectId },
                       }),
                     );
                     socket.emit("deleteConversation", {
                       profileId: userId,
-                      friendId,
+                      connectId,
                     });
                     setShowOptionsMenu(false);
                     if (typeof onClose === "function") {
@@ -1794,9 +1794,9 @@ const StickyChatBox = ({
               </div>
 
               <div className="user-info-cards">
-                {(friendLocation ||
+                {(connectLocation ||
                   userInfoData?.lastLocation ||
-                  friendProfile?.lastLocation) && (
+                  connectProfile?.lastLocation) && (
                   <div className="user-info-card user-info-card--map">
                     <div
                       ref={mapRef}
@@ -1890,7 +1890,7 @@ const StickyChatBox = ({
               className="user-info-action-btn primary"
               onClick={() => {
                 setIsUserInfoModalOpen(false);
-                window.location.href = `/profile/${friendId}`;
+                window.location.href = `/profile/${connectId}`;
               }}
             >
               View Full Profile
@@ -1910,8 +1910,8 @@ const StickyChatBox = ({
       <ChatSettingsModal
         isOpen={isChatSettingsOpen}
         onRequestClose={() => setIsChatSettingsOpen(false)}
-        friendId={friendId}
-        friendProfile={friendProfile}
+        connectId={connectId}
+        connectProfile={connectProfile}
       />
 
     </div>

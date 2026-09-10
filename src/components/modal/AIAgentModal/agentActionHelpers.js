@@ -223,7 +223,7 @@ export const matchByText = (items = [], query = "", getText) => {
 
 const VISIBILITY_LABELS = {
   om: "only you",
-  fof: "friends of friends",
+  fof: "connects of connects",
   public: "everyone",
 };
 
@@ -231,30 +231,30 @@ const parseVisibilityValue = (source = "") => {
   if (/\b(only\s*me|onlyme|private|nobody|just me|hidden)\b/i.test(source)) {
     return "om";
   }
-  if (/\b(friends?\s+of\s+friends|friend of friends|fof)\b/i.test(source)) {
+  if (/\b(connects?\s+of\s+connects|connect of connects|fof)\b/i.test(source)) {
     return "fof";
   }
-  if (/\bfriends?\s+only\b/i.test(source)) return "fof";
+  if (/\bconnects?\s+only\b/i.test(source)) return "fof";
   if (/\bpublic\b/i.test(source)) return "public";
   return null;
 };
 
 const PUSH_NOTIFICATION_KEYS = [
-  "friendRequestReceived",
-  "friendRequestAccepted",
+  "connectRequestReceived",
+  "connectRequestAccepted",
   "newMessageReceived",
-  "newFriendPost",
-  "newFriendStory",
-  "newFriendWatch",
+  "newConnectPost",
+  "newConnectStory",
+  "newConnectWatch",
 ];
 
 const NOTIFICATION_TYPE_PATTERNS = [
-  { keys: ["friendRequestAccepted"], re: /\bfriend request(?:s)?\s+accepted\b/i },
-  { keys: ["friendRequestReceived"], re: /\bfriend request/i },
+  { keys: ["connectRequestAccepted"], re: /\bfriend request(?:s)?\s+accepted\b/i },
+  { keys: ["connectRequestReceived"], re: /\bfriend request/i },
   { keys: ["newMessageReceived"], re: /\bmessages?\b/i },
-  { keys: ["newFriendStory"], re: /\bstor(?:y|ies)\b/i },
-  { keys: ["newFriendWatch"], re: /\bwatch\b/i },
-  { keys: ["newFriendPost"], re: /\bposts?\b/i },
+  { keys: ["newConnectStory"], re: /\bstor(?:y|ies)\b/i },
+  { keys: ["newConnectWatch"], re: /\bwatch\b/i },
+  { keys: ["newConnectPost"], re: /\bposts?\b/i },
 ];
 
 const RINGTONE_ALIASES = [
@@ -359,8 +359,8 @@ export const parseSettingsPatch = (text = "") => {
     /\b(who can see my posts|post visibility|my posts?|posts? (?:to|are|should)|make (?:my )?posts?)\b/.test(
       source,
     );
-  const mentionsFriendRequests =
-    /\b(who can send (?:me )?(?:a )?friend request|friend request visibility)\b/.test(
+  const mentionsConnectRequests =
+    /\b(who can send (?:me )?(?:a )?connect request|connect request visibility)\b/.test(
       source,
     );
   const mentionsTimeline =
@@ -371,26 +371,26 @@ export const parseSettingsPatch = (text = "") => {
   if (
     visibility &&
     (mentionsPosts ||
-      mentionsFriendRequests ||
+      mentionsConnectRequests ||
       mentionsTimeline ||
-      /\b(privacy|visibility|only me|friends?\s+only|private|public)\b/.test(
+      /\b(privacy|visibility|only me|connects?\s+only|private|public)\b/.test(
         source,
       ))
   ) {
     const label = VISIBILITY_LABELS[visibility] || visibility;
-    if (mentionsFriendRequests && !mentionsPosts && !mentionsTimeline) {
-      patch.friendRequestVisibility = visibility;
-      notes.push(`friend requests visible to ${label}`);
-    } else if (mentionsTimeline && !mentionsPosts && !mentionsFriendRequests) {
+    if (mentionsConnectRequests && !mentionsPosts && !mentionsTimeline) {
+      patch.connectRequestVisibility = visibility;
+      notes.push(`connect requests visible to ${label}`);
+    } else if (mentionsTimeline && !mentionsPosts && !mentionsConnectRequests) {
       patch.timelinePostVisibility = visibility;
       notes.push(`timeline posts visible to ${label}`);
-    } else if (mentionsPosts && !mentionsFriendRequests && !mentionsTimeline) {
+    } else if (mentionsPosts && !mentionsConnectRequests && !mentionsTimeline) {
       patch.postVisibility = visibility;
       notes.push(`posts visible to ${label}`);
     } else {
       patch.postVisibility = visibility;
       patch.timelinePostVisibility = visibility;
-      if (mentionsFriendRequests) patch.friendRequestVisibility = visibility;
+      if (mentionsConnectRequests) patch.connectRequestVisibility = visibility;
       notes.push(`posts visible to ${label}`);
     }
     routes.add("/settings/privacy");

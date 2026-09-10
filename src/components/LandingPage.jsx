@@ -5,8 +5,8 @@ import './LandingPage.css';
 const LandingPage = () => {
   return (
     <div className="landing-page">
-      <SEO 
-        title="Connect BD - Social Media App in Bangladesh | Connect with Friends"
+      <SEO
+        title="Connect BD - Social Media App in Bangladesh | Connect with Connects"
         description="Connect BD by Ikramul is a modern social media platform for Bangladesh users to connect, chat, share moments, make video calls, and build communities online."
         keywords="Connect BD, connect bd, connect app, connect by ikramul, social media app Bangladesh, social networking platform, chat app, video calls, community app"
       />
@@ -14,10 +14,10 @@ const LandingPage = () => {
       {/* Hero Section */}
       <header className="hero-section">
         <div className="hero-content">
-          <h1>Connect App - Connect with Friends Worldwide</h1>
+          <h1>Connect App - Connect with Connects Worldwide</h1>
           <p className="hero-subtitle">
-            <strong>Connect by Ikramul</strong> is a modern social media platform designed to help you 
-            connect with friends, share precious moments, and build meaningful communities.
+            <strong>Connect by Ikramul</strong> is a modern social media platform designed to help you
+            connect with connects, share precious moments, and build meaningful communities.
           </p>
           <div className="hero-buttons">
             <button className="btn-primary">Get Started</button>
@@ -32,7 +32,7 @@ const LandingPage = () => {
         <div className="features-grid">
           <div className="feature-card">
             <h3>Video Calls</h3>
-            <p>High-quality video calls with friends and family. Connect app provides crystal-clear video communication.</p>
+            <p>High-quality video calls with connects and family. Connect app provides crystal-clear video communication.</p>
           </div>
           <div className="feature-card">
             <h3>Messaging</h3>
@@ -53,13 +53,13 @@ const LandingPage = () => {
       <section className="about-section">
         <h2>About Connect by Ikramul</h2>
         <p>
-          <strong>Connect</strong> is more than just a social media platform - it's a way to stay connected 
-          with the people who matter most. Built by <strong>Ikramul</strong>, the Connect app combines 
+          <strong>Connect</strong> is more than just a social media platform - it's a way to stay connected
+          with the people who matter most. Built by <strong>Ikramul</strong>, the Connect app combines
           cutting-edge technology with intuitive design to create the perfect social networking experience.
         </p>
         <p>
-          Whether you want to <strong>connect</strong> with old friends, make new ones, or build a community 
-          around your passions, the Connect app provides all the tools you need. Our platform supports 
+          Whether you want to <strong>connect</strong> with old connects, make new ones, or build a community
+          around your passions, the Connect app provides all the tools you need. Our platform supports
           real-time messaging, high-quality video calls, and seamless photo sharing.
         </p>
       </section>
@@ -68,7 +68,7 @@ const LandingPage = () => {
       <section className="download-section">
         <h2>Download Connect App Today</h2>
         <p>
-          Ready to <strong>connect</strong> with the world? Download the <strong>Connect app</strong> now 
+          Ready to <strong>connect</strong> with the world? Download the <strong>Connect app</strong> now
           and join thousands of users who are already building communities and sharing moments.
         </p>
         <div className="download-buttons">
@@ -88,7 +88,7 @@ const LandingPage = () => {
         <div className="footer-content">
           <div className="footer-section">
             <h4>Connect App</h4>
-            <p>A modern social media platform by Ikramul for connecting with friends and building communities.</p>
+            <p>A modern social media platform by Ikramul for connecting with connects and building communities.</p>
           </div>
           <div className="footer-section">
             <h4>Features</h4>
