@@ -3,11 +3,19 @@
  * Must open as a normal Safari navigation (no download= attribute),
  * with Content-Type application/x-apple-aspen-config.
  */
+const CANONICAL_WEB_URL = "https://connect-bd.online";
+
 export const getIosProfileUrl = () => {
-  const server = (process.env.REACT_APP_SERVER_ADDR || "").replace(/\/$/, "");
-  if (server) {
-    return `${server}/api/connects/ios-profile`;
+  if (process.env.NODE_ENV === "production") {
+    // Keep profile downloads on the web host. The API host does not serve this
+    // route in every deployment, while the canonical web host serves the file.
+    return `${CANONICAL_WEB_URL}/connect.mobileconfig`;
   }
+
+  if (typeof window !== "undefined" && window.location.origin) {
+    return `${window.location.origin}/connect.mobileconfig`;
+  }
+
   return `${process.env.PUBLIC_URL || ""}/connect.mobileconfig`;
 };
 
