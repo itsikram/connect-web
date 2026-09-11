@@ -3,13 +3,13 @@
  * Must open as a normal Safari navigation (no download= attribute),
  * with Content-Type application/x-apple-aspen-config.
  */
-const CANONICAL_WEB_URL = "https://connect-bd.online";
+const IOS_PROFILE_URL =
+  "https://connect-server-7h7d.onrender.com/api/connect/ios-profile";
 
 export const getIosProfileUrl = () => {
   if (process.env.NODE_ENV === "production") {
-    // Keep profile downloads on the web host. The API host does not serve this
-    // route in every deployment, while the canonical web host serves the file.
-    return `${CANONICAL_WEB_URL}/connect.mobileconfig`;
+    // The API endpoint sets Apple's required profile MIME type.
+    return IOS_PROFILE_URL;
   }
 
   if (typeof window !== "undefined" && window.location.origin) {
