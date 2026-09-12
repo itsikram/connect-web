@@ -107,6 +107,7 @@ const Health = () => {
     const analyzeFitnessMeal = () => runFitness(async () => {
         const body = new FormData();
         body.append('name', fitnessMeal.name || 'meal');
+        body.append('mealType', fitnessMeal.mealType);
         if (fitnessMealImage) body.append('image', fitnessMealImage);
         const response = await api.post('/fitness/analyze-food', body);
         setFitnessMeal((old) => ({ ...old, ...(response.data.analysis || {}), source: response.data.provider || 'gemini' }));
@@ -416,7 +417,7 @@ const Health = () => {
         setShowCalorieForm(false);
     };
 
-    const logMeal = () => {
+    const logMeal = async () => {
         if (!mealName || !mealCalories) {
             alert('Please fill in meal name and calories');
             return;
@@ -430,11 +431,26 @@ const Health = () => {
             type: mealType,
             timestamp: new Date().toISOString(),
         };
-        
+
+        try {
+            await api.post('/fitness/meals', {
+                name: meal.name,
+                mealType: meal.type,
+                calories: meal.calories,
+                proteinG: meal.protein,
+                carbsG: meal.carbs,
+                fatG: meal.fat,
+                fiberG: 0,
+                source: 'manual',
+                date: meal.timestamp,
+            });
+        } catch (error) {
+            alert(error?.response?.data?.message || 'Could not save this meal.');
+            return;
+        }
+
         const newMealLog = [...mealLog, meal];
         setMealLog(newMealLog);
-        
-        // Save to localStorage
         try {
             const raw = localStorage.getItem(MEAL_LOG_KEY);
             const allMeals = raw ? JSON.parse(raw) : {};
@@ -443,6 +459,7 @@ const Health = () => {
         } catch (_) {
             /* ignore */
         }
+        await loadFitness();
         
         // Reset form
         setMealName('');
@@ -476,6 +493,7 @@ const Health = () => {
                 remainingCalories: Math.max(0, remaining),
                 targetCalories: calorieTarget.dailyTarget,
                 mealsToday: meals.length,
+                meals,
                 dietaryPreferences,
                 mealType,
                 healthGoal,

@@ -275,7 +275,7 @@ export const generatePostCaption = async (
       await completeChat({
         system: `Write one original social-media caption for Connect. Use the user's preferred language: ${
           preferredLanguage === "bn" ? "Bangla" : "English"
-        }. If the user explicitly writes in another language, follow that language. If they asked for funny, make it witty. Return ONLY the caption — no quotes, no preamble, no hashtags unless they fit naturally. Max 180 characters.`,
+        }. If the user explicitly writes in another language, follow that language. Treat the request as the user's current caption context: preserve its meaning, tone, and important details, then improve or complete it. Use the attached image as additional context when provided. If they asked for funny, make it witty. Return ONLY the caption — no quotes, no preamble, no hashtags unless they fit naturally. Max 180 characters.`,
         messages: [
           {
             role: "user",

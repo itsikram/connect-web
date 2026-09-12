@@ -9,6 +9,7 @@ import { useNavigate } from "react-router-dom";
 import { useWatchPip } from "../../contexts/WatchPipContext";
 import useMediaSession from "../../hooks/useMediaSession";
 import useBackgroundAudioHandoff from "../../hooks/useBackgroundAudioHandoff";
+import useSmoothAudio from "../../hooks/useSmoothAudio";
 import { clampPlayCount } from "../../utils/videoPlayerLibrary";
 import { getPipPlaylistIndex } from "../../utils/watchPipHelpers";
 import "./WatchPipPlayer.css";
@@ -80,6 +81,7 @@ const WatchPipPlayer = () => {
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [mediaReady, setMediaReady] = useState(false);
+  const [mediaElement, setMediaElement] = useState(null);
   const pipTrackKey = pip
     ? `${pip.source}:${pip.watchId || pip.libraryVideoId}:${pip.videoUrl}`
     : "";
@@ -96,6 +98,12 @@ const WatchPipPlayer = () => {
   });
   const bgApiRef = useRef(backgroundAudio);
   bgApiRef.current = backgroundAudio;
+  useSmoothAudio(mediaElement);
+
+  const setVideoElementRef = useCallback((node) => {
+    videoRef.current = node;
+    setMediaElement(node);
+  }, []);
 
   if (pip && initialPlaybackRef.current?.trackKey !== pipTrackKey) {
     initialPlaybackRef.current = {
@@ -895,7 +903,7 @@ const WatchPipPlayer = () => {
       )}
       <div className={`watch-pip-video-wrap${minimized ? " is-audio-only" : ""}${mediaReady ? "" : " is-loading"}`}>
         <video
-          ref={videoRef}
+          ref={setVideoElementRef}
           className="watch-pip-video"
           controls={!minimized && mediaReady}
           playsInline

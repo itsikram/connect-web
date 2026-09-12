@@ -158,10 +158,11 @@ let CreatePost = ({ setPosts = null }) => {
         if (isWritingCaption) return
         setIsWritingCaption(true)
         try {
-            const hint = postData.caption
-                ? `Improve or finish this caption: ${postData.caption}`
+            const currentCaption = String(postData.caption || '').trim()
+            const hint = currentCaption
+                ? `Improve this current caption while preserving its meaning, tone, and key details. Use the attached image as additional context when available. Current caption draft: "${currentCaption}"`
                 : postData.type === "image"
-                  ? "Write a warm caption for a photo I just uploaded."
+                  ? "Write a warm caption for the attached photo."
                   : postData.type === "video"
                     ? "Write a short caption for a video I just uploaded."
                     : "Write a short natural caption for Connect."
@@ -175,7 +176,7 @@ let CreatePost = ({ setPosts = null }) => {
         } finally {
             setIsWritingCaption(false)
         }
-    }, [isWritingCaption, postData.caption, postData.type])
+    }, [isWritingCaption, postData.caption, postData.type, preferredLanguage])
 
     const [hasStory, setHasStory] = useState(false);
 

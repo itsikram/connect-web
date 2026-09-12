@@ -3,18 +3,26 @@ import { Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { deleteVideoById, getAllSavedVideos, loadVideoById } from '../../utils/useSavedVideos';
 import { useWatchPipOptional } from '../../contexts/WatchPipContext';
 import { buildLibraryPipPayloadFromVideo, savedVideosToPipPlaylist, shouldAutoWatchPip } from '../../utils/watchPipHelpers';
+import useSmoothAudio from '../../hooks/useSmoothAudio';
 import '../../pages/SavedVideos.css';
 
 const SingleVideo = () => {
     const { videoId } = useParams();
     const [videoData, setVideoData] = useState({});
     const [videoUrl, setVideoUrl] = useState('');
+    const [mediaElement, setMediaElement] = useState(null);
     const [savedPlaylist, setSavedPlaylist] = useState([]);
     const navigate = useNavigate();
     const location = useLocation();
     const videoRef = useRef(null);
     const skipPipOnUnmount = useRef(false);
     const watchPip = useWatchPipOptional();
+    useSmoothAudio(mediaElement);
+
+    const setVideoElementRef = useCallback((node) => {
+        videoRef.current = node;
+        setMediaElement(node);
+    }, []);
 
     useEffect(() => {
         if (!videoId) return;
@@ -134,7 +142,7 @@ const SingleVideo = () => {
                             </div>
                         ) : videoUrl ? (
                             <video
-                                ref={videoRef}
+                                ref={setVideoElementRef}
                                 className="sv-single-player"
                                 controls
                                 playsInline

@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import { useWatchPipOptional } from '../../contexts/WatchPipContext';
 import useBackgroundAudioHandoff from '../../hooks/useBackgroundAudioHandoff';
 import useMediaSession from '../../hooks/useMediaSession';
+import useSmoothAudio from '../../hooks/useSmoothAudio';
 
 const buildWatchArtwork = (thumbnail) => {
     const artwork = [];
@@ -43,6 +44,7 @@ const WatchVideoPlayer = ({
 }) => {
     const internalVideoRef = useRef(null);
     const videoRef = externalVideoRef || internalVideoRef;
+    const [mediaElement, setMediaElement] = useState(null);
     const wrapRef = useRef(null);
     const inViewRef = useRef(false);
     const [isAttached, setIsAttached] = useState(eager);
@@ -54,6 +56,13 @@ const WatchVideoPlayer = ({
         src: videoUrl,
         enabled: isPlaying && !!videoUrl && !isPipActive && !anyPip,
     });
+    useSmoothAudio(mediaElement);
+
+    const setVideoElementRef = useCallback((node) => {
+        if (typeof videoRef === 'function') videoRef(node);
+        else if (videoRef) videoRef.current = node;
+        setMediaElement(node);
+    }, [videoRef]);
 
     useEffect(() => {
         if (eager) setIsAttached(true);
@@ -368,7 +377,7 @@ const WatchVideoPlayer = ({
         <div className="attachment watch-video-wrap" ref={wrapRef}>
             <video
                 id={watchId ? `watch-${watchId}` : undefined}
-                ref={videoRef}
+                ref={setVideoElementRef}
                 className="w-100 watch-video"
                 controls={isAttached}
                 playsInline

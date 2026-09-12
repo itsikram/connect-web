@@ -14,6 +14,7 @@ export const getSuggestedMeals = async (params) => {
         remainingCalories,
         targetCalories,
         mealsToday,
+        meals = [],
         dietaryPreferences,
         mealType, // breakfast, lunch, dinner, snack
         healthGoal, // weight-loss, weight-gain, maintenance
@@ -25,6 +26,7 @@ User's Calorie Information:
 - Daily Target: ${targetCalories} kcal
 - Remaining Calories Today: ${remainingCalories} kcal
 - Current Meals Logged: ${mealsToday}
+- Logged Meal Details: ${meals.length ? meals.map((meal) => `${meal.name} (${meal.type || meal.mealType || 'snack'}, ${meal.calories} kcal, P ${meal.protein || meal.proteinG || 0}g, C ${meal.carbs || meal.carbsG || 0}g, F ${meal.fat || meal.fatG || 0}g)`).join('; ') : 'None'}
 - Meal Type Needed: ${mealType}
 - Health Goal: ${healthGoal}
 - Dietary Preferences: ${dietaryPreferences || 'None specified'}
