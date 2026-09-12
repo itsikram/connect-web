@@ -113,6 +113,7 @@ const PortfolioAbout = lazy(() => import("./portfolio/PortfolioAbout.js"));
 const PortfolioBlog = lazy(() => import("./portfolio/PortfolioBlog.js"));
 const PortfolioResume = lazy(() => import("./portfolio/PortfolioResume.js"));
 const ConnectRequests = lazy(() => import("../components/connect/ConnectRequests"));
+const ConnectSentRequests = lazy(() => import("../components/connect/ConnectSentRequests"));
 const ConnectSuggest = lazy(() => import("../components/connect/ConnectSuggest"));
 const ConnectHome = lazy(() => import("../components/connect/ConnectHome"));
 const PlacesNearYou = lazy(() => import("../components/connect/PlacesNearYou"));
@@ -145,13 +146,17 @@ const AIAgentModal = lazy(() =>
   import("../components/modal/AIAgentModal/AIAgentModal"),
 );
 
-const RouteFallback = () => (
-  <div id="site-loader" className="route-fallback">
-    <div className="loader-logo-container">
-      <img src={config?.logo} alt="connect" />
+const RouteFallback = () => {
+  useEffect(() => () => NProgress.done(), []);
+
+  return (
+    <div id="site-loader" className="route-fallback">
+      <div className="loader-logo-container">
+        <img src={config?.logo} alt="connect" />
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // import MicRecorder from 'mic-recorder-to-mp3';
 // const recorder = new MicRecorder({ bitRate: 128 });
@@ -1356,7 +1361,7 @@ const Main = () => {
 
     const handleConnectCacheUpdate = async (event) => {
       if (String(event?.profileId) !== String(profileId)) return;
-      const list = event?.list === "requests" || event?.list === "suggestions"
+      const list = event?.list === "requests" || event?.list === "suggestions" || event?.list === "sentRequests"
         ? event.list
         : null;
       if (!list) return;
@@ -1369,10 +1374,14 @@ const Main = () => {
       if (event.action === "refresh") {
         const response = list === "requests"
           ? await api.get("/connects/getRequest/")
-          : await api.get("/connects/getSuggetions/", { params: { profile: profileId } });
+          : list === "sentRequests"
+            ? await api.get("/connects/getSentRequest/", { params: { profileId, _t: Date.now() } })
+            : await api.get("/connects/getSuggetions/", { params: { profile: profileId, _t: Date.now() } });
         const items = Array.isArray(response.data) ? response.data : [];
         if (list === "requests") {
           ConnectCacheManager.setCachedRequests(profileId, items);
+        } else if (list === "sentRequests") {
+          ConnectCacheManager.setCachedSentRequests(profileId, items);
         } else {
           ConnectCacheManager.setCachedSuggestions(profileId, items);
         }
@@ -2395,10 +2404,15 @@ const Main = () => {
 
   useEffect(() => {
     NProgress.start();
-    const timer = setTimeout(() => {
-      NProgress.done();
-    }, 300);
-    return () => clearTimeout(timer);
+    const completeRenderedRoute = () => {
+      if (!document.querySelector(".route-fallback")) {
+        NProgress.done();
+      }
+    };
+    const frame = window.requestAnimationFrame(completeRenderedRoute);
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
   }, [location.pathname, location.search, location.hash]);
 
   // Stop all audio elements on route change to prevent stuck ringtones
@@ -2594,6 +2608,7 @@ const Main = () => {
             >
               <Route index element={<ConnectHome />}></Route>
               <Route path="requests" element={<ConnectRequests />}></Route>
+              <Route path="sent" element={<ConnectSentRequests />}></Route>
               <Route path="suggestions" element={<ConnectSuggest />}></Route>
               <Route path="places" element={<PlacesNearYou />}></Route>
             </Route>

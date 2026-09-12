@@ -5657,7 +5657,7 @@ html[data-theme="light"],
   }
 
   #profile-images-container {
-    width: 95%;
+    width: 70%;
     margin: auto;
     min-height: 100px;
     background-color: $profilebg;
@@ -8387,6 +8387,9 @@ html[data-theme="light"],
 
 // Enhanced Mobile Responsive Design
 @media only screen and (max-width: 768px) {
+  #profile #profile-images-container {
+    width: 95% !important;
+  }
   // Header improvements for mobile
   .modern-message-container {
     .container-fluid {

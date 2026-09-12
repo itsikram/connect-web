@@ -17,6 +17,7 @@ let Profile = (props) => {
   let myProfileId = myProfileData._id;
   let [profileData, setProfileData] = useState(null);
   let [profileLoading, setProfileLoading] = useState(true);
+  let [loadedProfileIdentifier, setLoadedProfileIdentifier] = useState(null);
   let [relationshipTypes, setRelationshipTypes] = useState([]);
   let [isProfileOption, setIsProfileOption] = useState(false);
   let [isReportOpen, setIsReportOpen] = useState(false);
@@ -36,6 +37,7 @@ let Profile = (props) => {
     const fetchProfile = async () => {
       setProfileData(null);
       setProfileLoading(true);
+      setLoadedProfileIdentifier(null);
 
       const hasMyProfileData = myProfileData && myProfileData._id;
       const authProfile =
@@ -45,6 +47,7 @@ let Profile = (props) => {
       if (authProfile && hasMyProfileData) {
         if (active) {
           setProfileData({ ...myProfileData });
+          setLoadedProfileIdentifier(profileIdentifier);
           setProfileLoading(false);
         }
         return;
@@ -60,6 +63,7 @@ let Profile = (props) => {
         if (profileResponse) {
           setProfileData(profileResponse);
         }
+        setLoadedProfileIdentifier(profileIdentifier);
       } catch (e) {
         console.error("Failed to load profile:", e);
       } finally {
@@ -72,6 +76,8 @@ let Profile = (props) => {
     if (profileIdentifier) {
       fetchProfile();
     } else {
+      setProfileData(null);
+      setLoadedProfileIdentifier(null);
       setProfileLoading(false);
     }
 
@@ -113,6 +119,9 @@ let Profile = (props) => {
     </div>
   );
 
+  const isRequestedProfileLoaded =
+    loadedProfileIdentifier === profileIdentifier;
+
   // handle Active classes of profile Tab  menu
   let profileTabItemClick = (e) => {
     let target = $(e.currentTarget);
@@ -123,7 +132,7 @@ let Profile = (props) => {
   return (
     <Fragment>
       <div id="profile">
-        {profileLoading && !profileData ? (
+        {profileLoading || !isRequestedProfileLoaded ? (
           <div className="profile-loading-placeholder">
             <SkeletonLoader />
           </div>

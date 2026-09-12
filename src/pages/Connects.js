@@ -6,6 +6,7 @@ import "./Connects.css";
 const CONNECTS_NAV = [
     { to: "/connects/", end: true, label: "Home", icon: "fa-user-connects", short: "Home" },
     { to: "/connects/requests", label: "Connect Requests", icon: "fa-user-edit", short: "Requests" },
+    { to: "/connects/sent", label: "Sent Requests", icon: "fa-paper-plane", short: "Sent" },
     { to: "/connects/suggestions", label: "Suggestions", icon: "fa-user-plus", short: "Suggest" },
     { to: "/connects/places", label: "Places Near You", icon: "fa-map-marker-alt", short: "Places" },
 ];
@@ -20,6 +21,7 @@ const Connects = () => {
     const activeLabel = useMemo(() => {
         if (location.pathname.includes("/connects/places")) return "Places Near You";
         if (location.pathname.includes("/connects/requests")) return "Connect Requests";
+        if (location.pathname.includes("/connects/sent")) return "Sent Requests";
         if (location.pathname.includes("/connects/suggestions")) return "Suggestions";
         return "Connects";
     }, [location.pathname]);

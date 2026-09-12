@@ -583,12 +583,22 @@ const loadQueryData = async ({
       });
       connects = unwrapList(res.data, ["connects"]);
     }
-    const names = connects
-      .map((connectProfile) => formatNamedPerson(connectProfile))
-      .filter(Boolean);
+    const connectData = connects
+      .map((connectProfile) => ({
+        name: formatNamedPerson(connectProfile),
+        relationshipTypes: Array.isArray(connectProfile?.relationshipTypes)
+          ? connectProfile.relationshipTypes
+          : [],
+      }))
+      .filter((connect) => connect.name);
+    const names = connectData.map((connect) =>
+      connect.relationshipTypes.length
+        ? `${connect.name} (${connect.relationshipTypes.join(", ")})`
+        : connect.name,
+    );
     return {
       queryType: "connects",
-      payload: { connects: names.slice(0, 60), count: names.length },
+      payload: { connects: connectData.slice(0, 60), count: connectData.length },
       summary:
         names.length > 0
           ? `You have ${names.length} connects: ${names.slice(0, 12).join(", ")}${names.length > 12 ? "…" : ""}`

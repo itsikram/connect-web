@@ -159,6 +159,13 @@ const getGetRequestOptimization = (requestConfig) => {
     return { cacheTtl: 10000 };
   }
 
+  if (
+    pathname.includes("/feed/posts") &&
+    (!searchParams.has("page") || searchParams.get("page") === "1")
+  ) {
+    return { cacheTtl: 10000 };
+  }
+
   return null;
 };
 

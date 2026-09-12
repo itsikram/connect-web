@@ -224,6 +224,8 @@ const Home = () => {
         const cachedPosts = CacheManager.getCachedPosts();
         if (cachedPosts && cachedPosts.length > 0) {
             dispatch(loadPosts(cachedPosts, { append: false }));
+            setPageNumber(1);
+            setFeedLoaded(true);
         }
         
         fetchProfileWithFallback()
@@ -236,14 +238,19 @@ const Home = () => {
     useEffect(() => {
         if (location.pathname !== '/') return
 
-        setFeedLoaded(false)
+        const cachedPosts = CacheManager.getCachedPosts() || [];
+        setFeedLoaded(cachedPosts.length === 0)
         setHasNewPosts(true)
         setPageNumber(0)
         setLoadNewPosts(false)
+        if (cachedPosts.length > 0) {
+            dispatch(loadPosts(cachedPosts, { append: false }));
+            setPageNumber(1);
+        }
         refreshFeed()
         const storyTimer = window.setTimeout(fetchStories, 250)
         return () => window.clearTimeout(storyTimer)
-    }, [fetchStories, location.pathname, refreshFeed])
+    }, [dispatch, fetchStories, location.pathname, refreshFeed])
 
     useEffect(() => {
         const handleStoryCreated = () => {

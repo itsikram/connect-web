@@ -17,6 +17,9 @@ export const saveAIChat = async (messages) => {
         username: person.username,
         banglaName: person.banglaName,
         profilePic: person.profilePic,
+        relationshipTypes: Array.isArray(person.relationshipTypes)
+          ? person.relationshipTypes
+          : [],
       };
     };
     const payload = (Array.isArray(messages) ? messages : []).map((msg) => {

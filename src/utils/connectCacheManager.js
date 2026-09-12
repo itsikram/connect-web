@@ -10,6 +10,8 @@ const CACHE_KEYS = {
   REQUESTS_TS_PREFIX: "connect_requests_timestamp_",
   SUGGESTIONS_PREFIX: "cached_connect_suggestions_",
   SUGGESTIONS_TS_PREFIX: "connect_suggestions_timestamp_",
+  SENT_REQUESTS_PREFIX: "cached_connect_sent_requests_",
+  SENT_REQUESTS_TS_PREFIX: "connect_sent_requests_timestamp_",
   CACHE_VERSION: "connect_cache_version",
 };
 
@@ -67,6 +69,14 @@ class ConnectCacheManager {
 
   static suggestionsTsKey(profileId) {
     return `${CACHE_KEYS.SUGGESTIONS_TS_PREFIX}${profileId}`;
+  }
+
+  static sentRequestsKey(profileId) {
+    return `${CACHE_KEYS.SENT_REQUESTS_PREFIX}${profileId}`;
+  }
+
+  static sentRequestsTsKey(profileId) {
+    return `${CACHE_KEYS.SENT_REQUESTS_TS_PREFIX}${profileId}`;
   }
 
   static initialize() {
@@ -210,17 +220,44 @@ class ConnectCacheManager {
     );
   }
 
+  static getCachedSentRequests(profileId, options) {
+    if (!profileId) return null;
+    const list = this.readList(
+      this.sentRequestsKey(profileId),
+      this.sentRequestsTsKey(profileId),
+      `sentRequests:${profileId}`,
+      options,
+    );
+    return Array.isArray(list)
+      ? uniqueById(this.filterTombstones(profileId, "sentRequests", list))
+      : null;
+  }
+
+  static setCachedSentRequests(profileId, items) {
+    if (!profileId) return false;
+    return this.writeList(
+      this.sentRequestsKey(profileId),
+      this.sentRequestsTsKey(profileId),
+      `sentRequests:${profileId}`,
+      items,
+      profileId,
+      "sentRequests",
+    );
+  }
+
   static removeProfile(profileId, list, targetId) {
     if (!profileId || !targetId) return;
     this.markRemoved(profileId, list, targetId);
-    const isRequests = list === "requests";
-    const current = isRequests
+    const current = list === "requests"
       ? this.getCachedRequests(profileId)
-      : this.getCachedSuggestions(profileId);
+      : list === "suggestions"
+        ? this.getCachedSuggestions(profileId)
+        : this.getCachedSentRequests(profileId);
     if (!Array.isArray(current)) return;
     const next = current.filter((item) => item?._id !== targetId);
-    if (isRequests) this.setCachedRequests(profileId, next);
-    else this.setCachedSuggestions(profileId, next);
+    if (list === "requests") this.setCachedRequests(profileId, next);
+    else if (list === "suggestions") this.setCachedSuggestions(profileId, next);
+    else this.setCachedSentRequests(profileId, next);
   }
 
   static async fetchWithCache({
@@ -255,8 +292,11 @@ class ConnectCacheManager {
         localStorage.removeItem(this.requestsTsKey(profileId));
         localStorage.removeItem(this.suggestionsKey(profileId));
         localStorage.removeItem(this.suggestionsTsKey(profileId));
+        localStorage.removeItem(this.sentRequestsKey(profileId));
+        localStorage.removeItem(this.sentRequestsTsKey(profileId));
         memoryCache.delete(`requests:${profileId}`);
         memoryCache.delete(`suggestions:${profileId}`);
+        memoryCache.delete(`sentRequests:${profileId}`);
         return;
       }
 
@@ -266,6 +306,8 @@ class ConnectCacheManager {
           key.startsWith(CACHE_KEYS.REQUESTS_TS_PREFIX) ||
           key.startsWith(CACHE_KEYS.SUGGESTIONS_PREFIX) ||
           key.startsWith(CACHE_KEYS.SUGGESTIONS_TS_PREFIX)
+          || key.startsWith(CACHE_KEYS.SENT_REQUESTS_PREFIX)
+          || key.startsWith(CACHE_KEYS.SENT_REQUESTS_TS_PREFIX)
         ) {
           localStorage.removeItem(key);
         }

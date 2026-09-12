@@ -90,6 +90,7 @@ let CGI = (props) => {
             let res = await api.post('/connects/sendRequest', { profile, relationTypes })
             if (res.status === 200) setIsCompleted(true)
             ConnectCacheManager.removeProfile(myProfile._id, 'suggestions', profile)
+            window.dispatchEvent(new Event('connect-request-updated'))
 
         } catch (error) {
             console.log(error)
@@ -108,6 +109,7 @@ let CGI = (props) => {
             $(target).siblings('.add-connect').text('Add Connect')
             !isReq && $(target).parents('.connect-grid-item').fadeOut()
             ConnectCacheManager.removeProfile(myProfile._id, 'suggestions', profile)
+            window.dispatchEvent(new Event('connect-request-updated'))
 
         } catch (error) {
             console.log(error)

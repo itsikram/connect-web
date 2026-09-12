@@ -1,7 +1,14 @@
 import React, { useState } from "react";
 import "./RelationshipPickerModal.css";
 
-const OPTIONS = ["Friend", "Family", "Colleague", "Classmate", "Business", "Other"];
+const OPTIONS = [
+  "Friend", "Best Friend", "Family", "Parent", "Child", "Sibling", "Relative",
+  "Partner", "Spouse", "Fiance", "Dating", "Ex-Partner", "Neighbor",
+  "Colleague", "Manager", "Mentor", "Mentee", "Classmate", "Teacher", "Student",
+  "Business Partner", "Client", "Customer", "Professional Contact",
+  "Teammate", "Club Member", "Community Member", "Roommate", "Healthcare Provider",
+  "Caregiver", "Emergency Contact", "Other",
+];
 
 export default function RelationshipPickerModal({ open, onClose, onSubmit, loading = false }) {
   const [selected, setSelected] = useState([]);
