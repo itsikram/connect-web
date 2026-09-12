@@ -98,25 +98,29 @@ const envKeysFor = (provider) => {
 };
 
 let platformDefaults = {
-  defaultProvider: "ollama",
+  defaultProvider: "gemini",
   models: {
     ollama: AI_PROVIDERS.ollama.defaultModel,
     gemini: AI_PROVIDERS.gemini.defaultModel,
     openai: AI_PROVIDERS.openai.defaultModel,
     cursor: AI_PROVIDERS.cursor.defaultModel,
   },
-  configured: { ollama: true, gemini: false, openai: false, cursor: null },
+  configured: { ollama: false, gemini: false, openai: false, cursor: null },
   enabled: { ollama: true, gemini: true, openai: true, cursor: true },
 };
 
 const emptyState = () => ({
-  provider: platformDefaults.defaultProvider || "ollama",
+  provider: normalizeProvider(platformDefaults.defaultProvider || "gemini"),
   models: { ...platformDefaults.models },
   customModels: { ollama: "", gemini: "", openai: "", cursor: "" },
   keys: { ollama: "", gemini: "", openai: "", cursor: "" },
 });
 
-const normalizeProvider = (value) => AI_PROVIDERS[value] ? value : "ollama";
+const normalizeProvider = (value) => {
+  // Migrate clients that previously defaulted to the local Ollama provider.
+  if (value === "ollama") return "gemini";
+  return AI_PROVIDERS[value] ? value : "gemini";
+};
 
 const readStored = () => {
   if (typeof window === "undefined") return emptyState();

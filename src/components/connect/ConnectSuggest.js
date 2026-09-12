@@ -93,7 +93,9 @@ let ConnectsSuggest = () => {
                             if (!connect.user) return null;
 
                             const fullName = `${connect.user.firstName || ""} ${connect.user.surname || ""}`.trim() || "User";
-                            const isIncomingReq = myProfile.connectReqs?.includes(connect._id);
+                            const isIncomingReq = myProfile.connectReqs?.some((id) =>
+                                String(id?._id || id) === String(connect._id)
+                            );
 
                             return (
                                 <CGI

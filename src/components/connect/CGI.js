@@ -2,11 +2,13 @@ import React, { Fragment, useState, useEffect } from 'react';
 import { Link } from "react-router-dom";
 import api from '../../api/api';
 import $ from 'jquery'
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import checkImgLoading from '../../utils/checkImgLoading';
 import ConnectCacheManager from '../../utils/connectCacheManager';
+import RelationshipPickerModal from '../RelationshipPickerModal';
 import config from "../../config/config.json";
 import VerifiedName from "../feed/VerifiedName";
+import { getProfileSuccess } from '../../services/actions/profileActions';
 
 let CGI = (props) => {
 
@@ -16,13 +18,18 @@ let CGI = (props) => {
     let [isDeleting, setIsDeleting] = useState(false)
     let [isAdding, setIsAdding] = useState(false)
     let [isRemoving, setIsRemoving] = useState(false)
+    let [relationshipMode, setRelationshipMode] = useState(null)
+    let [isCompleted, setIsCompleted] = useState(false)
     let myProfile = useSelector(state => state.profile)
+    let dispatch = useDispatch()
     let type = props.type;
     let fullName = props.fullName
     let profile = props.id ? props.id : ''
 
     let profileReqs = props.profileReqs ? props.profileReqs : false
-    let isReq = profileReqs && profileReqs.includes(myProfile._id)
+    let isReq = Array.isArray(profileReqs) && profileReqs.some((id) =>
+        String(id?._id || id) === String(myProfile._id)
+    )
 
 
     useEffect(() => {
@@ -38,14 +45,16 @@ let CGI = (props) => {
     }, [isPpLoaded])
 
     // handle connect request button clicks
-    let handleAcceptReq = async (e) => {
+    let handleAcceptReq = async (relationTypes) => {
         setIsAccepting(true)
         try {
-            let res = await api.post('/connects/reqAccept', { profile })
+            let res = await api.post('/connects/reqAccept', { profile, relationTypes })
 
             if (res.status === 200) {
-                $(e.target).text('Request Accepted')
-                $(e.target).parents('.connect-grid-item').hide()
+                setIsCompleted(true)
+                if (res.data?.myProfile) {
+                    dispatch(getProfileSuccess({ ...myProfile, ...res.data.myProfile }))
+                }
                 ConnectCacheManager.removeProfile(myProfile._id, 'requests', profile)
                 ConnectCacheManager.removeProfile(myProfile._id, 'suggestions', profile)
             }
@@ -75,13 +84,11 @@ let CGI = (props) => {
 
     // handle connect suggetions button clicks 
 
-    let handleAddConnect = async (e) => {
+    let handleAddConnect = async (relationTypes) => {
         setIsAdding(true)
         try {
-            let target = e.target
-            let res = await api.post('/connects/sendRequest', { profile })
-            $(target).text('Request Sent')
-            $(target).parents('.connect-grid-item').fadeOut()
+            let res = await api.post('/connects/sendRequest', { profile, relationTypes })
+            if (res.status === 200) setIsCompleted(true)
             ConnectCacheManager.removeProfile(myProfile._id, 'suggestions', profile)
 
         } catch (error) {
@@ -111,6 +118,8 @@ let CGI = (props) => {
 
 
 
+    if (isCompleted) return null
+
     if (type === "req") {
 
         return (
@@ -129,7 +138,7 @@ let CGI = (props) => {
                                     </Link>
 
                                     <div 
-                                        onClick={isAccepting || isDeleting ? null : handleAcceptReq} 
+                                        onClick={isAccepting || isDeleting ? null : () => setRelationshipMode('accept')} 
                                         className={`primary-button button ${isAccepting || isDeleting ? 'disabled' : ''}`}
                                         style={{ opacity: isAccepting || isDeleting ? 0.6 : 1, cursor: isAccepting || isDeleting ? 'not-allowed' : 'pointer' }}
                                     >
@@ -158,7 +167,7 @@ let CGI = (props) => {
                                 </Link>
 
                                 <div 
-                                    onClick={isAccepting || isDeleting ? null : handleAcceptReq} 
+                                    onClick={isAccepting || isDeleting ? null : () => setRelationshipMode('accept')} 
                                     className={`primary-button button ${isAccepting || isDeleting ? 'disabled' : ''}`}
                                     style={{ opacity: isAccepting || isDeleting ? 0.6 : 1, cursor: isAccepting || isDeleting ? 'not-allowed' : 'pointer' }}
                                 >
@@ -177,6 +186,13 @@ let CGI = (props) => {
                     </>)
                 }
 
+                <RelationshipPickerModal open={Boolean(relationshipMode)}
+                    onClose={() => setRelationshipMode(null)}
+                    onSubmit={(types) => {
+                        setRelationshipMode(null);
+                        handleAcceptReq(types);
+                    }}
+                    loading={isAccepting || isDeleting} />
             </Fragment>
         )
 
@@ -200,7 +216,7 @@ let CGI = (props) => {
                                 </Link>
 
                                 <div 
-                                    onClick={isAdding || isRemoving ? null : handleAddConnect} 
+                                    onClick={isAdding || isRemoving ? null : () => setRelationshipMode('send')}
                                     className={`primary-button add-connect button ${isAdding || isRemoving ? 'disabled' : ''}`}
                                     style={{ opacity: isAdding || isRemoving ? 0.6 : 1, cursor: isAdding || isRemoving ? 'not-allowed' : 'pointer' }}
                                 >
@@ -213,7 +229,7 @@ let CGI = (props) => {
                                     className={`button remove-request ${isAdding || isRemoving ? 'disabled' : ''}`}
                                     style={{ opacity: isAdding || isRemoving ? 0.6 : 1, cursor: isAdding || isRemoving ? 'not-allowed' : 'pointer' }}
                                 >
-                                    {isRemoving ? 'Removing...' : 'Remove'}
+                                    {isRemoving ? (isReq ? 'Canceling...' : 'Removing...') : (isReq ? 'Cancel Request' : 'Remove')}
                                 </div>
 
                             </div>
@@ -233,7 +249,7 @@ let CGI = (props) => {
                                     </Link>
 
                                     <div 
-                                        onClick={isAdding || isRemoving ? null : handleAddConnect} 
+                                        onClick={isAdding || isRemoving ? null : () => setRelationshipMode('send')} 
                                         className={`primary-button add-connect button ${isAdding || isRemoving ? 'disabled' : ''}`}
                                         style={{ opacity: isAdding || isRemoving ? 0.6 : 1, cursor: isAdding || isRemoving ? 'not-allowed' : 'pointer' }}
                                     >
@@ -246,7 +262,7 @@ let CGI = (props) => {
                                         className={`button remove-request ${isAdding || isRemoving ? 'disabled' : ''}`}
                                         style={{ opacity: isAdding || isRemoving ? 0.6 : 1, cursor: isAdding || isRemoving ? 'not-allowed' : 'pointer' }}
                                     >
-                                        {isRemoving ? 'Removing...' : 'Remove'}
+                                        {isRemoving ? (isReq ? 'Canceling...' : 'Removing...') : (isReq ? 'Cancel Request' : 'Remove')}
                                     </div>
 
                                 </div>
@@ -256,6 +272,15 @@ let CGI = (props) => {
 
             }
 
+            <RelationshipPickerModal open={Boolean(relationshipMode)}
+                onClose={() => setRelationshipMode(null)}
+                onSubmit={(types) => {
+                    const mode = relationshipMode;
+                    setRelationshipMode(null);
+                    if (mode === 'send') handleAddConnect(types);
+                    if (mode === 'accept') handleAcceptReq(types);
+                }}
+                loading={isAdding || isAccepting} />
         </Fragment>
     )
 }

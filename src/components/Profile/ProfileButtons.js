@@ -1,43 +1,77 @@
 import React, { Fragment, useState } from 'react';
 import api from '../../api/api';
 import $ from 'jquery';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import CreateStoryModal from '../story/CreateStoryModal';
 import ReportModal from '../modal/ReportModal';
+import RelationshipPickerModal from '../RelationshipPickerModal';
+import { getProfileSuccess } from '../../services/actions/profileActions';
 
 const ProfileButtons = (props) => {
     const navigate = useNavigate();
     const myProfile = useSelector(state => state.profile);
+    const dispatch = useDispatch();
     const profileData = props.profileData;
     const isAuth = props.isAuth;
     const isConnect = props.isConnect;
-    const isReqSent = profileData.connectReqs && profileData.connectReqs.includes(myProfile._id);
-    const isReqRecived = myProfile.connectReqs && myProfile.connectReqs.includes(profileData._id);
-    const isReq = isReqSent || isReqRecived;
     const [isStoryModal, setIsStoryModal] = useState(false);
     const [isAddingConnect, setIsAddingConnect] = useState(false);
     const [isCancelingReq, setIsCancelingReq] = useState(false);
     const [isConfirmingReq, setIsConfirmingReq] = useState(false);
     const [isRemovingConnect, setIsRemovingConnect] = useState(false);
     const [isReportOpen, setIsReportOpen] = useState(false);
+    const [relationshipMode, setRelationshipMode] = useState(null);
+    const [requestSent, setRequestSent] = useState(null);
+    const [requestReceived, setRequestReceived] = useState(null);
+    const containsProfileId = (list, id) =>
+        Array.isArray(list) && list.some((item) => String(item?._id || item) === String(id));
+    const isReqSent =
+        requestSent === null
+            ? containsProfileId(profileData.connectReqs, myProfile._id)
+            : requestSent;
+    const isReqRecived =
+        requestReceived === null
+            ? containsProfileId(myProfile.connectReqs, profileData._id)
+            : requestReceived;
+    const isReq = isReqSent || isReqRecived || requestSent;
 
-    const clickAddConnectBtn = async (e) => {
-        const target = e.currentTarget;
+    React.useEffect(() => {
+        let active = true;
+        api.get('/connects/request-status', { params: { profileId: profileData._id } })
+            .then(({ data }) => {
+                if (!active) return;
+                if (data.connected) return;
+                setRequestSent(Boolean(data.outgoing));
+                setRequestReceived(Boolean(data.incoming));
+            })
+            .catch((error) => console.error('Failed to load connect request status:', error));
+        return () => { active = false; };
+    }, [profileData._id]);
 
-        if (!$(target).hasClass('sent')) {
+    const submitRelationship = async (relationTypes) => {
+        const mode = relationshipMode;
+        setRelationshipMode(null);
+        if (mode === 'send') {
             setIsAddingConnect(true);
+            try { await api.post('/connects/sendRequest/', { profile: profileData._id, relationTypes }); setRequestSent(true); }
+            catch (err) { console.error(err); } finally { setIsAddingConnect(false); }
+        } else {
+            setIsConfirmingReq(true);
             try {
-                await api.post('/connects/sendRequest/', {
-                    profile: profileData._id,
-                });
-                $(target).children('span').text('Request Sent');
-                $(target).addClass('sent');
-            } catch (err) {
-                console.log(err);
-            } finally {
-                setIsAddingConnect(false);
+                const response = await api.post('/connects/reqAccept', { profile: profileData._id, relationTypes });
+                setRequestReceived(false);
+                if (response.data?.myProfile) {
+                    dispatch(getProfileSuccess({ ...myProfile, ...response.data.myProfile }));
+                }
             }
+            catch (err) { console.error(err); } finally { setIsConfirmingReq(false); }
+        }
+    };
+
+    const clickAddConnectBtn = () => {
+        if (!isAddingConnect) {
+            setRelationshipMode('send');
         }
     };
 
@@ -57,6 +91,7 @@ const ProfileButtons = (props) => {
             setIsCancelingReq(true);
             try {
                 await api.post('/connects/removeRequest', { profile: profileData._id });
+                setRequestSent(false);
                 $(target).addClass('removed');
                 $(target).children('span').text('Request Canceled');
             } catch (error) {
@@ -67,27 +102,20 @@ const ProfileButtons = (props) => {
         }
     };
 
-    const handleConfirmReq = async (e) => {
-        const target = e.currentTarget;
-        if (!$(target).hasClass('accepted')) {
-            setIsConfirmingReq(true);
-            try {
-                await api.post('/connects/reqAccept', { profile: profileData._id });
-                $(target).children('span').text('Accepted');
-                $(target).addClass('Connect Accepted');
-            } catch (error) {
-                console.log(error);
-            } finally {
-                setIsConfirmingReq(false);
-            }
-        }
+    const handleConfirmReq = () => {
+        if (!isConfirmingReq) setRelationshipMode('accept');
     };
 
     const clickDisconnectBtn = async (e) => {
         const target = e.currentTarget;
         setIsRemovingConnect(true);
         try {
-            await api.post('/connects/disconnect', { profile: profileData._id });
+            const response = await api.post('/connects/disconnect', { profile: profileData._id });
+            if (response.data?.myProfile) {
+                dispatch(getProfileSuccess(response.data.myProfile));
+            }
+            setRequestSent(false);
+            setRequestReceived(false);
             $(target).parents('.connect').hide();
         } catch (error) {
             console.log(error);
@@ -98,6 +126,8 @@ const ProfileButtons = (props) => {
 
     return (
         <Fragment>
+            <RelationshipPickerModal open={Boolean(relationshipMode)} onClose={() => setRelationshipMode(null)}
+                onSubmit={submitRelationship} loading={isAddingConnect || isConfirmingReq} />
             {
                 isAuth ? (
                     <div className="profile-buttons">

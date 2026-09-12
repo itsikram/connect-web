@@ -14,7 +14,7 @@ import {
   pingCurrentProvider,
 } from "../../../services/llmClient";
 
-const PROVIDER_ORDER = ["ollama", "gemini", "openai", "cursor"];
+const PROVIDER_ORDER = ["gemini", "openai", "cursor"];
 
 const AgentSettingsPanel = ({ onClose }) => {
   const [draft, setDraft] = useState(() => getAgentSettings());
@@ -31,7 +31,7 @@ const AgentSettingsPanel = ({ onClose }) => {
   }, []);
 
   const provider = draft.provider;
-  const meta = AI_PROVIDERS[provider] || resolved.meta || AI_PROVIDERS.ollama;
+  const meta = AI_PROVIDERS[provider] || resolved.meta || AI_PROVIDERS.gemini;
   const modelOptions =
     provider === "cursor" ? getCursorModelOptions() : meta.models;
   const selectedModel = draft.models?.[provider] || meta.defaultModel;

@@ -5302,6 +5302,7 @@ html[data-theme="light"],
             border-radius: 5px;
             margin-top: 2px;
             display: flex;
+            flex-direction: column;
 
             .connect-options-menu-item {
               padding: 5px;

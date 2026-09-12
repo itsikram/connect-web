@@ -2361,6 +2361,38 @@ const Main = () => {
     };
   }, []);
 
+  // Start progress before React Router handles the click so navigation feedback
+  // is visible while route data and lazy chunks are loading.
+  useEffect(() => {
+    const startNavigationProgress = (event) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return;
+      }
+
+      const target = event.target instanceof Element
+        ? event.target.closest("a[href], button, [role='button']")
+        : null;
+
+      if (!target) {
+        return;
+      }
+
+      if (target.matches("a[href]")) {
+        const link = new URL(target.href, window.location.href);
+        if (link.origin !== window.location.origin || link.href === window.location.href) {
+          return;
+        }
+      }
+
+      NProgress.start();
+    };
+
+    document.addEventListener("click", startNavigationProgress, true);
+    return () => {
+      document.removeEventListener("click", startNavigationProgress, true);
+    };
+  }, []);
+
   useEffect(() => {
     NProgress.start();
     const timer = setTimeout(() => {

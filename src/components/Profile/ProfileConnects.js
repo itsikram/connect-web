@@ -16,19 +16,10 @@ const ProfileConnects = () => {
     useEffect(() => {
         let isAuth = params.profile === myProfile._id ? true : false
         setIsAuth(isAuth)
-        if (isAuth) {
-            const seen = new Set()
-            return setConnectsData((myProfile.connects || []).filter((connect) => {
-                if (!connect?._id || seen.has(connect._id)) return false
-                seen.add(connect._id)
-                return true
-            }))
-
-        }
-
         api.get('/connects/getConnects', {
             params: {
-                profile: params.profile
+                profile: params.profile,
+                _t: Date.now()
             }
 
         }).then(res => {
@@ -88,4 +79,3 @@ const ProfileConnects = () => {
 }
 
 export default ProfileConnects;
-

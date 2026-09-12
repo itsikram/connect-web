@@ -2,6 +2,7 @@ import React, { Fragment, useEffect, useState } from "react";
 import { NavLink, Outlet, useParams, Link } from "react-router-dom";
 import $ from "jquery";
 import { fetchProfileCached } from "../utils/requestCache";
+import api from "../api/api";
 import { useSelector } from "react-redux";
 import ProfileButtons from "../components/Profile/ProfileButtons";
 import CoverPic from "../components/Profile/CoverPic";
@@ -16,6 +17,7 @@ let Profile = (props) => {
   let myProfileId = myProfileData._id;
   let [profileData, setProfileData] = useState(null);
   let [profileLoading, setProfileLoading] = useState(true);
+  let [relationshipTypes, setRelationshipTypes] = useState([]);
   let [isProfileOption, setIsProfileOption] = useState(false);
   let [isReportOpen, setIsReportOpen] = useState(false);
 
@@ -26,7 +28,7 @@ let Profile = (props) => {
   const isConnect =
     Array.isArray(myProfileData.connects) &&
     myProfileData.connects.some(
-      (connectData) => connectData._id === profileIdentifier,
+      (connectData) => String(connectData?._id || connectData) === String(profileData?._id || profileIdentifier),
     );
 
   useEffect(() => {
@@ -77,6 +79,28 @@ let Profile = (props) => {
       active = false;
     };
   }, [profileIdentifier, myProfileId, myProfileData.username]);
+
+  useEffect(() => {
+    let active = true;
+    setRelationshipTypes([]);
+    if (!profileData?._id || isAuth || !isConnect) return () => { active = false; };
+
+    api.get("/connects/relationships", {
+      params: { profileId: profileData._id, _t: Date.now() },
+    }).then((response) => {
+      if (active) {
+        setRelationshipTypes(Array.isArray(response.data?.relationTypes)
+          ? response.data.relationTypes
+          : []);
+      }
+    }).catch((error) => {
+      if (active) {
+        console.error("Failed to load profile relationships:", error);
+      }
+    });
+
+    return () => { active = false; };
+  }, [profileData?._id, isAuth, isConnect]);
 
   let profilePath =
     profileData && profileData._id ? "/" + profileData._id + "/" : "/";
@@ -135,6 +159,11 @@ let Profile = (props) => {
                         Connects
                       </Link>
                     </div>
+                    {relationshipTypes.length > 0 && (
+                      <div className="profile-relationship">
+                        Relationship: {relationshipTypes.join(", ")}
+                      </div>
+                    )}
                     <div className="profile-follow-stats">
                       <span>
                         {profileData.followersCount ??

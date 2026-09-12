@@ -2,24 +2,28 @@ import React, { Fragment, useState,useEffect } from 'react';
 import $ from 'jquery'
 import { Link,useParams } from 'react-router-dom';
 import api from '../../api/api';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import checkImgLoading from '../../utils/checkImgLoading';
 import ImageSkleton from '../../skletons/connect/ImageSkleton';
 import config from "../../config/config.json";
 import ReportModal from '../modal/ReportModal';
+import RelationshipPickerModal from '../RelationshipPickerModal';
 import VerifiedName from '../feed/VerifiedName';
+import { getProfileSuccess } from '../../services/actions/profileActions';
 const default_pp_src = config?.defaultProfile;
 
 
 const PFI = (props) => {
     let connect = props.connect
     let myProfile = useSelector(state => state.profile)
+    let dispatch = useDispatch()
     let [isPpLoaded, setIsPpLoaded] = useState(false);
     let [profilePic, setProfilePic] = useState(connect.profilePic || default_pp_src);
     let params = useParams();
 
     let [isConnect, setIsConnect] = useState(false)
     let [isReportOpen, setIsReportOpen] = useState(false)
+    let [relationshipOpen, setRelationshipOpen] = useState(false)
 
     useEffect(() => {
         myProfile.connects && myProfile.connects.filter(singleConnect => {
@@ -59,6 +63,9 @@ const PFI = (props) => {
                 profile: connect._id
             })
             if(res.status == 200) {
+                if (res.data?.myProfile) {
+                    dispatch(getProfileSuccess(res.data.myProfile))
+                }
                 $(e.currentTarget).parents('.connect-item').fadeOut()
 
             }
@@ -68,11 +75,10 @@ const PFI = (props) => {
         }
 
     }
-    let clickAddFrndOption = async (e) => {
+    let clickAddFrndOption = async (relationTypes) => {
         try {
 
-            let target = e.currentTarget
-            let res = await api.post('/connects/sendRequest/', { profile: connect._id })
+            let res = await api.post('/connects/sendRequest/', { profile: connect._id, relationTypes })
             if(res.status == 200) {
                 $(target).parents('.connect-item').hide()
 
@@ -101,6 +107,9 @@ const PFI = (props) => {
                             {
                                 connect.mutual && <span className='connect-mutual'> 20 Mutual Connects</span>
                             }
+                            {connect.relationshipTypes?.length > 0 && (
+                                <span className='connect-mutual'>{connect.relationshipTypes.join(', ')}</span>
+                            )}
 
                         </div>
                     </Link>
@@ -121,7 +130,7 @@ const PFI = (props) => {
                                 </div>
 
                                 :
-                                <div onClick={clickAddFrndOption} className='connect-options-menu-item'>
+                                <div onClick={() => setRelationshipOpen(true)} className='connect-options-menu-item'>
                                     <div className='menu-item-icon'>
                                         <i className="fas fa-user-plus"></i>
                                     </div>
@@ -156,6 +165,8 @@ const PFI = (props) => {
                     targetLabel={connectFullName || 'this profile'}
                 />
             )}
+            <RelationshipPickerModal open={relationshipOpen} onClose={() => setRelationshipOpen(false)}
+                onSubmit={(types) => { setRelationshipOpen(false); clickAddFrndOption(types); }} />
         </>
     );
 }
