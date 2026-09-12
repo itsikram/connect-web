@@ -7,6 +7,7 @@ const initialState = {
     showIsTyping: true,
     ringtone: 1,
     themeMode: 'dark',
+    language: 'eng',
     postVisibility: 'public',
     connectRequestVisibility: 'public',
     timelinePostVisibility: 'public',

@@ -223,8 +223,21 @@ export const generateSmartReplies = async ({
   }
 };
 
-const fallbackPostCaption = (userRequest = "") => {
+const fallbackPostCaption = (userRequest = "", preferredLanguage = "eng") => {
   const request = String(userRequest || "").trim().toLowerCase();
+  if (preferredLanguage === "bn") {
+    if (request.includes("funny") || request.includes("witty")) {
+      return "ভালো সময়, দারুণ গল্প আর একটু মজার বিশৃঙ্খলা 😄";
+    }
+    if (request.includes("video")) return "এই মুহূর্তটি আবার দেখার মতো 🎬";
+    if (request.includes("photo") || request.includes("image")) {
+      return "কিছু মুহূর্ত ধরে রাখতেই হয় ✨";
+    }
+    if (request.includes("improve") || request.includes("finish")) {
+      return "এই মুহূর্তে একটু বাড়তি ঝলক ✨";
+    }
+    return "ছোট ছোট মুহূর্ত, বড় বড় স্মৃতি ✨";
+  }
   if (request.includes("funny") || request.includes("witty")) {
     return "Good vibes, great stories, and a little chaos 😄";
   }
@@ -240,7 +253,10 @@ const fallbackPostCaption = (userRequest = "") => {
   return "Little moments, big memories. ✨";
 };
 
-export const generatePostCaption = async (userRequest = "") => {
+export const generatePostCaption = async (
+  userRequest = "",
+  preferredLanguage = "eng",
+) => {
   // Refresh the live provider before checking readiness. The initial web
   // settings default to Ollama, which is considered configured locally and
   // would otherwise prevent the admin Gemini configuration from loading.
@@ -251,13 +267,15 @@ export const generatePostCaption = async (userRequest = "") => {
   }
 
   if (!hasConfiguredApiKey()) {
-    return fallbackPostCaption(userRequest);
+    return fallbackPostCaption(userRequest, preferredLanguage);
   }
 
   try {
     let caption = (
       await completeChat({
-        system: `Write one original social-media caption for Connect. Match the user's language. If they asked for funny, make it witty. Return ONLY the caption — no quotes, no preamble, no hashtags unless they fit naturally. Max 180 characters.`,
+        system: `Write one original social-media caption for Connect. Use the user's preferred language: ${
+          preferredLanguage === "bn" ? "Bangla" : "English"
+        }. If the user explicitly writes in another language, follow that language. If they asked for funny, make it witty. Return ONLY the caption — no quotes, no preamble, no hashtags unless they fit naturally. Max 180 characters.`,
         messages: [
           {
             role: "user",
@@ -275,10 +293,12 @@ export const generatePostCaption = async (userRequest = "") => {
       .trim();
 
     caption = caption.replace(/^['"‘’“”]+/, "").replace(/['"‘’“”]+$/, "").trim();
-    return caption ? caption.slice(0, 500) : fallbackPostCaption(userRequest);
+    return caption
+      ? caption.slice(0, 500)
+      : fallbackPostCaption(userRequest, preferredLanguage);
   } catch (error) {
     console.warn("Caption generation failed, using local fallback:", error);
-    return fallbackPostCaption(userRequest);
+    return fallbackPostCaption(userRequest, preferredLanguage);
   }
 };
 
@@ -307,7 +327,14 @@ export const answerFromAppData = async ({
 export const sendToGeminiStream = async (
   message,
   conversationHistory = [],
-  { onDelta, signal, voice = false, userName = "", memory = null } = {},
+  {
+    onDelta,
+    signal,
+    voice = false,
+    userName = "",
+    memory = null,
+    preferredLanguage = "eng",
+  } = {},
 ) => {
   if (!hasConfiguredApiKey()) {
     const missing = missingKeyResult();
@@ -315,7 +342,11 @@ export const sendToGeminiStream = async (
     return missing;
   }
 
-  const lang = detectAgentLanguage(message);
+  const detectedLanguage = detectAgentLanguage(message);
+  const lang =
+    detectedLanguage === "en" && preferredLanguage === "bn"
+      ? "bn"
+      : detectedLanguage;
   const extra = [languageSystemHint(lang)];
   if (userName) extra.push(`User: ${userName}.`);
   if (!voice && memory && typeof memory === "object") {

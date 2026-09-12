@@ -10,11 +10,13 @@ import CacheManager from "../../utils/cacheManager";
 import { generatePostCaption } from "../../services/geminiService";
 import useSpeechToText from "../../hooks/useSpeechToText";
 import "./ComposerAssist.css";
+import MentionInput from "./MentionInput";
 
 const loadingImgUrl = 'https://res.cloudinary.com/dz88yjerw/image/upload/v1743092084/i5lcu63atrbkpcy6oqam.gif'
 
 let CreatePost = ({ setPosts = null }) => {
     let profileData = useSelector(state => state.profile)
+    let preferredLanguage = useSelector(state => state.setting?.language || 'eng')
     let profileId = profileData._id
 
     let dispatch = useDispatch()
@@ -34,6 +36,7 @@ let CreatePost = ({ setPosts = null }) => {
         setPostModal(false)
         setPostData(postDataInit)
         setShowAudienceMenu(false)
+        setShowTagMenu(false)
     }
 
     useEffect(() => {
@@ -105,7 +108,39 @@ let CreatePost = ({ setPosts = null }) => {
     let [postData, setPostData] = useState(postDataInit)
     let [attachmentType, setAttachmentType] = useState(false)
     const [showAudienceMenu, setShowAudienceMenu] = useState(false)
+    const [showTagMenu, setShowTagMenu] = useState(false)
+    const [tagProfiles, setTagProfiles] = useState([])
+    const [isLoadingTagProfiles, setIsLoadingTagProfiles] = useState(false)
     const [isWritingCaption, setIsWritingCaption] = useState(false)
+
+    const openTagMenu = async () => {
+        setShowTagMenu(true)
+        if (tagProfiles.length || isLoadingTagProfiles || !profileId) return
+
+        setIsLoadingTagProfiles(true)
+        try {
+            const response = await api.get('/connects/getConnects', { params: { profile: profileId } })
+            setTagProfiles(Array.isArray(response.data)
+                ? response.data.filter(profile => profile?._id)
+                : [])
+        } catch (error) {
+            console.error('Unable to load profiles for post tags:', error)
+            setTagProfiles([])
+        } finally {
+            setIsLoadingTagProfiles(false)
+        }
+    }
+
+    const selectTagProfile = (profile) => {
+        const displayName = profile.fullName || profile.displayName || profile.username || 'User'
+        const mention = `@[${displayName}](${profile._id})`
+        setPostData(state => ({
+            ...state,
+            caption: `${state.caption}${state.caption ? ' ' : ''}${mention} `,
+        }))
+        setShowTagMenu(false)
+        setAttachmentType('caption')
+    }
 
     const appendSpeechCaption = useCallback((text) => {
         if (!text) return
@@ -130,7 +165,7 @@ let CreatePost = ({ setPosts = null }) => {
                   : postData.type === "video"
                     ? "Write a short caption for a video I just uploaded."
                     : "Write a short natural caption for Connect."
-            const caption = await generatePostCaption(hint)
+            const caption = await generatePostCaption(hint, preferredLanguage)
             if (caption) {
                 setPostData((prev) => ({ ...prev, caption }))
                 setAttachmentType("caption")
@@ -168,16 +203,19 @@ let CreatePost = ({ setPosts = null }) => {
             if (showAudienceMenu && !event.target.closest('.cpm-audience-selector-wrapper')) {
                 setShowAudienceMenu(false)
             }
+            if (showTagMenu && !event.target.closest('.cpm-tag-selector-wrapper')) {
+                setShowTagMenu(false)
+            }
         }
 
-        if (showAudienceMenu) {
+        if (showAudienceMenu || showTagMenu) {
             document.addEventListener('mousedown', handleClickOutside)
         }
 
         return () => {
             document.removeEventListener('mousedown', handleClickOutside)
         }
-    }, [showAudienceMenu])
+    }, [showAudienceMenu, showTagMenu])
 
 
     let profileName = profileData.user && profileData.user.firstName + ' ' + profileData.user.surname || ''
@@ -196,27 +234,23 @@ let CreatePost = ({ setPosts = null }) => {
 
     // handle caption field change 
     let handleCaptionField = useCallback((e) => {
-        let value = e.target.value
-        let name = e.target.name
+        const target = e?.target || {}
+        const name = target.name || 'caption'
+        let value = target.value ?? ''
 
-        if (attachmentType == false && name == 'caption') {
+        if (attachmentType === false && name === 'caption') {
             setAttachmentType('caption')
         }
 
-        // Convert audience to number if it's the audience field
         if (name === 'audience') {
             value = parseInt(value, 10)
         }
 
-        setPostData(state => {
-            return {
-                ...state,
-                [name]: value,
-            }
-        })
-
-
-    }, [postData])
+        setPostData(state => ({
+            ...state,
+            [name]: value,
+        }))
+    }, [attachmentType])
 
     // handle photo field update
 
@@ -502,56 +536,6 @@ let CreatePost = ({ setPosts = null }) => {
                                 <div className="cpm-username">
                                     <h3>{profileName}</h3>
                                 </div>
-                                <div className="cpm-audience-selector-wrapper">
-                                    <button 
-                                        type="button"
-                                        className="cpm-audience-button"
-                                        onClick={() => setShowAudienceMenu((prev) => !prev)}
-                                        aria-expanded={showAudienceMenu}
-                                        aria-haspopup="true"
-                                    >
-                                        <i className={getAudienceIcon(postData.audience || 3)}></i>
-                                        <span>{getAudienceLabel(postData.audience || 3)}</span>
-                                        <i className="fas fa-chevron-down"></i>
-                                    </button>
-                                    {showAudienceMenu && (
-                                        <div className="cpm-audience-menu">
-                                            <div 
-                                                className={`cpm-audience-option ${postData.audience === 1 ? 'active' : ''}`}
-                                                onClick={() => handleAudienceSelect(1)}
-                                            >
-                                                <i className="fas fa-globe"></i>
-                                                <div className="audience-option-content">
-                                                    <span className="audience-option-title">Public</span>
-                                                    <span className="audience-option-desc">Anyone can see this post</span>
-                                                </div>
-                                                {postData.audience === 1 && <i className="fas fa-check"></i>}
-                                            </div>
-                                            <div 
-                                                className={`cpm-audience-option ${postData.audience === 2 ? 'active' : ''}`}
-                                                onClick={() => handleAudienceSelect(2)}
-                                            >
-                                                <i className="fas fa-users"></i>
-                                                <div className="audience-option-content">
-                                                    <span className="audience-option-title">Connects</span>
-                                                    <span className="audience-option-desc">Only your connects can see this</span>
-                                                </div>
-                                                {postData.audience === 2 && <i className="fas fa-check"></i>}
-                                            </div>
-                                            <div 
-                                                className={`cpm-audience-option ${postData.audience === 3 ? 'active' : ''}`}
-                                                onClick={() => handleAudienceSelect(3)}
-                                            >
-                                                <i className="fas fa-lock"></i>
-                                                <div className="audience-option-content">
-                                                    <span className="audience-option-title">Only Me</span>
-                                                    <span className="audience-option-desc">Only you can see this post</span>
-                                                </div>
-                                                {postData.audience === 3 && <i className="fas fa-check"></i>}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
                             </div>
                             <div className="cpm-meta-options">
                                 <div className="cpm-feelings-container">
@@ -573,16 +557,95 @@ let CreatePost = ({ setPosts = null }) => {
                                     />
                                 </div>
                             </div>
+                            <div className="cpm-tag-audience-row">
+                                <div className="cpm-tag-selector-wrapper">
+                                    <span className="cpm-meta-label">Tag:</span>
+                                    <button
+                                        type="button"
+                                        className={`cpm-tag-button ${postData.caption.includes('@[') ? 'has-tags' : ''}`}
+                                        onClick={openTagMenu}
+                                        aria-expanded={showTagMenu}
+                                        aria-haspopup="listbox"
+                                    >
+                                        <i className="fas fa-user-plus"></i>
+                                        <span>{postData.caption.includes('@[') ? 'Profiles tagged' : 'Tag profiles'}</span>
+                                    </button>
+                                    {showTagMenu && (
+                                        <div className="cpm-tag-menu" role="listbox" aria-label="Connected profiles">
+                                            {isLoadingTagProfiles ? (
+                                                <div className="cpm-tag-empty">Loading profiles...</div>
+                                            ) : tagProfiles.length ? (
+                                                tagProfiles.map(profile => {
+                                                    const displayName = profile.fullName || profile.displayName || profile.username || 'User'
+                                                    return (
+                                                        <button
+                                                            type="button"
+                                                            role="option"
+                                                            className="cpm-tag-option"
+                                                            key={profile._id}
+                                                            onClick={() => selectTagProfile(profile)}
+                                                        >
+                                                            <img src={profile.profilePic} alt="" />
+                                                            <span>
+                                                                <strong>{displayName}</strong>
+                                                                {profile.username ? <small>@{profile.username}</small> : null}
+                                                            </span>
+                                                        </button>
+                                                    )
+                                                })
+                                            ) : (
+                                                <div className="cpm-tag-empty">No connected profiles to tag yet.</div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="cpm-audience-selector-wrapper cpm-inline-audience">
+                                    <span className="cpm-meta-label">Audience:</span>
+                                    <button
+                                        type="button"
+                                        className="cpm-audience-button"
+                                        onClick={() => setShowAudienceMenu((prev) => !prev)}
+                                        aria-expanded={showAudienceMenu}
+                                        aria-haspopup="true"
+                                    >
+                                        <i className={getAudienceIcon(postData.audience || 3)}></i>
+                                        <span>{getAudienceLabel(postData.audience || 3)}</span>
+                                        <i className="fas fa-chevron-down"></i>
+                                    </button>
+                                    {showAudienceMenu && (
+                                        <div className="cpm-audience-menu">
+                                            {[1, 2, 3].map(audience => (
+                                                <div
+                                                    key={audience}
+                                                    className={`cpm-audience-option ${postData.audience === audience ? 'active' : ''}`}
+                                                    onClick={() => handleAudienceSelect(audience)}
+                                                >
+                                                    <i className={getAudienceIcon(audience)}></i>
+                                                    <div className="audience-option-content">
+                                                        <span className="audience-option-title">{getAudienceLabel(audience)}</span>
+                                                        <span className="audience-option-desc">
+                                                            {audience === 1 ? 'Anyone can see this post' : audience === 2 ? 'Only your connects can see this' : 'Only you can see this'}
+                                                        </span>
+                                                    </div>
+                                                    {postData.audience === audience && <i className="fas fa-check"></i>}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                             <form className="cpm-form" onSubmit={preventDefault}>
                                 <div className="cpm-form-text">
-                                    <textarea 
+                                    <MentionInput
                                         name="caption" 
                                         onChange={handleCaptionField} 
                                         placeholder={listening && interim ? interim : textInputPlaceHoder} 
                                         className="cpm-form-text-input" 
                                         value={listening && interim ? `${postData.caption}${postData.caption ? " " : ""}${interim}` : postData.caption}
+                                        myProfileId={profileId}
+                                        multiline
                                         rows="4"
-                                    ></textarea>
+                                    />
                                     <div className="cpm-composer-assist">
                                         <button
                                             type="button"

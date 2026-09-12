@@ -153,6 +153,9 @@ const getSingleMessageAction = (message) => {
 
 const AIAgentModal = ({ isOpen, onClose }) => {
   const myProfile = useSelector((state) => state.profile);
+  const preferredLanguage = useSelector(
+    (state) => state.setting?.language || "eng",
+  );
   const navigate = useNavigate();
 
   const [messages, setMessages] = useState([INITIAL_MESSAGE]);
@@ -449,6 +452,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         quality,
         sourceText: lastUser?.content || "",
         myProfile,
+        preferredLanguage,
         navigate,
         onClose: handleMinimize,
       });
@@ -464,7 +468,14 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         userText: lastUser?.content,
       });
     },
-    [addMessage, announceUpcomingAction, handleMinimize, myProfile, navigate],
+    [
+      addMessage,
+      announceUpcomingAction,
+      handleMinimize,
+      myProfile,
+      navigate,
+      preferredLanguage,
+    ],
   );
 
   const handleConnectAction = useCallback(
@@ -482,6 +493,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         queryType: intent?.queryType ?? null,
         sourceText: intent?.sourceText ?? null,
         myProfile,
+        preferredLanguage,
         navigate,
         onClose: handleMinimize,
       });
@@ -498,7 +510,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         result,
       });
     },
-    [myProfile, navigate, handleMinimize, addMessage],
+    [myProfile, preferredLanguage, navigate, handleMinimize, addMessage],
   );
 
   // ── Core send handler ───────────────────────────────────────────────────────
@@ -627,6 +639,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             voice: liveTalkOnRef.current,
             userName: getConnectDisplayName(myProfile),
             memory: getMemoryPromptBlock(myProfile?._id),
+            preferredLanguage,
           });
           if (!stillCurrent()) return;
           const finalText = String(chat?.response || "").trim();
@@ -932,6 +945,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
               hintText: replyOverride,
               sourceText: originalText,
               myProfile,
+              preferredLanguage,
               navigate,
               onClose: handleMinimize,
             });
@@ -953,6 +967,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
                 hintText: replyOverride,
                 sourceText: originalText,
                 myProfile,
+                preferredLanguage,
                 navigate,
                 onClose: handleMinimize,
               });
@@ -1017,6 +1032,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             hintText: replyOverride,
             sourceText: originalText,
             myProfile,
+            preferredLanguage,
             navigate,
             onClose: handleMinimize,
           });
@@ -1114,6 +1130,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       handleDownloadYoutube,
       cancelSpeech,
       announceUpcomingAction,
+      preferredLanguage,
     ],
   );
 

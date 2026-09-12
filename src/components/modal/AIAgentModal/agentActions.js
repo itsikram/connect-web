@@ -804,6 +804,7 @@ export const executeAction = async ({
   audioOnly: audioOnlyOverride,
   quality: qualityOverride,
   myProfile,
+  preferredLanguage = "eng",
   navigate,
   onClose,
 }) => {
@@ -1406,6 +1407,7 @@ export const executeAction = async ({
             caption = String(
               await generatePostCaption(
                 sourceText || searchQuery || "Write a short funny caption.",
+                preferredLanguage,
               ) || "",
             ).trim();
           } catch (_) {

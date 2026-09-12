@@ -32,6 +32,7 @@ import {
   PlacedReactIcons,
   CurrentReactIcon,
 } from "./ReactPicker";
+import RichPostText from "./RichPostText";
 import config from "../../config/config.json";
 import "./PostCard.css";
 import "./SharePostModal.css";
@@ -498,9 +499,9 @@ const SinglePost = () => {
                   <div className="right"></div>
                 </div>
               </div>
-              <p className="caption">{postData.caption}</p>
+              <p className="caption"><RichPostText>{postData.caption}</RichPostText></p>
               <div className="body">
-                <p className="caption">{postData.parentPost?.caption}</p>
+                <p className="caption"><RichPostText>{postData.parentPost?.caption}</RichPostText></p>
                 {postImages.length > 1 ? (
                   <PostGallery
                     photos={{ primary: postPhoto, gallery: postGallery }}
@@ -807,7 +808,7 @@ const SinglePost = () => {
                   </div>
                 </div>
               ) : (
-                <p className="caption">{postData.caption}</p>
+                <p className="caption"><RichPostText>{postData.caption}</RichPostText></p>
               )}
 
               {postImages.length > 1 ? (

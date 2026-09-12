@@ -275,6 +275,16 @@ html[data-theme="light"],
   word-break: break-word;
 }
 
+.post-tag {
+  color: var(--post-accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.post-tag:hover {
+  text-decoration: underline;
+}
+
 .nf-post.profilePic .body .caption {
     padding-left: 0 !important;
 }
@@ -404,6 +414,14 @@ html[data-theme="light"],
 .nf-post .body .post-image--loading img,
 .nf-post .body .post-image--error img {
   visibility: hidden;
+}
+
+.nf-post .body .post-image--loading {
+  background: transparent;
+}
+
+.nf-post .body .post-image--loading .post-image-link {
+  display: none;
 }
 
 .nf-post .body .post-image-retry {

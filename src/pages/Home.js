@@ -342,7 +342,7 @@ const Home = () => {
                                         )
                                     }
                                     {
-                                        hasNewPosts && uniqueNewsFeedPosts.length > 0 && <PostSkeleton count={1} />
+                                        loadNewPosts && hasNewPosts && uniqueNewsFeedPosts.length > 0 && <PostSkeleton count={1} />
                                     }
 
                                 </div>

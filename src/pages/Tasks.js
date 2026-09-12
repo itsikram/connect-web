@@ -6,7 +6,7 @@ import { showErrorToast } from '../utils/toastUtils';
 const Tasks = () => {
     const [tasks, setTasks] = useState([]);
     const [newTask, setNewTask] = useState('');
-    const [reminderTime, setReminderTime] = useState('');
+    const [taskTime, setTaskTime] = useState('');
     const [filter, setFilter] = useState('all'); // all, active, completed
     const [loading, setLoading] = useState(true);
 
@@ -44,15 +44,12 @@ const Tasks = () => {
             try {
                 const response = await api.post('/tasks', {
                     text: newTask.trim(),
-                    reminderTime: reminderTime || null,
-                    reminderTimezone: reminderTime
-                        ? Intl.DateTimeFormat().resolvedOptions().timeZone
-                        : null
+                    taskTime: taskTime ? new Date(taskTime).toISOString() : null
                 });
                 if (response.data.success) {
                     setTasks([response.data.task, ...tasks]);
                     setNewTask('');
-                    setReminderTime('');
+                    setTaskTime('');
                 }
             } catch (error) {
                 console.error('Error creating task:', error);
@@ -84,14 +81,10 @@ const Tasks = () => {
         }
     };
 
-    const handleTaskReminderChange = async (id, reminderTime) => {
-        const reminderTimezone = reminderTime
-            ? Intl.DateTimeFormat().resolvedOptions().timeZone
-            : null;
+    const handleTaskTimeChange = async (id, value) => {
         try {
             const response = await api.put(`/tasks/${id}`, {
-                reminderTime: reminderTime || null,
-                reminderTimezone
+                taskTime: value ? new Date(value).toISOString() : null
             });
             if (response.data.success) {
                 setTasks(current => current.map(task =>
@@ -99,8 +92,8 @@ const Tasks = () => {
                 ));
             }
         } catch (error) {
-            console.error('Error updating task reminder:', error);
-            showErrorToast('Failed to update task reminder');
+            console.error('Error updating task time:', error);
+            showErrorToast('Failed to update task time');
             loadTasks();
         }
     };
@@ -217,7 +210,7 @@ const Tasks = () => {
         alignItems: 'center',
         gap: '8px',
         width: '100%',
-        marginTop: '-20px',
+        marginTop: '-12px',
         marginBottom: '24px',
         color: '#CBD5E1',
         fontSize: '14px'
@@ -399,24 +392,28 @@ const Tasks = () => {
                 </button>
             </div>
             <label style={reminderControlStyle}>
-                <span>Daily reminder</span>
+                <span>Schedule task</span>
                 <input
-                    type="time"
-                    value={reminderTime}
-                    onChange={(e) => setReminderTime(e.target.value)}
+                    type="datetime-local"
+                    value={taskTime}
+                    min={new Date().toISOString().slice(0, 16)}
+                    onChange={(e) => setTaskTime(e.target.value)}
                     style={reminderInputStyle}
-                    aria-label="Daily reminder time"
+                    aria-label="Task date and time"
                 />
-                {reminderTime && (
+                {taskTime && (
                     <button
                         type="button"
-                        onClick={() => setReminderTime('')}
+                        onClick={() => setTaskTime('')}
                         style={{ ...deleteButtonStyle, background: 'rgba(239,68,68,0.12)' }}
                     >
-                        Clear
+                        Clear schedule
                     </button>
                 )}
             </label>
+            <p style={{ margin: '-12px 0 24px', color: '#94A3B8', fontSize: '12px' }}>
+                You’ll get alerts 30 minutes before, 15 minutes before, and at the scheduled time.
+            </p>
 
             {tasks.length > 0 && (
                 <div style={filtersStyle}>
@@ -471,32 +468,37 @@ const Tasks = () => {
                                     e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
                                 }}
                             >
-                                <div
+                                <button
+                                    type="button"
                                     onClick={() => handleToggleTask(task._id)}
                                     style={task.completed ? checkboxCheckedStyle : checkboxStyle}
+                                    role="checkbox"
+                                    aria-checked={task.completed}
+                                    aria-label={`Mark "${task.text}" as ${task.completed ? 'active' : 'completed'}`}
                                 >
                                     {task.completed && (
                                         <span style={{ color: '#ffffff', fontSize: '12px' }}>✓</span>
                                     )}
-                                </div>
+                                </button>
                                 <div style={{ flex: 1 }}>
                                     <p style={task.completed ? taskTextCompletedStyle : taskTextStyle}>
                                         {task.text}
                                     </p>
-                                    {task.reminderTime && (
+                                    {task.taskTime && (
                                         <small style={{ color: '#94A3B8' }}>
-                                            Daily reminder at {task.reminderTime}
+                                            Alerts 30 min before, 15 min before, and at {new Date(task.taskTime).toLocaleString()}
                                         </small>
                                     )}
                                     <div style={{ marginTop: '6px' }}>
                                         <label style={{ color: '#94A3B8', fontSize: '12px' }}>
-                                            Reminder time{' '}
+                                            Task time{' '}
                                             <input
-                                                type="time"
-                                                value={task.reminderTime || ''}
-                                                onChange={(e) => handleTaskReminderChange(task._id, e.target.value)}
-                                                style={{ ...reminderInputStyle, minWidth: '120px', width: '120px', padding: '4px 8px', fontSize: '12px' }}
-                                                aria-label={`Reminder time for ${task.text}`}
+                                                type="datetime-local"
+                                                value={task.taskTime ? new Date(task.taskTime).toISOString().slice(0, 16) : ''}
+                                                min={new Date().toISOString().slice(0, 16)}
+                                                onChange={(e) => handleTaskTimeChange(task._id, e.target.value)}
+                                                style={{ ...reminderInputStyle, minWidth: '190px', width: '190px', padding: '4px 8px', fontSize: '12px' }}
+                                                aria-label={`Task time for ${task.text}`}
                                             />
                                         </label>
                                     </div>

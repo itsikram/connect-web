@@ -13,6 +13,7 @@ import Momemt from "react-moment";
 import api from "../../api/api";
 import PostComment from "./PostComment";
 import ExpandableText from "./ExpandableText";
+import RichPostText from "./RichPostText";
 import { confirmAlert } from "react-confirm-alert";
 import "react-confirm-alert/src/react-confirm-alert.css"; // Import CSS
 import socket from "../../common/socket";
@@ -684,7 +685,7 @@ const Post = React.memo(
               </div>
               <div ref={displayedPost} data-id={post._id} className="body">
                 <p className="caption">
-                  <ExpandableText>{post.caption}</ExpandableText>
+                  <ExpandableText><RichPostText>{post.caption}</RichPostText></ExpandableText>
                 </p>
                 <div className={`nf-post ${type} m-3 border overflow-hidden`}>
                   <div className="header">
@@ -748,7 +749,7 @@ const Post = React.memo(
 
                   <div className="body">
                     <p className="caption">
-                      <ExpandableText>{post?.parentPost?.caption}</ExpandableText>
+                      <ExpandableText><RichPostText>{post?.parentPost?.caption}</RichPostText></ExpandableText>
                     </p>
                     {postImages.length > 1 ? (
                       <PostGallery
@@ -1052,7 +1053,7 @@ const Post = React.memo(
               <div ref={displayedPost} data-id={post._id} className="body">
                 {post.caption ? (
                   <p className="caption">
-                    <ExpandableText>{post.caption}</ExpandableText>
+                    <ExpandableText><RichPostText>{post.caption}</RichPostText></ExpandableText>
                   </p>
                 ) : null}
                 {postImages.length > 1 ? (

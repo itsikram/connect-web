@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { mergeTranscriptChunk } from "./transcriptText";
+import store from "../store";
 
 const TARGET_SAMPLE_RATE = 16000;
 // Smaller buffers reduce the delay before Deepgram receives each audio frame.
@@ -653,7 +654,10 @@ export default function useComposerLiveTranscribe({
       try {
         stop();
         lastPartialRef.current = "";
-        const requested = String(langCode || "en-US");
+        const requested = String(
+          langCode ||
+            (store.getState()?.setting?.language === "bn" ? "bn-BD" : "en-US"),
+        );
         langRef.current = requested;
         if (requested.toLowerCase() === "auto") {
           if (!canUseDeepgram()) {

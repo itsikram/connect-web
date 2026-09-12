@@ -32,10 +32,12 @@ const MentionInput = ({
   value = "",
   onChange,
   myProfileId,
+  name = "caption",
   className = "",
   placeholder,
   disabled,
   onKeyDown,
+  multiline = false,
   ...props
 }) => {
   const inputRef = useRef(null);
@@ -74,11 +76,25 @@ const MentionInput = ({
   }, [activeQuery, connects]);
 
   const handleChange = (event) => {
-    const nextValue = event.target.value;
-    const nextCursor = event.target.selectionStart ?? nextValue.length;
+    const target = event?.target || inputRef.current || {};
+    const nextValue = target.value ?? "";
+    const nextCursor = target.selectionStart ?? nextValue.length;
+    const storedValue = toStoredValue(nextValue, value);
+
     setCursor(nextCursor);
     setActiveQuery(getMentionQuery(nextValue, nextCursor));
-    onChange({ ...event, target: { ...event.target, value: toStoredValue(nextValue, value) } });
+
+    onChange?.({
+      ...event,
+      target: {
+        ...target,
+        name,
+        value: storedValue,
+        selectionStart: nextCursor,
+        selectionEnd: nextCursor,
+      },
+      currentTarget: target,
+    });
   };
 
   const selectProfile = (profile) => {
@@ -86,11 +102,20 @@ const MentionInput = ({
     const start = displayValue.slice(0, cursor).search(/(?:^|\s)@[^\s@]*$/);
     if (start < 0) return;
     const mentionStart = displayValue[cursor - 1] === "@" ? cursor - 1 : start + (displayValue[start] === " " ? 1 : 0);
-    const name = getProfileDisplayName(profile).trim();
-    const nextDisplayValue = `${displayValue.slice(0, mentionStart)}@${name} ${displayValue.slice(cursor)}`;
-    const nextCursor = mentionStart + name.length + 2;
-    const nextValue = toStoredValue(nextDisplayValue, value).replace(`@${name}`, `@[${name}](${profile._id})`);
-    onChange({ target: { value: nextValue } });
+    const profileName = getProfileDisplayName(profile).trim();
+    const nextDisplayValue = `${displayValue.slice(0, mentionStart)}@${profileName} ${displayValue.slice(cursor)}`;
+    const nextCursor = mentionStart + profileName.length + 2;
+    const nextValue = toStoredValue(nextDisplayValue, value).replace(`@${profileName}`, `@[${profileName}](${profile._id})`);
+
+    onChange?.({
+      target: {
+        name,
+        value: nextValue,
+        selectionStart: nextCursor,
+        selectionEnd: nextCursor,
+      },
+      currentTarget: inputRef.current,
+    });
     setActiveQuery(null);
     requestAnimationFrame(() => {
       inputRef.current?.focus();
@@ -100,9 +125,11 @@ const MentionInput = ({
 
   return (
     <div className="mention-input-wrap">
-      <input
+      {multiline ? (
+      <textarea
         ref={inputRef}
         {...props}
+        name={name}
         className={className}
         value={toDisplayValue(value)}
         placeholder={placeholder}
@@ -113,6 +140,22 @@ const MentionInput = ({
           if (event.key === "Escape") setActiveQuery(null);
         }}
       />
+      ) : (
+      <input
+        ref={inputRef}
+        {...props}
+        name={name}
+        className={className}
+        value={toDisplayValue(value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        onChange={handleChange}
+        onKeyDown={(event) => {
+          onKeyDown?.(event);
+          if (event.key === "Escape") setActiveQuery(null);
+        }}
+      />
+      )}
       {activeQuery !== null && matches.length > 0 && (
         <div className="mention-suggestions" role="listbox" aria-label="Profile connects">
           {matches.map((profile) => (

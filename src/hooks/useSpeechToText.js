@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import store from "../store";
 
 const SpeechRecognitionCtor = () =>
   typeof window !== "undefined"
@@ -48,6 +49,7 @@ export default function useSpeechToText({
       const nextLang =
         (typeof overrideLang === "string" && overrideLang) ||
         lang ||
+        (store.getState()?.setting?.language === "bn" ? "bn-BD" : "en-US") ||
         (typeof navigator !== "undefined" &&
         navigator.language?.startsWith("bn")
           ? "bn-BD"

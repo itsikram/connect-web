@@ -2386,6 +2386,11 @@ const Main = () => {
         return;
       }
 
+      // Composer controls are actions inside the current route, not navigation.
+      if (target.closest(".cpm-tag-selector-wrapper")) {
+        return;
+      }
+
       if (target.matches("a[href]")) {
         const link = new URL(target.href, window.location.href);
         if (link.origin !== window.location.origin || link.href === window.location.href) {

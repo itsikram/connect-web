@@ -33,7 +33,8 @@ let SignUP = () => {
         firstName: '',
         email: '',
         gender: '',
-        surname: ''
+        surname: '',
+        language: 'eng'
     })
     let [isSigningUp, setIsSigningUp] = useState(false)
     let [isGoogleSigningUp, setIsGoogleSigningUp] = useState(false)
@@ -231,6 +232,20 @@ let SignUP = () => {
                             <input onChange={handleChange} name="email" className="email field" type="text" placeholder="Email address or phone number" disabled={isSigningUp || isGoogleSigningUp} />
                             <div className="invalid-feedback pb-2 fw-bold">
                                 Please provide a valid email.
+                            </div>
+                            <div className="form-group">
+                                <label htmlFor="language">Language</label>
+                                <select
+                                    onChange={handleChange}
+                                    name="language"
+                                    id="language"
+                                    className="language field form-control"
+                                    value={inputs.language}
+                                    disabled={isSigningUp || isGoogleSigningUp}
+                                >
+                                    <option value="eng">English</option>
+                                    <option value="bn">Bangla</option>
+                                </select>
                             </div>
                         </div>
 

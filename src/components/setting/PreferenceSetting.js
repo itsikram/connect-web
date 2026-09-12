@@ -8,12 +8,18 @@ import { showSuccessToast, showErrorToast } from '../../utils/toastUtils';
 const PreferenceSetting = () => {
     const oldSettings = useSelector((state) => state.setting);
     const dispatch = useDispatch();
-    const [settings, setSettings] = useState({ themeMode: oldSettings.themeMode || 'dark' });
+    const [settings, setSettings] = useState({
+        themeMode: oldSettings.themeMode || 'dark',
+        language: oldSettings.language || 'eng',
+    });
     const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
-        if (oldSettings?.themeMode) {
-            setSettings({ themeMode: oldSettings.themeMode });
+        if (oldSettings?.themeMode || oldSettings?.language) {
+            setSettings({
+                themeMode: oldSettings.themeMode || 'dark',
+                language: oldSettings.language || 'eng',
+            });
         }
     }, [oldSettings?.themeMode]);
 
@@ -58,6 +64,19 @@ const PreferenceSetting = () => {
                             <option value="default">Default</option>
                             <option value="dark">Dark</option>
                             <option value="light">Light</option>
+                        </select>
+                    </div>
+                    <div className="form-group mb-2">
+                        <label htmlFor="language">Language</label>
+                        <select
+                            value={settings.language || 'eng'}
+                            onChange={handleInputChange}
+                            className="form-control"
+                            name="language"
+                            id="language"
+                        >
+                            <option value="eng">English</option>
+                            <option value="bn">Bangla</option>
                         </select>
                     </div>
 
