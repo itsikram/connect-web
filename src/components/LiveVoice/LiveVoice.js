@@ -3,6 +3,7 @@ import AgoraRTC from "agora-rtc-sdk-ng";
 import socket from "../../common/socket";
 import api from "../../api/api";
 import LiveVoiceModal from "../Message/LiveVoiceModal";
+import { unlockAudio } from "../../utils/audioUnlock";
 
 const hashUid = (id) => {
   if (!id) return 0;
@@ -13,6 +14,20 @@ const hashUid = (id) => {
     hash |= 0;
   }
   return Math.abs(hash);
+};
+
+const playRemoteAudioTrack = (track) => {
+  if (!track) return;
+  try {
+    const result = track.play();
+    if (result?.catch) {
+      result.catch((error) => {
+        console.warn("Live voice: Remote audio playback was blocked:", error);
+      });
+    }
+  } catch (error) {
+    console.warn("Live voice: Failed to play remote audio:", error);
+  }
 };
 
 const mapAgoraQuality = (uplink = 0, downlink = 0) => {
@@ -165,7 +180,7 @@ const LiveVoice = ({ myId }) => {
       if (mediaType !== "audio") return;
       try {
         await client.subscribe(user, "audio");
-        user.audioTrack?.play();
+        playRemoteAudioTrack(user.audioTrack);
       } catch (e) {
         console.warn("Live voice subscribe error:", e);
       }
@@ -197,7 +212,7 @@ const LiveVoice = ({ myId }) => {
       if (!user?.hasAudio) continue;
       try {
         await client.subscribe(user, "audio");
-        user.audioTrack?.play();
+        playRemoteAudioTrack(user.audioTrack);
       } catch (e) {
         console.warn("Live voice subscribe existing user error:", e);
       }
@@ -213,6 +228,7 @@ const LiveVoice = ({ myId }) => {
       notifyPeer = true,
     }) => {
       if (!to || !channelName || !myId) return;
+      await unlockAudio();
 
       if (
         isActiveRef.current &&
@@ -273,6 +289,11 @@ const LiveVoice = ({ myId }) => {
 
         const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
         clientRef.current = client;
+        AgoraRTC.onAudioAutoplayFailed = () => {
+          for (const user of client.remoteUsers || []) {
+            playRemoteAudioTrack(user.audioTrack);
+          }
+        };
 
         // Bind remote listeners before join so we never miss user-published
         // from a peer that is already in the channel (typical for app → web).

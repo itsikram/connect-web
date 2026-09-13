@@ -44,6 +44,20 @@ const closeAgoraTrack = (track) => {
   }
 };
 
+const playRemoteAudioTrack = (track) => {
+  if (!track) return;
+  try {
+    const result = track.play();
+    if (result?.catch) {
+      result.catch((error) => {
+        console.warn("AudioCall: Remote audio playback was blocked:", error);
+      });
+    }
+  } catch (error) {
+    console.warn("AudioCall: Failed to play remote audio:", error);
+  }
+};
+
 const AudioCall = ({ myId }) => {
   const mySettings = useSelector((state) => state.setting);
   const [isAudioCall, setIsAudioCall] = useState(false);
@@ -477,6 +491,9 @@ const AudioCall = ({ myId }) => {
   const startCall = useCallback(
     async (channelName) => {
       try {
+        // Unlock browser audio while the call is still associated with the
+        // user's accept/start gesture. Remote tracks arrive asynchronously.
+        await unlockAudio();
         console.log("Starting Agora audio call with channel:", channelName);
         if (isTerminating.current) {
           console.warn("Start skipped: call is terminating");
@@ -525,6 +542,11 @@ const AudioCall = ({ myId }) => {
           codec: "vp8",
         });
         const client = clientRef.current;
+        AgoraRTC.onAudioAutoplayFailed = () => {
+          for (const user of client.remoteUsers || []) {
+            playRemoteAudioTrack(user.audioTrack);
+          }
+        };
 
         // Bind on every fresh client. The client is recreated for each call.
         hasBoundClientEvents.current = true;
@@ -532,7 +554,7 @@ const AudioCall = ({ myId }) => {
           if (mediaType !== "audio") return;
           try {
             await client.subscribe(user, "audio");
-            user.audioTrack?.play();
+            playRemoteAudioTrack(user.audioTrack);
             console.log("Playing remote audio from user:", user.uid);
           } catch (error) {
             console.error("Error subscribing to remote audio:", error);
@@ -619,12 +641,12 @@ const AudioCall = ({ myId }) => {
                 console.log("Subscribing to existing user audio:", user.uid);
                 await client.subscribe(user, "audio");
                 if (user.audioTrack) {
-                  user.audioTrack.play();
+                  playRemoteAudioTrack(user.audioTrack);
                   console.log("Playing existing remote user audio");
                 }
               } else if (user.hasAudio && user.audioTrack) {
                 // Audio track already exists, just play it
-                user.audioTrack.play();
+                playRemoteAudioTrack(user.audioTrack);
                 console.log("Playing already subscribed remote audio");
               }
             }
@@ -655,7 +677,7 @@ const AudioCall = ({ myId }) => {
                   "Found missed remote audio, playing now:",
                   user.uid,
                 );
-                user.audioTrack.play();
+                playRemoteAudioTrack(user.audioTrack);
               }
             }
           } catch (error) {
@@ -1278,6 +1300,7 @@ const AudioCall = ({ myId }) => {
     if (!incomingCall) return;
 
     console.log("Answering Agora audio call");
+    await unlockAudio();
 
     // Start local audio immediately when accepting call
     try {
