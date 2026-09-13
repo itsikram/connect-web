@@ -3485,6 +3485,10 @@ body {
   width: 100%;
   justify-content: space-between;
 }
+#profile .profile-header .profile-info-container .profile-info .profile-name {
+  flex: 1;
+  text-align: center;
+}
 #profile .profile-header .profile-info-container .profile-info .profile-name .full-name {
   font-weight: bold;
   color: #fff;
@@ -5967,6 +5971,8 @@ body {
     justify-content: center;
   }
   #profile .profile-header .profile-info-container .profile-info .profile-name {
+    width: 100%;
+    flex: none;
     text-align: center;
     margin: 10px 0;
   }

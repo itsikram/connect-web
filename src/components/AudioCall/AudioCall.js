@@ -75,6 +75,7 @@ const AudioCall = ({ myId }) => {
   const callEndBtn = useRef();
   const ringtoneAudio = useRef();
   const ringtoneBufferSource = useRef(null);
+  const ringtonePlaybackToken = useRef(0);
   const ringtoneObjectUrlRef = useRef(null);
   const ringtoneObjectUrlSourceRef = useRef("");
   const isTerminating = useRef(false);
@@ -268,6 +269,7 @@ const AudioCall = ({ myId }) => {
   ]);
 
   const stopRingtone = () => {
+    ringtonePlaybackToken.current += 1;
     try {
       if (ringtoneAudio?.current) {
         const audio = ringtoneAudio.current;
@@ -340,12 +342,14 @@ const AudioCall = ({ myId }) => {
   }, []);
 
   const playRingtone = useCallback(async () => {
+    const playbackToken = ringtonePlaybackToken.current;
     await unlockAudio();
 
     if (
       !ringtoneAudio?.current ||
       !receivingCallRef.current ||
-      callAcceptedRef.current
+      callAcceptedRef.current ||
+      playbackToken !== ringtonePlaybackToken.current
     )
       return;
 
@@ -355,7 +359,11 @@ const AudioCall = ({ myId }) => {
       await ensureRingtoneSourceReady();
     }
 
-    if (!audio.src || audio.src === window.location.href) {
+    if (
+      !audio.src ||
+      audio.src === window.location.href ||
+      playbackToken !== ringtonePlaybackToken.current
+    ) {
       console.warn("Ringtone audio has no valid source");
       return;
     }
@@ -403,13 +411,21 @@ const AudioCall = ({ myId }) => {
     if (audio.readyState < 2) {
       const onCanPlay = async () => {
         audio.removeEventListener("canplaythrough", onCanPlay);
-        if (receivingCallRef.current && !callAcceptedRef.current) {
+        if (
+          receivingCallRef.current &&
+          !callAcceptedRef.current &&
+          playbackToken === ringtonePlaybackToken.current
+        ) {
           await tryElementPlay();
         }
       };
       audio.addEventListener("canplaythrough", onCanPlay);
       if (audio.readyState === 0) audio.load();
-    } else if (receivingCallRef.current && !callAcceptedRef.current) {
+    } else if (
+      receivingCallRef.current &&
+      !callAcceptedRef.current &&
+      playbackToken === ringtonePlaybackToken.current
+    ) {
       await tryElementPlay();
     }
   }, [ensureRingtoneSourceReady]);
@@ -1030,6 +1046,7 @@ const AudioCall = ({ myId }) => {
     const onCallAccepted = ({ channelName, isAudio, callerId }) => {
       // Caller side should join upon acceptance; callee already joined in answerCall
       if (isAudio) {
+        stopRingtone();
         if (!receivingCallRef.current) {
           console.log(
             "AudioCall: Call accepted (caller side) - joining channel:",
@@ -1040,7 +1057,6 @@ const AudioCall = ({ myId }) => {
             isAudio,
             callerId,
           });
-          stopRingtone();
           setOutgoingCallStatus("");
           callAcceptedRef.current = true;
           acceptedChannelRef.current = channelName;

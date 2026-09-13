@@ -38,5 +38,8 @@ root.render(
 // or send to an analytics endpoint. Learn more: https://bit.ly/CRA-vitals
 reportWebVitals();
 
-// Cache the app shell and loaded bundles so the installed PWA can start offline.
-registerServiceWorker();
+// Service workers are production-only. Running one against the dev server can
+// cache changing bundles and cause a reload loop during hot reload.
+if (process.env.NODE_ENV === 'production') {
+  registerServiceWorker();
+}

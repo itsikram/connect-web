@@ -1663,6 +1663,10 @@ const ChatHeader = ({
         // we only display connect's expression from socket events
       }
 
+      // Face-login already relays this result to Connect. Avoid sending a
+      // duplicate Connect event from the web client.
+      const connectRelayed = data.connect_relayed === true;
+
       // FAST EMISSION: Emit immediately if emotion changed (before majority window)
       // This ensures super fast response when emotions change
       if (
@@ -1678,7 +1682,7 @@ const ChatHeader = ({
 
         // Use connectProfile._id directly if connectId state is not yet set
         const currentConnectId = connectId || connectProfile?._id;
-        if (profileId && currentConnectId) {
+        if (profileId && currentConnectId && !connectRelayed) {
           try {
             // Get the latest expression data from the most recent response
             const latestExpressionData = expressionDataRef.current || {};
@@ -1738,6 +1742,10 @@ const ChatHeader = ({
               err,
             );
           }
+        } else if (connectRelayed) {
+          console.log(
+            "[ChatHeader] ⏭️ Face-login already relayed expression to Connect",
+          );
         }
 
         lastEmotionTimestampRef.current = Date.now();
@@ -1854,6 +1862,8 @@ const ChatHeader = ({
         // Send frame to the authenticated /expressions namespace.
         emotionServerSocketRef.current.emit("frame", {
           image: base64Image,
+          profileId: String(profileId || ""),
+          connectId: String(currentConnectId || ""),
         });
         console.log(
           `[ChatHeader] 📤 Sent frame to Python server (req ${reqId})`,

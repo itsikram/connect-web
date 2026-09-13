@@ -61,6 +61,7 @@ const PostComment = ({
       : 2,
   );
   const [showAllComments, setShowAllComments] = useState(false);
+  const [newCommentIds, setNewCommentIds] = useState([]);
 
   const [uploadedImageUrl, setUploadedImageUrl] = useState(null);
   const [commentData, setCommentData] = useState({
@@ -107,11 +108,13 @@ const PostComment = ({
     if (isSingle && parsedInitialVisibleCount) {
       setVisibleCommentsCount(parsedInitialVisibleCount);
       setShowAllComments(false);
+      setNewCommentIds([]);
       return;
     }
 
     setVisibleCommentsCount(2);
     setShowAllComments(false);
+    setNewCommentIds([]);
   }, [postId, isSingle, parsedInitialVisibleCount]);
 
   useEffect(() => {
@@ -204,6 +207,11 @@ const PostComment = ({
           }
           return [...list, data];
         });
+        if (data._id) {
+          setNewCommentIds((ids) =>
+            ids.includes(data._id) ? ids : [...ids, data._id],
+          );
+        }
 
         setCommentData({ body: "", attachment: null });
         setUploadedImageUrl(null);
@@ -261,8 +269,18 @@ const PostComment = ({
     const previousComments = commentsList
       .slice(0, originalCommentsCount.current)
       .slice(0, 2);
-    const newer = commentsList.slice(originalCommentsCount.current);
-    return [...previousComments, ...newer].slice(0, 2);
+    const newer = commentsList.filter(
+      (comment) => comment?._id && newCommentIds.includes(comment._id),
+    );
+    return [
+      ...previousComments,
+      ...newer.filter(
+        (comment) =>
+          !previousComments.some(
+            (previousComment) => previousComment?._id === comment?._id,
+          ),
+      ),
+    ];
   })();
 
   const canLoadMoreComments =

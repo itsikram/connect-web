@@ -16,11 +16,14 @@ const getSocket = () => {
                 query: {
                     profile: userJson.profile
                 },
+                auth: {
+                    profile: userJson.profile
+                },
                 // Preserve original timeout settings (20s like the app version)
                 timeout: 20000,
                 reconnection: true,
                 reconnectionDelay: 1000,
-                reconnectionAttempts: 5,
+                reconnectionAttempts: Infinity,
                 reconnectionDelayMax: 5000,
                 transports: ['websocket', 'polling']
             });
@@ -32,7 +35,7 @@ const getSocket = () => {
                 timeout: 20000,
                 reconnection: true,
                 reconnectionDelay: 1000,
-                reconnectionAttempts: 5,
+                reconnectionAttempts: Infinity,
                 reconnectionDelayMax: 5000,
                 transports: ['websocket', 'polling']
             });

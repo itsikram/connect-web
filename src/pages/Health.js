@@ -1,74 +1,46 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-    DAILY_WELLNESS_ITEMS,
-    FITNESS_ARTICLES,
-    FITNESS_CATEGORIES,
-    HEALTH_DISCLAIMER,
-    QUICK_TIPS,
-} from '../constants/healthContent';
-import { getSuggestedMeals, getCalorieAnalysis, calculateTDEE } from '../utils/geminiApi';
 import api from '../api/api';
 import './Health.css';
 
-const STORAGE_KEY = 'connectHealthWellness';
-const WEIGHT_TARGET_KEY = 'connectWeightTarget';
-const WEIGHT_LOG_KEY = 'connectWeightLog';
-const NOTIFICATIONS_KEY = 'connectNotifications';
-const CALORIE_TARGET_KEY = 'connectCalorieTarget';
-const MEAL_LOG_KEY = 'connectMealLog';
-const USER_PROFILE_KEY = 'connectUserProfile';
+const EMPTY_PROFILE = {
+    sex: 'other',
+    age: '',
+    heightCm: '',
+    weightKg: '',
+    targetWeightKg: '',
+    activityLevel: 'moderate',
+    goal: 'maintain',
+};
 
-const getTodayKey = () => new Date().toISOString().split('T')[0];
+const EMPTY_MEAL = {
+    name: '',
+    calories: '',
+    proteinG: '',
+    carbsG: '',
+    fatG: '',
+    fiberG: '',
+    mealType: 'snack',
+};
+
+const EMPTY_REMINDER = { title: 'Drink water', time: '12:00', type: 'water', message: '' };
 
 const Health = () => {
-    const [activeCategory, setActiveCategory] = useState('basics');
-    const [expandedArticle, setExpandedArticle] = useState(null);
-    const [checkedItems, setCheckedItems] = useState({});
-    const [tipIndex, setTipIndex] = useState(0);
-    const [weightTarget, setWeightTarget] = useState(null);
-    const [currentWeight, setCurrentWeight] = useState('');
-    const [showWeightForm, setShowWeightForm] = useState(false);
-    const [goalWeight, setGoalWeight] = useState('');
-    const [weightGoalType, setWeightGoalType] = useState('lose'); // 'lose' or 'gain'
-    const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-    const [weightLog, setWeightLog] = useState([]);
-    // Calorie tracking states
-    const [userProfile, setUserProfile] = useState(null);
-    const [calorieTarget, setCalorieTarget] = useState(null);
-    const [mealLog, setMealLog] = useState([]);
-    const [showCalorieForm, setShowCalorieForm] = useState(false);
-    const [showMealInput, setShowMealInput] = useState(false);
-    const [mealName, setMealName] = useState('');
-    const [mealCalories, setMealCalories] = useState('');
-    const [mealProtein, setMealProtein] = useState('');
-    const [mealCarbs, setMealCarbs] = useState('');
-    const [mealFat, setMealFat] = useState('');
-    const [mealType, setMealType] = useState('snack');
-    const [suggestedMeals, setSuggestedMeals] = useState(null);
-    const [loadingSuggestions, setLoadingSuggestions] = useState(false);
-    const [suggestionError, setSuggestionError] = useState(null);
-    const [userAge, setUserAge] = useState('');
-    const [userHeight, setUserHeight] = useState('');
-    const [userGender, setUserGender] = useState('male');
-    const [activityLevel, setActivityLevel] = useState('moderately-active');
-    const [healthGoal, setHealthGoal] = useState('weight-loss');
-    const [dietaryPreferences, setDietaryPreferences] = useState('');
     const [fitnessData, setFitnessData] = useState(null);
-    const [fitnessProfile, setFitnessProfile] = useState({ sex: 'other', age: '', heightCm: '', weightKg: '', targetWeightKg: '', activityLevel: 'moderate', goal: 'maintain' });
+    const [fitnessProfile, setFitnessProfile] = useState(EMPTY_PROFILE);
     const [fitnessPeriod, setFitnessPeriod] = useState('daily');
     const [fitnessProgress, setFitnessProgress] = useState(null);
     const [fitnessRecommendations, setFitnessRecommendations] = useState(null);
     const [fitnessReminders, setFitnessReminders] = useState([]);
     const [fitnessCoachQuestion, setFitnessCoachQuestion] = useState('');
     const [fitnessCoachReply, setFitnessCoachReply] = useState('');
-    const [fitnessMeal, setFitnessMeal] = useState({ name: '', calories: '', proteinG: '', carbsG: '', fatG: '', fiberG: '', mealType: 'snack' });
+    const [fitnessMeal, setFitnessMeal] = useState(EMPTY_MEAL);
     const [fitnessMealImage, setFitnessMealImage] = useState(null);
-    const [fitnessReminder, setFitnessReminder] = useState({ title: '', time: '', type: 'custom', message: '' });
+    const [fitnessWeight, setFitnessWeight] = useState('');
+    const [fitnessWeightNote, setFitnessWeightNote] = useState('');
+    const [fitnessReminder, setFitnessReminder] = useState(EMPTY_REMINDER);
     const [fitnessLoading, setFitnessLoading] = useState(false);
     const [fitnessError, setFitnessError] = useState('');
-
-    const todayKey = getTodayKey();
 
     const loadFitness = useCallback(async () => {
         try {
@@ -80,7 +52,7 @@ const Health = () => {
             setFitnessReminders(reminders.data?.reminders || reminders.data || []);
             if (dashboard.data?.profile) setFitnessProfile(dashboard.data.profile);
         } catch (error) {
-            setFitnessError(error?.response?.status === 404 ? '' : 'Could not load Fitness data.');
+            if (error?.response?.status !== 404) setFitnessError('Could not load Fitness data.');
         }
     }, []);
 
@@ -89,33 +61,50 @@ const Health = () => {
     const runFitness = async (operation) => {
         setFitnessLoading(true);
         setFitnessError('');
-        try { await operation(); } catch (error) { setFitnessError(error?.response?.data?.message || 'Fitness request failed.'); } finally { setFitnessLoading(false); }
+        try {
+            await operation();
+        } catch (error) {
+            setFitnessError(error?.response?.data?.message || 'Fitness request failed.');
+        } finally {
+            setFitnessLoading(false);
+        }
     };
 
     const saveFitnessProfile = () => runFitness(async () => {
-        const response = await api.put('/fitness/profile', {
+        await api.put('/fitness/profile', {
             ...fitnessProfile,
             age: Number(fitnessProfile.age),
             heightCm: Number(fitnessProfile.heightCm),
             weightKg: Number(fitnessProfile.weightKg),
             targetWeightKg: fitnessProfile.targetWeightKg ? Number(fitnessProfile.targetWeightKg) : undefined,
         });
-        setFitnessData((old) => ({ ...(old || {}), profile: response.data.profile || response.data }));
         await loadFitness();
     });
 
     const analyzeFitnessMeal = () => runFitness(async () => {
-        const body = new FormData();
-        body.append('name', fitnessMeal.name || 'meal');
-        body.append('mealType', fitnessMeal.mealType);
-        if (fitnessMealImage) body.append('image', fitnessMealImage);
-        const response = await api.post('/fitness/analyze-food', body);
-        setFitnessMeal((old) => ({ ...old, ...(response.data.analysis || {}), source: response.data.provider || 'gemini' }));
+        let payload = { name: fitnessMeal.name, mealType: fitnessMeal.mealType };
+        if (fitnessMealImage) {
+            payload = new FormData();
+            payload.append('name', fitnessMeal.name || 'meal');
+            payload.append('mealType', fitnessMeal.mealType);
+            payload.append('image', fitnessMealImage);
+        }
+        const response = await api.post('/fitness/analyze-food', payload);
+        setFitnessMeal((old) => ({
+            ...old,
+            ...(response.data.analysis || {}),
+            source: response.data.provider || 'gemini',
+        }));
     });
 
     const saveFitnessMeal = () => runFitness(async () => {
-        await api.post('/fitness/meals', { ...fitnessMeal, source: fitnessMeal.source || 'manual', date: new Date().toISOString() });
-        setFitnessMeal({ name: '', calories: '', proteinG: '', carbsG: '', fatG: '', fiberG: '', mealType: 'snack' });
+        await api.post('/fitness/meals', {
+            ...fitnessMeal,
+            source: fitnessMeal.source || 'manual',
+            date: new Date().toISOString(),
+        });
+        setFitnessMeal(EMPTY_MEAL);
+        setFitnessMealImage(null);
         await loadFitness();
     });
 
@@ -130,8 +119,14 @@ const Health = () => {
         setFitnessRecommendations(response.data);
     });
 
-    const logFitnessWeight = (value) => runFitness(async () => {
-        await api.post('/fitness/weight', { weightKg: Number(value), date: new Date().toISOString() });
+    const logFitnessWeight = () => runFitness(async () => {
+        await api.post('/fitness/weight', {
+            weightKg: Number(fitnessWeight),
+            date: new Date().toISOString(),
+            note: fitnessWeightNote,
+        });
+        setFitnessWeight('');
+        setFitnessWeightNote('');
         await loadFitness();
     });
 
@@ -141,8 +136,12 @@ const Health = () => {
     });
 
     const createFitnessReminder = () => runFitness(async () => {
-        await api.post('/fitness/reminders', { ...fitnessReminder, days: [0, 1, 2, 3, 4, 5, 6], enabled: true });
-        setFitnessReminder({ title: '', time: '', type: 'custom', message: '' });
+        await api.post('/fitness/reminders', {
+            ...fitnessReminder,
+            days: [0, 1, 2, 3, 4, 5, 6],
+            enabled: true,
+        });
+        setFitnessReminder(EMPTY_REMINDER);
         await loadFitness();
     });
 
@@ -156,469 +155,55 @@ const Health = () => {
         runFitness(async () => {
             await api.delete('/fitness/reset');
             setFitnessData(null);
-            setFitnessProfile({ sex: 'other', age: '', heightCm: '', weightKg: '', targetWeightKg: '', activityLevel: 'moderate', goal: 'maintain' });
+            setFitnessProfile(EMPTY_PROFILE);
             setFitnessProgress(null);
             setFitnessRecommendations(null);
             setFitnessReminders([]);
             setFitnessCoachReply('');
-            [USER_PROFILE_KEY, CALORIE_TARGET_KEY, MEAL_LOG_KEY, WEIGHT_TARGET_KEY, WEIGHT_LOG_KEY, NOTIFICATIONS_KEY].forEach((key) => localStorage.removeItem(key));
         });
     };
 
-    useEffect(() => {
-        try {
-            const raw = localStorage.getItem(STORAGE_KEY);
-            if (raw) {
-                const parsed = JSON.parse(raw);
-                setCheckedItems(parsed[todayKey] || {});
-            }
-        } catch (_) {
-            /* ignore */
-        }
-    }, [todayKey]);
-
-    useEffect(() => {
-        try {
-            const targetData = localStorage.getItem(WEIGHT_TARGET_KEY);
-            if (targetData) {
-                setWeightTarget(JSON.parse(targetData));
-            }
-            const logData = localStorage.getItem(WEIGHT_LOG_KEY);
-            if (logData) {
-                setWeightLog(JSON.parse(logData));
-            }
-            const notifEnabled = localStorage.getItem(NOTIFICATIONS_KEY);
-            if (notifEnabled) {
-                setNotificationsEnabled(JSON.parse(notifEnabled));
-            }
-            // Load calorie data
-            const profileData = localStorage.getItem(USER_PROFILE_KEY);
-            if (profileData) {
-                setUserProfile(JSON.parse(profileData));
-            }
-            const calTargetData = localStorage.getItem(CALORIE_TARGET_KEY);
-            if (calTargetData) {
-                setCalorieTarget(JSON.parse(calTargetData));
-            }
-            const mealData = localStorage.getItem(MEAL_LOG_KEY);
-            if (mealData) {
-                const allMeals = JSON.parse(mealData);
-                // Filter meals for today
-                setMealLog(allMeals[todayKey] || []);
-            }
-        } catch (_) {
-            /* ignore */
-        }
-    }, [todayKey]);
-
-    useEffect(() => {
-        const reload = () => {
-            try {
-                const targetData = localStorage.getItem(WEIGHT_TARGET_KEY);
-                if (targetData) setWeightTarget(JSON.parse(targetData));
-                const logData = localStorage.getItem(WEIGHT_LOG_KEY);
-                if (logData) setWeightLog(JSON.parse(logData));
-                const mealData = localStorage.getItem(MEAL_LOG_KEY);
-                if (mealData) {
-                    const allMeals = JSON.parse(mealData);
-                    setMealLog(allMeals[todayKey] || []);
-                }
-            } catch (_) {}
-        };
-        window.addEventListener('connect:health-updated', reload);
-        return () => window.removeEventListener('connect:health-updated', reload);
-    }, [todayKey]);
-
-    useEffect(() => {
-        const dayIndex = new Date().getDate() % QUICK_TIPS.length;
-        setTipIndex(dayIndex);
-    }, []);
-
-    const persistChecklist = useCallback((nextDayItems) => {
-        try {
-            const raw = localStorage.getItem(STORAGE_KEY);
-            const all = raw ? JSON.parse(raw) : {};
-            all[todayKey] = nextDayItems;
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
-        } catch (_) {
-            /* ignore */
-        }
-    }, [todayKey]);
-
-    const toggleChecklistItem = (id) => {
-        setCheckedItems((prev) => {
-            const next = { ...prev, [id]: !prev[id] };
-            persistChecklist(next);
-            return next;
-        });
-    };
-
-    const articles = FITNESS_ARTICLES[activeCategory] || [];
-    const completedCount = DAILY_WELLNESS_ITEMS.filter((item) => checkedItems[item.id]).length;
-    const progressPercent = Math.round((completedCount / DAILY_WELLNESS_ITEMS.length) * 100);
-
-    const activeCategoryMeta = useMemo(
-        () => FITNESS_CATEGORIES.find((c) => c.id === activeCategory),
-        [activeCategory]
-    );
-
-    const nextTip = () => setTipIndex((i) => (i + 1) % QUICK_TIPS.length);
-    const prevTip = () => setTipIndex((i) => (i - 1 + QUICK_TIPS.length) % QUICK_TIPS.length);
-
-    const saveWeightTarget = () => {
-        if (!currentWeight || !goalWeight) {
-            alert('Please fill in both current and goal weight');
-            return;
-        }
-        const target = {
-            currentWeight: parseFloat(currentWeight),
-            goalWeight: parseFloat(goalWeight),
-            goalType: weightGoalType,
-            createdAt: new Date().toISOString(),
-        };
-        setWeightTarget(target);
-        localStorage.setItem(WEIGHT_TARGET_KEY, JSON.stringify(target));
-        setShowWeightForm(false);
-        // Log initial weight
-        logWeight(parseFloat(currentWeight));
-    };
-
-    const logWeight = (weight) => {
-        const entry = {
-            weight,
-            date: todayKey,
-            timestamp: new Date().toISOString(),
-        };
-        const newLog = [entry, ...weightLog].filter((item, idx, arr) => idx === 0 || item.date !== arr[0].date);
-        setWeightLog(newLog);
-        localStorage.setItem(WEIGHT_LOG_KEY, JSON.stringify(newLog));
-    };
-
-    const handleWeightLogInput = (e) => {
-        const weight = parseFloat(e.target.value);
-        if (!isNaN(weight)) {
-            logWeight(weight);
-            e.target.value = '';
-        }
-    };
-
-    // Get today's meals from localStorage
-    const getTodayMeals = () => {
-        const today = new Date().toISOString().split('T')[0];
-        try {
-            const raw = localStorage.getItem(MEAL_LOG_KEY);
-            if (raw) {
-                const allMeals = JSON.parse(raw);
-                return allMeals[today] || [];
-            }
-        } catch (_) {
-            /* ignore */
-        }
-        return [];
-    };
-
-    // Calculate total calories consumed today
-    const calculateCaloriesConsumed = () => {
-        const meals = getTodayMeals();
-        return meals.reduce((sum, meal) => sum + meal.calories, 0);
-    };
-
-    const calculateProgress = () => {
-        if (!weightTarget || weightLog.length === 0) return null;
-        const latest = weightLog[0]?.weight || weightTarget.currentWeight;
-        const { goalWeight: gw, currentWeight: start, goalType } = weightTarget;
-        const totalChange = goalType === 'lose' ? start - gw : gw - start;
-        const currentChange = goalType === 'lose' ? start - latest : latest - start;
-        if (totalChange === 0) return 0;
-        return Math.min(100, Math.max(0, (currentChange / totalChange) * 100));
-    };
-
-    const weightProgress = calculateProgress();
-    const caloriesConsumed = calculateCaloriesConsumed();
-    const calorieRemaining = calorieTarget ? calorieTarget.dailyTarget - caloriesConsumed : 0;
-    const caloriePercent = calorieTarget ? Math.min(100, (caloriesConsumed / calorieTarget.dailyTarget) * 100) : 0;
-
-    // Send notification handler
-    const handleSendNotification = useCallback(() => {
-        const progress = weightProgress || 0;
-        const remaining = 100 - progress;
-        const messages = [
-            `You're ${progress.toFixed(1)}% toward your weight goal! Keep going!`,
-            `Complete your daily habits to reach your target. Current progress: ${progress.toFixed(1)}%`,
-            `${remaining.toFixed(1)}% to go! Track your weight and stay consistent.`,
-        ];
-        const message = messages[Math.floor(Math.random() * messages.length)];
-        if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('Health & Fitness Reminder', {
-                body: message,
-                icon: '💪',
-                tag: 'health-reminder',
-            });
-        }
-    }, [weightProgress]);
-
-    const toggleNotifications = () => {
-        if (!('Notification' in window)) {
-            alert('Your browser does not support notifications');
-            return;
-        }
-        if (Notification.permission === 'granted') {
-            const newState = !notificationsEnabled;
-            setNotificationsEnabled(newState);
-            localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(newState));
-            if (newState) {
-                handleSendNotification();
-            }
-        } else {
-            Notification.requestPermission().then((permission) => {
-                if (permission === 'granted') {
-                    setNotificationsEnabled(true);
-                    localStorage.setItem(NOTIFICATIONS_KEY, JSON.stringify(true));
-                    handleSendNotification();
-                }
-            });
-        }
-    };
-
-    // Calorie tracking functions
-    const saveUserProfile = () => {
-        if (!userAge || !userHeight) {
-            alert('Please fill in age and height');
-            return;
-        }
-        const profile = {
-            age: parseInt(userAge),
-            height: parseInt(userHeight),
-            weight: weightTarget?.currentWeight || 75,
-            gender: userGender,
-            activityLevel,
-            healthGoal,
-            dietaryPreferences,
-        };
-        setUserProfile(profile);
-        localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile));
-        
-        // Calculate TDEE
-        const tdee = calculateTDEE(
-            profile.weight,
-            profile.height,
-            profile.age,
-            profile.gender,
-            profile.activityLevel
-        );
-        
-        const target = {
-            dailyTarget: tdee,
-            createdAt: new Date().toISOString(),
-            profile,
-        };
-        setCalorieTarget(target);
-        localStorage.setItem(CALORIE_TARGET_KEY, JSON.stringify(target));
-        setShowCalorieForm(false);
-    };
-
-    const logMeal = async () => {
-        if (!mealName || !mealCalories) {
-            alert('Please fill in meal name and calories');
-            return;
-        }
-        const meal = {
-            name: mealName,
-            calories: parseInt(mealCalories),
-            protein: mealProtein ? parseInt(mealProtein) : 0,
-            carbs: mealCarbs ? parseInt(mealCarbs) : 0,
-            fat: mealFat ? parseInt(mealFat) : 0,
-            type: mealType,
-            timestamp: new Date().toISOString(),
-        };
-
-        try {
-            await api.post('/fitness/meals', {
-                name: meal.name,
-                mealType: meal.type,
-                calories: meal.calories,
-                proteinG: meal.protein,
-                carbsG: meal.carbs,
-                fatG: meal.fat,
-                fiberG: 0,
-                source: 'manual',
-                date: meal.timestamp,
-            });
-        } catch (error) {
-            alert(error?.response?.data?.message || 'Could not save this meal.');
-            return;
-        }
-
-        const newMealLog = [...mealLog, meal];
-        setMealLog(newMealLog);
-        try {
-            const raw = localStorage.getItem(MEAL_LOG_KEY);
-            const allMeals = raw ? JSON.parse(raw) : {};
-            allMeals[todayKey] = newMealLog;
-            localStorage.setItem(MEAL_LOG_KEY, JSON.stringify(allMeals));
-        } catch (_) {
-            /* ignore */
-        }
-        await loadFitness();
-        
-        // Reset form
-        setMealName('');
-        setMealCalories('');
-        setMealProtein('');
-        setMealCarbs('');
-        setMealFat('');
-        setMealType('snack');
-        setShowMealInput(false);
-        setSuggestedMeals(null);
-        setSuggestionError(null);
-    };
-
-
-
-    const getMealSuggestions = async () => {
-        if (!calorieTarget) {
-            alert('Please set up your calorie target first');
-            return;
-        }
-
-        setLoadingSuggestions(true);
-        setSuggestionError(null);
-
-        try {
-            const meals = getTodayMeals();
-            const consumed = calculateCaloriesConsumed();
-            const remaining = calorieTarget.dailyTarget - consumed;
-
-            const suggestions = await getSuggestedMeals({
-                remainingCalories: Math.max(0, remaining),
-                targetCalories: calorieTarget.dailyTarget,
-                mealsToday: meals.length,
-                meals,
-                dietaryPreferences,
-                mealType,
-                healthGoal,
-            });
-
-            setSuggestedMeals(suggestions);
-        } catch (error) {
-            setSuggestionError(error.message);
-            console.error('Error getting suggestions:', error);
-        } finally {
-            setLoadingSuggestions(false);
-        }
-    };
-
-    const removeMeal = (index) => {
-        const newMealLog = mealLog.filter((_, i) => i !== index);
-        setMealLog(newMealLog);
-        try {
-            const raw = localStorage.getItem(MEAL_LOG_KEY);
-            const allMeals = raw ? JSON.parse(raw) : {};
-            allMeals[todayKey] = newMealLog;
-            localStorage.setItem(MEAL_LOG_KEY, JSON.stringify(allMeals));
-        } catch (_) {
-            /* ignore */
-        }
-    };
-
-
-
-    const sendCalorieNotification = useCallback(() => {
-        if (!calorieTarget || !('Notification' in window) || Notification.permission !== 'granted') return;
-        
-        const consumed = caloriesConsumed;
-        const remaining = calorieTarget.dailyTarget - consumed;
-        const percentageConsumed = Math.round((consumed / calorieTarget.dailyTarget) * 100);
-        
-        let message = '';
-        if (remaining <= 0) {
-            message = `You've reached your daily calorie goal (${consumed}/${calorieTarget.dailyTarget} kcal)! Great job!`;
-        } else if (remaining < 500) {
-            message = `${remaining} calories remaining. Consider a light snack!`;
-        } else if (percentageConsumed === 0) {
-            message = `Don't forget to log your meals! ${calorieTarget.dailyTarget} kcal daily goal.`;
-        } else {
-            message = `You've consumed ${consumed}/${calorieTarget.dailyTarget} kcal. Keep track of your remaining meals!`;
-        }
-        
-        new Notification('Calorie Reminder', {
-            body: message,
-            icon: '🍎',
-            tag: 'calorie-reminder',
-        });
-    }, [calorieTarget, caloriesConsumed]);
-
-    // Set up daily notifications for weight and calories
-    useEffect(() => {
-        if (notificationsEnabled && (weightTarget || calorieTarget) && 'Notification' in window && Notification.permission === 'granted') {
-            // Send weight notification
-            if (weightTarget) handleSendNotification();
-            // Send calorie notification
-            if (calorieTarget) sendCalorieNotification();
-            
-            // Schedule daily notifications at 9 AM
-            const now = new Date();
-            const target = new Date();
-            target.setHours(9, 0, 0, 0);
-            if (now > target) {
-                target.setDate(target.getDate() + 1);
-            }
-            const timeUntilNotification = target.getTime() - now.getTime();
-            const timeoutId = setTimeout(() => {
-                if (weightTarget) handleSendNotification();
-                if (calorieTarget) sendCalorieNotification();
-                // Then set up recurring daily notification
-                const intervalId = setInterval(() => {
-                    if (weightTarget) handleSendNotification();
-                    if (calorieTarget) sendCalorieNotification();
-                }, 24 * 60 * 60 * 1000);
-                return () => clearInterval(intervalId);
-            }, timeUntilNotification);
-            return () => clearTimeout(timeoutId);
-        }
-    }, [notificationsEnabled, weightTarget, calorieTarget, handleSendNotification, sendCalorieNotification, caloriesConsumed]);
+    const updateProfile = (key, value) => setFitnessProfile((old) => ({ ...old, [key]: value }));
+    const updateMeal = (key, value) => setFitnessMeal((old) => ({ ...old, [key]: value }));
 
     return (
         <div className="health-page">
             <div className="health-container">
                 <header className="health-header">
                     <Link to="/" className="health-back-link" aria-label="Back to home">
-                        <i className="fas fa-arrow-left" aria-hidden="true" />
-                        Home
+                        <i className="fas fa-arrow-left" aria-hidden="true" /> Home
                     </Link>
                     <div className="health-header-content">
-                        <span className="health-badge">
-                            <i className="fas fa-heartbeat" aria-hidden="true" />
-                            Wellness Hub
-                        </span>
-                        <h1 className="health-title">Health & Fitness</h1>
-                        <p className="health-subtitle">
-                            Practical knowledge and daily advice to help you train smarter, eat better, and recover well.
-                        </p>
+                        <span className="health-badge"><i className="fas fa-heartbeat" aria-hidden="true" /> Fitness</span>
+                        <h1 className="health-title">Today&apos;s fitness</h1>
+                        <p className="health-subtitle">Track your nutrition, weight, progress, reminders, and wellness guidance.</p>
                     </div>
                 </header>
 
-                <p className="health-disclaimer" role="note">
-                    <i className="fas fa-info-circle" aria-hidden="true" />
-                    {HEALTH_DISCLAIMER}
-                </p>
-
                 <section className="health-calorie-section" aria-label="Fitness tracker">
                     <div className="health-calorie-card">
-                        <h2 className="health-panel-title"><i className="fas fa-heartbeat" aria-hidden="true" /> Fitness Tracker</h2>
+                        <h2 className="health-panel-title"><i className="fas fa-heartbeat" aria-hidden="true" /> Fitness</h2>
                         {fitnessError && <p className="health-disclaimer">{fitnessError}</p>}
                         {!fitnessData?.profile ? (
                             <div className="fitness-setup-shell">
-                               <p className="health-calorie-description">Your targets are calculated privately on the server using Mifflin-St Jeor.</p>
-                               <div className="health-form-grid">
-                                   {[
-                                       ['age', 'Age'], ['heightCm', 'Height (cm)'], ['weightKg', 'Current weight (kg)'], ['targetWeightKg', 'Target weight (kg)'],
-                                   ].map(([key, label]) => <input key={key} type="number" placeholder={label} value={fitnessProfile[key]} onChange={(e) => setFitnessProfile((old) => ({ ...old, [key]: e.target.value }))} />)}
-                                   <select value={fitnessProfile.sex} onChange={(e) => setFitnessProfile((old) => ({ ...old, sex: e.target.value }))}><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option></select>
-                                   <select value={fitnessProfile.activityLevel} onChange={(e) => setFitnessProfile((old) => ({ ...old, activityLevel: e.target.value }))}><option value="sedentary">Sedentary</option><option value="light">Light</option><option value="moderate">Moderate</option><option value="very_active">Very active</option><option value="extra_active">Extra active</option></select>
-                                   <select value={fitnessProfile.goal} onChange={(e) => setFitnessProfile((old) => ({ ...old, goal: e.target.value }))}><option value="lose">Lose weight</option><option value="maintain">Maintain</option><option value="gain">Gain weight</option></select>
-                                   <button type="button" disabled={fitnessLoading} className="health-form-submit" onClick={saveFitnessProfile}>{fitnessLoading ? 'Saving…' : 'Calculate my targets'}</button>
-                               </div>
+                                <p className="health-calorie-description">Your targets are calculated privately on the server using Mifflin-St Jeor.</p>
+                                <div className="health-form-grid">
+                                    {[
+                                        ['age', 'Age'], ['heightCm', 'Height (cm)'], ['weightKg', 'Current weight (kg)'], ['targetWeightKg', 'Target weight (kg, optional)'],
+                                    ].map(([key, label]) => (
+                                        <input key={key} type="number" placeholder={label} value={fitnessProfile[key]} onChange={(e) => updateProfile(key, e.target.value)} />
+                                    ))}
+                                    <select value={fitnessProfile.sex} onChange={(e) => updateProfile('sex', e.target.value)}>
+                                        <option value="male">Male</option><option value="female">Female</option><option value="other">Other</option>
+                                    </select>
+                                    <select value={fitnessProfile.activityLevel} onChange={(e) => updateProfile('activityLevel', e.target.value)}>
+                                        <option value="sedentary">Sedentary</option><option value="light">Light</option><option value="moderate">Moderate</option><option value="very_active">Very active</option><option value="extra_active">Extra active</option>
+                                    </select>
+                                    <select value={fitnessProfile.goal} onChange={(e) => updateProfile('goal', e.target.value)}>
+                                        <option value="lose">Lose weight</option><option value="maintain">Maintain</option><option value="gain">Gain weight</option>
+                                    </select>
+                                    <button type="button" disabled={fitnessLoading} className="health-form-submit" onClick={saveFitnessProfile}>{fitnessLoading ? 'Saving…' : 'Calculate my targets'}</button>
+                                </div>
                             </div>
                         ) : (
                             <div className="fitness-shell">
@@ -629,706 +214,87 @@ const Health = () => {
                                         <span>BMR {Math.round(fitnessData.profile.bmr || 0)} · TDEE {Math.round(fitnessData.profile.tdee || 0)}</span>
                                     </div>
                                     <div className="fitness-target-summary">
-                                        <span>Goal</span>
-                                        <strong>{fitnessData.profile.goal}</strong>
+                                        <span>Goal</span><strong>{fitnessData.profile.goal}</strong>
                                         {fitnessData.latestWeight?.weightKg && <small>{fitnessData.latestWeight.weightKg} kg latest</small>}
                                     </div>
                                 </div>
 
-                               <div className="fitness-macro-grid">
-                                   {[
-                                       ['Protein', 'proteinG'], ['Carbs', 'carbsG'], ['Fat', 'fatG'],
-                                   ].map(([label, key]) => <div className="fitness-macro-card" key={key}>
-                                       <strong>{Math.round(fitnessData.totals?.[key] || 0)} / {Math.round(fitnessData.profile.macros?.[key] || 0)}g</strong>
-                                       <span>{label}</span>
-                                   </div>)}
-                               </div>
+                                <div className="fitness-macro-grid">
+                                    {[['Protein', 'proteinG'], ['Carbs', 'carbsG'], ['Fat', 'fatG']].map(([label, key]) => (
+                                        <div className="fitness-macro-card" key={key}>
+                                            <strong>{Math.round(fitnessData.totals?.[key] || 0)} / {Math.round(fitnessData.profile.macros?.[key] || 0)}g</strong><span>{label}</span>
+                                        </div>
+                                    ))}
+                                </div>
 
-                               <div className="fitness-section-heading"><h3>Today&apos;s meals</h3><span>{fitnessData.meals?.length || 0} logged</span></div>
-                               {fitnessData.meals?.length ? fitnessData.meals.map((meal) => <div className="health-meal-item fitness-meal-row" key={meal._id}>
-                                    <div><strong>{meal.name}</strong><small>{meal.mealType} · {new Date(meal.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</small></div>
-                                    <span>{Math.round(meal.calories || 0)} kcal · P {Math.round(meal.proteinG || 0)}g · C {Math.round(meal.carbsG || 0)}g · F {Math.round(meal.fatG || 0)}g</span>
-                                </div>) : <p className="fitness-empty-state">No meals logged today. Scan a food photo or add one manually.</p>}
-
-                               <div className="fitness-section-heading"><h3>Add meal</h3><span>AI + manual</span></div>
-                                <div className="health-form-grid">
-                                    <input placeholder="Food name" value={fitnessMeal.name} onChange={(e) => setFitnessMeal((old) => ({ ...old, name: e.target.value }))} />
-                                    <select value={fitnessMeal.mealType} onChange={(e) => setFitnessMeal((old) => ({ ...old, mealType: e.target.value }))}><option value="breakfast">Breakfast</option><option value="lunch">Lunch</option><option value="dinner">Dinner</option><option value="snack">Snack</option></select>
-                                    {['calories', 'proteinG', 'carbsG', 'fatG', 'fiberG'].map((key) => <input key={key} type="number" placeholder={key} value={fitnessMeal[key]} onChange={(e) => setFitnessMeal((old) => ({ ...old, [key]: e.target.value }))} />)}
-                                    <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setFitnessMealImage(e.target.files?.[0] || null)} />
-                                    <div className="fitness-actions-row">
-                                       <button type="button" disabled={fitnessLoading} className="health-calorie-add-btn" onClick={analyzeFitnessMeal}>{fitnessLoading ? 'Analyzing meal with AI…' : 'Analyze food with AI'}</button>
-                                       <button type="button" disabled={fitnessLoading} className="health-form-submit" onClick={saveFitnessMeal}>{fitnessLoading ? 'Saving…' : 'Save meal'}</button>
+                                <div className="fitness-section-heading"><h3>Today&apos;s meals</h3><span>{fitnessData.meals?.length || 0} logged</span></div>
+                                {fitnessData.meals?.length ? fitnessData.meals.map((meal) => (
+                                    <div className="health-meal-item fitness-meal-row" key={meal._id}>
+                                        <div><strong>{meal.name}</strong><small>{meal.mealType} · {new Date(meal.date).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</small></div>
+                                        <span>{Math.round(meal.calories || 0)} kcal · P {Math.round(meal.proteinG || 0)}g · C {Math.round(meal.carbsG || 0)}g · F {Math.round(meal.fatG || 0)}g</span>
                                     </div>
-                               </div>
-                               {fitnessMealImage && <p className="fitness-estimate-note">Photo selected: {fitnessMealImage.name}. Review all AI estimates before saving.</p>}
-                               {fitnessMeal.name && fitnessMeal.source === 'gemini' && <p className="fitness-estimate-note">AI filled these values as estimates. Review and edit them before saving.</p>}
+                                )) : <p className="fitness-empty-state">No meals logged today. Scan a food photo or add one manually.</p>}
 
-                               <div className="fitness-section-heading"><h3>Progress</h3><span>{fitnessPeriod}</span></div>
-                               <div className="fitness-actions-row">
+                                <div className="fitness-section-heading"><h3>Add meal</h3><span>AI + manual</span></div>
+                                <div className="health-form-grid">
+                                    <input placeholder="Food name" value={fitnessMeal.name} onChange={(e) => updateMeal('name', e.target.value)} />
+                                    <select value={fitnessMeal.mealType} onChange={(e) => updateMeal('mealType', e.target.value)}>
+                                        <option value="breakfast">Breakfast</option><option value="lunch">Lunch</option><option value="dinner">Dinner</option><option value="snack">Snack</option>
+                                    </select>
+                                    {['calories', 'proteinG', 'carbsG', 'fatG', 'fiberG'].map((key) => <input key={key} type="number" placeholder={key} value={fitnessMeal[key]} onChange={(e) => updateMeal(key, e.target.value)} />)}
+                                    <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(e) => setFitnessMealImage(e.target.files?.[0] || null)} />
+                                    <div className="fitness-actions-row">
+                                        <button type="button" disabled={fitnessLoading} className="health-calorie-add-btn" onClick={analyzeFitnessMeal}>{fitnessLoading ? 'Analyzing meal…' : 'Analyze food with AI'}</button>
+                                        <button type="button" disabled={fitnessLoading} className="health-form-submit" onClick={saveFitnessMeal}>{fitnessLoading ? 'Saving…' : 'Save meal'}</button>
+                                    </div>
+                                </div>
+                                {fitnessMealImage && <p className="fitness-estimate-note">Photo selected: {fitnessMealImage.name}. Review all AI estimates before saving.</p>}
+                                {fitnessMeal.name && fitnessMeal.source === 'gemini' && <p className="fitness-estimate-note">AI filled these values as estimates. Review and edit them before saving.</p>}
+
+                                <div className="fitness-section-heading"><h3>Log weight</h3><span>Track today&apos;s weight</span></div>
+                                <div className="health-form-grid">
+                                    <input type="number" min="0" step="0.1" placeholder="Weight (kg)" value={fitnessWeight} onChange={(e) => setFitnessWeight(e.target.value)} />
+                                    <input placeholder="Note (optional)" value={fitnessWeightNote} onChange={(e) => setFitnessWeightNote(e.target.value)} />
+                                    <button type="button" disabled={fitnessLoading || !fitnessWeight || Number(fitnessWeight) <= 0} className="health-form-submit" onClick={logFitnessWeight}>{fitnessLoading ? 'Saving…' : 'Save weight'}</button>
+                                </div>
+
+                                <div className="fitness-section-heading"><h3>Progress</h3><span>{fitnessPeriod}</span></div>
+                                <div className="fitness-actions-row">
                                     {['daily', 'weekly', 'monthly'].map((period) => <button type="button" disabled={fitnessLoading} key={period} className={`health-weight-edit-btn ${fitnessPeriod === period ? 'is-selected' : ''}`} onClick={() => loadFitnessProgress(period)}>{period}</button>)}
                                     <button type="button" disabled={fitnessLoading} className="health-weight-edit-btn" onClick={() => loadFitnessProgress(fitnessPeriod)}>Refresh</button>
-                               </div>
-                               {fitnessProgress && <div className="fitness-progress-summary">
+                                </div>
+                                {fitnessProgress && <div className="fitness-progress-summary">
                                     <strong>{fitnessPeriod === 'daily' ? "Today's details" : fitnessPeriod === 'weekly' ? 'This week' : 'This month'}</strong>
                                     <span>Average calories: {fitnessProgress.summary?.averageCalories || 0} kcal/day</span>
                                     <span>Protein: {Math.round(fitnessProgress.summary?.totalProteinG || 0)}g · Carbs: {Math.round(fitnessProgress.summary?.totalCarbsG || 0)}g · Fat: {Math.round(fitnessProgress.summary?.totalFatG || 0)}g</span>
                                     <span>Logged days: {fitnessProgress.summary?.loggedDays || 0}</span>
-                               </div>}
-                               <div className="fitness-section-heading"><h3>Food recommendations</h3><span>{fitnessRecommendations?.source === 'gemini' ? 'Gemini AI' : 'Wellness suggestions'}</span></div>
-                               <div className="fitness-actions-row">
-                                   <button type="button" disabled={fitnessLoading} className="health-calorie-add-btn" onClick={loadFitnessRecommendations}>{fitnessLoading ? 'Loading…' : 'Get food recommendations'}</button>
-                               </div>
-                               {fitnessRecommendations?.recommendations?.map((item) => <div className="health-meal-item" key={item.name}><span className="health-meal-name">{item.name}</span><span>{item.calories} kcal · P {item.proteinG}g · C {item.carbsG}g · F {item.fatG}g</span><small>{item.why}</small></div>)}
-                               {fitnessRecommendations?.healthNotes?.length ? <div className="fitness-health-notes"><strong>Health details</strong>{fitnessRecommendations.healthNotes.map((note) => <span key={note}>• {note}</span>)}</div> : null}
+                                </div>}
 
-                               <div className="fitness-section-heading"><h3>Fitness coach</h3><span>General guidance</span></div>
-                               <div className="health-form-grid">
+                                <div className="fitness-section-heading"><h3>Food recommendations</h3><span>{fitnessRecommendations?.source === 'gemini' ? 'Gemini AI' : 'Wellness suggestions'}</span></div>
+                                <div className="fitness-actions-row"><button type="button" disabled={fitnessLoading} className="health-calorie-add-btn" onClick={loadFitnessRecommendations}>{fitnessLoading ? 'Loading…' : 'Get food recommendations'}</button></div>
+                                {fitnessRecommendations?.recommendations?.map((item) => <div className="health-meal-item" key={item.name}><span className="health-meal-name">{item.name}</span><span>{item.calories} kcal · P {item.proteinG}g · C {item.carbsG}g · F {item.fatG}g</span><small>{item.why}</small></div>)}
+                                {fitnessRecommendations?.healthNotes?.length ? <div className="fitness-health-notes"><strong>Health details</strong>{fitnessRecommendations.healthNotes.map((note) => <span key={note}>• {note}</span>)}</div> : null}
+
+                                <div className="fitness-section-heading"><h3>Fitness coach</h3><span>General guidance</span></div>
+                                <div className="health-form-grid">
                                     <input placeholder="Ask Fitness coach" value={fitnessCoachQuestion} onChange={(e) => setFitnessCoachQuestion(e.target.value)} />
                                     <button type="button" disabled={fitnessLoading || !fitnessCoachQuestion.trim()} className="health-form-submit" onClick={askFitnessCoach}>Ask coach</button>
-                               </div>
-                               {fitnessCoachReply && <p className="health-disclaimer">{fitnessCoachReply}</p>}
+                                </div>
+                                {fitnessCoachReply && <p className="health-disclaimer">{fitnessCoachReply}</p>}
 
-                               <div className="fitness-section-heading"><h3>Reminders</h3><span>Daily habit prompts</span></div>
-                               <div className="health-form-grid">
+                                <div className="fitness-section-heading"><h3>Reminders</h3><span>Daily habit prompts</span></div>
+                                <div className="health-form-grid">
                                     <input placeholder="Reminder title" value={fitnessReminder.title} onChange={(e) => setFitnessReminder((old) => ({ ...old, title: e.target.value }))} />
                                     <input type="time" value={fitnessReminder.time} onChange={(e) => setFitnessReminder((old) => ({ ...old, time: e.target.value }))} />
                                     <button type="button" disabled={fitnessLoading} className="health-form-submit" onClick={createFitnessReminder}>Add reminder</button>
-                               </div>
-                               {fitnessReminders.map((item) => <div className="health-meal-item" key={item._id}><span>{item.time} · {item.title}</span><button type="button" onClick={() => deleteFitnessReminder(item._id)}>Delete</button></div>)}
+                                </div>
+                                {fitnessReminders.map((item) => <div className="health-meal-item" key={item._id}><span>{item.time} · {item.title}</span><button type="button" onClick={() => deleteFitnessReminder(item._id)}>Delete</button></div>)}
 
-                               <button type="button" disabled={fitnessLoading} className="health-weight-edit-btn" onClick={resetFitness}>{fitnessLoading ? 'Resetting…' : 'Reset Fitness details'}</button>
+                                <button type="button" disabled={fitnessLoading} className="health-weight-edit-btn" onClick={resetFitness}>{fitnessLoading ? 'Resetting…' : 'Reset Fitness details'}</button>
                             </div>
                         )}
                     </div>
                 </section>
-
-                <section className="health-stats-row" aria-label="Daily wellness progress">
-                    <div className="health-stat-card">
-                        <span className="health-stat-value">{completedCount}/{DAILY_WELLNESS_ITEMS.length}</span>
-                        <span className="health-stat-label">Today&apos;s habits</span>
-                    </div>
-                    <div className="health-stat-card">
-                        <span className="health-stat-value">{progressPercent}%</span>
-                        <span className="health-stat-label">Daily score</span>
-                    </div>
-                    {weightTarget && weightProgress !== null && (
-                        <div className="health-stat-card">
-                            <span className="health-stat-value">{weightProgress.toFixed(0)}%</span>
-                            <span className="health-stat-label">Weight goal</span>
-                        </div>
-                    )}
-                    {calorieTarget && (
-                        <div className="health-stat-card">
-                            <span className="health-stat-value">{caloriesConsumed}/{calorieTarget.dailyTarget}</span>
-                            <span className="health-stat-label">Calories</span>
-                        </div>
-                    )}
-                    <div className="health-stat-card">
-                        <span className="health-stat-value">{FITNESS_CATEGORIES.length}</span>
-                        <span className="health-stat-label">Knowledge areas</span>
-                    </div>
-                </section>
-
-                {weightTarget && (
-                    <section className="health-weight-section">
-                        <div className="health-weight-card">
-                            <h2 className="health-panel-title">
-                                <i className="fas fa-weight" aria-hidden="true" />
-                                Weight Goal
-                            </h2>
-                            <div className="health-weight-info">
-                                <div className="health-weight-row">
-                                    <span>Current:</span>
-                                    <strong>{weightLog[0]?.weight || weightTarget.currentWeight}kg</strong>
-                                </div>
-                                <div className="health-weight-row">
-                                    <span>Target:</span>
-                                    <strong>{weightTarget.goalWeight}kg</strong>
-                                </div>
-                                <div className="health-weight-row">
-                                    <span>Goal:</span>
-                                    <strong>{weightTarget.goalType === 'lose' ? 'Lose' : 'Gain'} {Math.abs(weightTarget.goalWeight - weightTarget.currentWeight).toFixed(1)}kg</strong>
-                                </div>
-                            </div>
-                            <div className="health-progress-bar" role="progressbar" aria-valuenow={weightProgress?.toFixed(0) || 0} aria-valuemin={0} aria-valuemax={100}>
-                                <div className="health-progress-fill" style={{ width: `${weightProgress || 0}%` }} />
-                            </div>
-                            <p className="health-weight-progress">{weightProgress?.toFixed(1) || 0}% Complete</p>
-                            <div className="health-weight-actions">
-                                <input
-                                    type="number"
-                                    placeholder="Log weight today (kg)"
-                                    step="0.1"
-                                    min="0"
-                                    onBlur={handleWeightLogInput}
-                                    onKeyPress={(e) => e.key === 'Enter' && handleWeightLogInput(e)}
-                                    className="health-weight-input"
-                                />
-                                <button
-                                    type="button"
-                                    className={`health-notif-btn ${notificationsEnabled ? 'is-active' : ''}`}
-                                    onClick={toggleNotifications}
-                                    title="Enable daily notifications"
-                                >
-                                    <i className={`fas fa-${notificationsEnabled ? 'bell' : 'bell-slash'}`} aria-hidden="true" />
-                                    {notificationsEnabled ? 'Notifications On' : 'Enable Notifications'}
-                                </button>
-                                <button
-                                    type="button"
-                                    className="health-weight-edit-btn"
-                                    onClick={() => setShowWeightForm(true)}
-                                >
-                                    <i className="fas fa-edit" aria-hidden="true" />
-                                    Edit Goal
-                                </button>
-                            </div>
-                        </div>
-                    </section>
-                )}
-
-                {!weightTarget && (
-                    <section className="health-weight-section">
-                        <div className="health-weight-card health-weight-setup">
-                            <h2 className="health-panel-title">
-                                <i className="fas fa-weight" aria-hidden="true" />
-                                Set Your Weight Goal
-                            </h2>
-                            <p className="health-weight-description">Track your weight progress and get daily notifications to help achieve your goal.</p>
-                            <button
-                                type="button"
-                                className="health-weight-start-btn"
-                                onClick={() => setShowWeightForm(true)}
-                            >
-                                <i className="fas fa-plus" aria-hidden="true" />
-                                Start Tracking
-                            </button>
-                        </div>
-                    </section>
-                )}
-
-                {calorieTarget && (
-                    <section className="health-calorie-section">
-                        <div className="health-calorie-card">
-                            <h2 className="health-panel-title">
-                                <i className="fas fa-fire" aria-hidden="true" />
-                                Daily Calories
-                            </h2>
-                            <div className="health-calorie-info">
-                                <div className="health-calorie-row">
-                                    <span>Consumed:</span>
-                                    <strong>{caloriesConsumed} kcal</strong>
-                                </div>
-                                <div className="health-calorie-row">
-                                    <span>Target:</span>
-                                    <strong>{calorieTarget.dailyTarget} kcal</strong>
-                                </div>
-                                <div className="health-calorie-row">
-                                    <span>Remaining:</span>
-                                    <strong className={calorieRemaining < 0 ? 'over-limit' : ''}>{calorieRemaining} kcal</strong>
-                                </div>
-                            </div>
-                            <div className="health-progress-bar" role="progressbar" aria-valuenow={Math.min(100, Math.round(caloriePercent))} aria-valuemin={0} aria-valuemax={100}>
-                                <div className="health-progress-fill" style={{ width: `${Math.min(100, caloriePercent)}%` }} />
-                            </div>
-                            <p className="health-calorie-progress">{Math.round(caloriePercent)}% of daily target</p>
-                            
-                            {mealLog.length > 0 && (
-                                <div className="health-meal-list">
-                                    <h3>Today's Meals</h3>
-                                    {mealLog.map((meal, idx) => (
-                                        <div key={idx} className="health-meal-item">
-                                            <div className="health-meal-info">
-                                                <span className="health-meal-name">{meal.name}</span>
-                                                <span className="health-meal-type">{meal.type}</span>
-                                            </div>
-                                            <div className="health-meal-details">
-                                                <span className="health-meal-calories">{meal.calories} kcal</span>
-                                                {meal.protein > 0 && <span className="health-meal-macro">P: {meal.protein}g</span>}
-                                                {meal.carbs > 0 && <span className="health-meal-macro">C: {meal.carbs}g</span>}
-                                                {meal.fat > 0 && <span className="health-meal-macro">F: {meal.fat}g</span>}
-                                                <button
-                                                    type="button"
-                                                    className="health-meal-remove"
-                                                    onClick={() => removeMeal(idx)}
-                                                    title="Remove meal"
-                                                >
-                                                    <i className="fas fa-trash" aria-hidden="true" />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                            
-                            <div className="health-calorie-actions">
-                                {!showMealInput ? (
-                                    <button
-                                        type="button"
-                                        className="health-calorie-add-btn"
-                                        onClick={() => setShowMealInput(true)}
-                                    >
-                                        <i className="fas fa-plus" aria-hidden="true" />
-                                        Log Meal
-                                    </button>
-                                ) : (
-                                    <div className="health-meal-input-form">
-                                        <input
-                                            type="text"
-                                            placeholder="Meal name (e.g., Chicken Salad)"
-                                            value={mealName}
-                                            onChange={(e) => setMealName(e.target.value)}
-                                            className="health-meal-text-input"
-                                        />
-                                        <div className="health-meal-input-row">
-                                            <input
-                                                type="number"
-                                                placeholder="Calories"
-                                                min="0"
-                                                value={mealCalories}
-                                                onChange={(e) => setMealCalories(e.target.value)}
-                                                className="health-meal-number-input"
-                                            />
-                                            <select
-                                                value={mealType}
-                                                onChange={(e) => setMealType(e.target.value)}
-                                                className="health-meal-type-select"
-                                            >
-                                                <option value="breakfast">Breakfast</option>
-                                                <option value="lunch">Lunch</option>
-                                                <option value="dinner">Dinner</option>
-                                                <option value="snack">Snack</option>
-                                            </select>
-                                        </div>
-                                        <details className="health-meal-macros-detail">
-                                            <summary>Add Macros (Optional)</summary>
-                                            <div className="health-meal-macro-inputs">
-                                                <input
-                                                    type="number"
-                                                    placeholder="Protein (g)"
-                                                    min="0"
-                                                    value={mealProtein}
-                                                    onChange={(e) => setMealProtein(e.target.value)}
-                                                    className="health-meal-macro-input"
-                                                />
-                                                <input
-                                                    type="number"
-                                                    placeholder="Carbs (g)"
-                                                    min="0"
-                                                    value={mealCarbs}
-                                                    onChange={(e) => setMealCarbs(e.target.value)}
-                                                    className="health-meal-macro-input"
-                                                />
-                                                <input
-                                                    type="number"
-                                                    placeholder="Fat (g)"
-                                                    min="0"
-                                                    value={mealFat}
-                                                    onChange={(e) => setMealFat(e.target.value)}
-                                                    className="health-meal-macro-input"
-                                                />
-                                            </div>
-                                        </details>
-                                        <div className="health-meal-input-buttons">
-                                            <button
-                                                type="button"
-                                                className="health-meal-save-btn"
-                                                onClick={logMeal}
-                                            >
-                                                <i className="fas fa-check" aria-hidden="true" />
-                                                Log
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="health-meal-suggest-btn"
-                                                onClick={getMealSuggestions}
-                                                disabled={loadingSuggestions}
-                                            >
-                                                <i className={`fas fa-${loadingSuggestions ? 'spinner fa-spin' : 'lightbulb'}`} aria-hidden="true" />
-                                                {loadingSuggestions ? 'Loading...' : 'Get AI Suggestions'}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="health-meal-cancel-btn"
-                                                onClick={() => {
-                                                    setShowMealInput(false);
-                                                    setSuggestedMeals(null);
-                                                    setSuggestionError(null);
-                                                }}
-                                            >
-                                                <i className="fas fa-times" aria-hidden="true" />
-                                                Cancel
-                                            </button>
-                                        </div>
-
-                                        {suggestionError && (
-                                            <div className="health-error-message">
-                                                <i className="fas fa-exclamation-circle" aria-hidden="true" />
-                                                {suggestionError}
-                                            </div>
-                                        )}
-
-                                        {suggestedMeals && (
-                                            <div className="health-suggestions-panel">
-                                                <h4>AI-Suggested Meals</h4>
-                                                <div className="health-suggestion-list">
-                                                    {suggestedMeals.suggestions?.map((suggestion, idx) => (
-                                                        <div key={idx} className="health-suggestion-item">
-                                                            <div className="health-suggestion-header">
-                                                                <h5>{suggestion.name}</h5>
-                                                                <span className="health-suggestion-calories">{suggestion.calories} kcal</span>
-                                                            </div>
-                                                            <p className="health-suggestion-desc">{suggestion.description}</p>
-                                                            <div className="health-suggestion-macros">
-                                                                <span>P: {suggestion.protein_grams}g</span>
-                                                                <span>C: {suggestion.carbs_grams}g</span>
-                                                                <span>F: {suggestion.fat_grams}g</span>
-                                                            </div>
-                                                            <button
-                                                                type="button"
-                                                                className="health-use-suggestion-btn"
-                                                                onClick={() => {
-                                                                    setMealName(suggestion.name);
-                                                                    setMealCalories(suggestion.calories.toString());
-                                                                    setMealProtein(suggestion.protein_grams.toString());
-                                                                    setMealCarbs(suggestion.carbs_grams.toString());
-                                                                    setMealFat(suggestion.fat_grams.toString());
-                                                                }}
-                                                            >
-                                                                Use This
-                                                            </button>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                                {suggestedMeals.tips && (
-                                                    <div className="health-suggestions-tips">
-                                                        <h5>💡 Tips</h5>
-                                                        <ul>
-                                                            {suggestedMeals.tips.map((tip, idx) => (
-                                                                <li key={idx}>{tip}</li>
-                                                            ))}
-                                                        </ul>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                            <button
-                                type="button"
-                                className="health-calorie-edit-btn"
-                                onClick={() => setShowCalorieForm(true)}
-                            >
-                                <i className="fas fa-edit" aria-hidden="true" />
-                                Edit Profile
-                            </button>
-                        </div>
-                    </section>
-                )}
-
-                {!calorieTarget && (
-                    <section className="health-calorie-section">
-                        <div className="health-calorie-card health-calorie-setup">
-                            <h2 className="health-panel-title">
-                                <i className="fas fa-fire" aria-hidden="true" />
-                                Set Your Calorie Goal
-                            </h2>
-                            <p className="health-calorie-description">Track daily calories and get AI-powered meal suggestions to reach your health goals.</p>
-                            <button
-                                type="button"
-                                className="health-calorie-start-btn"
-                                onClick={() => setShowCalorieForm(true)}
-                            >
-                                <i className="fas fa-plus" aria-hidden="true" />
-                                Start Tracking
-                            </button>
-                        </div>
-                    </section>
-                )}
-
-                {showCalorieForm && (
-                    <div className="health-modal-overlay" onClick={() => setShowCalorieForm(false)}>
-                        <div className="health-modal" onClick={(e) => e.stopPropagation()}>
-                            <button
-                                type="button"
-                                className="health-modal-close"
-                                onClick={() => setShowCalorieForm(false)}
-                                aria-label="Close form"
-                            >
-                                <i className="fas fa-times" aria-hidden="true" />
-                            </button>
-                            <h2>Calorie & Health Profile Setup</h2>
-                            <div className="health-form-group">
-                                <label htmlFor="user-age">Age (years)</label>
-                                <input
-                                    id="user-age"
-                                    type="number"
-                                    placeholder="e.g., 25"
-                                    min="13"
-                                    max="120"
-                                    value={userAge}
-                                    onChange={(e) => setUserAge(e.target.value)}
-                                />
-                            </div>
-                            <div className="health-form-group">
-                                <label htmlFor="user-height">Height (cm)</label>
-                                <input
-                                    id="user-height"
-                                    type="number"
-                                    placeholder="e.g., 175"
-                                    min="50"
-                                    max="250"
-                                    value={userHeight}
-                                    onChange={(e) => setUserHeight(e.target.value)}
-                                />
-                            </div>
-                            <div className="health-form-group">
-                                <label htmlFor="user-gender">Gender</label>
-                                <select
-                                    id="user-gender"
-                                    value={userGender}
-                                    onChange={(e) => setUserGender(e.target.value)}
-                                    className="health-form-select"
-                                >
-                                    <option value="male">Male</option>
-                                    <option value="female">Female</option>
-                                </select>
-                            </div>
-                            <div className="health-form-group">
-                                <label htmlFor="activity-level">Activity Level</label>
-                                <select
-                                    id="activity-level"
-                                    value={activityLevel}
-                                    onChange={(e) => setActivityLevel(e.target.value)}
-                                    className="health-form-select"
-                                >
-                                    <option value="sedentary">Sedentary (little exercise)</option>
-                                    <option value="lightly-active">Lightly Active (1-3 days/week)</option>
-                                    <option value="moderately-active">Moderately Active (3-5 days/week)</option>
-                                    <option value="very-active">Very Active (6-7 days/week)</option>
-                                    <option value="extremely-active">Extremely Active (physical job)</option>
-                                </select>
-                            </div>
-                            <div className="health-form-group">
-                                <label htmlFor="health-goal">Health Goal</label>
-                                <select
-                                    id="health-goal"
-                                    value={healthGoal}
-                                    onChange={(e) => setHealthGoal(e.target.value)}
-                                    className="health-form-select"
-                                >
-                                    <option value="weight-loss">Weight Loss</option>
-                                    <option value="maintenance">Maintenance</option>
-                                    <option value="weight-gain">Weight Gain (Muscle)</option>
-                                </select>
-                            </div>
-                            <div className="health-form-group">
-                                <label htmlFor="dietary-preferences">Dietary Preferences (optional)</label>
-                                <input
-                                    id="dietary-preferences"
-                                    type="text"
-                                    placeholder="e.g., Vegetarian, Gluten-free, Vegan"
-                                    value={dietaryPreferences}
-                                    onChange={(e) => setDietaryPreferences(e.target.value)}
-                                />
-                            </div>
-                            <button
-                                type="button"
-                                className="health-form-submit"
-                                onClick={saveUserProfile}
-                            >
-                                Save Profile
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {showWeightForm && (
-                    <div className="health-modal-overlay" onClick={() => setShowWeightForm(false)}>
-                        <div className="health-modal" onClick={(e) => e.stopPropagation()}>
-                            <button
-                                type="button"
-                                className="health-modal-close"
-                                onClick={() => setShowWeightForm(false)}
-                                aria-label="Close form"
-                            >
-                                <i className="fas fa-times" aria-hidden="true" />
-                            </button>
-                            <h2>Weight Goal Setup</h2>
-                            <div className="health-form-group">
-                                <label htmlFor="current-weight">Current Weight (kg)</label>
-                                <input
-                                    id="current-weight"
-                                    type="number"
-                                    placeholder="e.g., 75"
-                                    step="0.1"
-                                    min="0"
-                                    value={currentWeight}
-                                    onChange={(e) => setCurrentWeight(e.target.value)}
-                                />
-                            </div>
-                            <div className="health-form-group">
-                                <label htmlFor="goal-weight">Target Weight (kg)</label>
-                                <input
-                                    id="goal-weight"
-                                    type="number"
-                                    placeholder="e.g., 70"
-                                    step="0.1"
-                                    min="0"
-                                    value={goalWeight}
-                                    onChange={(e) => setGoalWeight(e.target.value)}
-                                />
-                            </div>
-                            <div className="health-form-group">
-                                <label>Goal Type</label>
-                                <div className="health-radio-group">
-                                    <label className="health-radio-item">
-                                        <input
-                                            type="radio"
-                                            value="lose"
-                                            checked={weightGoalType === 'lose'}
-                                            onChange={(e) => setWeightGoalType(e.target.value)}
-                                        />
-                                        <span>Lose Weight</span>
-                                    </label>
-                                    <label className="health-radio-item">
-                                        <input
-                                            type="radio"
-                                            value="gain"
-                                            checked={weightGoalType === 'gain'}
-                                            onChange={(e) => setWeightGoalType(e.target.value)}
-                                        />
-                                        <span>Gain Weight</span>
-                                    </label>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                className="health-form-submit"
-                                onClick={saveWeightTarget}
-                            >
-                                Save Goal
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                <div className="health-grid">
-                    <aside className="health-sidebar">
-                        <section className="health-panel health-checklist-panel">
-                            <h2 className="health-panel-title">
-                                <i className="fas fa-check-circle" aria-hidden="true" />
-                                Daily Wellness Checklist
-                            </h2>
-                            <p className="health-panel-desc">Track simple habits that support your fitness goals.</p>
-                            <div className="health-progress-bar" role="progressbar" aria-valuenow={progressPercent} aria-valuemin={0} aria-valuemax={100}>
-                                <div className="health-progress-fill" style={{ width: `${progressPercent}%` }} />
-                            </div>
-                            <ul className="health-checklist">
-                                {DAILY_WELLNESS_ITEMS.map((item) => (
-                                    <li key={item.id}>
-                                        <label className={`health-check-item ${checkedItems[item.id] ? 'is-done' : ''}`}>
-                                            <input
-                                                type="checkbox"
-                                                checked={Boolean(checkedItems[item.id])}
-                                                onChange={() => toggleChecklistItem(item.id)}
-                                            />
-                                            <span className="health-check-icon">
-                                                <i className={`fas ${item.icon}`} aria-hidden="true" />
-                                            </span>
-                                            <span>{item.label}</span>
-                                        </label>
-                                    </li>
-                                ))}
-                            </ul>
-                        </section>
-
-                        <section className="health-panel health-tip-panel">
-                            <h2 className="health-panel-title">
-                                <i className="fas fa-lightbulb" aria-hidden="true" />
-                                Tip of the Day
-                            </h2>
-                            <blockquote className="health-tip-quote">{QUICK_TIPS[tipIndex]}</blockquote>
-                            <div className="health-tip-nav">
-                                <button type="button" onClick={prevTip} aria-label="Previous tip">
-                                    <i className="fas fa-chevron-left" aria-hidden="true" />
-                                </button>
-                                <span>{tipIndex + 1} / {QUICK_TIPS.length}</span>
-                                <button type="button" onClick={nextTip} aria-label="Next tip">
-                                    <i className="fas fa-chevron-right" aria-hidden="true" />
-                                </button>
-                            </div>
-                        </section>
-                    </aside>
-
-                    <main className="health-main">
-                        <div className="health-category-nav-wrap">
-                            <nav className="health-category-nav" aria-label="Fitness topics">
-                                {FITNESS_CATEGORIES.map((cat) => (
-                                    <button
-                                        key={cat.id}
-                                        type="button"
-                                        className={`health-category-btn ${activeCategory === cat.id ? 'is-active' : ''}`}
-                                        onClick={() => {
-                                            setActiveCategory(cat.id);
-                                            setExpandedArticle(null);
-                                        }}
-                                    >
-                                        <i className={`fas ${cat.icon}`} aria-hidden="true" />
-                                        {cat.label}
-                                    </button>
-                                ))}
-                            </nav>
-                        </div>
-
-                        <section className="health-panel health-articles-panel">
-                            <div className="health-articles-head">
-                                <h2 className="health-panel-title">
-                                    {activeCategoryMeta && (
-                                        <i className={`fas ${activeCategoryMeta.icon}`} aria-hidden="true" />
-                                    )}
-                                    {activeCategoryMeta?.label || 'Articles'}
-                                </h2>
-                                <p className="health-panel-desc">
-                                    Expert-style guidance you can apply this week — no fluff, just actionable advice.
-                                </p>
-                            </div>
-
-                            <div className="health-articles">
-                                {articles.map((article, index) => {
-                                    const isOpen = expandedArticle === index;
-                                    return (
-                                        <article
-                                            key={article.title}
-                                            className={`health-article ${isOpen ? 'is-open' : ''}`}
-                                        >
-                                            <button
-                                                type="button"
-                                                className="health-article-toggle"
-                                                onClick={() => setExpandedArticle(isOpen ? null : index)}
-                                                aria-expanded={isOpen}
-                                            >
-                                                <div>
-                                                    <h3>{article.title}</h3>
-                                                    <p>{article.summary}</p>
-                                                </div>
-                                                <i className={`fas fa-chevron-${isOpen ? 'up' : 'down'}`} aria-hidden="true" />
-                                            </button>
-                                            {isOpen && (
-                                                <ul className="health-article-points">
-                                                    {article.points.map((point) => (
-                                                        <li key={point}>{point}</li>
-                                                    ))}
-                                                </ul>
-                                            )}
-                                        </article>
-                                    );
-                                })}
-                            </div>
-                        </section>
-                    </main>
-                </div>
             </div>
         </div>
     );

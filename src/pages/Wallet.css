@@ -4,7 +4,7 @@
 .wallet-heading h1 { margin: 0; }
 .wallet-heading p, .wallet-subscription p, .wallet-purchase p { color: #a8b0bb; }
 .wallet-refresh { min-height: 44px; padding: 8px 16px; border: 1px solid #29b1a9; border-radius: 8px; color: #7ce7ff; background: rgba(255,255,255,.04); cursor: pointer; }
-.wallet-balance { display: flex; align-items: center; gap: 16px; margin: 24px 0; padding: 20px; border-radius: 12px; background: rgba(245, 158, 11, .1); }
+.wallet-balance { display: flex; flex-direction: column; align-items: center; gap: 16px; margin: 24px 0; padding: 20px; border-radius: 12px; background: rgba(245, 158, 11, .1); }
 .wallet-coin-icon { color: #f59e0b; font-size: 34px; }
 .wallet-label { display: block; color: #a8b0bb; }
 .wallet-balance strong { display: block; color: #fbbf24; font-size: 36px; }

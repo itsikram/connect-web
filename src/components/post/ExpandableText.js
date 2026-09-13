@@ -16,10 +16,14 @@ const ExpandableText = ({ children, className = "", lines = 2 }) => {
     const measure = () => {
       const lineHeight = parseFloat(window.getComputedStyle(element).lineHeight);
       const maxHeight = lineHeight * lines;
-      setHasMore(element.scrollHeight > maxHeight + 1);
+      setHasMore(
+        element.scrollHeight > maxHeight + 1 ||
+          element.scrollHeight > element.clientHeight + 1,
+      );
     };
 
     measure();
+    const frame = window.requestAnimationFrame(measure);
     const resizeObserver = typeof ResizeObserver !== "undefined"
       ? new ResizeObserver(measure)
       : null;
@@ -27,6 +31,7 @@ const ExpandableText = ({ children, className = "", lines = 2 }) => {
     window.addEventListener("resize", measure);
 
     return () => {
+      window.cancelAnimationFrame(frame);
       resizeObserver?.disconnect();
       window.removeEventListener("resize", measure);
     };

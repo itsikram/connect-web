@@ -109,6 +109,9 @@ class WebNotificationService {
   }
 
   async registerServiceWorker() {
+    if (process.env.NODE_ENV !== 'production') {
+      return null;
+    }
     if (!('serviceWorker' in navigator)) {
       throw new Error('Service Worker is not supported');
     }
@@ -116,10 +119,25 @@ class WebNotificationService {
     try {
       const allRegistrations = await navigator.serviceWorker.getRegistrations();
       const currentScope = `${window.location.origin}/`;
+      const publicUrl = process.env.PUBLIC_URL || '';
+      const expectedWorkerUrl = new URL(
+        `${publicUrl.replace(/\/$/, '')}/sw.js`,
+        window.location.origin,
+      ).href;
 
       for (const registration of allRegistrations) {
         try {
           if (registration.scope !== currentScope) {
+            await registration.unregister();
+            continue;
+          }
+          // Older releases registered service-worker.js, which has no push
+          // event handler. Replace it with the worker that handles Web Push.
+          const registeredWorkerUrl =
+            registration.active?.scriptURL ||
+            registration.installing?.scriptURL ||
+            registration.waiting?.scriptURL;
+          if (registeredWorkerUrl && registeredWorkerUrl !== expectedWorkerUrl) {
             await registration.unregister();
             continue;
           }
@@ -141,7 +159,7 @@ class WebNotificationService {
         } catch (_) {}
       }
 
-      this.registration = await navigator.serviceWorker.register('/service-worker.js', {
+      this.registration = await navigator.serviceWorker.register('/sw.js', {
         scope: '/',
         updateViaCache: 'none',
       });
