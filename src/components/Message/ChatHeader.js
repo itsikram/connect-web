@@ -1889,8 +1889,8 @@ const ChatHeader = ({
     }
 
     // Optimized adaptive detection frequency - faster for quick emotion changes
-    const detectionInterval = 1000;
-    let frameSkipCounter = 0;
+    // Keep polling responsive; in-flight guards prevent stale frame queues.
+    const detectionInterval = 250;
 
     emotionIntervalRef.current = setInterval(async () => {
       if (document.hidden || captureInFlightRef.current) {
@@ -1922,8 +1922,9 @@ const ChatHeader = ({
         return;
       }
 
-      // Adaptive frame skipping for performance
-      // BUT: Don't skip frames when emotions are actively changing (for fast response)
+      // Do not add idle-time skips here: a change can happen at any time and
+      // the in-flight guards already provide the required backpressure.
+      /*
       const timeSinceLastChange = Date.now() - lastEmotionTimestampRef.current;
 
       // Only skip frames if no emotion change for a while (keep active detection when changing)
@@ -1939,6 +1940,7 @@ const ChatHeader = ({
         // Recent change detected - don't skip frames for fast response
         frameSkipCounter = 0; // Reset when active
       }
+      */
 
       if (cameraVideoRef?.current && cameraVideoRef.current.readyState >= 2) {
         try {

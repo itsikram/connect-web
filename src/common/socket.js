@@ -11,13 +11,17 @@ const getSocket = () => {
             const user = localStorage.getItem("user") || '{}';
             const userJson = JSON.parse(user);
             const socketUrl = getSocketUrl();
+            const profileId =
+                typeof userJson.profile === "string"
+                    ? userJson.profile
+                    : userJson.profile?._id || userJson.user_id;
             
             socketInstance = io.connect(socketUrl, {
                 query: {
-                    profile: userJson.profile
+                    profile: profileId
                 },
                 auth: {
-                    profile: userJson.profile
+                    profile: profileId
                 },
                 // Preserve original timeout settings (20s like the app version)
                 timeout: 20000,
