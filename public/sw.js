@@ -1,6 +1,7 @@
 // Service Worker for Web Push Notifications and Offline Support
-const CACHE_NAME = "connect-app-v4";
-const STATIC_CACHE_NAME = "connect-static-v4";
+const CACHE_NAME = "connect-app-v5";
+const STATIC_CACHE_NAME = "connect-static-v5";
+const ASSET_MANIFEST_URL = "/asset-manifest.json";
 
 const CALL_ACTIONS = [
   { action: "accept_call", title: "Accept" },
@@ -66,9 +67,26 @@ async function focusExistingCallClient() {
   return null;
 }
 
-// Resources to cache during installation (only essential ones)
-// Other resources will be cached on-demand as they're loaded
-const urlsToCache = ["/", "/index.html", "/manifest.json"];
+// The first page load is not controlled by a newly installed worker, so the
+// app bundles must be precached here rather than relying on runtime caching.
+const urlsToCache = ["/", "/index.html", "/manifest.json", ASSET_MANIFEST_URL];
+
+async function getPrecacheUrls() {
+  try {
+    const response = await fetch(ASSET_MANIFEST_URL, { cache: "no-store" });
+    if (!response.ok) return urlsToCache;
+
+    const manifest = await response.json();
+    const assetUrls = Object.values(manifest.files || {})
+      .filter((assetUrl) => typeof assetUrl === "string")
+      .map((assetUrl) => new URL(assetUrl, self.location.origin).pathname);
+
+    return [...new Set([...urlsToCache, ...assetUrls])];
+  } catch (error) {
+    console.warn("Service Worker: Could not read asset manifest:", error);
+    return urlsToCache;
+  }
+}
 
 // Install event - cache critical resources
 self.addEventListener("install", (event) => {
@@ -96,8 +114,10 @@ self.addEventListener("install", (event) => {
           "Service Worker: Cache opened, attempting to cache resources...",
         );
 
+        const precacheUrls = await getPrecacheUrls();
+
         // Cache resources individually so one failure doesn't break installation
-        const cachePromises = urlsToCache.map(async (url) => {
+        const cachePromises = precacheUrls.map(async (url) => {
           try {
             const response = await fetch(url);
             if (response && response.ok) {
@@ -131,7 +151,7 @@ self.addEventListener("install", (event) => {
           (r) => r.status === "fulfilled" && r.value?.success,
         ).length;
         console.log(
-          `Service Worker: Installation complete - cached ${successful}/${urlsToCache.length} resources`,
+          `Service Worker: Installation complete - cached ${successful}/${precacheUrls.length} resources`,
         );
       } catch (cacheError) {
         // Caching failed, but that's OK - installation still succeeds
