@@ -342,6 +342,7 @@ const Main = () => {
   const speakPlayPromiseRef = useRef(null);
   const speakPlayGenerationRef = useRef(0);
   const lastSpeakKeyRef = useRef({ key: "", at: 0 });
+  const navigationProgressTimeoutRef = useRef(null);
   const [audioReady, setAudioReady] = useState(false);
 
   const seoPages = [
@@ -2359,6 +2360,36 @@ const Main = () => {
     NProgress.configure({ showSpinner: false });
   }, []);
 
+  const finishNavigationProgress = useCallback(() => {
+    if (navigationProgressTimeoutRef.current) {
+      window.clearTimeout(navigationProgressTimeoutRef.current);
+      navigationProgressTimeoutRef.current = null;
+    }
+    NProgress.done();
+  }, []);
+
+  const startNavigationProgress = useCallback(() => {
+    NProgress.start();
+
+    if (navigationProgressTimeoutRef.current) {
+      window.clearTimeout(navigationProgressTimeoutRef.current);
+    }
+
+    navigationProgressTimeoutRef.current = window.setTimeout(() => {
+      navigationProgressTimeoutRef.current = null;
+      finishNavigationProgress();
+    }, 90000);
+  }, [finishNavigationProgress]);
+
+  useEffect(() => {
+    return () => {
+      if (navigationProgressTimeoutRef.current) {
+        window.clearTimeout(navigationProgressTimeoutRef.current);
+      }
+      finishNavigationProgress();
+    };
+  }, [finishNavigationProgress]);
+
   // Fetch route chunks before a click whenever the user hovers or touches a link.
   useEffect(() => {
     document.addEventListener("pointerover", prefetchNavigationTarget);
@@ -2373,52 +2404,58 @@ const Main = () => {
   // Start progress before React Router handles the click so navigation feedback
   // is visible while route data and lazy chunks are loading.
   useEffect(() => {
-    const startNavigationProgress = (event) => {
+    const startLinkNavigationProgress = (event) => {
       if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
         return;
       }
 
       const target = event.target instanceof Element
-        ? event.target.closest("a[href], button, [role='button']")
+        ? event.target.closest("a[href]")
         : null;
 
       if (!target) {
         return;
       }
 
-      // Composer controls are actions inside the current route, not navigation.
-      if (target.closest(".cpm-tag-selector-wrapper")) {
+      const link = new URL(target.href, window.location.href);
+      if (
+        link.origin !== window.location.origin ||
+        link.pathname === location.pathname &&
+        link.search === location.search &&
+        link.hash === location.hash ||
+        target.target === "_blank" ||
+        target.hasAttribute("download")
+      ) {
         return;
       }
 
-      if (target.matches("a[href]")) {
-        const link = new URL(target.href, window.location.href);
-        if (link.origin !== window.location.origin || link.href === window.location.href) {
-          return;
-        }
-      }
-
-      NProgress.start();
+      startNavigationProgress();
     };
 
-    document.addEventListener("click", startNavigationProgress, true);
+    document.addEventListener("click", startLinkNavigationProgress, true);
     return () => {
-      document.removeEventListener("click", startNavigationProgress, true);
+      document.removeEventListener("click", startLinkNavigationProgress, true);
     };
-  }, []);
+  }, [location.hash, location.pathname, location.search, startNavigationProgress]);
 
   useEffect(() => {
-    NProgress.start();
+    startNavigationProgress();
     const completeRenderedRoute = () => {
       if (!document.querySelector(".route-fallback")) {
-        NProgress.done();
+        finishNavigationProgress();
       }
     };
     const frame = window.requestAnimationFrame(completeRenderedRoute);
     return () => {
       window.cancelAnimationFrame(frame);
     };
-  }, [location.pathname, location.search, location.hash]);
+  }, [
+    location.pathname,
+    location.search,
+    location.hash,
+    finishNavigationProgress,
+    startNavigationProgress,
+  ]);
 
   // Stop all audio elements on route change to prevent stuck ringtones
   useEffect(() => {
