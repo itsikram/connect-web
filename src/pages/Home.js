@@ -14,6 +14,7 @@ import StoryListSkleton from "../skletons/story/StoryListSkleton";
 import { loadPosts } from "../services/actions/postActions"
 import { getCachedProfile, getProfileSuccess } from "../services/actions/profileActions"
 import CacheManager from "../utils/cacheManager"
+import { fetchHomeStoriesCached } from "../utils/requestCache"
 import FeedBoostCards from "../components/feed/FeedBoostCards"
 
 const Home = () => {
@@ -23,7 +24,6 @@ const Home = () => {
     const myProfile = useSelector(state => state.profile)
     const userInfo = JSON.parse(localStorage.getItem('user') || '{}')
     const effectiveProfileId = myProfile._id || userInfo.profile || 'guest'
-    const storiesCacheKey = `homeStories_${effectiveProfileId}`
     const storyContainer = useRef()
     const postContainer = useRef()
     function scrollLeft() {
@@ -44,18 +44,7 @@ const Home = () => {
     // setting state to store posts data
 
     const [newsFeeds, setNewsFeed] = useState([])
-    const [stories, setStories] = useState(() => {
-        try {
-            const cachedStories = localStorage.getItem(storiesCacheKey)
-            if (!cachedStories) return []
-
-            const parsedStories = JSON.parse(cachedStories)
-            return Array.isArray(parsedStories) ? parsedStories : []
-        } catch (error) {
-            console.error('Error reading cached stories:', error)
-            return []
-        }
-    })
+    const [stories, setStories] = useState([])
     const [storiesLoading, setStoriesLoading] = useState(true)
     const [lastVisitPost, setLastVisitPost] = useState(false)
     const [feedLoaded, setFeedLoaded] = useState(false)
@@ -73,14 +62,6 @@ const Home = () => {
             return true
         })
     }, [newsFeedPosts])
-
-    const writeStoriesCache = useCallback((storyList) => {
-        try {
-            localStorage.setItem(storiesCacheKey, JSON.stringify(storyList))
-        } catch (error) {
-            console.error('Error caching stories:', error)
-        }
-    }, [storiesCacheKey])
 
     const fetchProfileWithFallback = useCallback(async () => {
         if (myProfile?._id) return
@@ -156,20 +137,18 @@ const Home = () => {
         }
     }, [dispatch, hasNewPosts, pageNumber])
 
-    const fetchStories = useCallback(async () => {
+    const fetchStories = useCallback(async (forceRefresh = false) => {
         try {
-            const strRes = await api.get('/story/')
-            if (strRes.status === 200) {
-                const nextStories = Array.isArray(strRes.data) ? strRes.data : []
-                setStories(nextStories)
-                writeStoriesCache(nextStories)
-            }
+            const nextStories = await fetchHomeStoriesCached(effectiveProfileId, {
+                forceRefresh,
+            })
+            setStories(nextStories)
         } catch (error) {
             console.error('Error fetching stories:', error)
         } finally {
             setStoriesLoading(false)
         }
-    }, [writeStoriesCache])
+    }, [effectiveProfileId])
 
     const memoizedStories = useMemo(() => {
         return stories.map((story, index) => {
@@ -254,7 +233,7 @@ const Home = () => {
 
     useEffect(() => {
         const handleStoryCreated = () => {
-            fetchStories()
+            fetchStories(true)
         }
         window.addEventListener('story:created', handleStoryCreated)
         return () => window.removeEventListener('story:created', handleStoryCreated)

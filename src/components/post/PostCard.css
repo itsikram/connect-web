@@ -376,10 +376,39 @@ html[data-theme="light"],
   inset: 0;
   display: grid;
   place-items: center;
+  align-content: center;
+  gap: 4px;
+  width: 100%;
+  border: 0;
   color: #fff;
   background: rgba(0, 0, 0, 0.48);
-  font-size: 2rem;
+  font-size: 1.125rem;
   font-weight: 700;
+  cursor: pointer;
+}
+
+.nf-post .post-gallery__more small {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.nf-post .post-gallery--expanded {
+  max-height: none;
+}
+
+.nf-post .post-gallery--expanded .post-gallery__item {
+  height: 180px;
+}
+
+.nf-post .post-gallery__less {
+  grid-column: 1 / -1;
+  height: 44px;
+  border: 0;
+  color: #fff;
+  background: var(--post-bg-elevated);
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 @media (max-width: 600px) {

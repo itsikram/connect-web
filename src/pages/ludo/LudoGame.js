@@ -1992,6 +1992,34 @@ const LudoGame = () => {
     consecutiveSixesRef.current = initialConsecutiveSixes;
   };
 
+  const isLudoRestoreBlocked = useCallback((gameIdValue) => {
+    if (!gameIdValue) return false;
+    const targetGameId = String(gameIdValue);
+
+    try {
+      const hiddenBoardGameId = sessionStorage.getItem("ludo_hidden_board_game_id");
+      if (
+        hiddenBoardGameId &&
+        String(hiddenBoardGameId) === targetGameId
+      ) {
+        return true;
+      }
+    } catch (_e) {}
+
+    try {
+      const rawExitedGames = localStorage.getItem("ludo_exited_games") || "[]";
+      const exitedGames = JSON.parse(rawExitedGames);
+      if (
+        Array.isArray(exitedGames) &&
+        exitedGames.some((gid) => String(gid) === targetGameId)
+      ) {
+        return true;
+      }
+    } catch (_e) {}
+
+    return false;
+  }, []);
+
   // Save game state to localStorage for reconnection
   const saveGameState = useCallback(() => {
     try {
@@ -2003,6 +2031,12 @@ const LudoGame = () => {
       }
 
       if (onlineMode && gameId && myProfile?._id) {
+        if (isLudoRestoreBlocked(gameId)) {
+          localStorage.removeItem("ludo_game_state");
+          savedGameStateRef.current = null;
+          return;
+        }
+
         const state = {
           gameId,
           myPlayerIndex,
@@ -2017,7 +2051,14 @@ const LudoGame = () => {
     } catch (_e) {
       // Ignore localStorage errors
     }
-  }, [onlineMode, gameId, myPlayerIndex, selectedPlayerCount, myProfile?._id]);
+  }, [
+    onlineMode,
+    gameId,
+    myPlayerIndex,
+    selectedPlayerCount,
+    myProfile?._id,
+    isLudoRestoreBlocked,
+  ]);
 
   // Load game state from localStorage
   const loadGameState = useCallback(() => {
@@ -2025,6 +2066,18 @@ const LudoGame = () => {
       const saved = localStorage.getItem("ludo_game_state");
       if (!saved) return null;
       const state = JSON.parse(saved);
+      if (!state?.gameId) {
+        localStorage.removeItem("ludo_game_state");
+        savedGameStateRef.current = null;
+        return null;
+      }
+
+      if (isLudoRestoreBlocked(state.gameId)) {
+        localStorage.removeItem("ludo_game_state");
+        savedGameStateRef.current = null;
+        return null;
+      }
+
       // Only restore if it's recent (within 24 hours) and belongs to current user
       const isRecent =
         state.timestamp && Date.now() - state.timestamp < 24 * 60 * 60 * 1000;
@@ -2045,7 +2098,7 @@ const LudoGame = () => {
       savedGameStateRef.current = null;
     }
     return null;
-  }, [myProfile?._id]);
+  }, [myProfile?._id, isLudoRestoreBlocked]);
 
   // Clear saved game state
   const clearGameState = useCallback(() => {

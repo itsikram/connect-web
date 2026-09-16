@@ -16,6 +16,7 @@ import api from "../../api/api";
 import { useCallMinimize } from "../../contexts/CallMinimizeContext";
 import config from "../../config/config.json";
 import audioPreloader from "../../utils/audioPreloader";
+import { CALL_RING_DURATION_MS } from "../../utils/callRingtone";
 import CallTranscript from "../CallTranscript/CallTranscript";
 import {
   unlockAudio,
@@ -145,6 +146,8 @@ const VideoCall = ({ myId }) => {
   const callEndBtn = useRef();
   const ringtoneAudio = useRef();
   const ringtoneBufferSource = useRef(null);
+  const ringtoneStopTimer = useRef(null);
+  const ringtoneStartedAt = useRef(null);
   const ringtoneObjectUrlRef = useRef(null);
   const ringtoneObjectUrlSourceRef = useRef("");
   const originalTitleRef = useRef(document?.title || "");
@@ -354,6 +357,11 @@ const VideoCall = ({ myId }) => {
   ]);
 
   const stopRingtone = () => {
+    if (ringtoneStopTimer.current) {
+      clearTimeout(ringtoneStopTimer.current);
+      ringtoneStopTimer.current = null;
+    }
+    ringtoneStartedAt.current = null;
     try {
       if (ringtoneAudio?.current) {
         const audio = ringtoneAudio.current;
@@ -464,6 +472,22 @@ const VideoCall = ({ myId }) => {
       callAcceptedRef.current
     )
       return;
+
+    if (ringtoneStartedAt.current === null) {
+      ringtoneStartedAt.current = Date.now();
+    }
+    const remainingMs =
+      CALL_RING_DURATION_MS - (Date.now() - ringtoneStartedAt.current);
+    if (remainingMs <= 0) {
+      stopRingtone();
+      return;
+    }
+    if (!ringtoneStopTimer.current) {
+      ringtoneStopTimer.current = setTimeout(() => {
+        ringtoneStopTimer.current = null;
+        stopRingtone();
+      }, remainingMs);
+    }
 
     const audio = ringtoneAudio.current;
 
@@ -1179,6 +1203,7 @@ const VideoCall = ({ myId }) => {
           return;
         }
         console.error("Failed to start call:", error);
+        stopRingtone();
         alert("Failed to start call. Please try again.");
         setIsVideoCall(false);
         setCallAccepted(false);

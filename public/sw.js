@@ -9,6 +9,7 @@ const CALL_ACTIONS = [
 ];
 
 const DEFAULT_CALL_RINGTONE = "/assets/audio/default-ringtone.mp3";
+const CALL_RING_DURATION_MS = 30 * 1000;
 
 function buildCallOpenUrl(data = {}, callAction = "") {
   const callerId = data.callerId || data.from || "";
@@ -451,6 +452,17 @@ self.addEventListener("push", (event) => {
         data.title || "Connect App",
         options,
       );
+      if (isCall) {
+        await new Promise((resolve) => {
+          setTimeout(async () => {
+            const notifications = await self.registration.getNotifications({
+              tag: options.tag,
+            });
+            notifications.forEach((notification) => notification.close());
+            resolve();
+          }, CALL_RING_DURATION_MS);
+        });
+      }
     })(),
   );
 });

@@ -6,6 +6,7 @@
 
 import webNotificationService from '../services/webNotificationService';
 import config from '../config/config.json';
+import { CALL_RING_DURATION_MS } from './callRingtone';
 
 let activeCallNotification = null;
 const CALL_NOTIFICATION_TAG = 'incoming-call-active';
@@ -114,7 +115,7 @@ export const showCallNotification = async ({
 
             setTimeout(() => {
                 closeCallNotification();
-            }, 30000);
+            }, CALL_RING_DURATION_MS);
 
             return activeCallNotification;
         }
@@ -150,7 +151,7 @@ export const showCallNotification = async ({
                 notification.close();
                 activeCallNotification = null;
             }
-        }, 30000);
+        }, CALL_RING_DURATION_MS);
 
         return notification;
     } catch (error) {

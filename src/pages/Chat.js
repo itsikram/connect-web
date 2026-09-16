@@ -25,6 +25,7 @@ import ChatFooter from "../components/Message/ChatFooter";
 import SingleMsgSkleton from "../skletons/message/SingleMsgSkleton";
 import defaultChatBackground from "../assets/images/default-chat-bg.svg";
 import MessageCacheManager from "../utils/messageCacheManager";
+import ContactCacheManager from "../utils/contactCacheManager";
 import useConnectChatSettings from "../hooks/useConnectChatSettings";
 import { isRomanticMessage } from "../utils/chatThemes";
 import LoveEmojiRain from "../components/Message/LoveEmojiRain";
@@ -127,6 +128,7 @@ const Chat = () => {
   const pendingFollowLatestRef = useRef(false);
   const hasInitialScrolledRef = useRef(false);
   const hasLoadedFreshMessagesRef = useRef(false);
+  const cachedMessageIdsRef = useRef(new Set());
   const isMsgLoadingRef = useRef(false);
   const typingTimeoutRef = useRef(null);
   const markedSeenIdsRef = useRef(new Set());
@@ -253,20 +255,14 @@ const Chat = () => {
             ? response.data.hasMore
             : messages.length >= limit;
 
-        // Cache the fetched messages
-        if (messages.length > 0) {
-          MessageCacheManager.setCachedMessages(
-            profileId,
-            connectIdArg,
-            messages,
-          );
-          console.log("📦 Updated message cache for conversation");
-        }
+        // An empty successful response is meaningful too (for example after
+        // messages were deleted), so replace stale cached data in that case.
+        MessageCacheManager.setCachedMessages(profileId, connectIdArg, messages);
 
-        return { messages, hasMore };
+        return { messages, hasMore, ok: true };
       } catch (error) {
         console.error("Error fetching messages:", error);
-        return { messages: [], hasMore: false };
+        return { messages: [], hasMore: false, ok: false };
       }
     },
     [],
@@ -303,21 +299,6 @@ const Chat = () => {
     },
     [],
   );
-
-  // Load cached messages on chat open if available
-  useEffect(() => {
-    if (userId && connectId) {
-      const cachedMessages = MessageCacheManager.getCachedMessages(
-        userId,
-        connectId,
-      );
-      if (cachedMessages && cachedMessages.length > 0) {
-        setMessages(cachedMessages);
-        console.log("📦 Loaded messages from cache:", cachedMessages.length);
-        setIsMsgLoading(false);
-      }
-    }
-  }, [userId, connectId]);
 
   useEffect(() => {
     if (!connectId || !canMarkAsSeen) return;
@@ -784,7 +765,17 @@ const Chat = () => {
 
       let isCancelled = false;
       // Prevent stale header avatar while profile is loading for a new route.
-      setConnectProfile({ _id: connectId, profilePic: "" });
+      const cachedConnectProfile = ContactCacheManager.getCachedContact(
+        userId,
+        connectId,
+      );
+      setConnectProfile(
+        cachedConnectProfile || { _id: connectId, profilePic: "" },
+      );
+      if (cachedConnectProfile) {
+        setIsActive(Boolean(cachedConnectProfile.isActive));
+        setLastSeen(cachedConnectProfile.lastSeen || false);
+      }
 
       const loadProfile = async () => {
         try {
@@ -1065,7 +1056,16 @@ const Chat = () => {
       setRoom([userId, connectId].sort().join("_"));
       hasLoadedFreshMessagesRef.current = false;
       markedSeenIdsRef.current = new Set();
-      setMessages([]);
+      const cachedMessages = MessageCacheManager.getCachedMessages(
+        userId,
+        connectId,
+      );
+      cachedMessageIdsRef.current = new Set(
+        (cachedMessages || [])
+          .map((message) => idOf(message?._id))
+          .filter(Boolean),
+      );
+      setMessages(cachedMessages || []);
       setHasMoreMessages(true);
       setScrollPercent(100);
       loadingOlderRef.current = false;
@@ -1079,22 +1079,35 @@ const Chat = () => {
           const response = await fetchChatHistory(userId, connectId, 20);
           if (cancelled) return;
 
-          if (response.messages) {
-            setMessages((prev) =>
-              mergeHistoryWithLive(response.messages, prev),
+          if (response.ok) {
+            const historyIds = new Set(
+              response.messages.map((message) => idOf(message?._id)).filter(Boolean),
+            );
+            setMessages((prev) => {
+              // Replace cached history with the server snapshot, but retain
+              // optimistic/socket messages received while the request ran.
+              const liveMessages = prev.filter(
+                (message) =>
+                  message?.isOptimistic ||
+                  (!cachedMessageIdsRef.current.has(idOf(message?._id)) &&
+                    !historyIds.has(idOf(message?._id))),
+              );
+              return [...response.messages, ...liveMessages];
+            });
+            cachedMessageIdsRef.current = new Set(
+              response.messages
+                .map((message) => idOf(message?._id))
+                .filter(Boolean),
             );
             setHasMoreMessages(response.hasMore ?? false);
             hasLoadedFreshMessagesRef.current = true;
           } else {
-            setMessages([]);
-            setHasMoreMessages(false);
+            // Keep cached/live messages visible when the refresh fails.
+            console.warn("Keeping cached messages because refresh failed");
           }
         } catch (error) {
           if (cancelled) return;
           console.error("Error fetching initial messages:", error);
-          setMessages([]);
-          setHasMoreMessages(false);
-          hasLoadedFreshMessagesRef.current = true;
         } finally {
           if (!cancelled) setIsMsgLoading(false);
         }
@@ -1105,6 +1118,7 @@ const Chat = () => {
          if (document.visibilityState !== "visible") return;
          fetchChatHistory(userId, connectId, 20).then((response) => {
            if (cancelled) return;
+           if (!response.ok) return;
            setMessages((prev) => mergeHistoryWithLive(response.messages, prev));
            setHasMoreMessages(response.hasMore ?? false);
            hasLoadedFreshMessagesRef.current = true;

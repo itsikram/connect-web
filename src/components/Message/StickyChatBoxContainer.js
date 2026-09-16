@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import StickyChatBox from './StickyChatBox';
 import api from '../../api/api';
+import { useSelector } from 'react-redux';
 import { fetchProfileCached } from '../../utils/requestCache';
+import ContactCacheManager from '../../utils/contactCacheManager';
 import './StickyChatBox.css';
 
 const StickyChatBoxContainer = () => {
+    const userId = useSelector((state) => state.profile?._id);
     const [openChats, setOpenChats] = useState([]);
     const [maxChats] = useState(5); // Maximum number of open chats
     const openChatsRef = useRef(openChats);
@@ -75,7 +78,11 @@ const StickyChatBoxContainer = () => {
         }
 
         // Create chat immediately with loading state
-        const loadingProfile = {
+        const cachedProfile = ContactCacheManager.getCachedContact(
+            userId,
+            profileId,
+        );
+        const loadingProfile = cachedProfile || {
             _id: profileId,
             isLoading: true,
             fullName: 'Loading...',
@@ -90,7 +97,7 @@ const StickyChatBoxContainer = () => {
             id: Date.now(),
             connectProfile: loadingProfile,
             isMinimized: false,
-            isLoading: true
+            isLoading: !cachedProfile
         };
 
         setOpenChats(prev => [...prev, newChat]);
@@ -118,7 +125,7 @@ const StickyChatBoxContainer = () => {
             pendingOpensRef.current.delete(profileId);
         }
         return false; // Return false to indicate new chat was opened
-    }, [maxChats]);
+    }, [maxChats, userId]);
 
     const minimizeChat = useCallback((profileId) => {
         setOpenChats(prev => prev.map(chat =>

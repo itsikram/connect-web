@@ -29,23 +29,38 @@ class MessageCacheManager {
   }
 
   /**
-   * Generate cache key for a specific conversation
-   * @param {string} profileId - Current user's profile ID
-   * @param {string} connectId - Connect's profile ID
+   * Generate a stable cache key for a conversation, regardless of which
+   * participant is viewing it.
+   * @param {string} profileId - One participant's profile ID
+   * @param {string} connectId - The other participant's profile ID
    * @returns {string} Cache key for the conversation
    */
   static getCacheKey(profileId, connectId) {
-    return `${CACHE_KEYS.MESSAGE_PREFIX}${profileId}_${connectId}`;
+    return `${CACHE_KEYS.MESSAGE_PREFIX}${this.getConversationKey(
+      profileId,
+      connectId,
+    )}`;
   }
 
   /**
-   * Generate timestamp key for a conversation
-   * @param {string} profileId - Current user's profile ID
-   * @param {string} connectId - Connect's profile ID
+   * Generate a stable timestamp key for a conversation.
+   * @param {string} profileId - One participant's profile ID
+   * @param {string} connectId - The other participant's profile ID
    * @returns {string} Timestamp key
    */
   static getTimestampKey(profileId, connectId) {
-    return `${CACHE_KEYS.MESSAGE_TIMESTAMP_PREFIX}${profileId}_${connectId}`;
+    return `${CACHE_KEYS.MESSAGE_TIMESTAMP_PREFIX}${this.getConversationKey(
+      profileId,
+      connectId,
+    )}`;
+  }
+
+  /**
+   * Normalize participant order so both sides of a conversation share one
+   * browser cache entry.
+   */
+  static getConversationKey(profileId, connectId) {
+    return [String(profileId), String(connectId)].sort().join("_");
   }
 
   /**

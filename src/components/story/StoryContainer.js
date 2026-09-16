@@ -1,7 +1,7 @@
 import React, { Fragment, useState, useEffect, useRef } from "react";
 import { Container, Col, Row } from 'react-bootstrap';
 import StoryLists from "./StoryLists";
-import api from "../../api/api";
+import { fetchHomeStoriesCached } from "../../utils/requestCache";
 import { useParams, useNavigate, Outlet } from "react-router-dom";
 
 let StoryContainer = ({ children, sidebar }) => {
@@ -11,18 +11,27 @@ let StoryContainer = ({ children, sidebar }) => {
     let [match, setMatch] = useState(window.matchMedia('(max-width: 768px)').matches)
     const navigate = useNavigate();
     const hasSidebar = Boolean(sidebar);
+    const storedUser = JSON.parse(localStorage.getItem('user') || '{}')
+    const profileId = storedUser.profile || 'guest'
 
     useEffect(() => {
         window.matchMedia("(max-width:768px)").addEventListener('change', (e) => {
             setMatch(e.matches)
         })
 
-        api.get('/story/').then(res => {
-            if (res.status === 200) {
-                setStories(res.data)
-            }
-        })
-    }, [storyId])
+        let cancelled = false
+        fetchHomeStoriesCached(profileId)
+            .then((nextStories) => {
+                if (!cancelled) setStories(nextStories)
+            })
+            .catch((error) => {
+                console.error('Error fetching stories:', error)
+            })
+
+        return () => {
+            cancelled = true
+        }
+    }, [profileId, storyId])
 
     function handleNextClick() {
         const currentIndex = stories.findIndex(story => story?._id === storyId)

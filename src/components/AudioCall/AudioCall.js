@@ -25,6 +25,7 @@ import {
   closeCallNotification,
 } from "../../utils/callNotification";
 import audioPreloader from "../../utils/audioPreloader";
+import { CALL_RING_DURATION_MS } from "../../utils/callRingtone";
 import CallTranscript from "../CallTranscript/CallTranscript";
 
 const RINGTONE_DB_NAME = "connect-audio-cache";
@@ -90,6 +91,8 @@ const AudioCall = ({ myId }) => {
   const ringtoneAudio = useRef();
   const ringtoneBufferSource = useRef(null);
   const ringtonePlaybackToken = useRef(0);
+  const ringtoneStopTimer = useRef(null);
+  const ringtoneStartedAt = useRef(null);
   const ringtoneObjectUrlRef = useRef(null);
   const ringtoneObjectUrlSourceRef = useRef("");
   const isTerminating = useRef(false);
@@ -284,6 +287,11 @@ const AudioCall = ({ myId }) => {
 
   const stopRingtone = () => {
     ringtonePlaybackToken.current += 1;
+    if (ringtoneStopTimer.current) {
+      clearTimeout(ringtoneStopTimer.current);
+      ringtoneStopTimer.current = null;
+    }
+    ringtoneStartedAt.current = null;
     try {
       if (ringtoneAudio?.current) {
         const audio = ringtoneAudio.current;
@@ -366,6 +374,22 @@ const AudioCall = ({ myId }) => {
       playbackToken !== ringtonePlaybackToken.current
     )
       return;
+
+    if (ringtoneStartedAt.current === null) {
+      ringtoneStartedAt.current = Date.now();
+    }
+    const remainingMs =
+      CALL_RING_DURATION_MS - (Date.now() - ringtoneStartedAt.current);
+    if (remainingMs <= 0) {
+      stopRingtone();
+      return;
+    }
+    if (!ringtoneStopTimer.current) {
+      ringtoneStopTimer.current = setTimeout(() => {
+        ringtoneStopTimer.current = null;
+        stopRingtone();
+      }, remainingMs);
+    }
 
     const audio = ringtoneAudio.current;
 
@@ -1325,6 +1349,7 @@ const AudioCall = ({ myId }) => {
       console.log("Local audio started immediately");
     } catch (error) {
       console.error("Failed to start local audio immediately:", error);
+      stopRingtone();
       if (
         error.name === "NotAllowedError" ||
         error.message?.includes("Permission denied")

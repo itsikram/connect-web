@@ -224,6 +224,29 @@ let CreatePost = ({ setPosts = null }) => {
 
     let textInputPlaceHoder = "What's On Your Mind " + profileName + "?"
 
+    const feelingsOptions = [
+        { label: 'None', value: '' },
+        { label: 'Happy', value: 'happy' },
+        { label: 'Sad', value: 'sad' },
+        { label: 'Excited', value: 'excited' },
+        { label: 'Angry', value: 'angry' },
+        { label: 'Blessed', value: 'blessed' },
+        { label: 'Loved', value: 'loved' },
+        { label: 'Grateful', value: 'grateful' },
+        { label: 'Bored', value: 'bored' },
+        { label: 'Tired', value: 'tired' },
+        { label: 'Calm', value: 'calm' },
+        { label: 'Confident', value: 'confident' },
+        { label: 'Curious', value: 'curious' },
+        { label: 'Hopeful', value: 'hopeful' },
+        { label: 'Proud', value: 'proud' },
+        { label: 'Relaxed', value: 'relaxed' },
+        { label: 'Silly', value: 'silly' },
+        { label: 'Surprised', value: 'surprised' },
+        { label: 'Worried', value: 'worried' },
+        { label: 'Motivated', value: 'motivated' },
+    ]
+
 
     // handling attachment button toggle
 
@@ -540,11 +563,17 @@ let CreatePost = ({ setPosts = null }) => {
                             </div>
                             <div className="cpm-meta-options">
                                 <div className="cpm-feelings-container">
-                                    <select name="feelings" onChange={handleCaptionField.bind(this)} className="form-control cpm-meta-select">
-                                        <option value='0'>Select Feelings</option>
-                                        <option value='funny'>Funny</option>
-                                        <option value='lovely'>Lovely</option>
-                                        <option value='sad'>Sad</option>
+                                    <select
+                                        name="feelings"
+                                        onChange={handleCaptionField}
+                                        className="form-control cpm-meta-select"
+                                        value={postData.feelings || ''}
+                                    >
+                                        {feelingsOptions.map((feeling) => (
+                                            <option key={feeling.value || 'none'} value={feeling.value}>
+                                                {feeling.label}
+                                            </option>
+                                        ))}
                                     </select>
                                 </div>
                                 <div className="cpm-location-container">

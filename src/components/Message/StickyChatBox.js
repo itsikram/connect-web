@@ -29,11 +29,11 @@ import "./StickyChatBox.css";
 import "../../pages/Message.css";
 import "./UserInfoModal.css";
 import { sanitizeProfileImageUrl } from "../../utils/profileImage";
+import MessageCacheManager from "../../utils/messageCacheManager";
 import {
   emitChatMessage,
   idOf,
   isConversationMessage,
-  mergeHistoryWithLive,
   upsertConfirmedMessage,
 } from "../../utils/optimisticMessage";
 
@@ -107,6 +107,8 @@ const StickyChatBox = ({
   const lastLoveRainRef = useRef(0);
   const typingTimeoutRef = useRef(null);
   const markedSeenIdsRef = useRef(new Set());
+  const cachedMessageIdsRef = useRef(new Set());
+  const hasLoadedFreshMessagesRef = useRef(false);
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const stickyRootRef = useRef(null);
@@ -619,7 +621,19 @@ const StickyChatBox = ({
 
     let cancelled = false;
     markedSeenIdsRef.current = new Set();
+    hasLoadedFreshMessagesRef.current = false;
     hasScrolledOnLoadRef.current = false;
+    const cachedMessages = MessageCacheManager.getCachedMessages(
+      userId,
+      connectId,
+    );
+    cachedMessageIdsRef.current = new Set(
+      (cachedMessages || [])
+        .map((message) => idOf(message?._id))
+        .filter(Boolean),
+    );
+    setMessages(cachedMessages || []);
+    setIsInitialMsgLoading(!cachedMessages?.length);
     setHasMoreMessages(true);
     setScrollPercent(100);
 
@@ -634,20 +648,31 @@ const StickyChatBox = ({
           },
         });
         if (cancelled) return;
-        if (response.data && response.data.messages) {
+        if (response.data && Array.isArray(response.data.messages)) {
           const deduplicated = deduplicateMessages(response.data.messages);
-          setMessages((prev) => mergeHistoryWithLive(deduplicated, prev));
-          setHasMoreMessages(response.data.hasMore);
+          MessageCacheManager.setCachedMessages(userId, connectId, deduplicated);
+          const historyIds = new Set(
+            deduplicated.map((message) => idOf(message?._id)).filter(Boolean),
+          );
+          setMessages((prev) => {
+            const liveMessages = prev.filter(
+              (message) =>
+                message?.isOptimistic ||
+                (!cachedMessageIdsRef.current.has(idOf(message?._id)) &&
+                  !historyIds.has(idOf(message?._id))),
+            );
+            return [...deduplicated, ...liveMessages];
+          });
+          cachedMessageIdsRef.current = historyIds;
+          hasLoadedFreshMessagesRef.current = true;
+          setHasMoreMessages(response.data.hasMore ?? deduplicated.length >= 20);
           isNearBottomRef.current = true;
         } else {
-          setMessages([]);
           setHasMoreMessages(false);
         }
       } catch (error) {
         if (cancelled) return;
         console.error("StickyChatBox: Error fetching initial messages:", error);
-        setMessages([]);
-        setHasMoreMessages(false);
       } finally {
         if (!cancelled) setIsInitialMsgLoading(false);
       }
@@ -658,6 +683,17 @@ const StickyChatBox = ({
       cancelled = true;
     };
   }, [connectId, userId, isLoading, connectProfile?._id]);
+
+  // Keep cache in sync with optimistic, realtime, read, reaction, and delete
+  // updates after the first successful server snapshot.
+  useEffect(() => {
+    if (!hasLoadedFreshMessagesRef.current || !userId || !connectId) return;
+    MessageCacheManager.setCachedMessages(
+      userId,
+      connectId,
+      messages.filter((message) => message && message._id && !message.isOptimistic),
+    );
+  }, [messages, userId, connectId]);
 
   // Real-time socket listeners for this conversation
   useEffect(() => {
@@ -1403,7 +1439,7 @@ const StickyChatBox = ({
           id="chatMessageList"
           ref={msgListRef}
         >
-          {isLoading || isInitialMsgLoading ? (
+          {isLoading || (isInitialMsgLoading && messages.length === 0) ? (
             <SingleMsgSkleton count={8} />
           ) : messages.length > 0 ? (
             messages.map((msg, index) => (

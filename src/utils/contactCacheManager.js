@@ -83,6 +83,35 @@ class ContactCacheManager {
   }
 
   /**
+   * Get one cached contact profile without waiting for the contact refresh.
+   */
+  static getCachedContact(profileId, connectId) {
+    if (!profileId || !connectId) return null;
+
+    const contacts = this.getCachedContacts(profileId) || (() => {
+      try {
+        const legacy = JSON.parse(
+          localStorage.getItem(`contactsData_${profileId}`) || "null",
+        );
+        return Array.isArray(legacy) ? legacy : [];
+      } catch (error) {
+        return [];
+      }
+    })();
+
+    const contact = contacts.find(
+      (item) => String(item?.person?._id) === String(connectId),
+    );
+    if (!contact?.person?._id) return null;
+
+    return {
+      ...contact.person,
+      isActive: Boolean(contact.isOnline),
+      lastSeen: contact.lastSeen || contact.person.lastSeen || null,
+    };
+  }
+
+  /**
    * Save contacts to cache
    * @param {Array} contacts - Contacts to cache
    */

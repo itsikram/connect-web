@@ -138,6 +138,25 @@ export const fetchProfileCached = async (
   });
 };
 
+export const fetchHomeStoriesCached = async (
+  profileId = "guest",
+  { ttlMs = 30000, storageTtlMs = 300000, forceRefresh = false } = {},
+) => {
+  const cacheKey = `homeStories:${profileId || "guest"}`;
+
+  return getCachedResource({
+    key: cacheKey,
+    storageKey: cacheKey,
+    ttlMs,
+    storageTtlMs,
+    forceRefresh,
+    fetcher: async () => {
+      const response = await api.get("/story/");
+      return Array.isArray(response.data) ? response.data : [];
+    },
+  });
+};
+
 const parseOnlineStatusPayload = (data, fallbackIds = []) => {
   const statuses = {};
   if (data?.statuses && typeof data.statuses === "object") {
