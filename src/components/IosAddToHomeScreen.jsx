@@ -20,9 +20,15 @@ const isSafariBrowser = () => {
   );
 };
 
-const isStandaloneMode = () =>
-  window.navigator.standalone === true ||
-  window.matchMedia("(display-mode: standalone)").matches;
+const isStandaloneMode = () => {
+  if (typeof window === "undefined") return false;
+
+  return (
+    window.navigator.standalone === true ||
+    (typeof window.matchMedia === "function" &&
+      window.matchMedia("(display-mode: standalone)").matches)
+  );
+};
 
 const IosAddToHomeScreen = () => {
   const [showBanner, setShowBanner] = useState(false);

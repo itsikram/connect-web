@@ -5,6 +5,7 @@ describe('IosAddToHomeScreen', () => {
   const originalUserAgent = window.navigator.userAgent;
   const originalStandalone = window.navigator.standalone;
   const originalPlatform = window.navigator.platform;
+  const originalMatchMedia = window.matchMedia;
 
   beforeEach(() => {
     Object.defineProperty(window.navigator, 'userAgent', {
@@ -19,6 +20,14 @@ describe('IosAddToHomeScreen', () => {
     Object.defineProperty(window.navigator, 'platform', {
       value: 'iPhone',
       configurable: true,
+    });
+    window.matchMedia = jest.fn().mockReturnValue({
+      matches: false,
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      dispatchEvent: jest.fn(),
     });
     document.body.className = '';
     document.documentElement.className = '';
@@ -38,6 +47,7 @@ describe('IosAddToHomeScreen', () => {
       value: originalPlatform,
       configurable: true,
     });
+    window.matchMedia = originalMatchMedia;
   });
 
   test('locks page scrolling when the iOS install prompt is visible', () => {
