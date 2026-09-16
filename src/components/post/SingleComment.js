@@ -242,6 +242,9 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode, parentType = 
     const visibleReplies = Array.isArray(replies) ? replies.filter(Boolean) : [];
     const hasBody = Boolean((updatedComment || '').trim());
     const attachmentUrl = comment.attachment;
+    const currentReact = reacts.find(
+        (react) => String(getReactProfileId(react)) === String(myId),
+    );
 
     return (
         <>
@@ -370,7 +373,7 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode, parentType = 
                         tabIndex={0}
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleCommentLikeBtnClick(); } }}
                     >
-                        {isLiking ? '…' : <>Like{reacts.length > 0 ? ` · ${reacts.length}` : ''}</>}
+                        {isLiking ? '…' : <>{currentReact?.type ? currentReact.type.charAt(0).toUpperCase() + currentReact.type.slice(1) : 'Like'}{reacts.length > 0 ? ` · ${reacts.length}` : ''}</>}
                     </div>
                     {showReactPicker && (
                         <ReactPicker

@@ -192,6 +192,9 @@ const SingleReply = ({ item, myProfile, setReplies, comment, isEditMode, isPostA
             ? <Link key={`${part.profileId}-${index}`} className="comment-mention" to={`/${part.profileId}`}>{part.text}</Link>
             : <React.Fragment key={`text-${index}`}>{part.text}</React.Fragment>
     );
+    const currentReact = reacts.find(
+        (react) => String(getReactProfileId(react)) === String(myId),
+    );
 
     return (
         <div className={`reply-container reply-id-${item._id}`}>
@@ -257,7 +260,7 @@ const SingleReply = ({ item, myProfile, setReplies, comment, isEditMode, isPostA
                         tabIndex={0}
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleReplyLikeBtnClick(); } }}
                     >
-                        {isLiking ? '…' : <>Like{reacts.length > 0 ? ` · ${reacts.length}` : ''}</>}
+                        {isLiking ? '…' : <>{currentReact?.type ? currentReact.type.charAt(0).toUpperCase() + currentReact.type.slice(1) : 'Like'}{reacts.length > 0 ? ` · ${reacts.length}` : ''}</>}
                     </div>
                     {showReactPicker && (
                         <ReactPicker
