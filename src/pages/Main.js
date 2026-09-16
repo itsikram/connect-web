@@ -103,6 +103,7 @@ const VideoCall = lazy(() => import("../components/VideoCall/VideoCall.js"));
 const AudioCall = lazy(() => import("../components/AudioCall/AudioCall.js"));
 const LiveVoice = lazy(() => import("../components/LiveVoice/LiveVoice.js"));
 const SinglePost = lazy(() => import("../components/post/SinglePost.js"));
+const SearchResults = lazy(() => import("./SearchResults"));
 const NotificationTest = lazy(() => import("../components/NotificationTest.js"));
 const PostComments = lazy(() => import("../components/post/PostComments.js"));
 const PostReacts = lazy(() => import("../components/post/PostReacts.js"));
@@ -2541,6 +2542,14 @@ const Main = () => {
             <Route path="youtube" element={<Youtebe />}></Route>
             <Route path="downloads" element={<SavedVideos />}></Route>
             <Route path="downloads/:videoId" element={<SingleVideo />}></Route>
+            <Route
+              path="search"
+              element={
+                <ProtectedRoute>
+                  <SearchResults />
+                </ProtectedRoute>
+              }
+            ></Route>
             <Route path="login" element={<Login />}></Route>
             <Route path="signup" element={<SignUP />}></Route>
             <Route path="forgot-password" element={<ForgotPassword />}></Route>

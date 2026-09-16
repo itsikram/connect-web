@@ -169,6 +169,20 @@ let HeaderLeft = ({ onAIAgentOpen }) => {
     setIsAppMenuOpen(false);
   }, [location]);
 
+  useEffect(() => {
+    const handleOpenSearch = (event) => {
+      const query = String(event.detail?.query || "").trim();
+      if (!query) return;
+      setSearchQuery(query);
+      setIsSearchOpen(true);
+      if (isMobile) setMobileSearchMenu(true);
+      requestAnimationFrame(() => searchInputRef.current?.focus());
+    };
+
+    window.addEventListener("open-header-search", handleOpenSearch);
+    return () => window.removeEventListener("open-header-search", handleOpenSearch);
+  }, [isMobile]);
+
   const closeSearch = useCallback(() => {
     searchAbortRef.current?.abort();
     setIsSearching(false);
@@ -221,8 +235,14 @@ let HeaderLeft = ({ onAIAgentOpen }) => {
   }, [isMobile, isSearchOpen]);
 
   useEffect(() => {
+    if (location.pathname === "/search") {
+      setIsSearchOpen(false);
+      setMobileSearchMenu(false);
+      return;
+    }
+
     closeSearch();
-  }, [location.pathname, closeSearch]);
+  }, [closeSearch, isMobile, location.pathname, location.search]);
 
   const clearLogoLongPressTimer = useCallback(() => {
     if (longPressTimerRef.current) {

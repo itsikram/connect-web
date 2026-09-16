@@ -15,6 +15,16 @@ export function getProfileDisplayName(profile) {
     return 'Unknown User';
 }
 
+export function getReactProfileId(react) {
+    return react?.profile?._id || react?.profile || react?._id || react;
+}
+
+export function hasProfileReact(reacts, profileId) {
+    return (Array.isArray(reacts) ? reacts : []).some(
+        (react) => String(getReactProfileId(react)) === String(profileId),
+    );
+}
+
 /** Split a reply body into optional leading @mention + rest */
 export function splitMentionBody(body) {
     if (!body) return { mention: null, rest: '' };

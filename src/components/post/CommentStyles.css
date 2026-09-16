@@ -606,6 +606,17 @@ html[data-theme="light"] .nf-post .comments,
   text-decoration: underline;
 }
 
+.comment-react {
+  position: relative;
+}
+
+.comment-react-picker {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 20;
+}
+
 .comment-container .comment-react .like:hover,
 .comment-container .comment-react .reply:hover,
 .reply-container .comment-react .like:hover,

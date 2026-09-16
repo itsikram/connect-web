@@ -17,6 +17,43 @@ import {
 } from "../../utils/messageMedia";
 import { QUICK_REACTION_PRESETS } from "../../utils/chatThemes";
 
+const messageTokenPattern = /(^|[^\p{L}\p{N}_])#([\p{L}\p{N}_]{1,50})/giu;
+
+const MessageText = ({ children }) => {
+  const value = String(children || "");
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+
+  messageTokenPattern.lastIndex = 0;
+  while ((match = messageTokenPattern.exec(value))) {
+    const hashtag = match[2];
+    if (match.index > lastIndex) parts.push(value.slice(lastIndex, match.index));
+    if (match[1]) parts.push(match[1]);
+    parts.push(
+      <button
+        key={`hashtag-${match.index}`}
+        type="button"
+        className="message-hashtag"
+        onClick={(event) => {
+          event.stopPropagation();
+          window.dispatchEvent(
+            new CustomEvent("open-header-search", {
+              detail: { query: `#${hashtag}` },
+            }),
+          );
+        }}
+      >
+        #{hashtag}
+      </button>,
+    );
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < value.length) parts.push(value.slice(lastIndex));
+  return <span className="message-text">{parts.length ? parts : value}</span>;
+};
+
 const normalizeReactions = (reacts) =>
   (Array.isArray(reacts) ? reacts : []).reduce((result, reaction) => {
     const profile = reaction?.profile || reaction;
@@ -583,7 +620,7 @@ const SingleMessage = ({
         renderAudioContent()
       ) : hasCaption ? (
         <div className="message-container mb-0">
-          <span className="message-text">{msg.message}</span>
+          <MessageText>{msg.message}</MessageText>
         </div>
       ) : null}
 

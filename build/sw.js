@@ -1,6 +1,6 @@
 // Service Worker for Web Push Notifications and Offline Support
-const CACHE_NAME = "connect-app-v5";
-const STATIC_CACHE_NAME = "connect-static-v5";
+const CACHE_NAME = "connect-app-v6";
+const STATIC_CACHE_NAME = "connect-static-v6";
 const ASSET_MANIFEST_URL = "/asset-manifest.json";
 
 const CALL_ACTIONS = [
@@ -213,6 +213,16 @@ self.addEventListener("fetch", (event) => {
 
   // Skip non-GET requests
   if (request.method !== "GET") {
+    return;
+  }
+
+  // Media playback on iOS relies on byte-range requests. A cached 200
+  // response cannot satisfy those requests reliably, so always let media
+  // reach the network.
+  if (
+    request.headers.has("range") ||
+    url.pathname.match(/\.(mp4|m4v|mov|webm|m3u8|mp3|wav|ogg|m4a|aac)$/i)
+  ) {
     return;
   }
 

@@ -12,6 +12,18 @@ const useSmoothAudio = (mediaElement) => {
   useEffect(() => {
     if (!mediaElement || typeof window === "undefined") return undefined;
 
+    // Standalone iOS can leave an AudioContext suspended when it is created
+    // outside the user's gesture, which silences an otherwise valid media
+    // element. Keep native media routing for installed PWAs.
+    const isIos =
+      /iPhone|iPad|iPod/i.test(navigator.userAgent || "") ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const isStandalone =
+      navigator.standalone === true ||
+      (typeof window.matchMedia === "function" &&
+        window.matchMedia("(display-mode: standalone)").matches);
+    if (isIos && isStandalone) return undefined;
+
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) return undefined;
 

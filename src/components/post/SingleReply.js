@@ -1,24 +1,31 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import UserPP from "../UserPP";
 import Moment from 'react-moment';
 import { Link } from 'react-router-dom';
 import api from "../../api/api";
 import LoadingSpinner, { TypingIndicator } from "../loading/LoadingSpinner";
-import { getProfileDisplayName, buildReplyMessage, splitMentionTokens } from './commentUtils';
+import {
+    getProfileDisplayName,
+    buildReplyMessage,
+    getReactProfileId,
+    hasProfileReact,
+    splitMentionTokens,
+} from './commentUtils';
 import './CommentStyles.css';
 import ExpandableText from './ExpandableText';
 import MentionInput from './MentionInput';
+import { ReactPicker } from './ReactPicker';
 
 const SingleReply = ({ item, myProfile, setReplies, comment, isEditMode, isPostAuthor }) => {
     const myId = myProfile?._id;
     const authorName = getProfileDisplayName(item?.author);
     const [isReplyOption, setIsReplyOption] = useState(false);
-    const [totalReacts, setTotalReacts] = useState(Array.isArray(item?.reacts) ? item.reacts.length : 0);
-    const [isReacted, setIsReacted] = useState(
-        Array.isArray(item?.reacts) && item.reacts.some((r) => String(r) === String(myId) || String(r?._id) === String(myId))
-    );
+    const [reacts, setReacts] = useState(Array.isArray(item?.reacts) ? item.reacts : []);
     const [isReply, setIsReply] = useState(false);
     const [isLiking, setIsLiking] = useState(false);
+    const [showReactPicker, setShowReactPicker] = useState(false);
+    const reactTimerRef = useRef(null);
+    const longPressRef = useRef(false);
     const [isSubmittingReply, setIsSubmittingReply] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [replyData, setReplyData] = useState({ body: '', attachment: null });
@@ -26,8 +33,7 @@ const SingleReply = ({ item, myProfile, setReplies, comment, isEditMode, isPostA
 
     useEffect(() => {
         const reacts = Array.isArray(item?.reacts) ? item.reacts : [];
-        setTotalReacts(reacts.length);
-        setIsReacted(reacts.some((r) => String(r) === String(myId) || String(r?._id) === String(myId)));
+        setReacts(reacts);
     }, [item, myId]);
 
     useEffect(() => {
@@ -101,28 +107,82 @@ const SingleReply = ({ item, myProfile, setReplies, comment, isEditMode, isPostA
         }
     };
 
-    const handleReplyLikeBtnClick = async () => {
+    const handleReplyLikeBtnClick = async (reactionType = 'like') => {
         if (isLiking || !item?._id) return;
+        const previousReacts = reacts;
+        const currentReact = previousReacts.find(
+            (react) => String(getReactProfileId(react)) === String(myId),
+        );
+        const alreadyReacted = Boolean(currentReact);
+        const shouldRemove = alreadyReacted && (currentReact?.type || 'like') === reactionType;
+        const optimisticReacts = [
+            ...previousReacts.filter((react) => String(getReactProfileId(react)) !== String(myId)),
+            ...(shouldRemove ? [] : [{ profile: myId, type: reactionType }]),
+        ];
+
         setIsLiking(true);
+        setReacts(optimisticReacts);
         try {
-            if (isReacted) {
+            if (shouldRemove) {
                 const res = await api.post('/comment/reply/removeReact', { replyId: item._id, myId });
                 if (res.status === 200) {
-                    setTotalReacts((n) => Math.max(0, n - 1));
-                    setIsReacted(false);
+                    setReacts(
+                        Array.isArray(res.data?.reacts)
+                            ? res.data.reacts
+                            : Array.isArray(res.data?.reply?.reacts)
+                                ? res.data.reply.reacts
+                                : optimisticReacts,
+                    );
+                } else {
+                    setReacts(previousReacts);
                 }
             } else {
-                const res = await api.post('/comment/reply/addReact', { replyId: item._id, myId });
+                const res = await api.post('/comment/reply/addReact', {
+                    replyId: item._id,
+                    myId,
+                    reactType: reactionType,
+                });
                 if (res.status === 200) {
-                    setTotalReacts((n) => n + 1);
-                    setIsReacted(true);
+                    setReacts(
+                        Array.isArray(res.data?.reacts)
+                            ? res.data.reacts
+                            : Array.isArray(res.data?.reply?.reacts)
+                                ? res.data.reply.reacts
+                                : optimisticReacts,
+                    );
+                } else {
+                    setReacts(previousReacts);
                 }
             }
         } catch (error) {
+            setReacts(previousReacts);
             console.error('Error updating like:', error);
         } finally {
             setIsLiking(false);
         }
+    };
+
+    const startReactLongPress = () => {
+        longPressRef.current = false;
+        reactTimerRef.current = window.setTimeout(() => {
+            longPressRef.current = true;
+            setShowReactPicker(true);
+        }, 450);
+    };
+
+    const cancelReactLongPress = () => {
+        if (reactTimerRef.current) {
+            window.clearTimeout(reactTimerRef.current);
+            reactTimerRef.current = null;
+        }
+    };
+
+    const handleReactClick = () => {
+        if (longPressRef.current) {
+            longPressRef.current = false;
+            return;
+        }
+        handleReplyLikeBtnClick();
     };
 
     if (removed || !item?.author) return null;
@@ -185,15 +245,30 @@ const SingleReply = ({ item, myProfile, setReplies, comment, isEditMode, isPostA
 
                 <div className="comment-react">
                     <div
-                        className={`like button ${isReacted ? 'reacted' : ''} ${isLiking ? 'loading-button' : ''}`}
-                        onClick={handleReplyLikeBtnClick}
+                        className={`like button ${hasProfileReact(reacts, myId) ? 'reacted' : ''} ${isLiking ? 'loading-button' : ''}`}
+                        onClick={handleReactClick}
+                        onMouseDown={startReactLongPress}
+                        onMouseUp={cancelReactLongPress}
+                        onMouseLeave={cancelReactLongPress}
+                        onTouchStart={startReactLongPress}
+                        onTouchEnd={cancelReactLongPress}
                         data-id={item._id}
                         role="button"
                         tabIndex={0}
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleReplyLikeBtnClick(); } }}
                     >
-                        {isLiking ? '…' : <>Like{totalReacts > 0 ? ` · ${totalReacts}` : ''}</>}
+                        {isLiking ? '…' : <>Like{reacts.length > 0 ? ` · ${reacts.length}` : ''}</>}
                     </div>
+                    {showReactPicker && (
+                        <ReactPicker
+                            reactType={reacts.find((react) => String(getReactProfileId(react)) === String(myId))?.type}
+                            onSelect={(type) => {
+                                setShowReactPicker(false);
+                                handleReplyLikeBtnClick(type);
+                            }}
+                            className="comment-react-picker"
+                        />
+                    )}
                     <div
                         className="reply button"
                         onClick={() => setIsReply((v) => !v)}
