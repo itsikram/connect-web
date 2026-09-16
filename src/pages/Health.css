@@ -687,6 +687,74 @@
     text-align: center;
 }
 
+.fitness-macro-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.fitness-macro-header span {
+    order: 2;
+}
+
+.fitness-progress-bar {
+    height: 7px;
+    margin-top: 9px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+}
+
+.fitness-progress-fill {
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #059669, #34d399);
+    transition: width 0.3s ease;
+}
+
+.fitness-summary-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.fitness-summary-stats > div {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.fitness-summary-stats strong {
+    color: #e2e8f0;
+    font-size: 0.9rem;
+}
+
+.fitness-summary-stats span,
+.fitness-cache-status {
+    color: #94a3b8;
+    font-size: 0.78rem;
+}
+
+.fitness-cache-status {
+    margin: 0 0 12px;
+}
+
+.fitness-presets {
+    display: flex;
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.fitness-presets > button {
+    flex: 1 1 120px;
+}
+
 .fitness-macro-card strong,
 .fitness-macro-card span {
     display: block;

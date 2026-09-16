@@ -29,6 +29,22 @@ const IosAddToHomeScreen = () => {
   const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
+    if (!showBanner && !showModal) {
+      document.body.classList.remove("ios-a2hs-scroll-locked");
+      document.documentElement.classList.remove("ios-a2hs-scroll-locked");
+      return;
+    }
+
+    document.body.classList.add("ios-a2hs-scroll-locked");
+    document.documentElement.classList.add("ios-a2hs-scroll-locked");
+
+    return () => {
+      document.body.classList.remove("ios-a2hs-scroll-locked");
+      document.documentElement.classList.remove("ios-a2hs-scroll-locked");
+    };
+  }, [showBanner, showModal]);
+
+  useEffect(() => {
     try {
       if (localStorage.getItem(DISMISS_KEY) === "true") return;
     } catch (_) {

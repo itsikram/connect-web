@@ -24,9 +24,28 @@ const EMPTY_MEAL = {
 };
 
 const EMPTY_REMINDER = { title: 'Drink water', time: '12:00', type: 'water', message: '' };
+const FITNESS_CACHE_KEY = 'connect:fitness-dashboard';
+
+const readFitnessCache = () => {
+    if (typeof window === 'undefined') return null;
+    try {
+        const cached = window.localStorage.getItem(FITNESS_CACHE_KEY);
+        return cached ? JSON.parse(cached) : null;
+    } catch (_) {
+        return null;
+    }
+};
+
+const writeFitnessCache = (data) => {
+    try {
+        if (typeof window !== 'undefined') window.localStorage.setItem(FITNESS_CACHE_KEY, JSON.stringify(data));
+    } catch (_) {
+        // Storage is an enhancement; the server remains the source of truth.
+    }
+};
 
 const Health = () => {
-    const [fitnessData, setFitnessData] = useState(null);
+    const [fitnessData, setFitnessData] = useState(readFitnessCache);
     const [fitnessProfile, setFitnessProfile] = useState(EMPTY_PROFILE);
     const [fitnessPeriod, setFitnessPeriod] = useState('daily');
     const [fitnessProgress, setFitnessProgress] = useState(null);
@@ -39,21 +58,27 @@ const Health = () => {
     const [fitnessWeight, setFitnessWeight] = useState('');
     const [fitnessWeightNote, setFitnessWeightNote] = useState('');
     const [fitnessReminder, setFitnessReminder] = useState(EMPTY_REMINDER);
-    const [fitnessLoading, setFitnessLoading] = useState(false);
+    const [fitnessLoading, setFitnessLoading] = useState(() => !readFitnessCache());
     const [fitnessError, setFitnessError] = useState('');
 
     const loadFitness = useCallback(async () => {
+        setFitnessLoading(true);
+        setFitnessError('');
         try {
-            const [dashboard, reminders] = await Promise.all([
-                api.get('/fitness/dashboard'),
-                api.get('/fitness/reminders'),
-            ]);
+            const dashboard = await api.get('/fitness/dashboard');
             setFitnessData(dashboard.data);
-            setFitnessReminders(reminders.data?.reminders || reminders.data || []);
+            writeFitnessCache(dashboard.data);
             if (dashboard.data?.profile) setFitnessProfile(dashboard.data.profile);
         } catch (error) {
-            if (error?.response?.status !== 404) setFitnessError('Could not load Fitness data.');
+            if (error?.response?.status !== 404 && !readFitnessCache()) setFitnessError(error?.response?.data?.message || 'Could not load Fitness data.');
         }
+        try {
+            const reminders = await api.get('/fitness/reminders');
+            setFitnessReminders(reminders.data?.reminders || reminders.data || []);
+        } catch (error) {
+            if (error?.response?.status !== 404 && !readFitnessCache()) setFitnessError('Could not load Fitness reminders.');
+        }
+        setFitnessLoading(false);
     }, []);
 
     useEffect(() => { loadFitness(); }, [loadFitness]);
@@ -98,6 +123,10 @@ const Health = () => {
     });
 
     const saveFitnessMeal = () => runFitness(async () => {
+        if (!fitnessMeal.name.trim() || !Number(fitnessMeal.calories) || Number(fitnessMeal.calories) < 0) {
+            setFitnessError('Add a food name and a calorie value before saving.');
+            return;
+        }
         await api.post('/fitness/meals', {
             ...fitnessMeal,
             source: fitnessMeal.source || 'manual',
@@ -154,6 +183,7 @@ const Health = () => {
         if (!window.confirm('Reset Fitness details? This permanently deletes your Fitness profile, meals, weights, and reminders.')) return;
         runFitness(async () => {
             await api.delete('/fitness/reset');
+            window.localStorage.removeItem(FITNESS_CACHE_KEY);
             setFitnessData(null);
             setFitnessProfile(EMPTY_PROFILE);
             setFitnessProgress(null);
@@ -165,6 +195,11 @@ const Health = () => {
 
     const updateProfile = (key, value) => setFitnessProfile((old) => ({ ...old, [key]: value }));
     const updateMeal = (key, value) => setFitnessMeal((old) => ({ ...old, [key]: value }));
+    const mealPresets = [
+        { label: 'Oatmeal', values: { name: 'Oatmeal with fruit', calories: 350, proteinG: 12, carbsG: 58, fatG: 9, fiberG: 8, mealType: 'breakfast' } },
+        { label: 'Chicken bowl', values: { name: 'Chicken rice bowl', calories: 520, proteinG: 38, carbsG: 55, fatG: 14, fiberG: 5, mealType: 'lunch' } },
+        { label: 'Greek yogurt', values: { name: 'Greek yogurt and berries', calories: 220, proteinG: 20, carbsG: 25, fatG: 3, fiberG: 4, mealType: 'snack' } },
+    ];
 
     return (
         <div className="health-page">
@@ -183,7 +218,8 @@ const Health = () => {
                 <section className="health-calorie-section" aria-label="Fitness tracker">
                     <div className="health-calorie-card">
                         <h2 className="health-panel-title"><i className="fas fa-heartbeat" aria-hidden="true" /> Fitness</h2>
-                        {fitnessError && <p className="health-disclaimer">{fitnessError}</p>}
+                        {fitnessLoading && fitnessData?.profile && <p className="fitness-cache-status">Updating from server…</p>}
+                        {fitnessError && <p className="health-disclaimer">{fitnessError}{fitnessData?.profile ? ' Showing your last saved summary.' : ''}</p>}
                         {!fitnessData?.profile ? (
                             <div className="fitness-setup-shell">
                                 <p className="health-calorie-description">Your targets are calculated privately on the server using Mifflin-St Jeor.</p>
@@ -210,8 +246,8 @@ const Health = () => {
                                 <div className="fitness-hero-card">
                                     <div>
                                         <span className="fitness-eyebrow">Today&apos;s fitness</span>
-                                        <strong>{fitnessData.totals?.calories || 0} / {fitnessData.profile.targetCalories} kcal</strong>
-                                        <span>BMR {Math.round(fitnessData.profile.bmr || 0)} · TDEE {Math.round(fitnessData.profile.tdee || 0)}</span>
+                                        <strong>{Math.round(fitnessData.totals?.calories || 0)} / {Math.round(fitnessData.profile.targetCalories || 0)} kcal</strong>
+                                        <span>{Math.max((fitnessData.profile.targetCalories || 0) - (fitnessData.totals?.calories || 0), 0) ? `${Math.round(Math.max((fitnessData.profile.targetCalories || 0) - (fitnessData.totals?.calories || 0), 0))} kcal remaining today` : 'Daily calorie target reached'} · BMR {Math.round(fitnessData.profile.bmr || 0)} · TDEE {Math.round(fitnessData.profile.tdee || 0)}</span>
                                     </div>
                                     <div className="fitness-target-summary">
                                         <span>Goal</span><strong>{fitnessData.profile.goal}</strong>
@@ -222,9 +258,14 @@ const Health = () => {
                                 <div className="fitness-macro-grid">
                                     {[['Protein', 'proteinG'], ['Carbs', 'carbsG'], ['Fat', 'fatG']].map(([label, key]) => (
                                         <div className="fitness-macro-card" key={key}>
-                                            <strong>{Math.round(fitnessData.totals?.[key] || 0)} / {Math.round(fitnessData.profile.macros?.[key] || 0)}g</strong><span>{label}</span>
+                                            <div className="fitness-macro-header"><span>{label}</span><strong>{Math.round(fitnessData.totals?.[key] || 0)} / {Math.round(fitnessData.profile.macros?.[key] || 0)}g</strong></div>
+                                            <div className="fitness-progress-bar"><div className="fitness-progress-fill" style={{ width: `${Math.min(((fitnessData.totals?.[key] || 0) / (fitnessData.profile.macros?.[key] || 1)) * 100, 100)}%` }} /></div>
                                         </div>
                                     ))}
+                                </div>
+                                <div className="fitness-summary-stats">
+                                    <div><strong>{fitnessData.profile.goal === 'lose' ? 'Lose weight' : fitnessData.profile.goal === 'gain' ? 'Build weight' : 'Maintain'}</strong><span>Goal</span></div>
+                                    <div><strong>{fitnessData.meals?.length || fitnessData.mealCount || 0}</strong><span>Meals logged</span></div>
                                 </div>
 
                                 <div className="fitness-section-heading"><h3>Today&apos;s meals</h3><span>{fitnessData.meals?.length || 0} logged</span></div>
@@ -237,6 +278,7 @@ const Health = () => {
 
                                 <div className="fitness-section-heading"><h3>Add meal</h3><span>AI + manual</span></div>
                                 <div className="health-form-grid">
+                                    <div className="fitness-presets">{mealPresets.map((preset) => <button type="button" className="health-weight-edit-btn" key={preset.label} onClick={() => { setFitnessMeal((old) => ({ ...old, ...preset.values })); setFitnessError(''); }}>{preset.label}</button>)}</div>
                                     <input placeholder="Food name" value={fitnessMeal.name} onChange={(e) => updateMeal('name', e.target.value)} />
                                     <select value={fitnessMeal.mealType} onChange={(e) => updateMeal('mealType', e.target.value)}>
                                         <option value="breakfast">Breakfast</option><option value="lunch">Lunch</option><option value="dinner">Dinner</option><option value="snack">Snack</option>

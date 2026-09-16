@@ -1,11 +1,15 @@
-import React, { Fragment, useCallback } from "react";
+import React, { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import ModalContainer from "../../components/modal/ModalContainer";
 import UserPP from "../../components/UserPP";
 import useIsMobile from "../../utils/useIsMobile";
 import { SIDEBAR_MENU_ITEMS } from "../sidebar/sidebarMenuItems";
+import api from "../../api/api";
+import { getProfileSuccess } from "../../services/actions/profileActions";
 import "./AppMenuModal.css";
+
+const APP_MENU_ORDER_KEY = "appMenuOrder";
 
 function getProfileDisplayName(profileData) {
   if (!profileData) return "Your profile";
@@ -24,6 +28,67 @@ function getProfileDisplayName(profileData) {
 const AppMenuModal = ({ isOpen, onRequestClose, onAIAgentOpen }) => {
   const isMobile = useIsMobile();
   const profileData = useSelector((state) => state.profile);
+  const dispatch = useDispatch();
+  const [appOrder, setAppOrder] = useState([]);
+  const [draggedId, setDraggedId] = useState(null);
+
+  useEffect(() => {
+    const stored = localStorage.getItem(APP_MENU_ORDER_KEY);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) setAppOrder(parsed.filter((id) => typeof id === "string"));
+      } catch (error) {
+        console.warn("Unable to restore app menu order:", error);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (Array.isArray(profileData?.appMenuOrder) && profileData.appMenuOrder.length > 0) {
+      setAppOrder(profileData.appMenuOrder);
+    }
+  }, [profileData?.appMenuOrder]);
+
+  const sortedItems = useMemo(() => {
+    const orderIndex = new Map(appOrder.map((id, index) => [id, index]));
+    return [...SIDEBAR_MENU_ITEMS].sort(
+      (a, b) =>
+        (orderIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+        (orderIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+    );
+  }, [appOrder]);
+
+  const persistOrder = useCallback(
+    async (nextOrder) => {
+      setAppOrder(nextOrder);
+      localStorage.setItem(APP_MENU_ORDER_KEY, JSON.stringify(nextOrder));
+      try {
+        const response = await api.post("/profile/update", { appMenuOrder: nextOrder });
+        if (response.data) dispatch(getProfileSuccess(response.data));
+      } catch (error) {
+        console.error("Unable to save app menu order to the server:", error);
+      }
+    },
+    [dispatch],
+  );
+
+  const handleDrop = useCallback(
+    (targetId) => {
+      if (!draggedId || draggedId === targetId) {
+        setDraggedId(null);
+        return;
+      }
+      const next = [...sortedItems];
+      const fromIndex = next.findIndex((item) => item.id === draggedId);
+      const toIndex = next.findIndex((item) => item.id === targetId);
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      void persistOrder(next.map((item) => item.id));
+      setDraggedId(null);
+    },
+    [draggedId, persistOrder, sortedItems],
+  );
 
   const userInfo = (() => {
     try {
@@ -130,7 +195,7 @@ const AppMenuModal = ({ isOpen, onRequestClose, onAIAgentOpen }) => {
               <span className="app-menu-grid-label">AI Agent</span>
             </button>
 
-            {SIDEBAR_MENU_ITEMS.map((item) => {
+            {sortedItems.map((item) => {
               const iconStyle = { color: item.accent || "#29B1A9" };
               const content = (
                 <Fragment>
@@ -156,6 +221,10 @@ const AppMenuModal = ({ isOpen, onRequestClose, onAIAgentOpen }) => {
                     role="listitem"
                     aria-disabled="true"
                     title="Coming soon"
+                    draggable="true"
+                    onDragStart={() => setDraggedId(item.id)}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={() => handleDrop(item.id)}
                   >
                     {content}
                   </div>
@@ -168,6 +237,11 @@ const AppMenuModal = ({ isOpen, onRequestClose, onAIAgentOpen }) => {
                   to={item.to}
                   className="app-menu-grid-item"
                   role="listitem"
+                  draggable="true"
+                  onDragStart={() => setDraggedId(item.id)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => handleDrop(item.id)}
+                  aria-grabbed={draggedId === item.id}
                   onClick={handleItemClick}
                 >
                   {content}
