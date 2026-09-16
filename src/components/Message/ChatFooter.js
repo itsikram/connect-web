@@ -19,7 +19,7 @@ import { mergeTranscriptChunk } from "../../hooks/transcriptText";
 import useConnectChatSettings from "../../hooks/useConnectChatSettings";
 
 const UPLOAD_PLACEHOLDER =
-  "https://res.cloudinary.com/dz88yjerw/image/upload/v1743092084/i5lcu63atrbkpcy6oqam.gif";
+  "/assets/images/loading.gif";
 
 const ChatFooter = ({
   chatFooter,
@@ -460,7 +460,7 @@ const ChatFooter = ({
           const attachmentFormData = new FormData();
           attachmentFormData.append("image", attachmentFile);
           setAttachmentUrl(
-            "https://res.cloudinary.com/dz88yjerw/image/upload/v1743092084/i5lcu63atrbkpcy6oqam.gif",
+            "/assets/images/loading.gif",
           );
           setIsPreview(true);
 
@@ -889,7 +889,7 @@ const ChatFooter = ({
           const rawFile = new FormData();
           rawFile.append("file", rawFile);
           setAttachmentUrl(
-            "https://res.cloudinary.com/dz88yjerw/image/upload/v1743092084/i5lcu63atrbkpcy6oqam.gif",
+            "/assets/images/loading.gif",
           );
           // setIsPreview(true)
 
@@ -1183,7 +1183,7 @@ const ChatFooter = ({
                 }
                 role="button"
                 tabIndex={composerLocked || isSendingMessage ? -1 : 0}
-                className={`composer-icon-btn send message-action-button send-message ${attachmentUrl == "https://res.cloudinary.com/dz88yjerw/image/upload/v1743092084/i5lcu63atrbkpcy6oqam.gif" && "button-disabled"} ${composerLocked || isSendingMessage ? "disabled" : ""}`}
+                className={`composer-icon-btn send message-action-button send-message ${attachmentUrl == "/assets/images/loading.gif" && "button-disabled"} ${composerLocked || isSendingMessage ? "disabled" : ""}`}
                 aria-label="Send message"
                 aria-disabled={composerLocked || isSendingMessage}
                 style={{

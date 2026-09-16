@@ -12,7 +12,7 @@ import useSpeechToText from "../../hooks/useSpeechToText";
 import "./ComposerAssist.css";
 import MentionInput from "./MentionInput";
 
-const loadingImgUrl = 'https://res.cloudinary.com/dz88yjerw/image/upload/v1743092084/i5lcu63atrbkpcy6oqam.gif'
+const loadingImgUrl = '/assets/images/loading.gif'
 
 let CreatePost = ({ setPosts = null }) => {
     let profileData = useSelector(state => state.profile)

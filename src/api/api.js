@@ -7,6 +7,7 @@ import {
 } from "../utils/storageUtils";
 import { jwtDecode } from "jwt-decode";
 import { LoadBalancer } from "../utils/loadBalancer";
+import { normalizeCloudinaryUrl } from "../utils/profileImage";
 
 // Production server URLs for load balancing
 // Add all your Render server URLs here
@@ -77,6 +78,17 @@ const cloneAxiosResponse = (response) => ({
   ...response,
   headers: response.headers ? { ...response.headers } : response.headers,
 });
+
+const normalizeMediaUrls = (value) => {
+  if (typeof value === "string") return normalizeCloudinaryUrl(value);
+  if (Array.isArray(value)) return value.map(normalizeMediaUrls);
+  if (value && typeof value === "object") {
+    Object.entries(value).forEach(([key, child]) => {
+      value[key] = normalizeMediaUrls(child);
+    });
+  }
+  return value;
+};
 
 const getRequestUrl = (requestConfig) => {
   const requestUri = api.getUri(requestConfig);
@@ -324,6 +336,7 @@ const processQueue = (error, token = null) => {
 // Add response interceptor for error handling with load balancer support
 api.interceptors.response.use(
   (response) => {
+    response.data = normalizeMediaUrls(response.data);
     // Mark server as healthy on successful response
     if (loadBalancer && response.config?._serverUrl) {
       loadBalancer.markServerHealthy(response.config._serverUrl);
