@@ -9694,3 +9694,10 @@ input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(
     padding: 8px 12px !important;
   }
 }
+
+
+body, html, #root {
+  overscroll-behavior: none !important;
+  background: #111112;
+}
+
