@@ -37,6 +37,8 @@ let Login = (props) => {
         } else {
             setError({ message: result.error });
         }
+        // Lets the camera panel show "Verified" or a retry in place.
+        return result;
     }, [clearError, faceLogin, navigate]);
     
     let handleChange = (e) => {
@@ -271,7 +273,7 @@ let Login = (props) => {
                             </button>
                             {showFaceLogin && (
                                 <div className="mt-3">
-                                    <FaceCapture onCapture={handleFaceCapture} disabled={isLoggingIn || isGoogleSigningIn} />
+                                    <FaceCapture onCapture={handleFaceCapture} disabled={isLoggingIn || isGoogleSigningIn} actionLabel="Log in with my face" />
                                 </div>
                             )}
 

@@ -138,11 +138,14 @@ const AccountSetting = () => {
         user: { ...(myProfile?.user || {}), faceLoginEnabled: true },
       }));
       showSuccessToast("Face login registered successfully");
+      return { success: true };
     } catch (error) {
-      showErrorToast(
+      const message =
         error?.response?.data?.message ||
-          "Couldn't register your face. Please blink naturally and try again.",
-      );
+        "Couldn't register your face. Please blink naturally and try again.";
+      showErrorToast(message);
+      // Lets the camera panel show the reason and a retry in place.
+      return { success: false, error: message };
     } finally {
       setIsRegisteringFace(false);
     }
@@ -488,7 +491,7 @@ const AccountSetting = () => {
               <i className="fas fa-trash-alt me-2"></i>{isRemovingFace ? "Removing..." : "Remove face login"}
             </button>}
           </div>
-          {showFaceCapture && <div className="mt-3"><FaceCapture onCapture={handleFaceCapture} disabled={isRegisteringFace || isRemovingFace} /></div>}
+          {showFaceCapture && <div className="mt-3"><FaceCapture onCapture={handleFaceCapture} disabled={isRegisteringFace || isRemovingFace} actionLabel={isFaceRegistered ? "Update my face" : "Register my face"} /></div>}
         </div>
 
         {/* Bengali Name Section */}
