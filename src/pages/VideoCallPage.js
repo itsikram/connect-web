@@ -117,7 +117,8 @@ const VideoCallPage = () => {
       }
     });
 
-    client.on("user-unpublished", (user) => {
+    client.on("user-unpublished", (user, mediaType) => {
+      if (mediaType !== "video") return;
       const remoteDiv = document.getElementById(user.uid);
       if (remoteDiv) remoteDiv.remove();
     });

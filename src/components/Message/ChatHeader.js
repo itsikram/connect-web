@@ -641,9 +641,10 @@ const ChatHeader = ({
             }
           });
 
-          client.on("user-unpublished", (user) => {
-            console.log("ChatHeader - Remote user unpublished:", user.uid);
-            if (userVideo.current) {
+          client.on("user-unpublished", (user, mediaType) => {
+            console.log("ChatHeader - Remote user unpublished:", user.uid, mediaType);
+            // A microphone mute/restart must not blank the remote video.
+            if (mediaType === "video" && userVideo.current) {
               userVideo.current.innerHTML = "";
             }
           });

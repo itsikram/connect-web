@@ -949,9 +949,13 @@ const VideoCall = ({ myId }) => {
             }
           });
 
-          client.on("user-unpublished", (user) => {
-            console.log("Remote user unpublished:", user.uid);
-            if (userVideo.current) userVideo.current.innerHTML = "";
+          client.on("user-unpublished", (user, mediaType) => {
+            console.log("Remote user unpublished:", user.uid, mediaType);
+            // Only a video unpublish removes the picture; the other side
+            // muting or restarting its microphone must not blank it.
+            if (mediaType === "video" && userVideo.current) {
+              userVideo.current.innerHTML = "";
+            }
           });
 
           client.on("user-left", async (user) => {
@@ -1072,9 +1076,11 @@ const VideoCall = ({ myId }) => {
             }
           });
 
-          client.on("user-unpublished", (user) => {
-            console.log("Remote user unpublished:", user.uid);
-            if (userVideo.current) {
+          client.on("user-unpublished", (user, mediaType) => {
+            console.log("Remote user unpublished:", user.uid, mediaType);
+            // Only a video unpublish removes the picture; the other side
+            // muting or restarting its microphone must not blank it.
+            if (mediaType === "video" && userVideo.current) {
               userVideo.current.innerHTML = "";
             }
           });
