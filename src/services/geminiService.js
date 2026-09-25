@@ -32,7 +32,7 @@ import {
 
 export { parseGeminiApiKeys, isGeminiQuotaError, extractGeminiText };
 
-const SYSTEM_PROMPT = `Connect assistant. Reply in the user's language (English, Bangla, or Banglish). Answer directly in 1–2 short sentences. Never invent app data, names, or results. If unclear, ask one brief question. No markdown.`;
+export const SYSTEM_PROMPT = `Connect assistant. Reply in the user's language (English, Bangla, or Banglish). Answer directly in 1–2 short sentences. Never invent app data, names, or results. If unclear, ask one brief question. No markdown.`;
 
 // Argument hints for the action planner. Fields map onto toAgentIntent():
 // targetName (person), messageText, searchQuery, targetRoute, subPath, queryType.
@@ -119,7 +119,7 @@ export const buildAgentActionPrompt = () => {
   )
     .map((entry) => `${entry.route}=${entry.label}`)
     .join(", ");
-  cachedActionPrompt = `You can operate the Connect app. If the user asks you to DO something in the app, output ONLY JSON (no prose, no fences): {"reply":"short confirmation in the user's language","actions":[{"action":"NAME",...fields}]}. Use at most 3 actions, exact names from ACTIONS, and only the listed fields. Use people's names exactly as the user said them; resolve "him/her/that" from Ctx. For questions about the user's own data use QUERY_CONTENT. If anything required is missing, ask one short question in plain text instead. For normal conversation reply in plain text.\nACTIONS: ${actions}\nROUTES: ${routes}`;
+  cachedActionPrompt = `You can operate the Connect app. If the user asks you to DO something in the app, output ONLY JSON (no prose, no fences): {"reply":"short confirmation in the user's language","actions":[{"action":"NAME",...fields}]}. Use at most 3 actions, exact names from ACTIONS, and only the listed fields. Write targetName as it appears on a profile: transliterate Bangla names to English letters (রহিম -> Rahim) and drop honorifics like ভাই/আপা/আপু/bhai/apu; resolve "him/her/that" from Ctx. For questions about the user's own data use QUERY_CONTENT. If anything required is missing, ask one short question in plain text instead. For normal conversation reply in plain text.\nACTIONS: ${actions}\nROUTES: ${routes}`;
   return cachedActionPrompt;
 };
 

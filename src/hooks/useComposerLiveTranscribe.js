@@ -207,9 +207,14 @@ const toDeepgramLang = (langCode) =>
       ? "bn"
       : "en";
 
+// After "stop", the server re-transcribes the last utterance with Gemini
+// (~2s). Keep the socket open this long for that corrected final.
+const REFINED_FINAL_WAIT_MS = 4500;
+
 export default function useComposerLiveTranscribe({
   onFinal,
   onInterim,
+  onRefining,
 } = {}) {
   const [listening, setListening] = useState(false);
   const [browserEnglishSupported, setBrowserEnglishSupported] = useState(false);
@@ -229,9 +234,18 @@ export default function useComposerLiveTranscribe({
   const lastPartialRef = useRef("");
   const lastFinalRef = useRef({ text: "", at: 0 });
   const engineRef = useRef(null);
+  const onRefiningRef = useRef(onRefining);
+  // Server reports whether it re-checks each utterance with Gemini.
+  const refineRef = useRef(false);
+  const drainingRef = useRef(null);
 
   onFinalRef.current = onFinal;
   onInterimRef.current = onInterim;
+  onRefiningRef.current = onRefining;
+
+  /** True when finals come from the accurate server pass, not drafts. */
+  const awaitingRefinedFinal = () =>
+    engineRef.current === "deepgram" && refineRef.current;
 
   useEffect(() => {
     setBrowserEnglishSupported(Boolean(SpeechRecognitionCtor()));
@@ -250,7 +264,7 @@ export default function useComposerLiveTranscribe({
     }
     lastFinalRef.current = { text: next, at: now };
     lastPartialRef.current = "";
-    onFinalRef.current?.(next);
+    onFinalRef.current?.(next, { refined: refineRef.current });
   }, []);
   const startBrowserRef = useRef(null);
   const startDeepgramRef = useRef(null);
@@ -336,17 +350,45 @@ export default function useComposerLiveTranscribe({
   }, []);
 
   const stop = useCallback(() => {
+    const ws = wsRef.current;
+    const drain =
+      wantListenRef.current &&
+      engineRef.current === "deepgram" &&
+      refineRef.current &&
+      ws?.readyState === WebSocket.OPEN;
     wantListenRef.current = false;
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
+    if (ws?.readyState === WebSocket.OPEN) {
       try {
-        wsRef.current.send(JSON.stringify({ type: "stop" }));
+        ws.send(JSON.stringify({ type: "stop" }));
       } catch {
         /* ignore */
       }
     }
     stopBrowser();
     stopDeepgramHardware();
-    closeSocket();
+    if (drain) {
+      // Mic is already off; only wait for the corrected transcript.
+      wsRef.current = null;
+      ws.onclose = null;
+      ws.onerror = null;
+      const finish = () => {
+        if (drainingRef.current?.ws !== ws) return;
+        clearTimeout(drainingRef.current.timer);
+        drainingRef.current = null;
+        try {
+          ws.close();
+        } catch {
+          /* ignore */
+        }
+      };
+      drainingRef.current = {
+        ws,
+        finish,
+        timer: setTimeout(finish, REFINED_FINAL_WAIT_MS),
+      };
+    } else {
+      closeSocket();
+    }
     engineRef.current = null;
     lastPartialRef.current = "";
     setListening(false);
@@ -462,11 +504,27 @@ export default function useComposerLiveTranscribe({
   startBrowserRef.current = startBrowser;
 
   const handleSocketMessage = useCallback((event) => {
-    if (!wantListenRef.current) return;
+    const draining = drainingRef.current;
+    if (!wantListenRef.current && !draining) return;
     let payload;
     try {
       payload = JSON.parse(event.data);
     } catch {
+      return;
+    }
+    if (payload.type === "ready") {
+      refineRef.current = payload.refine === true;
+      return;
+    }
+    if (payload.type === "status") {
+      if (payload.message === "refining") onRefiningRef.current?.(true);
+      return;
+    }
+    if (payload.type === "final") onRefiningRef.current?.(false);
+    if (draining && payload.type === "final") {
+      const text = String(payload.text || "").trim();
+      if (text) emitFinal(text);
+      draining.finish();
       return;
     }
     if (payload.type === "error") {
@@ -487,10 +545,14 @@ export default function useComposerLiveTranscribe({
       const partial = String(payload.text || "").trim();
       if (partial) {
         lastPartialRef.current = partial;
-        if (payload.isFinal) {
+        // With Gemini refinement, Deepgram segment finals are only a preview;
+        // the real final arrives when the utterance ends.
+        if (payload.isFinal && !awaitingRefinedFinal()) {
           emitFinal(partial);
         } else {
-          onInterimRef.current?.(partial);
+          onInterimRef.current?.(partial, {
+            awaitingFinal: awaitingRefinedFinal(),
+          });
         }
       }
       return;
@@ -506,6 +568,7 @@ export default function useComposerLiveTranscribe({
 
   const startDeepgram = useCallback(
     async (language, existingStream = null) => {
+      refineRef.current = false;
       const socketUrls = speechSocketUrls();
       let stream = existingStream;
       let ws = null;
@@ -631,6 +694,7 @@ export default function useComposerLiveTranscribe({
         JSON.stringify({
           type: "start",
           language,
+          hint: store.getState()?.setting?.language === "bn" ? "bn" : "en",
           mimeType,
           encoding,
           sampleRate: TARGET_SAMPLE_RATE,

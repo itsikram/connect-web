@@ -39,19 +39,29 @@ const isGeminiTransientError = (status, data) => {
 };
 
 let activeGeminiKeyIndex = 0;
+// Used when the selected model has been retired by Google (HTTP 404).
+const GEMINI_FALLBACK_MODEL = "gemini-flash-latest";
 const GEMINI_FETCH_MS = 16000;
 // Gemini can spend several seconds starting a response, especially during
 // provider load. Keep JSON/action requests within a useful interactive budget.
 const GEMINI_JSON_MS = 20000;
 
-const geminiOutputCap = (json, maxTokens) =>
-  json ? Math.min(maxTokens, 128) : Math.min(maxTokens, 240);
+// Gemini 3 / "-latest" models may think even when asked not to, and thought
+// tokens count against maxOutputTokens. Without this allowance short replies
+// and JSON plans get cut off mid-way.
+const GEMINI_THINKING_ALLOWANCE = 512;
+const geminiThinksAnyway = (model = "") =>
+  /gemini-3|-latest$/i.test(String(model));
+const geminiOutputCap = (json, maxTokens, model = "") =>
+  (json ? Math.min(maxTokens, 128) : Math.min(maxTokens, 240)) +
+  (geminiThinksAnyway(model) ? GEMINI_THINKING_ALLOWANCE : 0);
 
 const isGeminiNotFound = (status, data) => {
   if (status === 404) return true;
   const message = String(data?.error?.message || "").toLowerCase();
   return (
     message.includes("not found") ||
+    message.includes("no longer available") ||
     message.includes("unknown model") ||
     message.includes("is not supported")
   );
@@ -153,6 +163,17 @@ const requestGemini = async ({
       }
     }
 
+    if (isGeminiNotFound(response.status, data) && model !== GEMINI_FALLBACK_MODEL) {
+      // Selected model retired by Google: retry once on a current model.
+      return requestGemini({
+        model: GEMINI_FALLBACK_MODEL,
+        apiKeys,
+        requestBody,
+        operationLabel,
+        timeoutMs,
+      });
+    }
+
     const errorMessage =
       data?.error?.message ||
       `${operationLabel} failed with HTTP ${response.status}`;
@@ -197,7 +218,7 @@ const completeGemini = async ({
       temperature,
       topK: json ? 4 : 12,
       topP: json ? 0.6 : 0.8,
-      maxOutputTokens: geminiOutputCap(json, maxTokens),
+      maxOutputTokens: geminiOutputCap(json, maxTokens, settings.model),
       candidateCount: 1,
       ...(json ? { responseMimeType: "application/json" } : {}),
     }),
@@ -222,7 +243,7 @@ const completeGemini = async ({
         temperature,
         topK: json ? 4 : 12,
         topP: json ? 0.6 : 0.8,
-        maxOutputTokens: geminiOutputCap(json, maxTokens),
+        maxOutputTokens: geminiOutputCap(json, maxTokens, settings.model),
         candidateCount: 1,
       }),
     };
@@ -355,7 +376,7 @@ const streamGemini = async ({
       temperature,
       topK: json ? 4 : 12,
       topP: json ? 0.6 : 0.8,
-      maxOutputTokens: geminiOutputCap(json, maxTokens),
+      maxOutputTokens: geminiOutputCap(json, maxTokens, settings.model),
       candidateCount: 1,
       ...(json ? { responseMimeType: "application/json" } : {}),
       ...(includeThinking && supportsGeminiThinkingOff(settings.model)
@@ -406,9 +427,9 @@ const streamGemini = async ({
         );
         if (
           isGeminiNotFound(response.status, data) &&
-          modelId !== "gemini-2.0-flash"
+          modelId !== GEMINI_FALLBACK_MODEL
         ) {
-          response = await fetch(geminiStreamUrl("gemini-2.0-flash", apiKey), {
+          response = await fetch(geminiStreamUrl(GEMINI_FALLBACK_MODEL, apiKey), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(requestBody),

@@ -6,6 +6,12 @@ import { isVoiceFiller } from "./agentFastPath";
 
 const AUTO_SEND_DELAY_MS = 800;
 const LIVE_TALK_SILENCE_MS = 2000;
+// The server's corrected (Gemini) final already marks the end of a sentence.
+const REFINED_FINAL_SEND_MS = 300;
+const VOICE_MODES = ["bn", "en", "auto"];
+const VOICE_MODE_LANG = { bn: "bn-BD", en: "en-US", auto: "auto" };
+const VOICE_MODE_LABEL = { bn: "Bangla", en: "English", auto: "Auto (Bangla + English)" };
+const VOICE_MODE_BADGE = { bn: "বাং", en: "EN", auto: "A" };
 
 const ChatInput = ({
   value,
@@ -39,6 +45,8 @@ const ChatInput = ({
   const onInterruptSpeechRef = useRef(onInterruptSpeech);
   const lastSentRef = useRef({ text: "", at: 0 });
   const [holdListen, setHoldListen] = useState(false);
+  // True while the server double-checks the last sentence with Gemini.
+  const [refining, setRefining] = useState(false);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -142,13 +150,15 @@ const ChatInput = ({
   );
 
   const handleTranscriptInterim = useCallback(
-    (text) => {
+    (text, meta = {}) => {
       if (!text) return;
       interruptIfUserSpoke(text);
       const next = mergeTranscriptChunk(transcribeBaseRef.current, text);
       onChangeRef.current(next);
       if (!liveTalkOnRef.current) return;
       if (isSpeakingRef.current) return;
+      // A corrected final is coming; never send the rough draft.
+      if (meta.awaitingFinal) return;
       if (looksLikeSpokenSentence(next)) {
         scheduleAutoSend(next, LIVE_TALK_SILENCE_MS);
       }
@@ -157,7 +167,8 @@ const ChatInput = ({
   );
 
   const handleTranscriptFinal = useCallback(
-    (text) => {
+    (text, meta = {}) => {
+      setRefining(false);
       if (!text) return;
       interruptIfUserSpoke(text);
       const next = mergeTranscriptChunk(transcribeBaseRef.current, text);
@@ -175,7 +186,10 @@ const ChatInput = ({
       onChangeRef.current(next);
       if (!liveTalkOnRef.current) return;
       if (isSpeakingRef.current) return;
-      scheduleAutoSend(next, LIVE_TALK_SILENCE_MS);
+      scheduleAutoSend(
+        next,
+        meta.refined ? REFINED_FINAL_SEND_MS : LIVE_TALK_SILENCE_MS,
+      );
     },
     [scheduleAutoSend],
   );
@@ -188,9 +202,10 @@ const ChatInput = ({
   } = useComposerLiveTranscribe({
     onFinal: handleTranscriptFinal,
     onInterim: handleTranscriptInterim,
+    onRefining: (active) => setRefining(Boolean(active)),
   });
 
-  const langCode = voiceMode === "bn" ? "bn-BD" : "en-US";
+  const langCode = VOICE_MODE_LANG[voiceMode] || "bn-BD";
   const isBanglaVoice = String(transcribeLang || langCode).startsWith("bn");
   const isBusy =
     isLoading || isStreaming || holdListen || (liveTalkOn && isSpeaking);
@@ -329,9 +344,35 @@ const ChatInput = ({
     }
   }, [value]);
 
+  const startLiveTalk = async () => {
+    if (!liveTalkOn && navigator?.mediaDevices?.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        stream.getTracks().forEach((track) => track.stop());
+      } catch (error) {
+        const insecure =
+          typeof window !== "undefined" && window.isSecureContext === false;
+        window.alert(
+          insecure
+            ? "Microphone is blocked on this page. Open http://localhost:3000 or use HTTPS, then allow the microphone."
+            : "Could not access the microphone. Allow it in the browser prompt, then try again.",
+        );
+        return;
+      }
+    }
+    onToggleLiveTalk?.();
+  };
+
   const toggleVoiceInput = async () => {
     if (liveTalkOn) {
       onToggleLiveTalk?.();
+      return;
+    }
+    if (autoRunActions && !isListening) {
+      clearAutoSendTimeout();
+      await startLiveTalk();
       return;
     }
     if (isListening) {
@@ -345,8 +386,9 @@ const ChatInput = ({
   const toggleVoiceMode = () => {
     if (isListening || isBusy) return;
     setVoiceMode((mode) => {
-      const next = mode === "bn" ? "en" : "bn";
-      setTranscribeLang(next === "bn" ? "bn-BD" : "en-US");
+      const next =
+        VOICE_MODES[(VOICE_MODES.indexOf(mode) + 1) % VOICE_MODES.length];
+      setTranscribeLang(VOICE_MODE_LANG[next]);
       return next;
     });
   };
@@ -357,7 +399,9 @@ const ChatInput = ({
     onChange(nextValue);
   };
 
-  const talkPhase = liveTalkOn
+  const talkPhase = refining
+    ? "understanding"
+    : liveTalkOn
     ? isLoading || isStreaming || holdListen
       ? "thinking"
       : isSpeaking
@@ -369,17 +413,20 @@ const ChatInput = ({
       ? "dictating"
       : null;
 
+  const voiceName = VOICE_MODE_LABEL[voiceMode] || "Bangla";
   const talkLabel =
-    talkPhase === "speaking"
+    talkPhase === "understanding"
+      ? "Understanding what you said…"
+      : talkPhase === "speaking"
       ? "Speaking… pause 2 seconds after a sentence to send"
       : talkPhase === "thinking"
         ? "Thinking…"
         : talkPhase === "connecting"
           ? "Starting mic…"
           : talkPhase === "listening"
-            ? `Listening · ${voiceMode === "bn" ? "Bangla" : "English"} — pause 2 seconds to send`
+            ? `Listening · ${voiceName} — just speak, I'll act when you pause`
             : talkPhase === "dictating"
-              ? `Live ${voiceMode === "bn" ? "Bangla" : "English"}`
+              ? `Live ${voiceName}`
               : "";
 
   return (
@@ -389,12 +436,17 @@ const ChatInput = ({
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.15 }}
     >
-      {isListening && !liveTalkOn ? (
+      {refining && !liveTalkOn ? (
+        <div className="ai-agent-transcribe-bar phase-thinking" aria-live="polite">
+          <span className="ai-agent-transcribe-dot" aria-hidden="true" />
+          <span className="ai-agent-transcribe-label">{talkLabel}</span>
+        </div>
+      ) : isListening && !liveTalkOn ? (
         <div className="ai-agent-transcribe-bar" aria-live="polite">
           <span className="ai-agent-transcribe-dot" aria-hidden="true" />
           <div className="ai-agent-transcribe-copy">
             <span className="ai-agent-transcribe-label">
-              Listening · {isBanglaVoice ? "Bangla" : "English"}
+              Listening · {voiceName}
             </span>
             <span className="ai-agent-transcribe-interim">
               Speak now — text appears in the message box
@@ -427,14 +479,10 @@ const ChatInput = ({
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           type="button"
-          title={
-            voiceMode === "bn"
-              ? "Voice language: Bangla (tap for English)"
-              : "Voice language: English (tap for Bangla)"
-          }
-          aria-label="Toggle voice input language"
+          title={`Voice language: ${voiceName} (tap to change)`}
+          aria-label={`Voice language ${voiceName}. Tap to change.`}
         >
-          {voiceMode === "bn" ? "বাং" : "EN"}
+          {VOICE_MODE_BADGE[voiceMode] || "বাং"}
         </motion.button>
 
         <motion.button
@@ -448,9 +496,9 @@ const ChatInput = ({
             isSpeechSupported
               ? isListening && !liveTalkOn
                 ? "Stop live transcription"
-                : voiceMode === "bn"
-                  ? "Dictate in Bangla"
-                  : "Dictate in English"
+                : autoRunActions
+                  ? `Talk hands-free (${voiceName}) — I'll speak and run actions`
+                  : `Dictate (${voiceName})`
               : "Voice input is not supported in this browser"
           }
           aria-label={
@@ -464,26 +512,8 @@ const ChatInput = ({
 
         <motion.button
           className={`ai-agent-talk-btn ${liveTalkOn ? "live" : ""}`}
-          onClick={async () => {
-            if (!liveTalkOn && navigator?.mediaDevices?.getUserMedia) {
-              try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                  audio: true,
-                });
-                stream.getTracks().forEach((track) => track.stop());
-              } catch (error) {
-                const insecure =
-                  typeof window !== "undefined" &&
-                  window.isSecureContext === false;
-                window.alert(
-                  insecure
-                    ? "Microphone is blocked on this page. Open http://localhost:3000 or use HTTPS, then allow the microphone."
-                    : "Could not access the microphone. Allow it in the browser prompt, then try again.",
-                );
-                return;
-              }
-            }
-            onToggleLiveTalk?.();
+          onClick={() => {
+            void startLiveTalk();
           }}
           disabled={!isSpeechSupported}
           whileHover={{ scale: 1.05 }}

@@ -29,14 +29,13 @@ export const AI_PROVIDERS = {
     keyLabel: "Gemini API key",
     keyHelp: "From Google AI Studio.",
     keyPlaceholder: "AIza... or AQ...",
-    defaultModel: "gemini-2.5-flash-lite",
+    defaultModel: "gemini-3.8-flash",
     models: [
-      { id: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite (cost-safe)" },
-      { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
-      { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
+      { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash (recommended)" },
+      { id: "gemini-flash-latest", label: "Gemini Flash (latest)" },
       { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash" },
-      { id: "gemini-1.5-flash", label: "Gemini 1.5 Flash" },
-      { id: "gemini-1.5-pro", label: "Gemini 1.5 Pro" },
+      { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite (fastest)" },
+      { id: "gemini-flash-lite-latest", label: "Gemini Flash-Lite (latest)" },
     ],
   },
   openai: {
@@ -198,10 +197,23 @@ export const resetAgentSettings = () => {
 
 export const getProviderMeta = (providerId) => AI_PROVIDERS[normalizeProvider(providerId)];
 
+// Google retired these for new API keys; saved choices fall back to the default.
+const RETIRED_GEMINI_MODELS = new Set([
+  "gemini-1.5-flash",
+  "gemini-1.5-pro",
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-lite",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+]);
+
 export const resolveModelId = (settings = getAgentSettings()) => {
   const provider = normalizeProvider(settings.provider);
   const meta = getProviderMeta(provider);
-  const selected = String(settings.models?.[provider] || "").trim();
+  let selected = String(settings.models?.[provider] || "").trim();
+  if (provider === "gemini" && RETIRED_GEMINI_MODELS.has(selected)) {
+    selected = meta.defaultModel;
+  }
   const catalog = provider === "cursor" ? getCursorModelOptions() : meta.models;
   if (provider === "cursor") {
     const legacy = { auto: "default", "composer-2": "composer-2.5", "claude-4-sonnet-thinking": "claude-sonnet-4-5", "gpt-5": "gpt-5.4" };

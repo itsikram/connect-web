@@ -707,6 +707,31 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         }
       };
 
+      // A spoken/typed "yes"/"no" answers the latest confirmation prompt.
+      const latestMessage = messagesRef.current[messagesRef.current.length - 1];
+      // Voice transcripts often end with "।" (Bangla full stop).
+      const shortAnswer = originalText.replace(/[।.!?\s]+$/u, "");
+      if (
+        latestMessage?.confirmPrompt &&
+        Array.isArray(latestMessage.actions) &&
+        (isAffirmativeFollowUp(shortAnswer) || isCancelFollowUp(shortAnswer))
+      ) {
+        const choice = isAffirmativeFollowUp(shortAnswer)
+          ? latestMessage.actions[0]
+          : latestMessage.actions[latestMessage.actions.length - 1];
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === latestMessage.id ? { ...msg, confirmPrompt: false } : msg,
+          ),
+        );
+        try {
+          await choice?.onClick?.();
+        } finally {
+          if (stillCurrent()) setIsLoading(false);
+        }
+        return;
+      }
+
       if (pendingIntentRef.current && isCancelFollowUp(originalText)) {
         pendingIntentRef.current = null;
         addMessage({
@@ -1076,7 +1101,8 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             const target = intent.searchQuery || intent.label || "";
             addMessage({
               type: "agent",
-              content: `${meta.label}${target ? `: "${target}"` : ""}? This can't be undone.`,
+              confirmPrompt: true,
+              content: `${meta.label}${target ? `: "${target}"` : ""}? This can't be undone. Say "yes" or tap below.`,
               // Two buttons on purpose: single-button messages auto-run.
               actions: [
                 {
