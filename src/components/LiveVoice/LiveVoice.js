@@ -48,6 +48,18 @@ const LiveVoice = ({ myId }) => {
   const [connectionQuality, setConnectionQuality] = useState(4);
   const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
   const [microphonePending, setMicrophonePending] = useState(false);
+  // The friend's device is in the channel / their voice is arriving.
+  const [peerJoined, setPeerJoined] = useState(false);
+  const [remoteAudio, setRemoteAudio] = useState(false);
+  // Streaming = voice is actually flowing to (or from) the friend's device,
+  // not just that this browser joined the channel.
+  const isStreaming =
+    isActive &&
+    (role === "sender"
+      ? peerJoined && microphoneEnabled
+      : remoteAudio || (peerJoined && microphoneEnabled));
+  const streamingRef = useRef(false);
+  streamingRef.current = isStreaming;
 
   const clientRef = useRef(null);
   const localTrackRef = useRef(null);
@@ -82,6 +94,7 @@ const LiveVoice = ({ myId }) => {
           peerId: peerIdRef.current,
           channelName: channelRef.current,
           role: roleRef.current,
+          streaming: streamingRef.current,
           ...overrides,
         },
       }),
@@ -153,6 +166,8 @@ const LiveVoice = ({ myId }) => {
       setConnectionQuality(4);
       setMicrophoneEnabled(false);
       setMicrophonePending(false);
+      setPeerJoined(false);
+      setRemoteAudio(false);
 
       broadcastStatus({
         active: false,
@@ -160,6 +175,7 @@ const LiveVoice = ({ myId }) => {
         duration: 0,
         peerId: null,
         channelName: null,
+        streaming: false,
       });
     },
     [broadcastStatus, clearDurationTimer, ensureLeave, peerFromChannel],
@@ -175,12 +191,23 @@ const LiveVoice = ({ myId }) => {
       }
     };
 
+    client.on("user-joined", () => {
+      clearUserLeftTimer();
+      setPeerJoined(true);
+    });
+
+    client.on("user-unpublished", (_user, mediaType) => {
+      if (mediaType === "audio") setRemoteAudio(false);
+    });
+
     client.on("user-published", async (user, mediaType) => {
       clearUserLeftTimer();
+      setPeerJoined(true);
       if (mediaType !== "audio") return;
       try {
         await client.subscribe(user, "audio");
         playRemoteAudioTrack(user.audioTrack);
+        setRemoteAudio(true);
       } catch (e) {
         console.warn("Live voice subscribe error:", e);
       }
@@ -193,6 +220,8 @@ const LiveVoice = ({ myId }) => {
     });
 
     client.on("user-left", () => {
+      setPeerJoined(false);
+      setRemoteAudio(false);
       // The app WebView can leave+rejoin while spinning up. Hang up only
       // after the peer stays gone, and only once we are actually live.
       if (!isActiveRef.current) return;
@@ -208,11 +237,13 @@ const LiveVoice = ({ myId }) => {
 
   const subscribeExistingRemotes = useCallback(async (client) => {
     if (!client) return;
+    if ((client.remoteUsers || []).length) setPeerJoined(true);
     for (const user of client.remoteUsers || []) {
       if (!user?.hasAudio) continue;
       try {
         await client.subscribe(user, "audio");
         playRemoteAudioTrack(user.audioTrack);
+        setRemoteAudio(true);
       } catch (e) {
         console.warn("Live voice subscribe existing user error:", e);
       }
@@ -255,6 +286,8 @@ const LiveVoice = ({ myId }) => {
       setIsConnecting(true);
       setIsActive(false);
       setDuration(0);
+      setPeerJoined(false);
+      setRemoteAudio(false);
       broadcastStatus({
         active: false,
         connecting: true,
@@ -466,6 +499,12 @@ const LiveVoice = ({ myId }) => {
     };
   }, [myId]);
 
+  // Let the chat UI know as soon as voice starts or stops flowing.
+  useEffect(() => {
+    if (!isActiveRef.current) return;
+    broadcastStatus({ streaming: isStreaming });
+  }, [broadcastStatus, isStreaming]);
+
   useEffect(() => {
     return () => {
       stopSessionRef.current(false);
@@ -486,6 +525,8 @@ const LiveVoice = ({ myId }) => {
       onEnableMicrophone={() => enableMicrophone()}
       microphoneEnabled={microphoneEnabled}
       microphonePending={microphonePending}
+      isStreaming={isStreaming}
+      peerJoined={peerJoined}
     />
   ) : null;
 };

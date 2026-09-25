@@ -15,7 +15,19 @@ const LiveVoiceModal = ({
   microphoneEnabled = false,
   microphonePending = false,
   connectionQuality = 4,
+  // Voice is actually flowing to/from the friend's device.
+  isStreaming = false,
+  peerJoined = false,
 }) => {
+  // Joined but voice not flowing yet: the friend's device has not connected
+  // (or, for the listener, has not started sending).
+  const waiting = isActive && !isStreaming;
+  const waitingLabel =
+    role === "sender"
+      ? peerJoined
+        ? "Starting your microphone..."
+        : `Waiting for ${connectName || "your friend"} to connect...`
+      : `Waiting for ${connectName || "your friend"}'s voice...`;
   const formatDuration = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -57,17 +69,17 @@ const LiveVoiceModal = ({
         <div className="live-voice-modal-content">
           <div className="live-voice-status-container">
             <div className="live-voice-icon-container">
-              {isConnecting ? (
+              {isConnecting || waiting ? (
                 <div className="live-voice-connecting">
                   <div className="live-voice-spinner-ring"></div>
                   <i className="fas fa-phone"></i>
                 </div>
-              ) : isActive ? (
+              ) : isStreaming ? (
                 <div className="live-voice-active">
                   <div className="live-voice-ripple"></div>
                   <div className="live-voice-ripple delay-1"></div>
                   <div className="live-voice-ripple delay-2"></div>
-                  <i className="fas fa-phone"></i>
+                  <i className="fas fa-volume-up"></i>
                 </div>
               ) : (
                 <div className="live-voice-inactive">
@@ -83,10 +95,15 @@ const LiveVoiceModal = ({
                     <i className="fas fa-circle-notch fa-spin"></i>
                     Connecting...
                   </span>
-                ) : isActive ? (
+                ) : waiting ? (
+                  <span className="status-connecting">
+                    <i className="fas fa-circle-notch fa-spin"></i>
+                    {waitingLabel}
+                  </span>
+                ) : isStreaming ? (
                   <span className="status-active">
-                    <i className="fas fa-circle"></i>
-                    Live Voice Active
+                    <i className="fas fa-volume-up"></i>
+                    Streaming
                   </span>
                 ) : (
                   <span className="status-inactive">
@@ -177,11 +194,18 @@ const LiveVoiceModal = ({
 
             <div className="live-voice-detail-item">
               <div className="detail-icon">
-                <i className="fas fa-network-wired"></i>
+                <i className={`fas ${isStreaming ? "fa-volume-up" : "fa-network-wired"}`}></i>
               </div>
               <div className="detail-content">
                 <span className="detail-text">
-                  Connection: {isActive ? "Active" : isConnecting ? "Connecting" : "Disconnected"}
+                  Connection:{" "}
+                  {isStreaming
+                    ? "Streaming"
+                    : waiting
+                      ? "Waiting"
+                      : isConnecting
+                        ? "Connecting"
+                        : "Disconnected"}
                 </span>
               </div>
             </div>
