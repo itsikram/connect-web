@@ -12,6 +12,19 @@ const VOICE_MODES = ["bn", "en", "auto"];
 const VOICE_MODE_LANG = { bn: "bn-BD", en: "en-US", auto: "auto" };
 const VOICE_MODE_LABEL = { bn: "Bangla", en: "English", auto: "Auto (Bangla + English)" };
 const VOICE_MODE_BADGE = { bn: "বাং", en: "EN", auto: "A" };
+const VOICE_MODE_STORAGE_KEY = "connect.aiAgent.voiceMode";
+
+// Auto (Bangla + English together) by default, so nobody has to pick a
+// language before speaking; the last choice is remembered.
+const readVoiceMode = () => {
+  try {
+    const saved = window.localStorage.getItem(VOICE_MODE_STORAGE_KEY);
+    if (VOICE_MODES.includes(saved)) return saved;
+  } catch {
+    /* storage unavailable */
+  }
+  return "auto";
+};
 
 const ChatInput = ({
   value,
@@ -28,8 +41,10 @@ const ChatInput = ({
   speechSupported = true,
 }) => {
   const [isFocused, setIsFocused] = useState(false);
-  const [voiceMode, setVoiceMode] = useState("bn");
-  const [transcribeLang, setTranscribeLang] = useState("bn-BD");
+  const [voiceMode, setVoiceMode] = useState(readVoiceMode);
+  const [transcribeLang, setTranscribeLang] = useState(
+    () => VOICE_MODE_LANG[readVoiceMode()],
+  );
 
   const inputRef = useRef(null);
   const onChangeRef = useRef(onChange);
@@ -389,6 +404,11 @@ const ChatInput = ({
       const next =
         VOICE_MODES[(VOICE_MODES.indexOf(mode) + 1) % VOICE_MODES.length];
       setTranscribeLang(VOICE_MODE_LANG[next]);
+      try {
+        window.localStorage.setItem(VOICE_MODE_STORAGE_KEY, next);
+      } catch {
+        /* storage unavailable */
+      }
       return next;
     });
   };
@@ -546,9 +566,11 @@ const ChatInput = ({
                   ? "Thinking…"
                   : "Listening… ask anything or give a command"
               : isListening
-                ? isBanglaVoice
-                  ? "Listening in Bangla…"
-                  : "Listening in English…"
+                ? voiceMode === "auto"
+                  ? "Listening… বাংলা or English"
+                  : isBanglaVoice
+                    ? "Listening in Bangla…"
+                    : "Listening in English…"
                 : "Talk live, or type: 'go to settings', 'how do I handle stress?'…"
           }
           className="ai-agent-input"

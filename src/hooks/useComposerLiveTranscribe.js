@@ -200,6 +200,19 @@ const openSpeechSocket = (socketUrl, onMessage) =>
     ws.addEventListener("close", handleClose);
   });
 
+/**
+ * Browser recognizer language used when the speech server fails. Auto falls
+ * back to the app language, since the browser cannot detect it itself.
+ */
+const browserFallbackLang = (langCode) => {
+  const value = String(langCode || "").toLowerCase();
+  if (value.startsWith("bn")) return langCode;
+  if (value === "auto") {
+    return store.getState()?.setting?.language === "bn" ? "bn-BD" : "en-US";
+  }
+  return null;
+};
+
 const toDeepgramLang = (langCode) =>
   String(langCode || "").toLowerCase() === "auto"
     ? "multi"
@@ -504,7 +517,12 @@ export default function useComposerLiveTranscribe({
   startBrowserRef.current = startBrowser;
 
   const handleSocketMessage = useCallback((event) => {
-    const draining = drainingRef.current;
+    // Only the socket still draining its last final counts as draining; a
+    // new session's socket must not be mistaken for it.
+    const draining =
+      drainingRef.current && event?.target === drainingRef.current.ws
+        ? drainingRef.current
+        : null;
     if (!wantListenRef.current && !draining) return;
     let payload;
     try {
@@ -521,20 +539,18 @@ export default function useComposerLiveTranscribe({
       return;
     }
     if (payload.type === "final") onRefiningRef.current?.(false);
+    if (draining && payload.type !== "final") return;
     if (draining && payload.type === "final") {
       const text = String(payload.text || "").trim();
       if (text) emitFinal(text);
-      draining.finish();
+      // Earlier sentences may still be finishing; "done" marks the last one.
+      if (payload.done) draining.finish();
       return;
     }
     if (payload.type === "error") {
       console.warn("[speech]", payload.message || "Speech recognition failed");
-      const lang = langRef.current;
-      if (
-        String(lang).toLowerCase().startsWith("bn") &&
-        SpeechRecognitionCtor() &&
-        engineRef.current === "deepgram"
-      ) {
+      const lang = browserFallbackLang(langRef.current);
+      if (lang && SpeechRecognitionCtor() && engineRef.current === "deepgram") {
         stopDeepgramHardware();
         closeSocket();
         startBrowserRef.current?.(lang)?.catch(() => {});
@@ -558,6 +574,12 @@ export default function useComposerLiveTranscribe({
       return;
     }
     if (payload.type === "final" || payload.type === "utterance-end") {
+      // Gemini heard no speech (or the draft was a stale tail): never fall
+      // back to the rough live text.
+      if (payload.empty || (refineRef.current && !payload.text)) {
+        lastPartialRef.current = "";
+        return;
+      }
       const finalText = String(
         payload.text || lastPartialRef.current || "",
       ).trim();
@@ -603,14 +625,11 @@ export default function useComposerLiveTranscribe({
       wantListenRef.current = true;
 
       ws.onerror = () => {
-        if (
-          wantListenRef.current &&
-          String(langRef.current).toLowerCase().startsWith("bn") &&
-          SpeechRecognitionCtor()
-        ) {
+        const fallbackLang = browserFallbackLang(langRef.current);
+        if (wantListenRef.current && fallbackLang && SpeechRecognitionCtor()) {
           stopDeepgramHardware();
           closeSocket();
-          startBrowserRef.current?.(langRef.current)?.catch(() => {});
+          startBrowserRef.current?.(fallbackLang)?.catch(() => {});
           return;
         }
         stop();
@@ -618,12 +637,10 @@ export default function useComposerLiveTranscribe({
       ws.onclose = () => {
         wsRef.current = null;
         if (!wantListenRef.current || engineRef.current !== "deepgram") return;
-        if (
-          String(langRef.current).toLowerCase().startsWith("bn") &&
-          SpeechRecognitionCtor()
-        ) {
+        const fallbackLang = browserFallbackLang(langRef.current);
+        if (fallbackLang && SpeechRecognitionCtor()) {
           stopDeepgramHardware();
-          startBrowserRef.current?.(langRef.current)?.catch(() => {});
+          startBrowserRef.current?.(fallbackLang)?.catch(() => {});
           return;
         }
         stop();
