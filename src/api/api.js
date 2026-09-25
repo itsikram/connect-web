@@ -12,7 +12,7 @@ import { normalizeCloudinaryUrl } from "../utils/profileImage";
 // Production server URLs for load balancing
 // Add all your Render server URLs here
 const prodServerUrls = [
-  "https://connect-server-7h7d.onrender.com",
+  "https://connect-server-hq4q.onrender.com",
   // Add more Render server URLs here, for example:
   // "https://connect-server-def456.onrender.com",
   // "https://connect-server-ghi789.onrender.com",
@@ -21,7 +21,7 @@ const prodServerUrls = [
 // const prodServerUrls = [
 //     "https://connect-server-1.onrender.com",
 //     // Add more Render server URLs here, for example:
-//     "https://connect-server-7h7d.onrender.com",
+//     "https://connect-server-hq4q.onrender.com",
 //     // "https://connect-server-def456.onrender.com",
 //     // "https://connect-server-ghi789.onrender.com",
 //   ];

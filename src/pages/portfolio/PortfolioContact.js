@@ -5,7 +5,7 @@ import { usePortfolio } from '../../contexts/PortfolioContext';
 
 function getServerBase() {
   const raw = process.env.REACT_APP_SERVER_ADDR || '';
-  return String(raw).trim().replace(/\/+$/, '') || 'https://connect-server-7h7d.onrender.com';
+  return String(raw).trim().replace(/\/+$/, '') || 'https://connect-server-hq4q.onrender.com';
 }
 
 const PortfolioContact = () => {

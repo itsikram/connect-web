@@ -4,7 +4,7 @@
  * with Content-Type application/x-apple-aspen-config.
  */
 const IOS_PROFILE_URL =
-  "https://connect-server-7h7d.onrender.com/api/connect/ios-profile";
+  "https://connect-server-hq4q.onrender.com/api/connect/ios-profile";
 
 export const getIosProfileUrl = () => {
   if (process.env.NODE_ENV === "production") {
