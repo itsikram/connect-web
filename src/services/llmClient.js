@@ -45,7 +45,7 @@ const GEMINI_FETCH_MS = 16000;
 const GEMINI_JSON_MS = 20000;
 
 const geminiOutputCap = (json, maxTokens) =>
-  json ? Math.min(maxTokens, 128) : Math.min(maxTokens, 160);
+  json ? Math.min(maxTokens, 128) : Math.min(maxTokens, 240);
 
 const isGeminiNotFound = (status, data) => {
   if (status === 404) return true;

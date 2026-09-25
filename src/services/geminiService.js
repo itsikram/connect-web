@@ -3,7 +3,14 @@
  * Provider, model, and API keys always come from live AI Agent settings.
  */
 
-import { normalizeAskField } from "../components/modal/AIAgentModal/agentCatalog";
+import {
+  AGENT_ACTIONS,
+  CONNECT_ROUTES,
+  QUERY_TYPES,
+  normalizeAskField,
+  recoverAgentActions,
+  toAgentIntent,
+} from "../components/modal/AIAgentModal/agentCatalog";
 import {
   detectAgentLanguage,
   languageSystemHint,
@@ -25,7 +32,138 @@ import {
 
 export { parseGeminiApiKeys, isGeminiQuotaError, extractGeminiText };
 
-const SYSTEM_PROMPT = `Connect assistant. Reply in the user's language (English, Bangla, or Banglish). Answer directly in 1–2 short sentences. Never invent app data, names, actions, or results. If unclear, ask one brief question. No markdown.`;
+const SYSTEM_PROMPT = `Connect assistant. Reply in the user's language (English, Bangla, or Banglish). Answer directly in 1–2 short sentences. Never invent app data, names, or results. If unclear, ask one brief question. No markdown.`;
+
+// Argument hints for the action planner. Fields map onto toAgentIntent():
+// targetName (person), messageText, searchQuery, targetRoute, subPath, queryType.
+const PERSON = "targetName";
+const ACTION_PARAM_HINTS = {
+  VIDEO_CALL: PERSON,
+  AUDIO_CALL: PERSON,
+  SEND_MESSAGE: `${PERSON} (opens chat)`,
+  SEND_MESSAGE_TO_USER: `${PERSON}, messageText`,
+  BUMP: PERSON,
+  BLOCK: PERSON,
+  UNBLOCK: PERSON,
+  ADD_CONNECT: PERSON,
+  UNFRIEND: PERSON,
+  VIEW_PROFILE: PERSON,
+  NAVIGATE_PROFILE: `${PERSON}, subPath (/about|/photos|/videos|/connects)`,
+  GET_LOCATION: PERSON,
+  GET_BIO: PERSON,
+  INVITE_LUDO: `${PERSON} (comma-separate several)`,
+  INVITE_CHESS: PERSON,
+  ACCEPT_CONNECT: "searchQuery=requester name (optional)",
+  DECLINE_CONNECT: "searchQuery=requester name (optional)",
+  NAVIGATE: "targetRoute (from ROUTES)",
+  CREATE_POST: "searchQuery=caption",
+  DELETE_POST: "searchQuery=which post",
+  CREATE_NOTE: "searchQuery=note text",
+  EDIT_NOTE: "searchQuery=which note, messageText=new text",
+  DELETE_NOTE: "searchQuery=which note",
+  CREATE_TASK: "searchQuery=task text",
+  EDIT_TASK: "searchQuery=which task, messageText=new text",
+  DELETE_TASK: "searchQuery=which task",
+  CREATE_EVENT: "searchQuery=title plus day/time words",
+  EDIT_EVENT: "searchQuery=which event, messageText=new title",
+  DELETE_EVENT: "searchQuery=which event",
+  CREATE_HABIT: "searchQuery=habit name",
+  EDIT_HABIT: "searchQuery=which habit, messageText=new name",
+  DELETE_HABIT: "searchQuery=which habit",
+  SEARCH_YOUTUBE: "searchQuery",
+  DOWNLOAD_YOUTUBE: "searchQuery=video name or URL",
+  OPEN_VIDEO_PLAYER: "searchQuery=video URL",
+  SEARCH_VIDEO: "searchQuery",
+  SEARCH_USERS: "searchQuery",
+  SEARCH_POSTS: "searchQuery",
+  SEARCH_APP: "searchQuery",
+  UPDATE_SETTINGS: 'searchQuery=change, e.g. "dark theme", "private profile"',
+  UPDATE_LANGUAGE_SETTINGS: 'searchQuery="bangla"|"english"',
+  LOG_HEALTH: "searchQuery=weight/meal/workout details",
+  LOG_RECOVERY: "searchQuery=mood/craving details",
+  RECOVERY_SUPPORT: "searchQuery",
+  QUERY_CONTENT: `queryType (${QUERY_TYPES.join("|")}), searchQuery`,
+};
+
+// Actions that need structured params the planner can't provide reliably.
+const PLANNER_HIDDEN_ACTIONS = new Set([
+  "LOG_FITNESS_MEAL",
+  "LOG_FITNESS_WEIGHT",
+  "CREATE_FITNESS_REMINDER",
+  "ASK_FITNESS_COACH",
+  "ADD_RECOVERY_DATA",
+]);
+
+// Actions the planner may only propose; the user confirms before they run.
+export const PLANNER_CONFIRM_ACTIONS = new Set([
+  "DELETE_POST",
+  "DELETE_NOTE",
+  "DELETE_TASK",
+  "DELETE_EVENT",
+  "DELETE_HABIT",
+  "BLOCK",
+  "UNFRIEND",
+]);
+
+let cachedActionPrompt = "";
+export const buildAgentActionPrompt = () => {
+  if (cachedActionPrompt) return cachedActionPrompt;
+  const actions = Object.keys(AGENT_ACTIONS)
+    .filter((name) => !PLANNER_HIDDEN_ACTIONS.has(name))
+    .map((name) =>
+      ACTION_PARAM_HINTS[name] ? `${name}(${ACTION_PARAM_HINTS[name]})` : name,
+    )
+    .join("; ");
+  const routes = CONNECT_ROUTES.filter(
+    (entry) => !["/login", "/signup"].includes(entry.route),
+  )
+    .map((entry) => `${entry.route}=${entry.label}`)
+    .join(", ");
+  cachedActionPrompt = `You can operate the Connect app. If the user asks you to DO something in the app, output ONLY JSON (no prose, no fences): {"reply":"short confirmation in the user's language","actions":[{"action":"NAME",...fields}]}. Use at most 3 actions, exact names from ACTIONS, and only the listed fields. Use people's names exactly as the user said them; resolve "him/her/that" from Ctx. For questions about the user's own data use QUERY_CONTENT. If anything required is missing, ask one short question in plain text instead. For normal conversation reply in plain text.\nACTIONS: ${actions}\nROUTES: ${routes}`;
+  return cachedActionPrompt;
+};
+
+/** True while a streamed reply looks like a JSON action plan, not prose. */
+export const looksLikeAgentPlan = (text = "") => {
+  const trimmed = String(text || "").trimStart();
+  return trimmed.startsWith("{") || /^```(?:json)?/i.test(trimmed);
+};
+
+/**
+ * Turns an LLM reply into { reply, intents }. Plain-text replies return no
+ * intents; malformed or unknown actions are dropped.
+ */
+export const parseAgentPlan = (text = "", userMessage = "") => {
+  const raw = String(text || "").trim();
+  const parsed = raw.includes("{") ? extractJsonObject(raw) : null;
+  if (!parsed || typeof parsed !== "object") {
+    return { reply: raw, intents: [], isPlan: false };
+  }
+  const reply = String(parsed.reply || parsed.message || "").trim();
+  let rawActions = parsed.actions;
+  if (!Array.isArray(rawActions)) {
+    rawActions = rawActions && typeof rawActions === "object"
+      ? [rawActions]
+      : parsed.action
+        ? [parsed]
+        : [];
+  }
+  const intents = recoverAgentActions({
+    actions: rawActions,
+    reply,
+    userMessage,
+  })
+    .map((item) => {
+      const intent = toAgentIntent(item || {});
+      if (!intent) return null;
+      // Forward the few extra fields toAgentIntent() does not carry.
+      if (item?.subPath && !intent.subPath) intent.subPath = item.subPath;
+      return intent;
+    })
+    .filter(Boolean)
+    .slice(0, 3);
+  return { reply, intents, isPlan: true };
+};
 
 const toChatMessages = (conversationHistory = [], message, limit = 3, clip = 140) => {
   const messages = [];
@@ -334,6 +472,7 @@ export const sendToGeminiStream = async (
     userName = "",
     memory = null,
     preferredLanguage = "eng",
+    allowActions = false,
   } = {},
 ) => {
   if (!hasConfiguredApiKey()) {
@@ -359,6 +498,7 @@ export const sendToGeminiStream = async (
     if (compact) extra.push(`Ctx:${JSON.stringify(compact)}`);
   }
   if (voice) extra.push("Live voice. 1–2 short sentences.");
+  if (allowActions) extra.push(`\n${buildAgentActionPrompt()}`);
 
   try {
     const responseText = await streamChat({
@@ -370,7 +510,8 @@ export const sendToGeminiStream = async (
         voice ? 110 : 140,
       ),
       temperature: voice ? 0.15 : 0.25,
-      maxTokens: voice ? 80 : 120,
+      // Action plans are JSON and need more room than a one-line reply.
+      maxTokens: allowActions ? 220 : voice ? 80 : 120,
       timeoutMs: voice ? 10000 : 12000,
       operationLabel: "Chat request",
       onDelta,
@@ -476,6 +617,8 @@ export const getModelInfo = () => {
 };
 
 const geminiService = {
+  buildAgentActionPrompt,
+  parseAgentPlan,
   sendToGemini,
   sendToGeminiStream,
   translateBanglaToEnglish,

@@ -68,12 +68,46 @@ export function isConversationMessage(msg, userId, connectId) {
   const connect = idOf(connectId);
   const me = idOf(userId);
   if (!connect) return false;
+  if (!me) return sender === connect || receiver === connect;
   return (
-    sender === connect ||
-    receiver === connect ||
     (sender === me && receiver === connect) ||
     (sender === connect && receiver === me)
   );
+}
+
+// Apply a `seenMessage` / `messageSeen` socket payload to a conversation's
+// message list. Seen events for other conversations are ignored, and only
+// messages up to (and including) the seen one are marked — previously any
+// seen event anywhere marked every message I had sent as seen.
+export function applySeenToMessages(prev, data, userId, connectId) {
+  const list = Array.isArray(prev) ? prev : [];
+  const seenId = idOf(data?.messageId || data?._id);
+  if (!seenId) return list;
+  if (
+    data?.senderId &&
+    data?.receiverId &&
+    !isConversationMessage(data, userId, connectId)
+  ) {
+    return list;
+  }
+  const target = list.find((m) => m && idOf(m._id) === seenId);
+  if (!target) return list;
+  const cutoff = new Date(target.timestamp || 0).getTime();
+  const targetSender = idOf(target.senderId);
+  let changed = false;
+  const next = list.map((msg) => {
+    if (!msg || msg.isSeen === true || msg.isOptimistic) return msg;
+    const isTarget = idOf(msg._id) === seenId;
+    const isEarlierFromSameSender =
+      idOf(msg.senderId) === targetSender &&
+      new Date(msg.timestamp || 0).getTime() <= cutoff;
+    if (isTarget || isEarlierFromSameSender) {
+      changed = true;
+      return { ...msg, isSeen: true };
+    }
+    return msg;
+  });
+  return changed ? next : list;
 }
 
 export function mergeHistoryWithLive(history, live) {

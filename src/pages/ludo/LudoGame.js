@@ -1578,7 +1578,10 @@ const LudoGame = () => {
         const player =
           playersRef.current?.[candidateIndex] || players[candidateIndex];
 
-        const hasWon = winners.some((w) => w.id === candidateIndex);
+        // Read the ref: callers inside socket handlers hold a stale closure.
+        const hasWon = (winnersRef.current || winners).some(
+          (w) => w.id === candidateIndex,
+        );
         const isOffline = player?.isOffline && !player?.isBot;
 
         if (!hasWon && !isOffline) {
@@ -4643,6 +4646,7 @@ const LudoGame = () => {
       playersRef.current,
       diceVal ?? diceValueRef.current,
       maxStepsRef.current || maxSteps,
+      selectedPlayerCountRef.current,
     );
   }, [maxSteps]);
 
@@ -5859,20 +5863,15 @@ const LudoGame = () => {
                 recentMovesRef.current.delete(pieceKey);
               }, 2000);
 
-              if (newSteps === maxSteps) {
-                setPlayers((prev) => {
-                  const updatedPlayers = prev.map((p) => ({
-                    ...p,
-                    pieces: p.pieces.map((pc) => ({ ...pc })),
-                  }));
-                  resolveWinnerStateForPlayer(
-                    updatedPlayers,
-                    movingPlayerIndex,
-                  );
-                  playersRef.current = updatedPlayers; // Update ref
-                  return updatedPlayers;
-                });
-              }
+              // Resolve the winner synchronously (not inside a state updater)
+              // so the host's post-move broadcast already carries
+              // winners/gameEnded and turn order skips the finished player.
+              const finishedAllPieces =
+                newSteps === maxSteps &&
+                resolveWinnerStateForPlayer(
+                  playersRef.current,
+                  movingPlayerIndex,
+                ).didFinish;
 
               isMovingRef.current = false; // Reset moving flag
               isAutoMovingRef.current = false; // Clear auto-moving flag
@@ -5897,7 +5896,8 @@ const LudoGame = () => {
               const hasCapture = didCapture === true;
               // Player gets another turn if they roll 6 OR capture a token (traditional Ludo rule)
               // If both conditions are met, they definitely get another turn
-              const keepTurn = isSix || hasCapture;
+              // A player whose tokens are all home has nothing left to move.
+              const keepTurn = !finishedAllPieces && (isSix || hasCapture);
 
               console.log("[MOVE_PIECE] Move completed", {
                 movingPlayerIndex,
@@ -6208,9 +6208,11 @@ const LudoGame = () => {
         if (myPlayerIndexRef.current === 0 && onlineMode && gameId) {
           const rolledValue = Number(payload.rolled || 0);
           const hasCapture = incomingCaptures.length > 0;
-          const keepTurn = rolledValue === 6 || hasCapture;
-
-          resolveWinnerStateForPlayer(nextPlayers, payload.playerIndex);
+          const { didFinish } = resolveWinnerStateForPlayer(
+            nextPlayers,
+            payload.playerIndex,
+          );
+          const keepTurn = !didFinish && (rolledValue === 6 || hasCapture);
 
           // CRITICAL: If keeping turn, reset the dice broadcast to 0 so the
           // mover's own client can clear its local rolling lock and re-enable the

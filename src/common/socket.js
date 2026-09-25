@@ -1,49 +1,88 @@
-
 import { io } from 'socket.io-client';
 import { getSocketUrl } from '../utils/offlineUtils';
 
 let socketInstance = null;
 let socketProxy = null;
+// Profile the live socket is authenticated as (the server routes every
+// message, call and notification by this identity).
+let socketProfileId = null;
+let lastIdentityCheck = 0;
+const IDENTITY_CHECK_INTERVAL_MS = 1000;
+
+const SOCKET_OPTIONS = {
+    // Preserve original timeout settings (20s like the app version)
+    timeout: 20000,
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionAttempts: Infinity,
+    reconnectionDelayMax: 5000,
+    transports: ['websocket', 'polling']
+};
+
+const readStoredProfileId = () => {
+    try {
+        const userJson = JSON.parse(localStorage.getItem("user") || '{}');
+        const profileId =
+            typeof userJson.profile === "string"
+                ? userJson.profile
+                : userJson.profile?._id || userJson.user_id;
+        return profileId ? String(profileId) : null;
+    } catch (_error) {
+        return null;
+    }
+};
+
+// Keep the socket's identity in sync with the logged-in user. Previously the
+// socket kept the profile it was first created with: after logout (which
+// disconnects it) and a new login without a page reload, it stayed
+// disconnected / authenticated as the old user, so no messages, calls or
+// notifications arrived until a manual refresh.
+const syncSocketIdentity = () => {
+    if (!socketInstance) return;
+    const now = Date.now();
+    if (now - lastIdentityCheck < IDENTITY_CHECK_INTERVAL_MS) return;
+    lastIdentityCheck = now;
+
+    const currentProfileId = readStoredProfileId();
+    if (!currentProfileId) return; // logged out: leave the socket as logout left it
+
+    if (currentProfileId !== socketProfileId) {
+        socketProfileId = currentProfileId;
+        socketInstance.io.opts.query = { ...(socketInstance.io.opts.query || {}), profile: currentProfileId };
+        socketInstance.auth = { profile: currentProfileId };
+        socketInstance.disconnect();
+        socketInstance.connect();
+        return;
+    }
+    // Manually disconnected (logout) but a user is signed in again.
+    if (!socketInstance.connected && !socketInstance.active) {
+        socketInstance.connect();
+    }
+};
 
 const getSocket = () => {
     if (!socketInstance) {
         try {
-            const user = localStorage.getItem("user") || '{}';
-            const userJson = JSON.parse(user);
             const socketUrl = getSocketUrl();
-            const profileId =
-                typeof userJson.profile === "string"
-                    ? userJson.profile
-                    : userJson.profile?._id || userJson.user_id;
-            
+            const profileId = readStoredProfileId();
+            socketProfileId = profileId;
             socketInstance = io.connect(socketUrl, {
+                ...SOCKET_OPTIONS,
                 query: {
                     profile: profileId
                 },
                 auth: {
                     profile: profileId
                 },
-                // Preserve original timeout settings (20s like the app version)
-                timeout: 20000,
-                reconnection: true,
-                reconnectionDelay: 1000,
-                reconnectionAttempts: Infinity,
-                reconnectionDelayMax: 5000,
-                transports: ['websocket', 'polling']
             });
         } catch (error) {
             console.error('Error initializing socket:', error);
             // Create socket without profile query if localStorage fails
             const socketUrl = getSocketUrl();
-            socketInstance = io.connect(socketUrl, {
-                timeout: 20000,
-                reconnection: true,
-                reconnectionDelay: 1000,
-                reconnectionAttempts: Infinity,
-                reconnectionDelayMax: 5000,
-                transports: ['websocket', 'polling']
-            });
+            socketInstance = io.connect(socketUrl, SOCKET_OPTIONS);
         }
+    } else {
+        syncSocketIdentity();
     }
     return socketInstance;
 };

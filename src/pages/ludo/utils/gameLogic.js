@@ -1,8 +1,12 @@
 import { PATHS, SAFE_CELLS, DEFAULT_MAX_STEPS, HOME_COLUMN_LENGTH } from '../constants/gameConstants';
 
+// In 2-player games logical player 1 sits at the opposite corner (seat 3).
+const getBoardSeatIndex = (playerIndex, playerCount) =>
+    Number(playerCount) === 2 && Number(playerIndex) === 1 ? 3 : Number(playerIndex);
+
 // Get position on path for a given player and steps
-export const getPositionOnPath = (playerIndex, steps) => {
-    const path = PATHS[playerIndex];
+export const getPositionOnPath = (playerIndex, steps, playerCount = 4) => {
+    const path = PATHS[getBoardSeatIndex(playerIndex, playerCount)];
     if (!path || steps <= 0 || steps > path.length) {
         return { x: 7, y: 7 };
     }
@@ -265,19 +269,19 @@ const destinationSteps = (fromSteps, diceVal, maxSteps) => {
     return next <= maxSteps ? next : -1;
 };
 
-const countOwnAtCell = (player, playerIndex, cell, skipPieceIndex, maxSteps) => {
+const countOwnAtCell = (player, playerIndex, cell, skipPieceIndex, maxSteps, playerCount = 4) => {
     if (!player || !Array.isArray(player.pieces) || !cell) return 0;
     return player.pieces.reduce((count, piece, pieceIndex) => {
         if (pieceIndex === skipPieceIndex) return count;
         const steps = getPieceSteps(piece);
         if (steps <= 0 || steps >= maxSteps) return count;
-        return sameCell(getPositionOnPath(playerIndex, steps), cell)
+        return sameCell(getPositionOnPath(playerIndex, steps, playerCount), cell)
             ? count + 1
             : count;
     }, 0);
 };
 
-const opponentPiecesAtCell = (players, movingPlayerIndex, cell, maxSteps) => {
+const opponentPiecesAtCell = (players, movingPlayerIndex, cell, maxSteps, playerCount = 4) => {
     const hits = [];
     if (!cell) return hits;
     (players || []).forEach((player, playerIndex) => {
@@ -289,7 +293,7 @@ const opponentPiecesAtCell = (players, movingPlayerIndex, cell, maxSteps) => {
             if (steps <= 0 || steps >= maxSteps || isHomeColumnSteps(steps, maxSteps)) {
                 return;
             }
-            if (sameCell(getPositionOnPath(playerIndex, steps), cell)) {
+            if (sameCell(getPositionOnPath(playerIndex, steps, playerCount), cell)) {
                 hits.push({ playerIndex, pieceIndex, steps });
             }
         });
@@ -297,13 +301,13 @@ const opponentPiecesAtCell = (players, movingPlayerIndex, cell, maxSteps) => {
     return hits;
 };
 
-const canCaptureAt = (players, movingPlayerIndex, cell, toSteps, maxSteps) => {
+const canCaptureAt = (players, movingPlayerIndex, cell, toSteps, maxSteps, playerCount = 4) => {
     if (!cell || toSteps <= 0 || toSteps >= maxSteps || isHomeColumnSteps(toSteps, maxSteps)) {
         return [];
     }
     if (isSafePosition(movingPlayerIndex, cell)) return [];
 
-    const hits = opponentPiecesAtCell(players, movingPlayerIndex, cell, maxSteps);
+    const hits = opponentPiecesAtCell(players, movingPlayerIndex, cell, maxSteps, playerCount);
     if (hits.length === 0) return [];
 
     const byPlayer = new Map();
@@ -316,14 +320,14 @@ const canCaptureAt = (players, movingPlayerIndex, cell, toSteps, maxSteps) => {
     const captured = [];
     byPlayer.forEach((list) => {
         const ownLandingStack =
-            1 + countOwnAtCell(players[movingPlayerIndex], movingPlayerIndex, cell, -1, maxSteps);
+            1 + countOwnAtCell(players[movingPlayerIndex], movingPlayerIndex, cell, -1, maxSteps, playerCount);
         if (list.length >= 2 && ownLandingStack < 2) return;
         captured.push(...list);
     });
     return captured;
 };
 
-const isCellThreatened = (players, ownerIndex, cell, skipOwnerPieceIndex, maxSteps) => {
+const isCellThreatened = (players, ownerIndex, cell, skipOwnerPieceIndex, maxSteps, playerCount = 4) => {
     if (!cell || isSafePosition(ownerIndex, cell)) return false;
     const ownStack = countOwnAtCell(
         players[ownerIndex],
@@ -331,6 +335,7 @@ const isCellThreatened = (players, ownerIndex, cell, skipOwnerPieceIndex, maxSte
         cell,
         skipOwnerPieceIndex,
         maxSteps,
+        playerCount,
     );
     if (ownStack >= 1) return false;
 
@@ -344,7 +349,7 @@ const isCellThreatened = (players, ownerIndex, cell, skipOwnerPieceIndex, maxSte
             for (let roll = 1; roll <= 6; roll += 1) {
                 const to = from + roll;
                 if (to > maxSteps || isHomeColumnSteps(to, maxSteps)) continue;
-                if (sameCell(getPositionOnPath(playerIndex, to), cell)) return true;
+                if (sameCell(getPositionOnPath(playerIndex, to, playerCount), cell)) return true;
             }
             return false;
         });
@@ -358,6 +363,7 @@ export const pickSmartBotPiece = (
     players,
     diceVal,
     maxSteps,
+    playerCount = 4,
 ) => {
     const ids = Array.isArray(playableIds) ? playableIds : [];
     if (ids.length === 0) return 0;
@@ -385,13 +391,13 @@ export const pickSmartBotPiece = (
         if (to < 0) return;
 
         const leavingYard = from <= 0;
-        const dest = to > 0 ? getPositionOnPath(playerIndex, to) : null;
-        const fromCell = from > 0 ? getPositionOnPath(playerIndex, from) : null;
+        const dest = to > 0 ? getPositionOnPath(playerIndex, to, playerCount) : null;
+        const fromCell = from > 0 ? getPositionOnPath(playerIndex, from, playerCount) : null;
         let score = 0;
 
         const captures = leavingYard
             ? []
-            : canCaptureAt(players, playerIndex, dest, to, max);
+            : canCaptureAt(players, playerIndex, dest, to, max, playerCount);
         if (captures.length > 0) {
             score += 1400 + captures.reduce((sum, hit) => sum + hit.steps * 3, 0);
         }
@@ -426,7 +432,7 @@ export const pickSmartBotPiece = (
             score += Math.min(from, 18);
         }
 
-        if (!leavingYard && fromCell && isCellThreatened(players, playerIndex, fromCell, id, max)) {
+        if (!leavingYard && fromCell && isCellThreatened(players, playerIndex, fromCell, id, max, playerCount)) {
             score += 240;
             if (to >= homeStart || (dest && isSafePosition(playerIndex, dest))) {
                 score += 90;
@@ -435,8 +441,8 @@ export const pickSmartBotPiece = (
 
         if (dest && to > 0 && to < max) {
             if (isSafePosition(playerIndex, dest) || to >= homeStart) score += 85;
-            else if (isCellThreatened(players, playerIndex, dest, id, max)) score -= 95;
-            if (countOwnAtCell(players[playerIndex], playerIndex, dest, id, max) >= 1) {
+            else if (isCellThreatened(players, playerIndex, dest, id, max, playerCount)) score -= 95;
+            if (countOwnAtCell(players[playerIndex], playerIndex, dest, id, max, playerCount) >= 1) {
                 score += 55;
             }
         }

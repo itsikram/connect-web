@@ -6,7 +6,12 @@ import "./AIAgentModal.css";
 import ChatArea from "./ChatArea";
 import ActionPanel from "./ActionPanel";
 import ModalHeader from "./ModalHeader";
-import { sendToGeminiStream } from "../../../services/geminiService";
+import {
+  sendToGeminiStream,
+  looksLikeAgentPlan,
+  parseAgentPlan,
+  PLANNER_CONFIRM_ACTIONS,
+} from "../../../services/geminiService";
 import {
   parseIntent,
   searchConnectsByName,
@@ -61,7 +66,7 @@ const INITIAL_MESSAGE = {
   type: "agent",
   meta: "welcome",
   content:
-    'Hi! I\'m your AI Agent 🤖 Tap the headset to talk with me live — I\'ll listen, speak answers, and run app actions. I remember this chat, so you can say "that video" or "invite him". Ask me anything, or try: "search youtube for lo-fi", "download despacito", "invite Atik to Ludo".',
+    'Hi! I\'m your AI Agent 🤖 Just tell me what you want done in Connect — call or message someone, post, add tasks, notes and events, find videos, change settings, or look up your data. Tap the headset to talk hands-free. Try: "message Atik I\'m running late", "add a meeting tomorrow at 10", or "what are my open tasks?"',
   timestamp: new Date(),
 };
 
@@ -633,6 +638,9 @@ const AIAgentModal = ({ isOpen, onClose }) => {
                 return;
               }
               if (typeof next !== "string" || !next) return;
+              // An action plan streams as JSON; keep the typing indicator up
+              // instead of flashing raw JSON at the user.
+              if (looksLikeAgentPlan(next)) return;
               pushDelta(next, true);
             },
             signal: abort.signal,
@@ -640,9 +648,24 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             userName: getConnectDisplayName(myProfile),
             memory: getMemoryPromptBlock(myProfile?._id),
             preferredLanguage,
+            allowActions: true,
           });
           if (!stillCurrent()) return;
-          const finalText = String(chat?.response || "").trim();
+          const rawFinal = String(chat?.response || "").trim();
+          const plan = chat?.success
+            ? parseAgentPlan(rawFinal, userText)
+            : { reply: rawFinal, intents: [], isPlan: false };
+          if (plan.intents.length) {
+            if (inserted) {
+              setMessages((prev) => prev.filter((msg) => msg.id !== streamId));
+            }
+            await runPlannedIntents(plan);
+            return;
+          }
+          const finalText = plan.isPlan
+            ? plan.reply ||
+              "I couldn't turn that into an app action. Could you rephrase it?"
+            : rawFinal;
           if (!inserted) {
             pushDelta(
               finalText ||
@@ -1043,6 +1066,66 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         return false;
       };
 
+      // Runs actions the LLM planned for requests the local parser missed.
+      const runPlannedIntents = async ({ reply, intents }) => {
+        let handledAny = false;
+        for (const intent of intents) {
+          if (!stillCurrent()) return;
+          if (PLANNER_CONFIRM_ACTIONS.has(intent.action)) {
+            const meta = getActionMeta(intent.action);
+            const target = intent.searchQuery || intent.label || "";
+            addMessage({
+              type: "agent",
+              content: `${meta.label}${target ? `: "${target}"` : ""}? This can't be undone.`,
+              // Two buttons on purpose: single-button messages auto-run.
+              actions: [
+                {
+                  label: `Yes, ${meta.label.toLowerCase()}`,
+                  onClick: async () => {
+                    const result = await executeAction({
+                      ...intent,
+                      connect: null,
+                      sourceText: originalText,
+                      myProfile,
+                      preferredLanguage,
+                      navigate,
+                      onClose: handleMinimize,
+                    });
+                    addMessage({
+                      type: "action-result",
+                      content: result.message,
+                      success: result.success,
+                    });
+                  },
+                },
+                {
+                  label: "Cancel",
+                  onClick: () =>
+                    addMessage({ type: "agent", content: "Okay, I left it as is." }),
+                },
+              ],
+            });
+            handledAny = true;
+            continue;
+          }
+          // Empty replyOverride so real results (not the model's "on it")
+          // are shown; a model question is still passed through.
+          const handled = await runIntent(
+            intent,
+            looksLikeQuestion(reply) ? reply : "",
+          );
+          handledAny = handledAny || handled;
+          // Later actions usually depend on a picker/answer for this one.
+          if (pendingIntentRef.current) break;
+        }
+        if (!handledAny && stillCurrent()) {
+          addMessage({
+            type: "agent",
+            content: reply || "I couldn't do that from here. Could you rephrase it?",
+          });
+        }
+      };
+
       try {
         const pendingSnapshot = pendingIntentRef.current;
         const autoRun = autoRunActionsRef.current;
@@ -1220,12 +1303,22 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   // ── Sidebar action panel clicks ─────────────────────────────────────────────
   const handleActionClick = useCallback(
     (action) => {
-      if (action.prompt) {
-        setInputValue(action.prompt);
-        // Auto-close sidebar on mobile after selection
-        if (window.innerWidth < 768) setIsSidebarOpen(false);
+      // Auto-close sidebar on mobile after selection
+      if (window.innerWidth < 768) setIsSidebarOpen(false);
+      const prompt = action.prompt || action.label;
+      // Prompts ending in a space ("Call ") need a name, so prefill the
+      // input; complete ones ("go to notes") run straight away.
+      if (/\s$/.test(prompt)) {
+        setInputValue(prompt);
+        window.requestAnimationFrame(() => {
+          const field = document.querySelector(".ai-agent-modal-container textarea");
+          if (field) {
+            field.focus();
+            field.setSelectionRange?.(prompt.length, prompt.length);
+          }
+        });
       } else {
-        handleSendMessage(action.label);
+        handleSendMessage(prompt);
       }
     },
     [handleSendMessage],

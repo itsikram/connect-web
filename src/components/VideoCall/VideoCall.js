@@ -1517,6 +1517,15 @@ const VideoCall = ({ myId }) => {
     window.addEventListener("rejectCallFromPush", onRejectFromPush);
 
     const onCallAccepted = ({ channelName, isAudio }) => {
+      if (isAudio) return;
+      // Only the tab that placed THIS call may join. Without this, an idle
+      // tab (or a stale event for another channel) auto-joined the channel.
+      if (
+        !currentChannelRef.current ||
+        (channelName && String(channelName) !== String(currentChannelRef.current))
+      ) {
+        return;
+      }
       // Caller joins here; callee already joined in answerCall — skip echo
       if (!isAudio && !receivingCallRef.current) {
         console.log("Agora video call accepted, joining channel:", channelName);
@@ -1552,7 +1561,15 @@ const VideoCall = ({ myId }) => {
     };
     socket.on("updated-call-status", handleUpdatedCallStatus);
 
-    const onVideoCallEnded = async () => {
+    // Ignore end/cancel/reject events that belong to a different call than
+    // the one on screen.
+    const isForActiveCall = (channelName) =>
+      !channelName ||
+      !currentChannelRef.current ||
+      String(channelName) === String(currentChannelRef.current);
+
+    const onVideoCallEnded = async ({ channelName } = {}) => {
+      if (!isForActiveCall(channelName)) return;
       console.log(
         "VideoCall: Received video-call-ended event from remote user",
       );
@@ -1564,7 +1581,8 @@ const VideoCall = ({ myId }) => {
     };
     socket.on("video-call-ended", onVideoCallEnded);
 
-    const onVideoCallCancelled = async () => {
+    const onVideoCallCancelled = async ({ channelName } = {}) => {
+      if (!isForActiveCall(channelName)) return;
       console.log(
         "VideoCall: Received video-call-cancelled event from remote user",
       );
@@ -1575,7 +1593,10 @@ const VideoCall = ({ myId }) => {
     };
     socket.on("video-call-cancelled", onVideoCallCancelled);
 
-    const onVideoCallRejected = async () => {
+    const onVideoCallRejected = async ({ channelName } = {}) => {
+      if (!isForActiveCall(channelName)) return;
+      // A late duplicate reject must never tear down an answered call.
+      if (callAcceptedRef.current) return;
       console.log(
         "VideoCall: Received video-call-rejected event from remote user",
       );
@@ -1588,8 +1609,11 @@ const VideoCall = ({ myId }) => {
 
     const onCallNotAccepted = async ({ isAudio, channelName }) => {
       if (isAudio) return;
-      if (!currentChannel && !channelName) return;
-      if (channelName && currentChannel && channelName !== currentChannel)
+      // Read the ref: this listener is registered once, so the `currentChannel`
+      // state captured in its closure is stale.
+      const activeChannel = currentChannelRef.current;
+      if (!activeChannel && !channelName) return;
+      if (channelName && activeChannel && channelName !== activeChannel)
         return;
       console.log("VideoCall: Call not accepted (timeout)");
       stopRingtone();

@@ -34,6 +34,7 @@ import {
   emitChatMessage,
   idOf,
   isConversationMessage,
+  applySeenToMessages,
   upsertConfirmedMessage,
 } from "../../utils/optimisticMessage";
 
@@ -756,6 +757,7 @@ const StickyChatBox = ({
 
     const handleTyping = (data = {}) => {
       if (String(data?.receiverId) !== String(userId)) return;
+      if (data?.senderId && String(data.senderId) !== String(connectId)) return;
 
       if (data?.isTyping) {
         setIsTyping(true);
@@ -779,19 +781,8 @@ const StickyChatBox = ({
     };
 
     const handleMessageSeen = (data) => {
-      const seenId = data?.messageId || data?._id;
-      if (!seenId) return;
-      setMessages((prevMessages) =>
-        prevMessages.map((msg) => {
-          if (!msg) return msg;
-          if (idOf(msg._id) === idOf(seenId)) {
-            return { ...msg, isSeen: true };
-          }
-          if (idOf(msg.senderId) === idOf(userId) && msg.isSeen !== true) {
-            return { ...msg, isSeen: true };
-          }
-          return msg;
-        }),
+      setMessages((prev) =>
+        applySeenToMessages(prev, data, userId, connectId),
       );
     };
 

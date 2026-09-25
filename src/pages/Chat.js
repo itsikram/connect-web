@@ -33,6 +33,7 @@ import {
   emitChatMessage,
   idOf,
   isConversationMessage,
+  applySeenToMessages,
   mergeHistoryWithLive,
   upsertConfirmedMessage,
 } from "../utils/optimisticMessage";
@@ -539,6 +540,20 @@ const Chat = () => {
     }
   }, [connectId, canMarkAsSeen]);
 
+  // Opening a conversation clears its OS notifications (Web Push and page
+  // notifications both use the `chat-<senderId>` tag).
+  useEffect(() => {
+    if (!connectId || typeof navigator === "undefined") return;
+    navigator.serviceWorker?.ready
+      ?.then((registration) =>
+        registration.getNotifications({ tag: `chat-${connectId}` }),
+      )
+      .then((notifications) => {
+        (notifications || []).forEach((notification) => notification.close());
+      })
+      .catch(() => {});
+  }, [connectId]);
+
   // Real-time socket listeners for new messages
   useEffect(() => {
     if (!connectId || !userId) return;
@@ -594,6 +609,7 @@ const Chat = () => {
 
     const handleTyping = (data = {}) => {
       if (String(data?.receiverId) !== String(userId)) return;
+      if (data?.senderId && String(data.senderId) !== String(connectId)) return;
 
       if (data?.isTyping) {
         setIsTyping(true);
@@ -617,19 +633,8 @@ const Chat = () => {
     };
 
     const handleMessageSeen = (data) => {
-      const seenId = data?.messageId || data?._id;
-      if (!seenId) return;
       setMessages((prev) =>
-        prev.map((msg) => {
-          if (!msg) return msg;
-          if (idOf(msg._id) === idOf(seenId)) {
-            return { ...msg, isSeen: true };
-          }
-          if (idOf(msg.senderId) === idOf(userId) && msg.isSeen !== true) {
-            return { ...msg, isSeen: true };
-          }
-          return msg;
-        }),
+        applySeenToMessages(prev, data, userId, connectId),
       );
     };
 

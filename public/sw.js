@@ -440,6 +440,28 @@ self.addEventListener("push", (event) => {
         } catch (_) {}
       }
 
+      // Chat message while an app tab is visible: the page already shows an
+      // in-app toast (or nothing, if that chat is open), so a second OS
+      // notification is a duplicate. Safari / iOS require every push to show
+      // a notification (or they revoke the subscription), so always show there.
+      if (payloadData.type === "message" || payloadData.type === "chat") {
+        const ua = (self.navigator && self.navigator.userAgent) || "";
+        const mustAlwaysShow =
+          /iPhone|iPad|iPod/i.test(ua) ||
+          !/Chrome|Chromium|Edg|Firefox|OPR/i.test(ua);
+        if (!mustAlwaysShow) {
+          try {
+            const clientList = await clients.matchAll({
+              type: "window",
+              includeUncontrolled: true,
+            });
+            if (clientList.some((client) => client.visibilityState === "visible")) {
+              return;
+            }
+          } catch (_) {}
+        }
+      }
+
       if (isCall) {
         try {
           await focusExistingCallClient();

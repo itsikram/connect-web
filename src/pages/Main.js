@@ -37,6 +37,7 @@ import {
   resolveChessInviteNotifications,
 } from "../utils/chessInviteUtils";
 import { getNotificationLink } from "../utils/notificationUtils";
+import { chatMessagePreview, isViewingChatWith } from "../utils/messagePreview";
 import "react-toastify/dist/ReactToastify.css";
 import "../components/Toast/CustomToast.css";
 import webNotificationService from "../services/webNotificationService";
@@ -186,12 +187,17 @@ const truncateToTenWords = (text) => {
   return words.join(" ");
 };
 
-function showNotification(msg, receiverId) {
+function showNotification(msg, chatWithId) {
   // If Web Push is active, the service worker already shows the system notification.
   // Showing another page Notification causes duplicates on iOS installed web apps.
   if (webNotificationService.hasActivePushSubscription()) {
     return;
   }
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") {
+    return;
+  }
+  // Previously the click target was never passed and opened /message/undefined.
+  const openChatId = chatWithId || msg?.senderId;
 
   const titleText =
     (msg?.title && String(msg.title).trim()) ||
@@ -205,12 +211,15 @@ function showNotification(msg, receiverId) {
 
   const notification = new Notification(titleText, {
     body: bodyText,
-    icon: config?.logo || undefined,
-    tag: `msg-${msg?._id || msg?.messageId || Date.now()}`,
+    icon: msg?.senderPP || config?.logo || undefined,
+    // One OS notification per conversation, matching the Web Push tag.
+    tag: openChatId ? `chat-${openChatId}` : `msg-${msg?._id || Date.now()}`,
   });
 
   notification.onclick = () => {
-    window.open(`${process.env.REACT_APP_URL}/message/${receiverId}`);
+    window.focus();
+    if (openChatId) window.location.href = `/message/${openChatId}`;
+    notification.close();
   };
 }
 
@@ -325,6 +334,12 @@ const saveNotifiedNotifications = (obj) => {
 // Store message IDs that have been notified with their timestamps
 // Using object {messageId: timestamp} instead of Set for persistence across reloads
 const notifiedMessageIds = getNotifiedMessages();
+// Only toast unseen messages from the last few minutes when catching up via
+// HTTP, so opening the site on a new browser doesn't replay old messages.
+const RECENT_MESSAGE_TOAST_MS = 10 * 60 * 1000;
+// Used by the legacy `notification` socket handler (were never defined).
+const recentMessageToasts = new Map(); // messageId -> timestamp
+const TOAST_DEDUP_WINDOW = 5000;
 const notifiedNotificationIds = getNotifiedNotifications();
 let lastNotificationFetchTime = getLastNotificationFetchTime(); // Timestamp of last fetch
 
@@ -978,13 +993,21 @@ const Main = () => {
             window.dispatchEvent(connectOnlineEvent);
           }
 
-          // Show notification only if message is not empty
-          const messageText = String(updatedMessage.message || "").trim();
-          if (messageText) {
+          const sentAt = new Date(updatedMessage.timestamp || 0).getTime();
+          const isRecent =
+            Number.isFinite(sentAt) && fetchTime - sentAt < RECENT_MESSAGE_TOAST_MS;
+          const isQuietCallLog =
+            updatedMessage.messageType === "call" &&
+            updatedMessage.callEvent !== "missed";
+          if (
+            isRecent &&
+            !isQuietCallLog &&
+            !isViewingChatWith(updatedMessage.senderId)
+          ) {
             const senderName = updatedMessage.senderName || "Connect";
             const senderPP = updatedMessage.senderPP || "/default-avatar.png";
             notify(
-              truncateToTenWords(messageText),
+              truncateToTenWords(chatMessagePreview(updatedMessage)),
               senderName,
               senderPP,
               "/message/" + updatedMessage.senderId,
@@ -1077,22 +1100,45 @@ const Main = () => {
           updatedMessage.senderId,
         );
 
-        // Show notification only if message is not empty
-        const messageText = String(updatedMessage.message || "").trim();
-        if (messageText) {
-          const senderName = data.senderName || "Connect";
-          const senderPP = data.senderPP || "/default-avatar.png";
-          notify(
-            truncateToTenWords(messageText),
-            senderName,
-            senderPP,
-            "/message/" + updatedMessage.senderId,
-          );
+        // "Call ended" logs are informational; only missed calls alert.
+        const isQuietCallLog =
+          updatedMessage.messageType === "call" &&
+          updatedMessage.callEvent !== "missed";
+        const senderName = data.senderName || "Connect";
+        const senderPP = data.senderPP || "/default-avatar.png";
+        const preview = chatMessagePreview(updatedMessage);
+
+        // Voice / photo / video messages used to produce no alert at all
+        // (only non-empty text did), and the chat on screen still toasted.
+        if (!isQuietCallLog && !isViewingChatWith(updatedMessage.senderId)) {
+          if (document.visibilityState === "visible") {
+            notify(
+              truncateToTenWords(preview),
+              senderName,
+              senderPP,
+              "/message/" + updatedMessage.senderId,
+            );
+          } else {
+            // Background tab without Web Push: fall back to a page
+            // Notification (showNotification is a no-op when Web Push is on,
+            // because the service worker already displays it).
+            playSound();
+            showNotification(
+              {
+                _id: updatedMessage._id,
+                senderId: updatedMessage.senderId,
+                senderName,
+                senderPP,
+                message: preview,
+              },
+              updatedMessage.senderId,
+            );
+          }
         }
 
         // Handle sticky chat opening
         const isOnMessagePage = window.location.pathname.startsWith("/message");
-        if (!isOnMessagePage && updatedMessage.senderId) {
+        if (!isOnMessagePage && updatedMessage.senderId && !isQuietCallLog) {
           let isChatOpen = false;
           try {
             isChatOpen =
@@ -1134,7 +1180,22 @@ const Main = () => {
 
     socket.on("newMessageToUser", handleNewMessageToUser);
 
+    // Messages that arrived while the socket was disconnected (sleep, network
+    // switch, server restart) never reach the realtime handler; poll once on
+    // reconnect and when the tab becomes visible. Already-alerted ids are
+    // skipped by notifiedMessageIds.
+    const catchUpMissedMessages = () => {
+      fetchNewMessages();
+    };
+    const handleVisibleCatchUp = () => {
+      if (document.visibilityState === "visible") catchUpMissedMessages();
+    };
+    socket.on("connect", catchUpMissedMessages);
+    document.addEventListener("visibilitychange", handleVisibleCatchUp);
+
     return () => {
+      socket.off("connect", catchUpMissedMessages);
+      document.removeEventListener("visibilitychange", handleVisibleCatchUp);
       // Clean up interval
       if (notificationIntervalRef.current) {
         clearInterval(notificationIntervalRef.current);

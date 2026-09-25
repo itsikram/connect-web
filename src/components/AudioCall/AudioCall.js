@@ -1092,6 +1092,14 @@ const AudioCall = ({ myId }) => {
     const onCallAccepted = ({ channelName, isAudio, callerId }) => {
       // Caller side should join upon acceptance; callee already joined in answerCall
       if (isAudio) {
+        // Only the tab that placed THIS call may join. Without this, an idle
+        // tab (or a stale event for another channel) auto-joined the channel.
+        if (
+          !currentChannelRef.current ||
+          (channelName && String(channelName) !== String(currentChannelRef.current))
+        ) {
+          return;
+        }
         stopRingtone();
         if (!receivingCallRef.current) {
           console.log(
@@ -1116,14 +1124,23 @@ const AudioCall = ({ myId }) => {
     };
     socket.on("call-accepted", onCallAccepted);
 
-    const onAudioCallEnded = async () => {
+    // Ignore end/cancel events that belong to a different call than the one
+    // on screen (e.g. an old call's late event, or a busy-rejected caller).
+    const isForActiveCall = (channelName) =>
+      !channelName ||
+      !currentChannelRef.current ||
+      String(channelName) === String(currentChannelRef.current);
+
+    const onAudioCallEnded = async ({ channelName } = {}) => {
+      if (!isForActiveCall(channelName)) return;
       console.log("AudioCall: Received audio-call-ended event from server");
       stopRingtone();
       await cleanupAudioCall();
     };
     socket.on("audio-call-ended", onAudioCallEnded);
 
-    const onAudioCallCancelled = async () => {
+    const onAudioCallCancelled = async ({ channelName } = {}) => {
+      if (!isForActiveCall(channelName)) return;
       console.log("AudioCall: Received audio-call-cancelled event from server");
       stopRingtone();
       await cleanupAudioCall();
