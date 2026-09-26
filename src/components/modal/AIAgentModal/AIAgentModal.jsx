@@ -173,7 +173,7 @@ const getSingleMessageAction = (message) => {
   return null;
 };
 
-const AIAgentModal = ({ isOpen, onClose }) => {
+const AIAgentModal = ({ isOpen, onClose, startMinimized = false }) => {
   const myProfile = useSelector((state) => state.profile);
   const preferredLanguage = useSelector(
     (state) => state.setting?.language || "eng",
@@ -203,7 +203,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [llmInfo, setLlmInfo] = useState(() => getResolvedAgentSettings());
   const [liveTalkOn, setLiveTalkOn] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(startMinimized);
   const {
     supported: speechSupported,
     speaking: isAgentSpeaking,
@@ -269,9 +269,11 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       setIsSidebarOpen(!isMobile);
       setInputValue("");
       setModalInteractionVersion(0);
-      setIsMinimized(false);
+      setIsMinimized(startMinimized);
       fetchChatHistory();
     }
+    // startMinimized only applies when the agent opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, fetchChatHistory]);
 
   useEffect(() => {

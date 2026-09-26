@@ -81,6 +81,7 @@ import { loadSettings } from "../services/actions/settingsActions.js";
 import { applyThemeMode } from "../utils/applyThemeMode";
 import { prefetchNavigationTarget } from "../utils/routePrefetch";
 import { speakMessageText } from "../utils/speakMessage";
+import useShakeDetector from "../hooks/useShakeDetector";
 
 const Profile = lazy(() => import("./Profile"));
 const Connects = lazy(() => import("./Connects"));
@@ -2538,12 +2539,30 @@ const Main = () => {
 
   // AI Agent Modal State
   const [isAIAgentModalOpen, setIsAIAgentModalOpen] = useState(false);
+  const [agentStartMinimized, setAgentStartMinimized] = useState(false);
 
   useEffect(() => {
-    const openAgent = () => setIsAIAgentModalOpen(true);
+    const openAgent = () => {
+      setAgentStartMinimized(false);
+      setIsAIAgentModalOpen(true);
+    };
     window.addEventListener("openAIAgent", openAgent);
     return () => window.removeEventListener("openAIAgent", openAgent);
   }, []);
+
+  // Shaking the device opens the AI Agent as a minimized bar (like the app).
+  const openAgentFromShake = useCallback(() => {
+    if (isAIAgentModalOpen) return;
+    setAgentStartMinimized(true);
+    setIsAIAgentModalOpen(true);
+    try {
+      navigator.vibrate?.(30);
+    } catch (_) {}
+  }, [isAIAgentModalOpen]);
+
+  useShakeDetector(openAgentFromShake, {
+    enabled: isAuthenticated && !isHeaderHiddenRoute,
+  });
 
   // Cleanup audio elements on unmount
   useEffect(() => {
@@ -2584,7 +2603,10 @@ const Main = () => {
         <Header
           pendingLudoInvites={pendingLudoInvites}
           pendingChessInvites={pendingChessInvites}
-          onAIAgentOpen={() => setIsAIAgentModalOpen(true)}
+          onAIAgentOpen={() => {
+            setAgentStartMinimized(false);
+            setIsAIAgentModalOpen(true);
+          }}
         />
       )}
 
@@ -2917,6 +2939,7 @@ const Main = () => {
         <Suspense fallback={null}>
           <AIAgentModal
             isOpen
+            startMinimized={agentStartMinimized}
             onClose={() => setIsAIAgentModalOpen(false)}
           />
         </Suspense>
