@@ -4,9 +4,10 @@ import { useEffect, useRef } from "react";
 // spikes inside a short window. iOS 13+ gates motion events behind a
 // permission prompt that must come from a user gesture, so the request is
 // made on the first tap/keypress after mount.
-const SPIKE_THRESHOLD = 14; // m/s² change between samples
+// Same thresholds as the Expo app (1.6 g jolt, 3 hits within 700 ms).
+const SPIKE_THRESHOLD = 1.6 * 9.81; // m/s² change between samples
 const SPIKES_REQUIRED = 3;
-const SPIKE_WINDOW_MS = 1000;
+const SPIKE_WINDOW_MS = 700;
 const COOLDOWN_MS = 1500;
 
 const hasMotionPermissionApi = () =>
@@ -36,10 +37,9 @@ export default function useShakeDetector(onShake, { enabled = true } = {}) {
 
       const now = Date.now();
       if (last) {
-        const delta =
-          Math.abs(acc.x - last.x) +
-          Math.abs(acc.y - last.y) +
-          Math.abs(acc.z - last.z);
+        const delta = Math.sqrt(
+          (acc.x - last.x) ** 2 + (acc.y - last.y) ** 2 + (acc.z - last.z) ** 2,
+        );
         if (delta > SPIKE_THRESHOLD) {
           spikes = spikes.filter((t) => now - t < SPIKE_WINDOW_MS);
           spikes.push(now);

@@ -145,7 +145,7 @@ const resultTypeMeta = {
   post: { icon: "fal fa-file-alt", label: "Post" },
 };
 
-let HeaderLeft = ({ onAIAgentOpen }) => {
+let HeaderLeft = ({ onAIAgentOpen, onAIAgentVoice }) => {
   let [searchedData, setSearchedData] = useState(emptySearchData);
   let [isSearchOpen, setIsSearchOpen] = useState(false);
   let [mobileSearchMenu, setMobileSearchMenu] = useState(false);
@@ -273,11 +273,14 @@ let HeaderLeft = ({ onAIAgentOpen }) => {
       clearLogoLongPressTimer();
       longPressTimerRef.current = setTimeout(() => {
         longPressTriggeredRef.current = true;
-        handleOpenAIAgent();
+        // Long-press opens the minimized agent already listening, like the app.
+        setIsAppMenuOpen(false);
+        if (onAIAgentVoice) onAIAgentVoice();
+        else handleOpenAIAgent();
         clearLogoLongPressTimer();
       }, 500);
     },
-    [clearLogoLongPressTimer, handleOpenAIAgent],
+    [clearLogoLongPressTimer, handleOpenAIAgent, onAIAgentVoice],
   );
 
   const handleLogoMouseDown = (event) => {

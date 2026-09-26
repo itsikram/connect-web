@@ -173,7 +173,13 @@ const getSingleMessageAction = (message) => {
   return null;
 };
 
-const AIAgentModal = ({ isOpen, onClose, startMinimized = false }) => {
+const AIAgentModal = ({
+  isOpen,
+  onClose,
+  autoStartVoice = false,
+  voiceStartRequest = 0,
+  expandRequest = 0,
+}) => {
   const myProfile = useSelector((state) => state.profile);
   const preferredLanguage = useSelector(
     (state) => state.setting?.language || "eng",
@@ -203,7 +209,7 @@ const AIAgentModal = ({ isOpen, onClose, startMinimized = false }) => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [llmInfo, setLlmInfo] = useState(() => getResolvedAgentSettings());
   const [liveTalkOn, setLiveTalkOn] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(startMinimized);
+  const [isMinimized, setIsMinimized] = useState(autoStartVoice);
   const {
     supported: speechSupported,
     speaking: isAgentSpeaking,
@@ -269,10 +275,10 @@ const AIAgentModal = ({ isOpen, onClose, startMinimized = false }) => {
       setIsSidebarOpen(!isMobile);
       setInputValue("");
       setModalInteractionVersion(0);
-      setIsMinimized(startMinimized);
+      setIsMinimized(autoStartVoice);
       fetchChatHistory();
     }
-    // startMinimized only applies when the agent opens.
+    // autoStartVoice only decides the state the agent opens in.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, fetchChatHistory]);
 
@@ -398,6 +404,14 @@ const AIAgentModal = ({ isOpen, onClose, startMinimized = false }) => {
   const handleExpand = useCallback(() => {
     setIsMinimized(false);
   }, []);
+
+  // A plain open request (header / menu) restores a minimized agent.
+  const lastExpandRequestRef = useRef(expandRequest);
+  useEffect(() => {
+    if (lastExpandRequestRef.current === expandRequest) return;
+    lastExpandRequestRef.current = expandRequest;
+    if (isOpen) setIsMinimized(false);
+  }, [expandRequest, isOpen]);
 
   const handleClose = useCallback(() => {
     setIsMinimized(false);
@@ -1392,6 +1406,51 @@ const AIAgentModal = ({ isOpen, onClose, startMinimized = false }) => {
     });
   }, [speakText, cancelSpeech]);
 
+  // Checks the mic, then turns hands-free talk on. Resolves false when the
+  // microphone is unavailable.
+  const startHandsFreeTalk = useCallback(async () => {
+    if (liveTalkOnRef.current) return true;
+    if (navigator?.mediaDevices?.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        stream.getTracks().forEach((track) => track.stop());
+      } catch (_) {
+        addMessage({
+          type: "agent",
+          content:
+            "I couldn't access the microphone. Allow it in your browser, then shake again or tap the mic.",
+          skipSpeech: true,
+        });
+        return false;
+      }
+    }
+    if (!liveTalkOnRef.current) handleToggleLiveTalk();
+    return true;
+  }, [addMessage, handleToggleLiveTalk]);
+
+  const handleMiniMicToggle = useCallback(() => {
+    if (liveTalkOnRef.current) handleToggleLiveTalk();
+    else startHandsFreeTalk();
+  }, [handleToggleLiveTalk, startHandsFreeTalk]);
+
+  // Shake / long-press: open minimized and start hands-free talk straight
+  // away, like the Expo app. Each request number starts voice once.
+  const voiceStartKeyRef = useRef(null);
+  useEffect(() => {
+    if (!isOpen || !autoStartVoice) {
+      voiceStartKeyRef.current = null;
+      return;
+    }
+    if (voiceStartKeyRef.current === voiceStartRequest) return;
+    voiceStartKeyRef.current = voiceStartRequest;
+    setSettingsOpen(false);
+    setIsSidebarOpen(false);
+    setIsMinimized(true);
+    startHandsFreeTalk();
+  }, [isOpen, autoStartVoice, voiceStartRequest, startHandsFreeTalk]);
+
   // ── Sidebar action panel clicks ─────────────────────────────────────────────
   const handleActionClick = useCallback(
     (action) => {
@@ -1452,7 +1511,7 @@ const AIAgentModal = ({ isOpen, onClose, startMinimized = false }) => {
       : isAgentSpeaking
         ? "Speaking…"
         : liveTalkOn
-          ? "Listening…"
+          ? inputValue.trim() || "Listening…"
           : "AI Agent";
   const miniPhase =
     lastStreaming || isLoading
@@ -1510,6 +1569,19 @@ const AIAgentModal = ({ isOpen, onClose, startMinimized = false }) => {
                   {miniStatus}
                 </span>
               </span>
+              <button
+                type="button"
+                className={`ai-agent-mini-mic${liveTalkOn ? " is-on" : ""}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleMiniMicToggle();
+                }}
+                aria-label={liveTalkOn ? "Stop listening" : "Start listening"}
+                aria-pressed={liveTalkOn}
+                title={liveTalkOn ? "Stop listening" : "Talk hands-free"}
+              >
+                <i className={`fas ${liveTalkOn ? "fa-microphone" : "fa-microphone-slash"}`} />
+              </button>
               <button
                 type="button"
                 className="ai-agent-mini-expand"

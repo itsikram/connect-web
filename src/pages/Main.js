@@ -2539,28 +2539,39 @@ const Main = () => {
 
   // AI Agent Modal State
   const [isAIAgentModalOpen, setIsAIAgentModalOpen] = useState(false);
-  const [agentStartMinimized, setAgentStartMinimized] = useState(false);
+  // Mirrors the Expo app: a plain open shows the full agent (and restores it
+  // if minimized); shake / long-press open it minimized and start hands-free
+  // voice right away.
+  const [agentAutoVoice, setAgentAutoVoice] = useState(false);
+  const [agentVoiceRequest, setAgentVoiceRequest] = useState(0);
+  const [agentExpandRequest, setAgentExpandRequest] = useState(0);
 
-  useEffect(() => {
-    const openAgent = () => {
-      setAgentStartMinimized(false);
-      setIsAIAgentModalOpen(true);
-    };
-    window.addEventListener("openAIAgent", openAgent);
-    return () => window.removeEventListener("openAIAgent", openAgent);
+  const openAIAgent = useCallback(() => {
+    setAgentAutoVoice(false);
+    setAgentExpandRequest((n) => n + 1);
+    setIsAIAgentModalOpen(true);
   }, []);
 
-  // Shaking the device opens the AI Agent as a minimized bar (like the app).
-  const openAgentFromShake = useCallback(() => {
-    if (isAIAgentModalOpen) return;
-    setAgentStartMinimized(true);
+  const openAIAgentVoice = useCallback(() => {
+    setAgentAutoVoice(true);
+    setAgentVoiceRequest((n) => n + 1);
     setIsAIAgentModalOpen(true);
     try {
       navigator.vibrate?.(30);
     } catch (_) {}
-  }, [isAIAgentModalOpen]);
+  }, []);
 
-  useShakeDetector(openAgentFromShake, {
+  const closeAIAgent = useCallback(() => {
+    setIsAIAgentModalOpen(false);
+    setAgentAutoVoice(false);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("openAIAgent", openAIAgent);
+    return () => window.removeEventListener("openAIAgent", openAIAgent);
+  }, [openAIAgent]);
+
+  useShakeDetector(openAIAgentVoice, {
     enabled: isAuthenticated && !isHeaderHiddenRoute,
   });
 
@@ -2603,10 +2614,8 @@ const Main = () => {
         <Header
           pendingLudoInvites={pendingLudoInvites}
           pendingChessInvites={pendingChessInvites}
-          onAIAgentOpen={() => {
-            setAgentStartMinimized(false);
-            setIsAIAgentModalOpen(true);
-          }}
+          onAIAgentOpen={openAIAgent}
+          onAIAgentVoice={openAIAgentVoice}
         />
       )}
 
@@ -2939,8 +2948,10 @@ const Main = () => {
         <Suspense fallback={null}>
           <AIAgentModal
             isOpen
-            startMinimized={agentStartMinimized}
-            onClose={() => setIsAIAgentModalOpen(false)}
+            autoStartVoice={agentAutoVoice}
+            voiceStartRequest={agentVoiceRequest}
+            expandRequest={agentExpandRequest}
+            onClose={closeAIAgent}
           />
         </Suspense>
       )}

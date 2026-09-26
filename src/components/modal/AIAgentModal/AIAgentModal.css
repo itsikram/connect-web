@@ -1797,6 +1797,31 @@
     white-space: nowrap;
 }
 
+.ai-agent-mini-status {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+}
+
+.ai-agent-mini-mic {
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(0, 212, 255, 0.14);
+    color: #00d4ff;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.ai-agent-mini-mic.is-on {
+    background: rgba(239, 68, 68, 0.16);
+    color: #ef4444;
+}
+
 .ai-agent-mini-dot {
     width: 7px;
     height: 7px;

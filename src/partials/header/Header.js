@@ -15,7 +15,7 @@ import Ls from "../sidebar/Ls";
 import { setHeaderHeight } from "../../services/actions/optionAction.js";
 import { useDispatch, useSelector } from "react-redux";
 
-const Header = ({ pendingLudoInvites = [], pendingChessInvites = [], onAIAgentOpen }) => {
+const Header = ({ pendingLudoInvites = [], pendingChessInvites = [], onAIAgentOpen, onAIAgentVoice }) => {
   const dispatch = useDispatch();
   let localtion = useLocation();
   let myProfile = useSelector((state) => state.profile);
@@ -83,7 +83,7 @@ const Header = ({ pendingLudoInvites = [], pendingChessInvites = [], onAIAgentOp
         <Container className="header-container" fluid="xxl">
           <Row>
             <Col className="d-flex align-items-center">
-              <HeaderLeft onAIAgentOpen={onAIAgentOpen} />
+              <HeaderLeft onAIAgentOpen={onAIAgentOpen} onAIAgentVoice={onAIAgentVoice} />
             </Col>
             {!match && (
               <>
