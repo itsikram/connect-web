@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  agentSpeechCancelled,
+  agentSpeechEnded,
+  agentSpeechStarted,
+} from "../components/modal/AIAgentModal/agentEcho";
 
 const hasBangla = (text) => /[\u0980-\u09FF]/.test(String(text || ""));
 
@@ -102,6 +107,7 @@ export default function useAgentSpeech() {
   }, []);
 
   const forceIdle = useCallback(() => {
+    agentSpeechCancelled();
     pendingRef.current = 0;
     onIdleRef.current = null;
     setSpeaking(false);
@@ -158,8 +164,16 @@ export default function useAgentSpeech() {
       pendingRef.current += 1;
       lastSpeakAtRef.current = Date.now();
       setSpeaking(true);
+      // Tracked so the mic stays closed while the agent talks and its own
+      // words are never taken as a new command.
+      agentSpeechStarted(text);
       let finished = false;
+      let echoClosed = false;
       const finishUtterance = () => {
+        if (!echoClosed) {
+          echoClosed = true;
+          agentSpeechEnded();
+        }
         if (finished || generation !== generationRef.current) return;
         finished = true;
         clearTimeout(watchdog);
@@ -187,6 +201,7 @@ export default function useAgentSpeech() {
     pendingRef.current = 0;
     onIdleRef.current = null;
     lastSpeakAtRef.current = 0;
+    agentSpeechCancelled();
     if (supported) {
       try {
         window.speechSynthesis.cancel();

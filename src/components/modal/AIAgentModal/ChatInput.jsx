@@ -3,6 +3,12 @@ import { motion } from "framer-motion";
 import useComposerLiveTranscribe from "../../../hooks/useComposerLiveTranscribe";
 import { mergeTranscriptChunk } from "../../../hooks/transcriptText";
 import { isVoiceFiller } from "./agentFastPath";
+import {
+  AGENT_ECHO_TAIL_MS,
+  agentQuietForMs,
+  isAgentSpeaking,
+  isLikelyAgentEcho,
+} from "./agentEcho";
 
 const AUTO_SEND_DELAY_MS = 800;
 const LIVE_TALK_SILENCE_MS = 2000;
@@ -167,6 +173,8 @@ const ChatInput = ({
   const handleTranscriptInterim = useCallback(
     (text, meta = {}) => {
       if (!text) return;
+      // Never treat the agent's own voice as the user speaking.
+      if (isLikelyAgentEcho(text)) return;
       interruptIfUserSpoke(text);
       const next = mergeTranscriptChunk(transcribeBaseRef.current, text);
       onChangeRef.current(next);
@@ -185,6 +193,7 @@ const ChatInput = ({
     (text, meta = {}) => {
       setRefining(false);
       if (!text) return;
+      if (isLikelyAgentEcho(text)) return;
       interruptIfUserSpoke(text);
       const next = mergeTranscriptChunk(transcribeBaseRef.current, text);
       if (
@@ -310,9 +319,19 @@ const ChatInput = ({
     if (isListening) return undefined;
     let cancelled = false;
     let retryTimer = 0;
-    const tryStart = (delay) => {
+    const tryStart = (requestedDelay) => {
+      // Reopen the mic only after the speaker has been quiet for a moment,
+      // so the tail of the agent's own reply is not transcribed.
+      const delay = Math.max(
+        requestedDelay,
+        AGENT_ECHO_TAIL_MS - agentQuietForMs(),
+      );
       retryTimer = window.setTimeout(() => {
         if (cancelled || !liveTalkOnRef.current || isSpeakingRef.current) return;
+        if (isAgentSpeaking() || agentQuietForMs() < AGENT_ECHO_TAIL_MS) {
+          tryStart(AGENT_ECHO_TAIL_MS);
+          return;
+        }
         transcribeBaseRef.current = String(valueRef.current || "").trim();
         startTranscription(langCode)
           .then((ok) => {

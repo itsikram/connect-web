@@ -12,11 +12,11 @@ test("user Gemini key overrides the env key", () => {
   saveAgentSettings({
     provider: "gemini",
     keys: { gemini: "user-gemini-key", openai: "", cursor: "" },
-    models: { gemini: "gemini-2.0-flash" },
+    models: { gemini: "gemini-3.5-flash" },
   });
   const resolved = getResolvedAgentSettings();
   expect(resolved.provider).toBe("gemini");
-  expect(resolved.model).toBe("gemini-2.0-flash");
+  expect(resolved.model).toBe("gemini-3.5-flash");
   expect(resolved.apiKey).toBe("user-gemini-key");
   expect(resolved.usingUserKey).toBe(true);
 });
@@ -45,4 +45,9 @@ test("Cursor never stores an API key in the browser", () => {
   expect(resolved.apiKey).toBe("");
   expect(resolved.keySource).toBe("admin");
   expect(resolved.model).toBe("composer-2.5");
+});
+
+test("a saved Gemini model that Google retired falls back to the default", () => {
+  saveAgentSettings({ provider: "gemini", models: { gemini: "gemini-2.0-flash" } });
+  expect(getResolvedAgentSettings().model).toBe("gemini-3.8-flash");
 });

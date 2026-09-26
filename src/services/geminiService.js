@@ -123,6 +123,25 @@ export const buildAgentActionPrompt = () => {
   return cachedActionPrompt;
 };
 
+const PLAN_JSON_ESCAPES = { n: " ", t: " ", r: "", '"': '"', "\\": "\\", "/": "/" };
+
+/**
+ * Pulls the user-facing "reply" out of a JSON plan while it is still
+ * streaming, so the agent can start talking before the plan is complete.
+ */
+export const extractStreamingPlanReply = (partial = "") => {
+  const match = String(partial || "").match(
+    /"(?:reply|message)"\s*:\s*"((?:[^"\\]|\\.)*)/,
+  );
+  if (!match) return "";
+  return match[1]
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
+      String.fromCharCode(parseInt(hex, 16)),
+    )
+    .replace(/\\(.)/g, (_, char) => PLAN_JSON_ESCAPES[char] ?? char)
+    .replace(/\\$/, "");
+};
+
 /** True while a streamed reply looks like a JSON action plan, not prose. */
 export const looksLikeAgentPlan = (text = "") => {
   const trimmed = String(text || "").trimStart();

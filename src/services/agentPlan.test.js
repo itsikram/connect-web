@@ -1,4 +1,5 @@
 import {
+  extractStreamingPlanReply,
   buildAgentActionPrompt,
   looksLikeAgentPlan,
   parseAgentPlan,
@@ -40,5 +41,18 @@ describe("LLM action planning", () => {
     expect(prompt).toContain("SEND_MESSAGE_TO_USER(");
     expect(prompt).toContain("/notes=Notes");
     expect(prompt).not.toContain("LOG_FITNESS_MEAL");
+  });
+});
+
+describe("speaking a plan while it streams", () => {
+  it("reads the reply before the JSON is complete", () => {
+    expect(extractStreamingPlanReply('{"reply":"করিমকে মেসেজ পাঠা')).toBe("করিমকে মেসেজ পাঠা");
+    expect(extractStreamingPlanReply('{"actions":[{"action":"CREATE_TASK"')).toBe("");
+  });
+
+  it("decodes JSON escapes and ignores a dangling backslash", () => {
+    const bs = "\\";
+    expect(extractStreamingPlanReply(`{"reply":"Say ${bs}"hi${bs}" now`)).toBe('Say "hi" now');
+    expect(extractStreamingPlanReply(`{"reply":"half ${bs}`)).toBe("half ");
   });
 });

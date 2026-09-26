@@ -567,6 +567,9 @@ const completeViaServer = async ({
       json,
       temperature,
       maxTokens,
+      // Web plans actions from its own catalog; the server's tool list uses
+      // different (mobile) action names.
+      useTools: false,
     };
     if (settings.provider === "openai" && settings.usingUserKey && settings.apiKey) {
       payload.apiKey = settings.apiKey;
@@ -625,6 +628,9 @@ const streamViaServer = async ({
       json,
       temperature,
       maxTokens,
+      // Web plans actions from its own catalog; the server's tool list uses
+      // different (mobile) action names.
+      useTools: false,
     };
     if (
       (settings.provider === "openai" || settings.provider === "gemini") &&

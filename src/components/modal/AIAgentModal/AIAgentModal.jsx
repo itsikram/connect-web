@@ -10,6 +10,8 @@ import {
   sendToGeminiStream,
   looksLikeAgentPlan,
   parseAgentPlan,
+  extractStreamingPlanReply,
+  answerFromAppData,
   PLANNER_CONFIRM_ACTIONS,
 } from "../../../services/geminiService";
 import {
@@ -60,6 +62,21 @@ import { pickBestYoutubeMatch } from "./agentActionHelpers";
 import useAgentSpeech from "../../../hooks/useAgentSpeech";
 
 const createId = () => Date.now() + Math.random();
+
+// After these the page plays video/audio: hands-free talk pauses so the agent
+// does not transcribe the media (or itself) as new commands.
+const MEDIA_ACTIONS = new Set(["OPEN_VIDEO_PLAYER", "DOWNLOAD_YOUTUBE"]);
+const MEDIA_ROUTES = ["/watch", "/youtube", "/video-player", "/downloads"];
+const startsMedia = (intent) =>
+  MEDIA_ACTIONS.has(intent?.action) ||
+  (intent?.action === "NAVIGATE" &&
+    MEDIA_ROUTES.some((route) =>
+      String(intent?.targetRoute || "").startsWith(route),
+    ));
+
+// Phrases that end a hands-free (live talk) conversation.
+const STOP_CONVERSATION =
+  /^(stop|stop listening|bye|goodbye|that'?s all|nothing else|থামো|থামুন|থাক|বিদায়|আর কিছু না|আর কিছু লাগবে না|আপাতত এটুকুই|bas|ar kichu na)[.!।\s]*$/i;
 
 const INITIAL_MESSAGE = {
   id: 1,
@@ -196,6 +213,8 @@ const AIAgentModal = ({ isOpen, onClose }) => {
     cancel: cancelSpeech,
   } = useAgentSpeech();
   const liveTalkOnRef = useRef(false);
+  // Set while a plan's own spoken reply already announced the action.
+  const skipAnnounceRef = useRef(false);
   const spokenMessageIdsRef = useRef(new Set());
 
   // Fetch chat history from database
@@ -351,7 +370,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
 
   const announceUpcomingAction = useCallback(
     async (intent, connect = null, langHint = "") => {
-      if (!liveTalkOnRef.current) return;
+      if (!liveTalkOnRef.current || skipAnnounceRef.current) return;
       const language = detectAgentLanguage(langHint);
       const line = describeUpcomingAction(intent, {
         connectName: getConnectDisplayName(connect) || intent?.targetName || "",
@@ -426,6 +445,8 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         lastUser?.content || "",
       );
       navigate(`/watch/${video._id}`, { state: { autoplay: true } });
+      // The video plays with sound now; stop listening until the user asks.
+      setLiveTalkOn(false);
       handleMinimize();
     },
     [announceUpcomingAction, handleMinimize, navigate],
@@ -467,6 +488,8 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         success: result.success,
         skipSpeech: liveTalkOnRef.current,
       });
+      // The downloaded video plays with sound; stop listening until asked.
+      if (result.success) setLiveTalkOn(false);
       rememberActionResult(myProfile?._id, {
         action: "DOWNLOAD_YOUTUBE",
         result,
@@ -638,9 +661,13 @@ const AIAgentModal = ({ isOpen, onClose }) => {
                 return;
               }
               if (typeof next !== "string" || !next) return;
-              // An action plan streams as JSON; keep the typing indicator up
-              // instead of flashing raw JSON at the user.
-              if (looksLikeAgentPlan(next)) return;
+              // An action plan streams as JSON: show (and speak) only its
+              // "reply" as it arrives, never the raw JSON.
+              if (looksLikeAgentPlan(next)) {
+                const spoken = extractStreamingPlanReply(next);
+                if (spoken) pushDelta(spoken, true);
+                return;
+              }
               pushDelta(next, true);
             },
             signal: abort.signal,
@@ -656,10 +683,18 @@ const AIAgentModal = ({ isOpen, onClose }) => {
             ? parseAgentPlan(rawFinal, userText)
             : { reply: rawFinal, intents: [], isPlan: false };
           if (plan.intents.length) {
-            if (inserted) {
+            const keepReply = inserted && Boolean(plan.reply);
+            if (keepReply) flushStreamMessage(streamId, plan.reply, false);
+            else if (inserted) {
               setMessages((prev) => prev.filter((msg) => msg.id !== streamId));
             }
-            await runPlannedIntents(plan);
+            // The streamed reply already told the user what is happening.
+            skipAnnounceRef.current = keepReply;
+            try {
+              await runPlannedIntents(plan);
+            } finally {
+              skipAnnounceRef.current = false;
+            }
             return;
           }
           const finalText = plan.isPlan
@@ -707,6 +742,19 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         }
       };
 
+      // "Stop / bye / থামো" ends a hands-free conversation politely.
+      if (liveTalkOnRef.current && STOP_CONVERSATION.test(originalText)) {
+        const bangla = detectAgentLanguage(originalText) !== "en";
+        const goodbye = bangla
+          ? "ঠিক আছে। দরকার হলে আবার ডাকবেন।"
+          : "Okay. Call me whenever you need me.";
+        setLiveTalkOn(false);
+        addMessage({ type: "agent", content: goodbye, skipSpeech: true });
+        speakText(goodbye, { lang: bangla ? "bn" : "en" });
+        setIsLoading(false);
+        return;
+      }
+
       // A spoken/typed "yes"/"no" answers the latest confirmation prompt.
       const latestMessage = messagesRef.current[messagesRef.current.length - 1];
       // Voice transcripts often end with "।" (Bangla full stop).
@@ -753,6 +801,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
 
       const presentResult = async (result, replyOverride, intent = null) => {
         if (!result || !stillCurrent()) return;
+        if (result.success && startsMedia(intent)) setLiveTalkOn(false);
         rememberActionResult(myProfile?._id, {
           action: intent?.action,
           connectName: intent?.targetName,
@@ -770,9 +819,23 @@ const AIAgentModal = ({ isOpen, onClose }) => {
         }
 
         if (result.type === "query-data") {
+          // Answer like a person, in the user's language, from the real data.
+          let answer = "";
+          if (result.success && result.data) {
+            try {
+              answer = await answerFromAppData({
+                question: originalText,
+                data: result.data,
+                conversationHistory: history,
+              });
+            } catch (_) {
+              answer = "";
+            }
+          }
+          if (!stillCurrent()) return;
           addMessage({
             type: "action-result",
-            content: replyOverride || result.message,
+            content: answer || replyOverride || result.message,
             success: result.success,
           });
           return;
@@ -1240,6 +1303,7 @@ const AIAgentModal = ({ isOpen, onClose }) => {
       cancelSpeech,
       announceUpcomingAction,
       preferredLanguage,
+      speakText,
     ],
   );
 
