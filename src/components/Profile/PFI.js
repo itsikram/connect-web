@@ -24,6 +24,7 @@ const PFI = (props) => {
     let [isConnect, setIsConnect] = useState(false)
     let [isReportOpen, setIsReportOpen] = useState(false)
     let [relationshipOpen, setRelationshipOpen] = useState(false)
+    let [isHidden, setIsHidden] = useState(false)
 
     useEffect(() => {
         myProfile.connects && myProfile.connects.filter(singleConnect => {
@@ -66,7 +67,7 @@ const PFI = (props) => {
                 if (res.data?.myProfile) {
                     dispatch(getProfileSuccess(res.data.myProfile))
                 }
-                $(e.currentTarget).parents('.connect-item').fadeOut()
+                setIsHidden(true)
 
             }
 
@@ -80,7 +81,7 @@ const PFI = (props) => {
 
             let res = await api.post('/connects/sendRequest/', { profile: connect._id, relationTypes })
             if(res.status == 200) {
-                $(target).parents('.connect-item').hide()
+                setIsHidden(true)
 
             }
 
@@ -88,6 +89,8 @@ const PFI = (props) => {
             console.log(error)
         }
     }
+    if (isHidden) return null
+
     return (
         <>
             <div className='connect-item'>

@@ -28,6 +28,11 @@ const Message = (props) => {
 
   const isMobile = useMediaQuery("(max-width: 768px)");
 
+  // On phones, land on the conversation list when no chat is open.
+  useEffect(() => {
+    if (isMobile && !connectId) setShowMobileNav(true);
+  }, [isMobile, connectId]);
+
   useEffect(() => {
     const timer = setTimeout(() => setIsInitialLoad(false), 300);
     return () => clearTimeout(timer);
@@ -289,7 +294,10 @@ const Message = (props) => {
               className={`message-main-content ${isMobile ? "mobile-full" : ""}`}
             >
               <div className="chat-container">
-                <MessageBody cameraVideoRef={props.cameraVideoRef} />
+                <MessageBody
+                  cameraVideoRef={props.cameraVideoRef}
+                  onOpenList={isMobile ? () => setShowMobileNav(true) : undefined}
+                />
               </div>
             </div>
 

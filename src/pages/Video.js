@@ -452,8 +452,8 @@ const Video = () => {
         }
       >
         <div className="row">
-          <div className="col-md-3">{!isMobile && <Ls />}</div>
-          <div className="col-md-6">
+          <div className="col-xl-3 d-none d-xl-block">{!isMobile && <Ls />}</div>
+          <div className="col-12 col-lg-8 offset-lg-2 col-xl-6 offset-xl-0">
             <div className="watch-view-shell">
               <div
                 className="watch-view-toggle"
@@ -596,7 +596,7 @@ const Video = () => {
               )}
             </div>
           </div>
-          <div className="col-md-3">{!isMobile && <Rs />}</div>
+          <div className="col-xl-3 d-none d-xl-block">{!isMobile && <Rs />}</div>
         </div>
       </div>
     </Fragment>

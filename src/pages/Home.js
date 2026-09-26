@@ -17,6 +17,9 @@ import CacheManager from "../utils/cacheManager"
 import { fetchHomeStoriesCached } from "../utils/requestCache"
 import FeedBoostCards from "../components/feed/FeedBoostCards"
 
+
+// The fixed 280px side rails only fit beside the feed on wide screens.
+const SIDE_RAILS_HIDDEN_QUERY = '(max-width: 1199.98px)';
 const Home = () => {
 
     const dispatch = useDispatch()
@@ -34,7 +37,7 @@ const Home = () => {
     function scrollRight() {
         storyContainer.current.scrollBy({ left: 300, behavior: 'smooth' })
     }
-    const [match, setMatch] = useState(window.matchMedia('(max-width: 768px)').matches)
+    const [match, setMatch] = useState(window.matchMedia(SIDE_RAILS_HIDDEN_QUERY).matches)
     const [loadNewPosts, setLoadNewPosts] = useState(false);
     const [hasNewPosts, setHasNewPosts] = useState(true);
     const [showNewPostsNotification, setShowNewPostsNotification] = useState(false);
@@ -192,7 +195,7 @@ const Home = () => {
     useEffect(() => {
         dispatch(setLoading(false))
 
-        const mediaQuery = window.matchMedia("(max-width:768px)")
+        const mediaQuery = window.matchMedia(SIDE_RAILS_HIDDEN_QUERY)
         const handleMediaChange = (e) => {
             setMatch(e.matches)
         }
@@ -254,11 +257,11 @@ const Home = () => {
             <div id="home" className="home-page">
                 <Container fluid>
                     <Row>
-                        <Col md="3">
+                        <Col xl="3" className="d-none d-xl-block">
                             {!match && <Ls />}
                         </Col>
 
-                        <Col md="6">
+                        <Col xs="12" lg={{ span: 8, offset: 2 }} xl={{ span: 6, offset: 0 }}>
 
                             <CreatePost setNewsFeed={setNewsFeed}></CreatePost>
 
@@ -331,7 +334,7 @@ const Home = () => {
                         </Col>
 
 
-                        <Col md="3">
+                        <Col xl="3" className="d-none d-xl-block">
                             {!match && <Rs></Rs>}
                         </Col>
 

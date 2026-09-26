@@ -192,6 +192,11 @@ const Camera = () => {
           height: { ideal: 1080 },
         },
       });
+      // Left the page while permission / device start was pending: release it.
+      if (!mountedRef.current) {
+        stopStream(stream);
+        return;
+      }
       streamRef.current = stream;
       const video = videoRef.current;
       if (video) {

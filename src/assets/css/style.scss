@@ -9701,3 +9701,44 @@ body, html, #root {
   background: #111112;
 }
 
+
+// Tablet / small laptop: keep the header on one row. The nav column is
+// otherwise locked at 50%, which pushes the right-hand icons onto a second row.
+@media (min-width: 769px) and (max-width: 1199.98px) {
+  #header .header-container > .row {
+    flex-wrap: nowrap;
+    align-items: center;
+
+    > .col {
+      min-width: 0;
+    }
+
+    > .header-middle {
+      flex: 0 0 auto;
+      width: auto;
+      max-width: none;
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+
+    > .header-right {
+      flex: 0 0 auto;
+      width: auto;
+    }
+  }
+
+  #header .header-container .header-left {
+    min-width: 0;
+
+    .header-search-container,
+    .header-search-input-wrap,
+    input {
+      min-width: 0;
+      flex-shrink: 1;
+    }
+  }
+
+  #header .header-container .header-middle .header-nav-menu-item {
+    min-width: 48px;
+  }
+}
