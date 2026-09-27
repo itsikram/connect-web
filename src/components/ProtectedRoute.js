@@ -27,8 +27,12 @@ const ProtectedRoute = ({ children }) => {
     // Check authentication
     const isAuth = checkAuth();
     
-    // If not authenticated, redirect to login immediately
+    // If not authenticated, redirect to login immediately. Offline, login is
+    // impossible, so send the user to their on-device saved media instead.
     if (!isAuthenticated || !isAuth) {
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            return <Navigate to="/downloads" replace />;
+        }
         console.log('🔒 Not authenticated, redirecting to login');
         const redirectPath = location.pathname + location.search;
         return <Navigate to="/login" replace state={{ from: redirectPath }} />;

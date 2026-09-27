@@ -191,6 +191,7 @@ export const getAllSavedVideos = (callback) => {
       const videos = getAllRequest.result.map((video) => ({
         id: video.id,
         metadata: video.metadata,
+        mimeType: video.blob?.type || '',
         videoURL: URL.createObjectURL(video.blob),
       }));
       callback(videos);

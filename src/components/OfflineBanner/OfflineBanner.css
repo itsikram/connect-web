@@ -1,0 +1,51 @@
+.offline-banner {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 10040;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 32px);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.94);
+  color: #f9fafb;
+  font-size: 13px;
+  line-height: 1.2;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  pointer-events: auto;
+}
+
+.offline-banner-icon {
+  opacity: 0.6;
+}
+
+.offline-banner-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.offline-banner-link {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.offline-banner-link:hover,
+.offline-banner-link:focus-visible {
+  color: #fff;
+  background: #1d4ed8;
+}
+
+@media (max-width: 768px) {
+  .offline-banner {
+    bottom: calc(var(--mobile-bottom-nav-h, 60px) + 12px + env(safe-area-inset-bottom, 0px));
+  }
+}

@@ -1,15 +1,18 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { deleteVideoById } from '../../utils/useSavedVideos';
 
-const VideoCard = ({ videoData, videoUrl, onDelete }) => {
+const VideoCard = ({ videoData, videoUrl, mimeType, onDelete }) => {
     const navigate = useNavigate();
+    // Remote thumbnails (e.g. i.ytimg.com) cannot load offline.
+    const [thumbFailed, setThumbFailed] = useState(false);
 
     if (!videoData) return null;
 
     const title = videoData.caption || 'Saved video';
-    const thumb = videoData.thumbnail || videoData.author?.profilePic || '';
+    const thumb = thumbFailed ? '' : (videoData.thumbnail || videoData.author?.profilePic || '');
+    const isAudio = String(mimeType || '').startsWith('audio/');
     const authorName = videoData.author?.fullName || videoData.author?.name || '';
 
     const gotoSingleVideo = () => {
@@ -38,7 +41,17 @@ const VideoCard = ({ videoData, videoUrl, onDelete }) => {
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); gotoSingleVideo(); } }}>
             <div className="sv-card-media">
                 {thumb ? (
-                    <img src={thumb} alt="" className="sv-card-poster" loading="lazy" />
+                    <img
+                        src={thumb}
+                        alt=""
+                        className="sv-card-poster"
+                        loading="lazy"
+                        onError={() => setThumbFailed(true)}
+                    />
+                ) : isAudio ? (
+                    <div className="sv-card-audio-placeholder" aria-hidden="true">
+                        <i className="fas fa-music" />
+                    </div>
                 ) : (
                     <video
                         className="sv-card-video"

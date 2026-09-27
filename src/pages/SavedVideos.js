@@ -4,6 +4,7 @@ import { getAllSavedVideos, getSavedVideosHistory, saveVideoFromUrl, deleteSaved
 import VideoCard from '../components/downloads/VideoCard';
 import { subscribeWatchDownloads } from '../utils/watchDownloadProgress';
 import { formatBytes } from '../utils/downloadFileWithProgress';
+import useOnlineStatus from '../hooks/useOnlineStatus';
 import './SavedVideos.css';
 
 const getRestorableUrl = (video) => {
@@ -31,6 +32,7 @@ const SavedVideos = () => {
     const [isDownloadingAll, setIsDownloadingAll] = useState(false);
     const [isLoadingPrevious, setIsLoadingPrevious] = useState(false);
     const [deletingPreviousId, setDeletingPreviousId] = useState('');
+    const isOnline = useOnlineStatus();
 
     const refreshSaved = useCallback(() => {
         console.log('[SavedVideos] Refreshing local saved videos...');
@@ -40,8 +42,10 @@ const SavedVideos = () => {
         });
     }, []);
 
-    // Load previous videos from backend - runs once on mount
+    // Load previous videos from backend. Skipped offline (the local library
+    // still works) and retried when the connection comes back.
     useEffect(() => {
+        if (!isOnline) return;
         const loadPreviousVideos = async () => {
             setIsLoadingPrevious(true);
             try {
@@ -65,7 +69,7 @@ const SavedVideos = () => {
         };
 
         loadPreviousVideos();
-    }, []); // Empty dependencies - run once on mount
+    }, [isOnline]);
 
     useEffect(() => {
         console.log('[SavedVideos] Component mounted, loading saved videos...');
@@ -264,14 +268,18 @@ const SavedVideos = () => {
                     </section>
                 )}
 
-                {isEmpty && previousVideos.length === 0 ? (
+                {isEmpty && (!isOnline || previousVideos.length === 0) ? (
                     <div className="sv-empty">
                         <div className="sv-empty-icon" aria-hidden="true">
                             <i className="fas fa-film" />
                         </div>
                         <h2>No saved videos yet</h2>
-                        <p>Download from YouTube or save a video from Watch to store it on this device.</p>
-                        <div className="sv-empty-actions">
+                        <p>
+                            {isOnline
+                                ? 'Download from YouTube or save a video from Watch to store it on this device.'
+                                : "You're offline. Music and videos you save while online will play here without internet."}
+                        </p>
+                        {isOnline && <div className="sv-empty-actions">
                             <Link to="/yt-download" className="sv-btn sv-btn--primary">
                                 <i className="fas fa-download" aria-hidden="true" />
                                 YouTube Downloader
@@ -280,7 +288,7 @@ const SavedVideos = () => {
                                 <i className="fas fa-tv" aria-hidden="true" />
                                 Browse Watch
                             </Link>
-                        </div>
+                        </div>}
                     </div>
                 ) : noResults ? (
                     <div className="sv-empty sv-empty--compact">
@@ -306,6 +314,7 @@ const SavedVideos = () => {
                                             key={video.id || video.metadata?._id}
                                             videoData={video.metadata}
                                             videoUrl={video.videoURL}
+                                            mimeType={video.mimeType}
                                             onDelete={refreshSaved}
                                         />
                                     ))}
@@ -314,7 +323,7 @@ const SavedVideos = () => {
                         )}
 
                         {/* Previous downloads section */}
-                        {previousVideos.length > 0 && (
+                        {isOnline && previousVideos.length > 0 && (
                             <section className="sv-section sv-previous-section">
                                 <div className="sv-previous-header">
                                     <div>

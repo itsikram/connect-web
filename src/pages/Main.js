@@ -83,6 +83,12 @@ import { prefetchNavigationTarget } from "../utils/routePrefetch";
 import { speakMessageText } from "../utils/speakMessage";
 import useShakeDetector from "../hooks/useShakeDetector";
 import MobileBottomNav from "../partials/MobileBottomNav/MobileBottomNav";
+import OfflineBanner from "../components/OfflineBanner/OfflineBanner";
+import useOnlineStatus from "../hooks/useOnlineStatus";
+// Saved media must open with no connection, so keep these pages in the main
+// bundle instead of lazy chunks that might be missing from the offline cache.
+import SavedVideos from "./SavedVideos.js";
+import SingleVideo from "../components/downloads/SingleVideo.js";
 
 const Profile = lazy(() => import("./Profile"));
 const Connects = lazy(() => import("./Connects"));
@@ -132,8 +138,6 @@ const SoundSetting = lazy(() => import("../components/setting/SoundSetting.js"))
 const CacheSetting = lazy(() => import("../components/setting/CacheSetting.js"));
 const VideoCallPage = lazy(() => import("./VideoCallPage.js"));
 const Youtebe = lazy(() => import("./Youtebe.js"));
-const SingleVideo = lazy(() => import("../components/downloads/SingleVideo.js"));
-const SavedVideos = lazy(() => import("./SavedVideos.js"));
 const LudoGame = lazy(() => import("./ludo"));
 const ChessGame = lazy(() => import("./ChessGame"));
 const VideoPlayer = lazy(() => import("./VideoPlayer.js"));
@@ -354,6 +358,7 @@ const Main = () => {
   const params = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const isOnline = useOnlineStatus();
   const audioElement = useRef(null);
   const speakAudioElement = useRef(null);
   const pendingSpeakPayloadRef = useRef(null);
@@ -2533,6 +2538,17 @@ const Main = () => {
     stopAllAudio();
   }, [location.pathname]);
 
+  // Opened with no connection (e.g. the iOS home-screen app on a plane):
+  // the feed and login cannot work, so start on the on-device saved media.
+  useEffect(() => {
+    if (navigator.onLine !== false) return;
+    if (location.pathname === "/" || location.pathname === "/login") {
+      navigate("/downloads", { replace: true });
+    }
+    // Only on launch; later offline transitions keep the current page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const isHeaderHiddenRoute =
     location.pathname.startsWith("/portfolio") ||
     location.pathname.startsWith("/youtube") ||
@@ -2980,9 +2996,10 @@ const Main = () => {
       <MinimizedCallBar />
       <WatchPipPlayer />
       <IosAddToHomeScreen />
-      {isAuthenticated && profileId ? (
+      {isAuthenticated && profileId && isOnline ? (
         <EnablePushBanner profileId={profileId} api={api} />
       ) : null}
+      {!isOnline && !isHeaderHiddenRoute && <OfflineBanner />}
     </Fragment>
   );
 };
