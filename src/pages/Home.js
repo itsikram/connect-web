@@ -261,7 +261,7 @@ const Home = () => {
                             {!match && <Ls />}
                         </Col>
 
-                        <Col xs="12" lg={{ span: 8, offset: 2 }} xl={{ span: 6, offset: 0 }}>
+                        <Col xs="12" lg={{ span: 8, offset: 2 }} xl={{ span: 6, offset: 0 }} className="home-feed-col">
 
                             <CreatePost setNewsFeed={setNewsFeed}></CreatePost>
 

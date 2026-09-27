@@ -4,10 +4,12 @@ import './App.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './assets/fontawesome/css/all.min.css';
 import './assets/css/style.scss';
+import './assets/css/auth.css';
 import './assets/css/video-call.css';
 import 'nprogress/nprogress.css';
 import './assets/css/nprogress-overrides.css';
 import './assets/css/portfolio.scss';
+import './assets/css/ui-polish.css';
 import process from 'process';
 import { AuthProvider } from './contexts/AuthContext';
 import { CallMinimizeProvider } from './contexts/CallMinimizeContext';
@@ -62,16 +64,28 @@ function App() {
   }, []);
 
 
+  // Offer the native app only to phone visitors who are not already in the
+  // installed app, and not the moment the page opens. iPhones get the
+  // dedicated iOS install banner instead.
   useEffect(() => {
     try {
-      const key = 'download_app_modal_dismissed';
-      const dismissed = localStorage.getItem(key);
-      if (!dismissed) {
-        setShowDownloadModal(true);
-      }
+      if (localStorage.getItem('download_app_modal_dismissed')) return undefined;
     } catch (e) {
-      setShowDownloadModal(true);
+      // ignore
     }
+    const ua = window.navigator.userAgent.toLowerCase();
+    const isIos =
+      /iphone|ipad|ipod/.test(ua) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isPhone =
+      /android|mobi/.test(ua) ||
+      (window.matchMedia?.('(pointer: coarse)').matches && window.innerWidth < 900);
+    const isStandalone =
+      window.navigator.standalone === true ||
+      window.matchMedia?.('(display-mode: standalone)').matches;
+    if (isIos || !isPhone || isStandalone) return undefined;
+    const timer = window.setTimeout(() => setShowDownloadModal(true), 12000);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const handleCloseDownloadModal = () => {

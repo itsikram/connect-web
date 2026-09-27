@@ -6250,3 +6250,10 @@
 .message-empty-action:focus-visible {
     filter: brightness(1.1);
 }
+
+/* Mobile: keep the drawer toggle from covering the conversation search. */
+@media (max-width: 768px) {
+    .modern-message-layout.has-nav-toggle .message-sidebar .search-section {
+        padding-left: 52px !important;
+    }
+}

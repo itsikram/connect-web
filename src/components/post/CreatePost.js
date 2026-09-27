@@ -222,7 +222,8 @@ let CreatePost = ({ setPosts = null }) => {
     let profileName = profileData.user && profileData.user.firstName + ' ' + profileData.user.surname || ''
 
 
-    let textInputPlaceHoder = "What's On Your Mind " + profileName + "?"
+    let firstName = profileData.user?.firstName || ''
+    let textInputPlaceHoder = firstName ? `What's on your mind, ${firstName}?` : "What's on your mind?"
 
     const feelingsOptions = [
         { label: 'None', value: '' },

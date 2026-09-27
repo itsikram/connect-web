@@ -259,9 +259,11 @@ const Message = (props) => {
             marginTop: isMobile ? 0 : "0.5%",
           }}
         >
-          <div className="modern-message-layout">
-            {/* Mobile Navigation Toggle */}
-            {isMobile && (
+          <div
+            className={`modern-message-layout${isMobile && connectId ? " has-nav-toggle" : ""}`}
+          >
+            {/* Mobile Navigation Toggle (inbox shows the list as the page) */}
+            {isMobile && connectId && (
               <button
                 type="button"
                 className="mobile-nav-toggle"

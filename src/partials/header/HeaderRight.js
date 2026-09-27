@@ -21,7 +21,7 @@ import HeaderMessageMenu from "./HeaderMessageMenu";
 
 const EMPTY_LIST = [];
 
-const selectUnreadMessageCount = (state) => {
+export const selectUnreadMessageCount = (state) => {
   const myId = state.profile?._id;
   const list = state.message;
   if (!myId || !Array.isArray(list)) return 0;

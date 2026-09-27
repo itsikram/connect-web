@@ -232,7 +232,19 @@ const CoverPic = ({ profileData }) => {
 
                 {
                     isAuth &&
-                    <div className="upload-cover-photo" onClick={showCpModal}>
+                    <div
+                        className="upload-cover-photo"
+                        onClick={showCpModal}
+                        role="button"
+                        tabIndex={0}
+                        title="Upload cover photo"
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                showCpModal(e)
+                            }
+                        }}
+                    >
                         <i className="fa fa-camera-alt"></i>
                         <span>
                             Upload Cover Photo

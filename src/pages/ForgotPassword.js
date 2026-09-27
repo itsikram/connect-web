@@ -29,7 +29,8 @@ const ForgotPassword = () => {
         <div id="login">
             <div className="login-container">
                 <div id="login-form">
-                    <h1 className="text-center login-heading primary-color mb-3 fw-bold">Forgot Password</h1>
+                    <h1 className="text-center login-heading">Forgot your password?</h1>
+                    <p className="auth-subtitle text-center">Enter your email and we&apos;ll send you a reset link.</p>
                     <form className="forms-container" onSubmit={onSubmit}>
                         <input
                             className="email"

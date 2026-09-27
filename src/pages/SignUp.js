@@ -39,6 +39,7 @@ let SignUP = () => {
     let [isSigningUp, setIsSigningUp] = useState(false)
     let [isGoogleSigningUp, setIsGoogleSigningUp] = useState(false)
     let [error, setError] = useState({})
+    let [dobDate, setDobDate] = useState(null)
 
     let handleChange = e => {
         let name = e.currentTarget.name;
@@ -220,16 +221,17 @@ let SignUP = () => {
             <div className="signup-container">
 
                 <div id="signup-form">
-                    <h1 className="text-center login-heading primary-color mb-3 fw-bold">ICS - Signup</h1>
+                    <h1 className="text-center login-heading">Create your account</h1>
+                    <p className="auth-subtitle text-center">It&apos;s quick and easy.</p>
 
                     <div className="forms-container">
                         <div className="full-name">
-                            <input onChange={handleChange} name="firstName" className="first-name field" type="text" placeholder="First Name" disabled={isSigningUp || isGoogleSigningUp} />
-                            <input name="surname" onChange={handleChange} className="surname field" type="text" placeholder="Surame" disabled={isSigningUp || isGoogleSigningUp} />
+                            <input onChange={handleChange} name="firstName" className="first-name field" type="text" aria-label="First name" autoComplete="given-name" placeholder="First name" disabled={isSigningUp || isGoogleSigningUp} />
+                            <input name="surname" onChange={handleChange} className="surname field" type="text" aria-label="Surname" autoComplete="family-name" placeholder="Surname" disabled={isSigningUp || isGoogleSigningUp} />
 
                         </div>
                         <div className="form-group">
-                            <input onChange={handleChange} name="email" className="email field" type="text" placeholder="Email address or phone number" disabled={isSigningUp || isGoogleSigningUp} />
+                            <input onChange={handleChange} name="email" className="email field" type="text" autoComplete="username" inputMode="email" aria-label="Email address or phone number" placeholder="Email address or phone number" disabled={isSigningUp || isGoogleSigningUp} />
                             <div className="invalid-feedback pb-2 fw-bold">
                                 Please provide a valid email.
                             </div>
@@ -249,9 +251,9 @@ let SignUP = () => {
                             </div>
                         </div>
 
-                        <input onChange={handleChange} ref={pass} name="password" type="password" className="password field" placeholder="Password" disabled={isSigningUp || isGoogleSigningUp} />
+                        <input onChange={handleChange} ref={pass} name="password" type="password" className="password field" autoComplete="new-password" aria-label="Password" placeholder="Password" disabled={isSigningUp || isGoogleSigningUp} />
                         <div className="input-group">
-                            <input onChange={handleChange} ref={cnfmPass} name="confirmPassword" type="password" className="confirm-password field" placeholder="Confirm Password" disabled={isSigningUp || isGoogleSigningUp} />
+                            <input onChange={handleChange} ref={cnfmPass} name="confirmPassword" type="password" className="confirm-password field" autoComplete="new-password" aria-label="Confirm password" placeholder="Confirm password" disabled={isSigningUp || isGoogleSigningUp} />
 
                             <div className="invalid-feedback pb-2 fw-bold">
                                 Please Match Password With Confirm Password.
@@ -283,17 +285,21 @@ let SignUP = () => {
                         }
 
                         {/* <input onChange={handleChange} name="DOB" className="dob field" type="text" placeholder="DD/MM/YYYY" /> */}
+                        <label className="auth-field-label" htmlFor="signup-dob">Date of birth</label>
                         <DatePicker
-                            selected={new Date()}
+                            id="signup-dob"
+                            selected={dobDate}
                             onChange={date => {
-
-                                let dobDate = format(date, 'dd/MM/yyyy')
-                                console.log({...inputs, DOB: dobDate})
-                                setInputs({...inputs, DOB: dobDate})
-                            
+                                setDobDate(date)
+                                if (!date) return
+                                setInputs({...inputs, DOB: format(date, 'dd/MM/yyyy')})
                             }}
+                            maxDate={new Date()}
+                            showYearDropdown
+                            showMonthDropdown
+                            dropdownMode="select"
                             dateFormat="dd/MM/yyyy"
-                            placeholderText="Select a date"
+                            placeholderText="DD/MM/YYYY"
                             name="DOB"
                             className="field w-100"
                             disabled={isSigningUp || isGoogleSigningUp}
@@ -304,21 +310,27 @@ let SignUP = () => {
                         <div className="gender-container">
                             <div className="field-title">Gender</div>
                             <div className="radio-container">
-                                <label htmlFor="genderMale">Male</label>
-                                <input onFocus={handleChange} type="radio" id="genderMale" name="gender" value="male" disabled={isSigningUp || isGoogleSigningUp}></input>
-                                <label htmlFor="genderFemale">Female</label>
-                                <input onFocus={handleChange} type="radio" name="gender" id="genderFemale" value="female" disabled={isSigningUp || isGoogleSigningUp}></input>
-                                <label htmlFor="genderCustom">Custom</label>
-                                <input onFocus={handleChange} type="radio" name="gender" id="genderCustom" value="custom" disabled={isSigningUp || isGoogleSigningUp}></input>
+                                <label htmlFor="genderMale" className="gender-option">
+                                    <input onFocus={handleChange} onChange={handleChange} type="radio" id="genderMale" name="gender" value="male" disabled={isSigningUp || isGoogleSigningUp}></input>
+                                    <span>Male</span>
+                                </label>
+                                <label htmlFor="genderFemale" className="gender-option">
+                                    <input onFocus={handleChange} onChange={handleChange} type="radio" name="gender" id="genderFemale" value="female" disabled={isSigningUp || isGoogleSigningUp}></input>
+                                    <span>Female</span>
+                                </label>
+                                <label htmlFor="genderCustom" className="gender-option">
+                                    <input onFocus={handleChange} onChange={handleChange} type="radio" name="gender" id="genderCustom" value="custom" disabled={isSigningUp || isGoogleSigningUp}></input>
+                                    <span>Custom</span>
+                                </label>
                             </div>
                         </div>
-                        <p style={{ color: 'red' }}>{error.message || authError}</p>
+                        <p className="auth-error" role="alert">{error.message || authError}</p>
 
                         <input 
                             onClick={handleSubmit} 
                             type="submit" 
                             className={`submit-button field ${isSigningUp ? 'disabled' : ''}`} 
-                            value={isSigningUp ? "Signing up..." : "Sign UP"}
+                            value={isSigningUp ? "Signing up..." : "Sign up"}
                             disabled={isSigningUp || isGoogleSigningUp}
                             style={{ opacity: isSigningUp || isGoogleSigningUp ? 0.6 : 1, cursor: isSigningUp || isGoogleSigningUp ? 'not-allowed' : 'pointer' }}
                         />
@@ -386,14 +398,13 @@ let SignUP = () => {
                     </div>
 
                     <div onClick={closeSignup} className="login-button">
-                        <i className="fa fa-arrow-alt-circle-left"></i> Login
+                        Already have an account? <strong>Log in</strong>
                     </div>
                 </div>
                 <div className="text-center">
-                    <div onClick={handlePortfolioClick.bind(this)} className="btn btn-primary mt-2 text-center">
-                        View Ikram&apos;s Portfolio <i className="fa fa-arrow-alt-circle-right"></i>
-
-                    </div>
+                    <button type="button" onClick={handlePortfolioClick} className="auth-portfolio-link">
+                        View Ikram&apos;s Portfolio <i className="fas fa-arrow-right" aria-hidden="true"></i>
+                    </button>
                 </div>
 
             </div>

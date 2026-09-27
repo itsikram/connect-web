@@ -1,0 +1,381 @@
+/*
+ * Auth screens (login, signup, forgot/reset password).
+ * Dark card that matches the rest of the app; loaded after style.scss.
+ */
+
+#login,
+.signup-container {
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: auto;
+  padding: max(32px, env(safe-area-inset-top, 0px)) 16px
+    max(32px, env(safe-area-inset-bottom, 0px));
+  background:
+    radial-gradient(900px 500px at 50% -10%, rgba(0, 212, 255, 0.14), transparent 60%),
+    linear-gradient(180deg, #0b0c0e 0%, #111214 100%);
+}
+
+#login .login-container .logo-container {
+  margin-bottom: 20px;
+}
+
+#login .login-container .logo-container img {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  box-shadow: 0 10px 30px rgba(0, 212, 255, 0.25);
+}
+
+#login .login-container #login-form,
+.signup-container #signup-form {
+  width: 100% !important;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 28px 24px 24px !important;
+  background: rgba(24, 25, 28, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  color: #e4e6ea;
+}
+
+.signup-container #signup-form {
+  max-width: 480px;
+}
+
+#login .login-heading,
+.signup-container .login-heading {
+  margin: 0 0 6px;
+  color: #f5f6f7;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+#login .auth-subtitle,
+.signup-container .auth-subtitle {
+  margin: 0 0 22px;
+  color: #9aa0a6;
+  font-size: 15px;
+}
+
+#login .login-container #login-form .forms-container,
+.signup-container #signup-form .forms-container {
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
+}
+
+#login .login-container #login-form .forms-container input:not([type="radio"]):not([type="checkbox"]):not([type="submit"]),
+.signup-container #signup-form .forms-container input.field:not([type="radio"]):not([type="submit"]),
+.signup-container #signup-form .forms-container select.field {
+  display: block;
+  width: 100%;
+  /* style.scss forces smaller inputs globally with !important */
+  min-height: 48px !important;
+  margin-bottom: 12px;
+  padding: 12px 14px !important;
+  line-height: 1.4 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: #101114;
+  color: #e4e6ea;
+  font-size: 16px;
+  outline: 0;
+  box-shadow: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#login .login-container #login-form .forms-container input::placeholder,
+.signup-container #signup-form .forms-container input::placeholder {
+  color: #7d838a;
+}
+
+#login .login-container #login-form .forms-container input:focus,
+.signup-container #signup-form .forms-container input.field:focus,
+.signup-container #signup-form .forms-container select.field:focus {
+  border-color: #00d4ff;
+  box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.2);
+}
+
+.signup-container #signup-form .forms-container input.field.is-invalid {
+  border-color: #ff5a5a !important;
+}
+
+#login .login-container #login-form .forms-container input.submit-button,
+.signup-container #signup-form .forms-container input.submit-button {
+  display: block;
+  width: 100%;
+  min-height: 48px !important;
+  margin: 4px 0 0;
+  padding: 12px 14px !important;
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+  color: #041018;
+  font-size: 16px;
+  font-weight: 700;
+  box-shadow: 0 8px 20px rgba(0, 212, 255, 0.25);
+}
+
+#login .login-container #login-form .forms-container input.submit-button:hover:not(:disabled),
+.signup-container #signup-form .forms-container input.submit-button:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+#login .login-container #login-form .forgot-password {
+  display: inline-block;
+  margin-top: 12px;
+  color: #33e0ff;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+#login .login-container #login-form .forgot-password:hover {
+  text-decoration: underline;
+}
+
+/* Forgot/reset password: the form is the whole card, no trailing divider. */
+#login .login-container #login-form form.forms-container {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.auth-error {
+  margin: 0 0 10px;
+  color: #ff6b6b;
+  font-size: 14px;
+  text-align: left;
+}
+
+.auth-error:empty {
+  display: none;
+}
+
+#login .divider-container,
+.signup-container .divider-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #7d838a;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+#login .divider-container .divider-line,
+.signup-container .divider-container .divider-line {
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+#login .login-container #login-form .btn-outline-secondary {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 12px;
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #d0d3d8;
+  font-weight: 600;
+}
+
+#login .login-container #login-form .btn-outline-secondary:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+#login .login-container #login-form .create-account-button,
+.signup-container #signup-form .login-button {
+  display: block;
+  width: auto;
+  max-width: 260px;
+  min-height: 46px;
+  margin: 20px auto 0;
+  padding: 11px 20px;
+  border-radius: 12px;
+  background: #2ecc71;
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+  cursor: pointer;
+}
+
+.signup-container #signup-form .login-button {
+  max-width: none;
+  background: transparent;
+  color: #b0b3b8;
+  font-weight: 500;
+}
+
+.signup-container #signup-form .login-button strong {
+  color: #33e0ff;
+}
+
+.auth-portfolio-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #9aa0a6;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.auth-portfolio-link:hover {
+  color: #e4e6ea;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Signup specifics */
+.signup-container #signup-form .forms-container .full-name {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.signup-container #signup-form .forms-container .full-name input.field {
+  float: none !important;
+  width: 100% !important;
+  margin-right: 0 !important;
+}
+
+.signup-container #signup-form .form-group label,
+.auth-field-label {
+  display: block;
+  margin: 2px 0 6px;
+  color: #b0b3b8;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.signup-container #signup-form select.field {
+  appearance: auto;
+}
+
+.signup-container #signup-form .forms-container .react-datepicker-wrapper {
+  display: block;
+  width: 100%;
+}
+
+.signup-container #signup-form .forms-container .gender-container {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px 12px;
+  margin: 2px 0 14px;
+  padding: 0;
+  border: 0;
+  color: #b0b3b8;
+}
+
+.signup-container #signup-form .forms-container .gender-container .field-title {
+  width: 100%;
+  color: #b0b3b8;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.signup-container #signup-form .forms-container .gender-container .radio-container {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+
+.signup-container #signup-form .forms-container .gender-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  margin: 0 !important;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: #101114;
+  color: #e4e6ea;
+  cursor: pointer;
+}
+
+.signup-container #signup-form .forms-container .gender-option input {
+  order: 2;
+  accent-color: #00d4ff;
+  margin: 0;
+}
+
+.signup-container #signup-form .forms-container .gender-option:has(input:checked) {
+  border-color: #00d4ff;
+  background: rgba(0, 212, 255, 0.08);
+}
+
+.signup-container #signup-form .forms-container .google-signin-btn {
+  border-radius: 12px !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  background: #fff !important;
+  min-height: 48px;
+}
+
+/* Light theme */
+html[data-theme="light"] #login,
+html[data-theme="light"] .signup-container {
+  background:
+    radial-gradient(900px 500px at 50% -10%, rgba(0, 153, 204, 0.12), transparent 60%),
+    #f3f5f8;
+}
+
+html[data-theme="light"] #login .login-container #login-form,
+html[data-theme="light"] .signup-container #signup-form {
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.06);
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.1);
+  color: #1c1e21;
+}
+
+html[data-theme="light"] #login .login-heading,
+html[data-theme="light"] .signup-container .login-heading {
+  color: #1c1e21;
+}
+
+html[data-theme="light"] #login .login-container #login-form .forms-container input:not([type="radio"]):not([type="checkbox"]):not([type="submit"]),
+html[data-theme="light"] .signup-container #signup-form .forms-container input.field:not([type="radio"]):not([type="submit"]),
+html[data-theme="light"] .signup-container #signup-form .forms-container select.field,
+html[data-theme="light"] .signup-container #signup-form .forms-container .gender-option {
+  background: #f5f6f8;
+  border-color: #dde1e6;
+  color: #1c1e21;
+}
+
+@media (max-width: 480px) {
+  #login,
+  .signup-container {
+    padding-top: max(20px, env(safe-area-inset-top, 0px));
+  }
+
+  #login .login-container #login-form,
+  .signup-container #signup-form {
+    padding: 22px 16px 18px !important;
+    border-radius: 18px;
+  }
+
+  #login .login-heading,
+  .signup-container .login-heading {
+    font-size: 23px;
+  }
+
+}
+
+@media (max-width: 340px) {
+  .signup-container #signup-form .forms-container .gender-container .radio-container {
+    grid-template-columns: 1fr;
+  }
+}

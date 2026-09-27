@@ -82,6 +82,7 @@ import { applyThemeMode } from "../utils/applyThemeMode";
 import { prefetchNavigationTarget } from "../utils/routePrefetch";
 import { speakMessageText } from "../utils/speakMessage";
 import useShakeDetector from "../hooks/useShakeDetector";
+import MobileBottomNav from "../partials/MobileBottomNav/MobileBottomNav";
 
 const Profile = lazy(() => import("./Profile"));
 const Connects = lazy(() => import("./Connects"));
@@ -2944,6 +2945,7 @@ const Main = () => {
         </Suspense>
       ) : null}
       <StickyChatBoxContainer />
+      {isAuthenticated && !isHeaderHiddenRoute && <MobileBottomNav />}
       {isAIAgentModalOpen && (
         <Suspense fallback={null}>
           <AIAgentModal

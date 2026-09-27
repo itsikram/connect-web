@@ -64,11 +64,21 @@ const StoreButton = ({
   );
 };
 
+const isIosDevice = () => {
+  const ua = window.navigator.userAgent.toLowerCase();
+  return (
+    /iphone|ipad|ipod/.test(ua) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+};
+
 const DownloadAppModal = ({ isOpen, onClose }) => {
   const [connectData, setConnectData] = useState({
     apkUrl: "",
     ipaUrl: "",
   });
+  const [loaded, setLoaded] = useState(false);
+  const isIos = isIosDevice();
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -83,10 +93,23 @@ const DownloadAppModal = ({ isOpen, onClose }) => {
         }
       } catch (_) {
         // Keep local iOS profile button even if API fails
+      } finally {
+        setLoaded(true);
       }
     };
     if (isOpen) fetchSettings();
   }, [isOpen]);
+
+  const hasApk = Boolean(connectData?.apkUrl);
+  const hasIpa = Boolean(connectData?.ipaUrl);
+
+  // Nothing to install on this device: close quietly instead of showing an
+  // empty prompt.
+  useEffect(() => {
+    if (isOpen && loaded && !isIos && !hasApk) onClose?.();
+  }, [isOpen, loaded, isIos, hasApk, onClose]);
+
+  if (!loaded || (!isIos && !hasApk)) return null;
 
   const handleIosInstall = () => {
     // Do not use <a download> — Safari then saves to Files and skips Profile Downloaded
@@ -161,24 +184,27 @@ const DownloadAppModal = ({ isOpen, onClose }) => {
             seamless calling, and offline access.
           </p>
 
-          <StoreButton
-            onClick={handleIosInstall}
-            label="Install iOS App"
-            subtitle="Safari only — opens Settings profile"
-            icon="fab fa-apple"
-            primary
-          />
-
-          {connectData?.apkUrl ? (
+          {isIos ? (
             <StoreButton
-              href={connectData.apkUrl}
-              label="Google Play"
-              subtitle="Get it on"
-              icon="fab fa-google-play"
+              onClick={handleIosInstall}
+              label="Install iOS App"
+              subtitle="Safari only — opens Settings profile"
+              icon="fab fa-apple"
+              primary
             />
           ) : null}
 
-          {connectData?.ipaUrl ? (
+          {hasApk && !isIos ? (
+            <StoreButton
+              href={connectData.apkUrl}
+              label="Android App"
+              subtitle="Download for"
+              icon="fab fa-android"
+              primary
+            />
+          ) : null}
+
+          {hasIpa && isIos ? (
             <StoreButton
               href={connectData.ipaUrl}
               label="App Store"
@@ -187,6 +213,7 @@ const DownloadAppModal = ({ isOpen, onClose }) => {
             />
           ) : null}
 
+          {isIos ? (
           <p
             style={{
               margin: "4px 0 0",
@@ -205,6 +232,7 @@ const DownloadAppModal = ({ isOpen, onClose }) => {
             </b>
             .
           </p>
+          ) : null}
 
           <div
             style={{

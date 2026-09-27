@@ -234,12 +234,13 @@ let Login = (props) => {
                         <img src={config?.logo} alt="Connect Logo" />
                     </div>
                     <div id="login-form">
-                        <h1 className="text-center login-heading primary-color mb-3 fw-bold">Connect - Login</h1>
+                        <h1 className="text-center login-heading">Welcome back</h1>
+                        <p className="auth-subtitle text-center">Log in to continue to Connect</p>
 
                         <div className="forms-container">
-                            <input onChange={handleChange} className="email" name="email" type="text" placeholder="Email address or phone number" disabled={isLoggingIn || isGoogleSigningIn} />
-                            <input onChange={handleChange} type="password" name="password" className="password" placeholder="Password" disabled={isLoggingIn || isGoogleSigningIn} />
-                            <p id="loginErrorMsg" style={{ color: 'red' }}>{error.message || authError}</p>
+                            <input onChange={handleChange} className="email" name="email" type="text" autoComplete="username" inputMode="email" aria-label="Email address or phone number" placeholder="Email address or phone number" disabled={isLoggingIn || isGoogleSigningIn} />
+                            <input onChange={handleChange} type="password" name="password" className="password" autoComplete="current-password" aria-label="Password" placeholder="Password" disabled={isLoggingIn || isGoogleSigningIn} />
+                            <p id="loginErrorMsg" className="auth-error" role="alert">{error.message || authError}</p>
                             <input 
                                 type="submit" 
                                 onClick={handleSubmit} 
@@ -281,16 +282,15 @@ let Login = (props) => {
                         </div>
 
                         <div onClick={showSignup} className="create-account-button">
-                            Create new account <i className="fa fa-arrow-alt-circle-right"></i>
+                            Create new account
                         </div>
                     </div>
                 </div>
 
                 <div className="text-center">
-                    <div onClick={handlePortfolioClick.bind(this)} className="btn btn-primary mt-2 text-center">
-                        View Ikram&apos;s Portfolio <i className="fa fa-arrow-alt-circle-right"></i>
-
-                    </div>
+                    <button type="button" onClick={handlePortfolioClick} className="auth-portfolio-link">
+                        View Ikram&apos;s Portfolio <i className="fas fa-arrow-right" aria-hidden="true"></i>
+                    </button>
                 </div>
 
             </div>
