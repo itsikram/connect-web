@@ -961,7 +961,14 @@ const VideoCall = ({ myId }) => {
           client.on("user-left", async (user) => {
             console.log("Remote user left the channel:", user?.uid);
             try {
-              await cleanupVideoCall();
+              // Peer dropped out of the media channel (app killed, network
+              // lost, tab closed): close the call on the server too so every
+              // device and the call log are updated.
+              const peer = callerRef.current;
+              if (callAcceptedRef.current && peer) {
+                socket.emit("video-call-end", { to: String(peer), channelName });
+              }
+              await cleanupVideoCallRef.current?.();
             } catch (e) {
               console.warn("Cleanup after remote user-left failed:", e);
             }
@@ -1089,7 +1096,14 @@ const VideoCall = ({ myId }) => {
           client.on("user-left", async (user) => {
             console.log("Remote user left the channel:", user?.uid);
             try {
-              await cleanupVideoCall();
+              // Peer dropped out of the media channel (app killed, network
+              // lost, tab closed): close the call on the server too so every
+              // device and the call log are updated.
+              const peer = callerRef.current;
+              if (callAcceptedRef.current && peer) {
+                socket.emit("video-call-end", { to: String(peer), channelName });
+              }
+              await cleanupVideoCallRef.current?.();
             } catch (e) {
               console.warn("Cleanup after remote user-left failed:", e);
             }
@@ -1211,9 +1225,16 @@ const VideoCall = ({ myId }) => {
         console.error("Failed to start call:", error);
         stopRingtone();
         alert("Failed to start call. Please try again.");
+        // The other side is already waiting in the channel; end the call for
+        // them instead of leaving them connected to nobody.
+        const peer = callerRef.current;
+        if (peer) {
+          socket.emit("video-call-end", { to: String(peer), channelName });
+        }
         setIsVideoCall(false);
         setCallAccepted(false);
         isJoiningOrJoined.current = false;
+        cleanupVideoCallRef.current?.();
       }
     },
     [myId, getToken],

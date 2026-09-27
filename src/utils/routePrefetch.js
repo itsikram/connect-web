@@ -15,7 +15,7 @@ const routeLoaders = [
   { matches: (path) => path === "/flashcards", load: () => import("../pages/Flashcards.js") },
   { matches: (path) => path === "/calendar", load: () => import("../pages/Calendar.js") },
   { matches: (path) => path === "/habits", load: () => import("../pages/Habits.js") },
-  { matches: (path) => path === "/health", load: () => import("../pages/Health.js") },
+  { matches: (path) => path === "/health" || path.startsWith("/health/"), load: () => import("../pages/Health.js") },
   { matches: (path) => path === "/rehab", load: () => import("../pages/Rehab.js") },
 ];
 

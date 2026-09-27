@@ -587,7 +587,14 @@ const AudioCall = ({ myId }) => {
         client.on("user-left", (user) => {
           console.log("AudioCall - Remote user left the channel:", user?.uid);
           if (callAcceptedRef.current) {
-            cleanupAudioCall();
+            // The peer dropped out of the media channel (app killed, network
+            // lost, tab closed) — tell the server so the call is closed on
+            // every device and logged, then clean up locally.
+            const peer = callerRef.current;
+            if (peer) {
+              socket.emit("audio-call-end", { to: String(peer), channelName });
+            }
+            cleanupAudioCallRef.current?.();
           }
         });
 
@@ -712,13 +719,23 @@ const AudioCall = ({ myId }) => {
         }, 2000);
       } catch (error) {
         console.error("Failed to start audio call:", error);
+        const isTeardown =
+          isTerminating.current || String(error?.message || error).includes("LEAVE");
         // Only show alert for certain errors
-        if (!String(error?.message || error).includes("LEAVE")) {
+        if (!isTeardown) {
           alert("Failed to start audio call. Please try again.");
+          // The other side already accepted/placed the call and is waiting in
+          // the channel; end it for them instead of leaving them connected
+          // to nobody.
+          const peer = callerRef.current;
+          if (peer) {
+            socket.emit("audio-call-end", { to: String(peer), channelName });
+          }
         }
         setIsAudioCall(false);
         setCallAccepted(false);
         isJoiningOrJoined.current = false;
+        if (!isTeardown) cleanupAudioCallRef.current?.();
       }
     },
     [myId, getToken],

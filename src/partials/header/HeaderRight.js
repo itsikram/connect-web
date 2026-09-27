@@ -18,6 +18,7 @@ import { shallowEqual, useDispatch, useSelector } from "react-redux";
 import config from "../../config/config.json";
 import { sanitizeProfileImageUrl } from "../../utils/profileImage";
 import HeaderMessageMenu from "./HeaderMessageMenu";
+import useIsMobile from "../../utils/useIsMobile";
 
 const EMPTY_LIST = [];
 
@@ -106,6 +107,12 @@ let HeaderRight = ({ pendingLudoInvites = [], pendingChessInvites = [] }) => {
   const totalMessages = useSelector(selectUnreadMessageCount);
   const menuMaxHeight = useSelector(selectMenuMaxHeight);
   const [isMsgMenu, setIsMsgMenu] = useState(false);
+  // The message dropdown is desktop-only; on mobile, messages are reached from
+  // the app's own navigation instead.
+  const isMobile = useIsMobile();
+  useEffect(() => {
+    if (isMobile) setIsMsgMenu(false);
+  }, [isMobile]);
   const [isProfileMenu, setIsProfileMenu] = useState(false);
   const [isNotificationMenu, setIsNotificationMenu] = useState(false);
   const location = useLocation();
@@ -225,24 +232,26 @@ let HeaderRight = ({ pendingLudoInvites = [], pendingChessInvites = [] }) => {
     <Fragment>
       <div className="header-quick-menu-container" ref={headerMenusRef}>
         <ul className="header-quick-menu">
-          <li
-            onClick={showMsgList}
-            className={`header-quick-menu-item ${isMsgMenu ? "active" : ""}`}
-            title="Message"
-            aria-expanded={isMsgMenu}
-            aria-haspopup="true"
-          >
-            <div className="header-quick-menu-icon">
-              <i className="far fa-comment-alt-lines"></i>
-              {totalMessages > 0 && (
-                <span className="hr-counter-badge">
-                  <span className="counter">{totalMessages}</span>
-                </span>
-              )}
-            </div>
-          </li>
+          {!isMobile && (
+            <li
+              onClick={showMsgList}
+              className={`header-quick-menu-item ${isMsgMenu ? "active" : ""}`}
+              title="Message"
+              aria-expanded={isMsgMenu}
+              aria-haspopup="true"
+            >
+              <div className="header-quick-menu-icon">
+                <i className="far fa-comment-alt-lines"></i>
+                {totalMessages > 0 && (
+                  <span className="hr-counter-badge">
+                    <span className="counter">{totalMessages}</span>
+                  </span>
+                )}
+              </div>
+            </li>
+          )}
 
-          {isMsgMenu && (
+          {!isMobile && isMsgMenu && (
             <MegaMC
               style={{
                 right: "50%",

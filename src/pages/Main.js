@@ -2887,7 +2887,7 @@ const Main = () => {
               {" "}
             </Route>
             <Route
-              path="/health"
+              path="/health/*"
               element={
                 <ProtectedRoute>
                   <Health />
