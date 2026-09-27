@@ -592,37 +592,100 @@ export default function useComposerLiveTranscribe({
     async (language, existingStream = null) => {
       refineRef.current = false;
       const socketUrls = speechSocketUrls();
+      // Connect and open the mic at the same time; capture starts as soon as
+      // the mic is ready, and audio is held until the socket is open so the
+      // first words after the tap are never lost.
+      const wsPromise = (async () => {
+        let lastError = null;
+        for (const socketUrl of socketUrls) {
+          try {
+            return await openSpeechSocket(socketUrl, handleSocketMessage);
+          } catch (error) {
+            lastError = error;
+          }
+        }
+        throw lastError || new Error("Unable to connect to speech server");
+      })();
+      wsPromise.catch(() => {});
+
       let stream = existingStream;
+      try {
+        if (!stream) stream = await requestMicStream();
+      } catch (error) {
+        wsPromise.then((socket) => socket?.close()).catch(() => {});
+        throw error;
+      }
+      mediaStreamRef.current = stream;
+      wantListenRef.current = true;
+
+      const earlyChunks = [];
+      let earlyBytes = 0;
+      const MAX_EARLY_BYTES = TARGET_SAMPLE_RATE * 2 * 15;
+      let pcmReady = false;
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        let audioContext;
+        try {
+          audioContext = new AudioCtx({ sampleRate: TARGET_SAMPLE_RATE });
+        } catch {
+          audioContext = new AudioCtx();
+        }
+        if (audioContext.state === "suspended") await audioContext.resume();
+        const source = audioContext.createMediaStreamSource(stream);
+        const processor = audioContext.createScriptProcessor(
+          PCM_PROCESSOR_BUFFER_SIZE,
+          1,
+          1,
+        );
+        const silence = audioContext.createGain();
+        silence.gain.value = 0;
+        processor.onaudioprocess = (audioEvent) => {
+          if (!wantListenRef.current) return;
+          const input = audioEvent.inputBuffer.getChannelData(0);
+          const pcm = floatTo16BitPcm(
+            downsampleTo16k(input, audioContext.sampleRate),
+          );
+          const socket = wsRef.current;
+          if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(pcm);
+          } else if (earlyBytes < MAX_EARLY_BYTES) {
+            earlyChunks.push(pcm);
+            earlyBytes += pcm.byteLength || 0;
+          }
+        };
+        source.connect(processor);
+        processor.connect(silence);
+        silence.connect(audioContext.destination);
+        audioContextRef.current = audioContext;
+        audioSourceRef.current = source;
+        audioProcessorRef.current = processor;
+        audioGainRef.current = silence;
+        pcmReady = true;
+        // The mic is live now; show it straight away.
+        setListening(true);
+      } catch {
+        pcmReady = false;
+      }
+
       let ws = null;
       try {
-        const wsPromise = (async () => {
-          let lastError = null;
-          for (const socketUrl of socketUrls) {
-            try {
-              return await openSpeechSocket(socketUrl, handleSocketMessage);
-            } catch (error) {
-              lastError = error;
-            }
-          }
-          throw lastError || new Error("Unable to connect to speech server");
-        })();
-        if (!stream) {
-          stream = await requestMicStream();
-        }
         ws = await wsPromise;
       } catch (error) {
+        wantListenRef.current = false;
+        stopDeepgramHardware();
         if (!existingStream) stopTracks(stream);
+        setListening(false);
+        throw error;
+      }
+      if (!wantListenRef.current) {
+        // Stopped while connecting.
         try {
-          ws?.close();
+          ws.close();
         } catch {
           /* ignore */
         }
-        throw error;
+        return false;
       }
-
-      mediaStreamRef.current = stream;
-      wsRef.current = ws;
-      wantListenRef.current = true;
 
       ws.onerror = () => {
         const fallbackLang = browserFallbackLang(langRef.current);
@@ -645,44 +708,6 @@ export default function useComposerLiveTranscribe({
         }
         stop();
       };
-
-      let pcmReady = false;
-      try {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        let audioContext;
-        try {
-          audioContext = new AudioCtx({ sampleRate: TARGET_SAMPLE_RATE });
-        } catch {
-          audioContext = new AudioCtx();
-        }
-        if (audioContext.state === "suspended") await audioContext.resume();
-        const source = audioContext.createMediaStreamSource(stream);
-        const processor = audioContext.createScriptProcessor(
-          PCM_PROCESSOR_BUFFER_SIZE,
-          1,
-          1,
-        );
-        const silence = audioContext.createGain();
-        silence.gain.value = 0;
-        processor.onaudioprocess = (audioEvent) => {
-          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-            return;
-          }
-          const input = audioEvent.inputBuffer.getChannelData(0);
-          const downsampled = downsampleTo16k(input, audioContext.sampleRate);
-          wsRef.current.send(floatTo16BitPcm(downsampled));
-        };
-        source.connect(processor);
-        processor.connect(silence);
-        silence.connect(audioContext.destination);
-        audioContextRef.current = audioContext;
-        audioSourceRef.current = source;
-        audioProcessorRef.current = processor;
-        audioGainRef.current = silence;
-        pcmReady = true;
-      } catch {
-        pcmReady = false;
-      }
 
       let mimeType = "audio/l16";
       let encoding = "linear16";
@@ -718,6 +743,9 @@ export default function useComposerLiveTranscribe({
           chunkDurationMs: AUDIO_TIMESLICE_MS,
         }),
       );
+      // Audio captured while connecting goes first, in order.
+      earlyChunks.splice(0).forEach((chunk) => ws.send(chunk));
+      wsRef.current = ws;
       if (mediaRecorderRef.current) {
         mediaRecorderRef.current.start(AUDIO_TIMESLICE_MS);
       }

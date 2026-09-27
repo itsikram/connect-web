@@ -1,106 +1,107 @@
 import React from "react";
-import { motion } from "framer-motion";
 
+/**
+ * Header + toolbar, laid out like the Connect mobile app's AI Agent:
+ * gradient orb, "Connect AI" with a live status line, Auto/Ask pill,
+ * speaker, minimize and close; below it the AI provider chip and Clear.
+ */
 const ModalHeader = ({
   onClose,
   onMinimize,
-  onMenuToggle,
-  isSidebarOpen,
   autoRunActions,
   onToggleAutoRun,
+  speakReplies = false,
+  onToggleSpeak,
   onOpenSettings,
   onClearChat,
   canClearChat = false,
   settingsOpen = false,
   providerLabel = "Gemini",
   modelLabel = "",
-}) => {
-  return (
-    <div className="ai-agent-modal-header">
-      <div className="ai-agent-header-row">
-        <button
-          className="ai-agent-menu-btn"
-          onClick={onMenuToggle}
-          aria-label={isSidebarOpen ? "Close menu" : "Open menu"}
-        >
-          <i className={`fas ${isSidebarOpen ? "fa-times" : "fa-bars"}`} />
-        </button>
-
-        <motion.div
-          className="ai-agent-icon"
-          animate={{ y: [0, -4, 0] }}
-          transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
-        >
-          <i className="fas fa-brain" />
-        </motion.div>
-
-        <div className="ai-agent-header-text">
-          <h2 className="ai-agent-title">AI Agent</h2>
-          <div className="ai-agent-status-bar">
-            <span className="ai-agent-status-indicator" />
-            <span className="ai-agent-status-text">
-              {providerLabel}
-              {modelLabel ? ` · ${modelLabel}` : ""}
-            </span>
-          </div>
-        </div>
-
-        <label
-          className="ai-agent-auto-run-toggle"
-          title="Automatically run single-match actions without needing a button click"
-        >
-          <input
-            type="checkbox"
-            checked={autoRunActions}
-            onChange={onToggleAutoRun}
-            aria-label="Toggle auto-run actions"
-          />
-          <span className="ai-agent-auto-run-slider" />
-          <span className="ai-agent-auto-run-label">Auto-run</span>
-        </label>
-
-        <button
-          className="ai-agent-settings-btn-header"
-          onClick={onClearChat}
-          aria-label="Clear chat"
-          title="Clear chat"
-          type="button"
-          disabled={!canClearChat}
-        >
-          <i className="fas fa-trash-alt" />
-        </button>
-
-        <button
-          className={`ai-agent-settings-btn-header ${settingsOpen ? "active" : ""}`}
-          onClick={onOpenSettings}
-          aria-label="AI Agent settings"
-          title="AI provider, model, and API keys"
-          type="button"
-        >
-          <i className="fas fa-cog" />
-        </button>
-
-        <button
-          className="ai-agent-minimize-btn"
-          onClick={onMinimize}
-          aria-label="Minimize"
-          title="Minimize"
-          type="button"
-        >
-          <i className="fas fa-minus" />
-        </button>
-
-        <button
-          className="ai-agent-close-btn"
-          onClick={onClose}
-          aria-label="Close"
-          type="button"
-        >
-          <i className="fas fa-times" />
-        </button>
+  statusLabel = "Ready",
+  statusTone = "ok",
+}) => (
+  <div className="xa-header-wrap">
+    <div className="xa-header">
+      <div className="xa-orb xa-header-orb" aria-hidden="true">
+        <i className="fas fa-magic" />
       </div>
+      <div className="xa-title">
+        <h2 className="xa-heading">Connect AI</h2>
+        <div className="xa-status-line">
+          <span className={`xa-status-dot tone-${statusTone}`} />
+          <span className="xa-status-text">{statusLabel}</span>
+        </div>
+      </div>
+      <button
+        type="button"
+        className={`xa-mode-pill${autoRunActions ? " is-on" : ""}`}
+        onClick={onToggleAutoRun}
+        role="switch"
+        aria-checked={autoRunActions}
+        aria-label={`Auto-run actions ${autoRunActions ? "on" : "off"}`}
+        title={
+          autoRunActions
+            ? "Auto: runs actions right away"
+            : "Ask: shows actions to confirm first"
+        }
+      >
+        <i className={`fas ${autoRunActions ? "fa-bolt" : "fa-hand-pointer"}`} />
+        <span>{autoRunActions ? "Auto" : "Ask"}</span>
+      </button>
+      <button
+        type="button"
+        className={`xa-icon-btn${speakReplies ? " is-on" : ""}`}
+        onClick={onToggleSpeak}
+        aria-label={speakReplies ? "Turn speaking off" : "Turn speaking on"}
+        title={speakReplies ? "Speaking on" : "Speaking off"}
+      >
+        <i className={`fas ${speakReplies ? "fa-volume-up" : "fa-volume-mute"}`} />
+      </button>
+      <button
+        type="button"
+        className="xa-icon-btn"
+        onClick={onMinimize}
+        aria-label="Minimize AI Agent"
+        title="Minimize"
+      >
+        <i className="fas fa-minus" />
+      </button>
+      <button
+        type="button"
+        className="xa-icon-btn xa-close"
+        onClick={onClose}
+        aria-label="Close AI Agent"
+        title="Close"
+      >
+        <i className="fas fa-times" />
+      </button>
     </div>
-  );
-};
+    <div className="xa-toolbar">
+      <button
+        type="button"
+        className={`xa-chip${settingsOpen ? " is-active" : ""}`}
+        onClick={onOpenSettings}
+        aria-label="Select AI provider"
+        title={modelLabel ? `${providerLabel} · ${modelLabel}` : providerLabel}
+      >
+        <i className="fas fa-brain xa-chip-accent" />
+        <span>{providerLabel}</span>
+        <i className={`fas ${settingsOpen ? "fa-chevron-up" : "fa-chevron-down"} xa-chip-caret`} />
+      </button>
+      <span className="xa-flex" />
+      <button
+        type="button"
+        className="xa-chip"
+        onClick={onClearChat}
+        disabled={!canClearChat}
+        aria-label="Clear AI chat"
+      >
+        <i className="far fa-trash-alt" />
+        <span>Clear</span>
+      </button>
+    </div>
+  </div>
+);
 
 export default ModalHeader;

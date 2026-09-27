@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { motion } from "framer-motion";
 import useComposerLiveTranscribe from "../../../hooks/useComposerLiveTranscribe";
 import { mergeTranscriptChunk } from "../../../hooks/transcriptText";
 import { isVoiceFiller } from "./agentFastPath";
@@ -45,6 +44,10 @@ const ChatInput = ({
   onInterruptSpeech,
   isSpeaking = false,
   speechSupported = true,
+  onStartTalk,
+  onStop,
+  runningLabel = "",
+  bn = false,
 }) => {
   const [isFocused, setIsFocused] = useState(false);
   const [voiceMode, setVoiceMode] = useState(readVoiceMode);
@@ -344,7 +347,7 @@ const ChatInput = ({
           });
       }, delay);
     };
-    tryStart(resumeTalkRef.current ? 320 : 90);
+    tryStart(resumeTalkRef.current ? 320 : 0);
     return () => {
       cancelled = true;
       clearTimeout(retryTimer);
@@ -399,207 +402,212 @@ const ChatInput = ({
     onToggleLiveTalk?.();
   };
 
-  const toggleVoiceInput = async () => {
-    if (liveTalkOn) {
-      onToggleLiveTalk?.();
-      return;
-    }
-    if (autoRunActions && !isListening) {
-      clearAutoSendTimeout();
-      await startLiveTalk();
-      return;
-    }
-    if (isListening) {
-      stopTranscription();
-      return;
-    }
-    clearAutoSendTimeout();
-    await startLiveTranscribe(langCode);
-  };
-
-  const toggleVoiceMode = () => {
-    if (isListening || isBusy) return;
-    setVoiceMode((mode) => {
-      const next =
-        VOICE_MODES[(VOICE_MODES.indexOf(mode) + 1) % VOICE_MODES.length];
-      setTranscribeLang(VOICE_MODE_LANG[next]);
-      try {
-        window.localStorage.setItem(VOICE_MODE_STORAGE_KEY, next);
-      } catch {
-        /* storage unavailable */
-      }
-      return next;
-    });
-  };
-
   const handleTextChange = (nextValue) => {
     clearAutoSendTimeout();
     transcribeBaseRef.current = String(nextValue || "").trim();
     onChange(nextValue);
   };
 
-  const talkPhase = refining
-    ? "understanding"
-    : liveTalkOn
-    ? isLoading || isStreaming || holdListen
-      ? "thinking"
-      : isSpeaking
-        ? "speaking"
-        : isListening
-          ? "listening"
-          : "connecting"
-    : isListening
-      ? "dictating"
-      : null;
+  const [languageMenuOpen, setLanguageMenuOpen] = useState(false);
+  const longPressTimerRef = useRef(null);
 
+  const chooseVoiceMode = (next) => {
+    setLanguageMenuOpen(false);
+    if (!VOICE_MODES.includes(next)) return;
+    setVoiceMode(next);
+    setTranscribeLang(VOICE_MODE_LANG[next]);
+    try {
+      window.localStorage.setItem(VOICE_MODE_STORAGE_KEY, next);
+    } catch {
+      /* storage unavailable */
+    }
+  };
+
+  // Tap: start / stop hands-free talk (like the app's mic). Long-press or
+  // right-click: pick the voice language.
+  const handleMicClick = () => {
+    if (languageMenuOpen) {
+      setLanguageMenuOpen(false);
+      return;
+    }
+    clearAutoSendTimeout();
+    if (liveTalkOn) {
+      onToggleLiveTalk?.();
+      return;
+    }
+    if (isListening) stopTranscription();
+    if (onStartTalk) onStartTalk();
+    else void startLiveTalk();
+  };
+  const startLongPress = () => {
+    clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressTimerRef.current = null;
+      setLanguageMenuOpen(true);
+    }, 550);
+  };
+  const cancelLongPress = () => {
+    clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+  };
+  useEffect(() => () => clearTimeout(longPressTimerRef.current), []);
+
+  const agentBusy = Boolean(
+    isLoading || isStreaming || isSpeaking || runningLabel,
+  );
   const voiceName = VOICE_MODE_LABEL[voiceMode] || "Bangla";
-  const talkLabel =
-    talkPhase === "understanding"
-      ? "Understanding what you said…"
-      : talkPhase === "speaking"
-      ? "Speaking… pause 2 seconds after a sentence to send"
-      : talkPhase === "thinking"
-        ? "Thinking…"
-        : talkPhase === "connecting"
-          ? "Starting mic…"
-          : talkPhase === "listening"
-            ? `Listening · ${voiceName} — just speak, I'll act when you pause`
-            : talkPhase === "dictating"
-              ? `Live ${voiceName}`
-              : "";
+  const voicePhase = runningLabel
+    ? {
+        key: "doing",
+        label: bn ? "কাজ করছি…" : "Doing it…",
+        hint: runningLabel,
+        icon: "fa-bolt",
+      }
+    : refining
+    ? {
+        key: "understanding",
+        label: bn ? "বুঝছি…" : "Understanding…",
+        hint: bn ? "আপনার কথা ঠিকভাবে লিখছি" : "Getting your words right",
+        icon: "fa-wave-square",
+      }
+    : isLoading || isStreaming || holdListen
+    ? {
+        key: "thinking",
+        label: bn ? "ভাবছি…" : "Thinking…",
+        hint: bn ? "এক মুহূর্ত" : "One moment",
+        icon: "fa-magic",
+      }
+    : isSpeaking
+    ? {
+        key: "speaking",
+        label: bn ? "বলছি…" : "Speaking…",
+        hint: bn ? "থামাতে Stop চাপুন" : "Tap Stop to interrupt",
+        icon: "fa-volume-up",
+      }
+    : isListening
+    ? {
+        key: "listening",
+        label: bn ? "শুনছি… বলুন" : "Listening… go ahead",
+        hint: bn ? 'যেমন: "রহিমকে ভিডিও কল দাও"' : 'For example: "Video call Rahim"',
+        icon: "fa-microphone",
+      }
+    : {
+        key: "paused",
+        label: bn ? "মাইক বন্ধ" : "Mic paused",
+        hint: bn ? "আবার বলতে মাইক চাপুন" : "Tap the mic to talk again",
+        icon: "fa-microphone-slash",
+      };
+  const showVoicePanel = liveTalkOn || isListening || refining;
+  const transcript = String(value || "").trim();
 
   return (
-    <motion.div
-      className="ai-agent-chat-input-container"
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.15 }}
-    >
-      {refining && !liveTalkOn ? (
-        <div className="ai-agent-transcribe-bar phase-thinking" aria-live="polite">
-          <span className="ai-agent-transcribe-dot" aria-hidden="true" />
-          <span className="ai-agent-transcribe-label">{talkLabel}</span>
-        </div>
-      ) : isListening && !liveTalkOn ? (
-        <div className="ai-agent-transcribe-bar" aria-live="polite">
-          <span className="ai-agent-transcribe-dot" aria-hidden="true" />
-          <div className="ai-agent-transcribe-copy">
-            <span className="ai-agent-transcribe-label">
-              Listening · {voiceName}
-            </span>
-            <span className="ai-agent-transcribe-interim">
-              Speak now — text appears in the message box
-            </span>
-          </div>
+    <div className="xa-composer-area">
+      {showVoicePanel ? (
+        <div className={`xa-voice-panel phase-${voicePhase.key}`} aria-live="polite">
           <button
             type="button"
-            className="ai-agent-transcribe-stop"
-            onClick={stopTranscription}
-            aria-label="Stop live transcription"
+            className="xa-pulse"
+            onClick={handleMicClick}
+            aria-label={voicePhase.label}
           >
-            Done
+            <span className="xa-pulse-ring" />
+            <span className="xa-pulse-core">
+              <i className={`fas ${voicePhase.icon}`} />
+            </span>
           </button>
-        </div>
-      ) : talkPhase && liveTalkOn ? (
-        <div
-          className={`ai-agent-transcribe-bar phase-${talkPhase}`}
-          aria-live="polite"
-        >
-          <span className="ai-agent-transcribe-dot" aria-hidden="true" />
-          <span className="ai-agent-transcribe-label">{talkLabel}</span>
+          <div className="xa-voice-text">
+            <span className="xa-voice-phase">{voicePhase.label}</span>
+            <span className={`xa-voice-transcript${transcript ? "" : " is-hint"}`}>
+              {transcript || voicePhase.hint}
+            </span>
+          </div>
+          {agentBusy ? (
+            <button
+              type="button"
+              className="xa-voice-stop"
+              onClick={onStop}
+              aria-label={bn ? "থামান" : "Stop"}
+            >
+              <i className="fas fa-stop" />
+              <span>{bn ? "থামান" : "Stop"}</span>
+            </button>
+          ) : null}
         </div>
       ) : null}
 
-      <div className={`ai-agent-input-wrapper ${isFocused ? "focused" : ""} ${liveTalkOn ? "live-talk" : ""}`}>
-        <motion.button
-          className="ai-agent-voice-lang-toggle"
-          onClick={toggleVoiceMode}
-          disabled={isListening || isBusy}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          type="button"
-          title={`Voice language: ${voiceName} (tap to change)`}
-          aria-label={`Voice language ${voiceName}. Tap to change.`}
-        >
-          {VOICE_MODE_BADGE[voiceMode] || "বাং"}
-        </motion.button>
+      {languageMenuOpen ? (
+        <div className="xa-language-bar" role="menu">
+          <span className="xa-language-label">Voice</span>
+          {VOICE_MODES.map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              role="menuitemradio"
+              aria-checked={voiceMode === mode}
+              className={`xa-language-option${voiceMode === mode ? " is-on" : ""}`}
+              onClick={() => chooseVoiceMode(mode)}
+            >
+              {mode === "bn" ? "বাংলা" : mode === "en" ? "English" : "Auto"}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
-        <motion.button
-          className={`ai-agent-voice-btn ${isListening && !liveTalkOn ? "listening" : ""}`}
-          onClick={toggleVoiceInput}
-          disabled={!isSpeechSupported || liveTalkOn || (isBusy && !liveTalkOn)}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
+      <div className={`xa-composer${isFocused ? " is-focused" : ""}`}>
+        <button
           type="button"
-          title={
-            isSpeechSupported
-              ? isListening && !liveTalkOn
-                ? "Stop live transcription"
-                : autoRunActions
-                  ? `Talk hands-free (${voiceName}) — I'll speak and run actions`
-                  : `Dictate (${voiceName})`
-              : "Voice input is not supported in this browser"
-          }
-          aria-label={
-            isListening && !liveTalkOn
-              ? "Stop live transcription"
-              : "Start dictation"
-          }
-        >
-          <i className={`fas ${isListening && !liveTalkOn ? "fa-stop" : "fa-microphone"}`} />
-        </motion.button>
-
-        <motion.button
-          className={`ai-agent-talk-btn ${liveTalkOn ? "live" : ""}`}
-          onClick={() => {
-            void startLiveTalk();
+          className={`xa-mic${isListening || liveTalkOn ? " is-live" : ""}`}
+          onClick={handleMicClick}
+          onPointerDown={startLongPress}
+          onPointerUp={cancelLongPress}
+          onPointerLeave={cancelLongPress}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            cancelLongPress();
+            setLanguageMenuOpen((open) => !open);
           }}
           disabled={!isSpeechSupported}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          type="button"
-          title={
+          aria-label={
             liveTalkOn
-              ? "Stop live talk"
-              : "Talk with the AI — you speak, it speaks back and can run actions"
+              ? "Stop hands-free voice commands"
+              : "Start hands-free voice commands"
           }
-          aria-label={liveTalkOn ? "Stop live talk" : "Start live talk"}
+          title={`Talk hands-free (${voiceName}). Long-press for language.`}
         >
-          <i className={`fas ${liveTalkOn ? "fa-phone-slash" : "fa-headset"}`} />
-        </motion.button>
+          <i className={`fas ${isListening || liveTalkOn ? "fa-microphone" : "fa-microphone-alt"}`} />
+        </button>
 
         <textarea
           ref={inputRef}
           value={value}
           onChange={(e) => handleTextChange(e.target.value)}
           onKeyPress={handleKeyPress}
-          onFocus={() => {
-            setIsFocused(true);
-          }}
+          onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           placeholder={
-            liveTalkOn
-              ? isSpeaking
-                ? "AI is speaking…"
-                : isLoading || isStreaming || holdListen
-                  ? "Thinking…"
-                  : "Listening… ask anything or give a command"
-              : isListening
-                ? voiceMode === "auto"
-                  ? "Listening… বাংলা or English"
-                  : isBanglaVoice
-                    ? "Listening in Bangla…"
-                    : "Listening in English…"
-                : "Talk live, or type: 'go to settings', 'how do I handle stress?'…"
+            bn
+              ? "কিছু জিজ্ঞেস করুন বা একটি কাজ বলুন…"
+              : "Ask anything or tell me what to do…"
           }
-          className="ai-agent-input"
+          className="xa-input"
           rows="1"
           disabled={isLoading && !liveTalkOn}
         />
 
-        <div className="ai-agent-input-actions">
-          <motion.button
-            className="ai-agent-send-btn"
+        {agentBusy ? (
+          <button
+            type="button"
+            className="xa-send is-stop"
+            onClick={onStop}
+            aria-label="Stop"
+            title="Stop"
+          >
+            <i className="fas fa-stop" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="xa-send"
             onClick={() => {
               if (!value.trim()) return;
               clearAutoSendTimeout();
@@ -607,20 +615,14 @@ const ChatInput = ({
               if (liveTalkOn) setHoldListen(true);
               onSend();
             }}
-            disabled={!value.trim() || (isLoading && !liveTalkOn)}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            type="button"
+            disabled={!value.trim()}
+            aria-label="Send"
           >
-            {isLoading ? (
-              <i className="fas fa-circle-notch fa-spin" />
-            ) : (
-              <i className="fas fa-paper-plane" />
-            )}
-          </motion.button>
-        </div>
+            <i className="fas fa-arrow-up" />
+          </button>
+        )}
       </div>
-    </motion.div>
+    </div>
   );
 };
 
