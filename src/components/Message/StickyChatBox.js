@@ -1575,15 +1575,6 @@ const StickyChatBox = ({
                   }),
                 );
 
-                // Emit socket event to notify the other user
-                socket.emit("audio-call", {
-                  to: connectId,
-                  channelName,
-                  isAudio: true,
-                  callerName: callData.callerName,
-                  callerProfilePic: callData.callerProfilePic,
-                });
-
                 setShowOptionsMenu(false);
               }}
             >
@@ -1612,15 +1603,6 @@ const StickyChatBox = ({
                     detail: callData,
                   }),
                 );
-
-                // Emit socket event to notify the other user
-                socket.emit("video-call", {
-                  to: connectId,
-                  channelName,
-                  isAudio: false,
-                  callerName: callData.callerName,
-                  callerProfilePic: callData.callerProfilePic,
-                });
 
                 setShowOptionsMenu(false);
               }}

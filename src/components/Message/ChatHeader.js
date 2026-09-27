@@ -1125,11 +1125,7 @@ const ChatHeader = ({
         }),
       );
 
-      socket.emit("video-call", {
-        to: String(id),
-        channelName,
-        isAudio: false,
-      });
+      // VideoCall places the call (emits "video-call") once it accepts it.
     },
     [profileId, connectProfile, connectId],
   );
@@ -1161,7 +1157,7 @@ const ChatHeader = ({
         }),
       );
 
-      socket.emit("audio-call", { to: String(id), channelName, isAudio: true });
+      // AudioCall places the call (emits "audio-call") once it accepts it.
     },
     [profileId, connectProfile, connectId],
   );

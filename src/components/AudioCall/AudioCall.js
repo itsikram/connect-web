@@ -6,10 +6,9 @@ import React, {
   useMemo,
 } from "react";
 import socket from "../../common/socket";
-import ModalContainer from "../modal/ModalContainer";
+import CallScreen, { formatCallDuration } from "../CallScreen/CallScreen";
 import AgoraRTC from "agora-rtc-sdk-ng";
 import { useSelector } from "react-redux";
-import useIsMobile from "../../utils/useIsMobile";
 import ringtones from "../../config/ringtones.json";
 import { normalizeRingtoneId } from "../../utils/normalizeRingtoneId";
 import api from "../../api/api";
@@ -27,6 +26,17 @@ import {
 import audioPreloader from "../../utils/audioPreloader";
 import { CALL_RING_DURATION_MS } from "../../utils/callRingtone";
 import CallTranscript from "../CallTranscript/CallTranscript";
+import {
+  startRingback,
+  stopRingback,
+  endedLabelFor,
+  ENDED_SCREEN_MS,
+} from "../../utils/callFeedback";
+import {
+  markCallActive,
+  markCallIdle,
+  isOtherCallActive,
+} from "../../utils/callSession";
 
 const RINGTONE_DB_NAME = "connect-audio-cache";
 const RINGTONE_DB_VERSION = 1;
@@ -85,9 +95,21 @@ const AudioCall = ({ myId }) => {
   const [isMinimized, setIsMinimized] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [outgoingCallStatus, setOutgoingCallStatus] = useState("");
+  // True once the other person is actually in the media channel; the call
+  // timer starts from here (like WhatsApp), not from the socket "accept".
+  const [mediaConnected, setMediaConnected] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  // Snapshot shown for a moment after the call closes ("Call ended",
+  // "Declined", "On another call", "No answer").
+  const [endedInfo, setEndedInfo] = useState(null);
+  const endedTimerRef = useRef(null);
+  const tokenRequestRef = useRef(null);
+  const startCallRef = useRef(null);
+  // Microphone being opened while an outgoing call rings; startCall waits for
+  // it instead of opening a second one.
+  const micPromiseRef = useRef(null);
   const callStartTime = useRef(null);
 
-  const callEndBtn = useRef();
   const ringtoneAudio = useRef();
   const ringtoneBufferSource = useRef(null);
   // Bumped by every play/stop so async ringtone work started earlier can tell
@@ -121,7 +143,6 @@ const AudioCall = ({ myId }) => {
   const remoteUserCheckInterval = useRef(null);
   const cleanupAudioCallRef = useRef(null);
 
-  const isMobile = useIsMobile();
   const { minimizeCall, endMinimizedCall } = useCallMinimize();
 
   const normalizeAudioSrc = (src) => {
@@ -522,18 +543,17 @@ const AudioCall = ({ myId }) => {
     }
   }, [ensureRingtoneSourceReady]);
 
-  const closeAudioCall = () => {
-    console.log("AudioCall - Closing audio call modal");
-    endCall();
-  };
 
   // Call duration tracking
   useEffect(() => {
     let interval = null;
-    if (callAccepted && !isMinimized) {
+    if (callAccepted && mediaConnected && !isMinimized) {
       if (!callStartTime.current) {
         callStartTime.current = Date.now();
       }
+      setCallDuration(
+        Math.floor((Date.now() - callStartTime.current) / 1000),
+      );
       interval = setInterval(() => {
         const elapsed = Math.floor((Date.now() - callStartTime.current) / 1000);
         setCallDuration(elapsed);
@@ -542,7 +562,7 @@ const AudioCall = ({ myId }) => {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [callAccepted, isMinimized]);
+  }, [callAccepted, mediaConnected, isMinimized]);
 
   // Stable numeric UID for Agora (avoids string-UID warning)
   const numericUid = useMemo(() => {
@@ -555,14 +575,42 @@ const AudioCall = ({ myId }) => {
     return Math.abs(hash);
   }, [myId]);
 
-  // Get Agora token
-  const getToken = async (channelName) => {
-    const { data } = await api.post("/agora/token", {
+  // Get Agora token. Requests are shared per channel so the token fetched
+  // while the call is ringing is reused the moment it is answered.
+  const getToken = (channelName, { fresh = false } = {}) => {
+    const cached = tokenRequestRef.current;
+    if (
+      !fresh &&
+      cached &&
+      cached.channelName === channelName &&
+      cached.uid === numericUid &&
+      Date.now() - cached.at < 10 * 60 * 1000
+    ) {
+      return cached.promise;
+    }
+    const promise = api
+      .post("/agora/token", {
+        channelName,
+        uid: numericUid,
+        role: "publisher",
+      })
+      .then(({ data }) => data) // { appId, token }
+      .catch((error) => {
+        if (tokenRequestRef.current?.promise === promise) {
+          tokenRequestRef.current = null;
+        }
+        throw error;
+      });
+    tokenRequestRef.current = {
       channelName,
       uid: numericUid,
-      role: "publisher",
-    });
-    return data; // { appId, token }
+      at: Date.now(),
+      promise,
+    };
+    return promise;
+  };
+  const prefetchToken = (channelName) => {
+    getToken(channelName).catch(() => {});
   };
 
   // Start an audio call (join & publish)
@@ -584,10 +632,7 @@ const AudioCall = ({ myId }) => {
         callAcceptedRef.current = true;
         acceptedChannelRef.current = channelName;
 
-        // Set call start time for duration tracking
-        if (!callStartTime.current) {
-          callStartTime.current = Date.now();
-        }
+        stopRingback();
 
         // Prevent double join attempts (race-safe)
         if (isJoiningOrJoined.current) {
@@ -638,6 +683,22 @@ const AudioCall = ({ myId }) => {
             console.error("Error subscribing to remote audio:", error);
           }
         });
+        client.on("user-joined", () => {
+          setMediaConnected(true);
+        });
+        client.on("connection-state-change", (curState) => {
+          setIsReconnecting(curState === "RECONNECTING");
+        });
+        client.on("token-privilege-will-expire", async () => {
+          try {
+            const { token: nextToken } = await getToken(channelName, {
+              fresh: true,
+            });
+            await client.renewToken(nextToken);
+          } catch (error) {
+            console.warn("AudioCall: token renewal failed", error);
+          }
+        });
         client.on("user-left", (user) => {
           console.log("AudioCall - Remote user left the channel:", user?.uid);
           if (callAcceptedRef.current) {
@@ -648,25 +709,34 @@ const AudioCall = ({ myId }) => {
             if (peer) {
               socket.emit("audio-call-end", { to: String(peer), channelName });
             }
+            showEndedRef.current?.("Call ended");
             cleanupAudioCallRef.current?.();
           }
         });
 
-        await client.join(appId, channelName, token, numericUid);
-        console.log("Joined Agora audio channel successfully");
-
-        // Create local audio track only (no video)
-        if (!localTracks.current || localTracks.current.length === 0) {
-          try {
-            localTracks.current = [await AgoraRTC.createMicrophoneAudioTrack()];
-            console.log("Created local audio track");
-          } catch (trackError) {
-            console.error("Failed to create microphone track:", trackError);
-            throw trackError;
+        // Open the microphone while joining instead of after it: the two are
+        // independent and doing them in parallel connects the call faster.
+        const micReady = (async () => {
+          if (micPromiseRef.current) {
+            await micPromiseRef.current.catch(() => {});
           }
-        } else {
-          console.log("Using existing audio track");
-        }
+          if (localTracks.current && localTracks.current.length > 0) {
+            return localTracks.current;
+          }
+          const track = await AgoraRTC.createMicrophoneAudioTrack({
+            AEC: true,
+            ANS: true,
+            AGC: true,
+          });
+          return [track];
+        })();
+        const [, micTracks] = await Promise.all([
+          client.join(appId, channelName, token, numericUid),
+          micReady,
+        ]);
+        localTracks.current = micTracks;
+        console.log("Joined Agora audio channel successfully");
+        if (client.remoteUsers?.length) setMediaConnected(true);
 
         // Publish with one retry if needed
         try {
@@ -777,7 +847,16 @@ const AudioCall = ({ myId }) => {
           isTerminating.current || String(error?.message || error).includes("LEAVE");
         // Only show alert for certain errors
         if (!isTeardown) {
-          alert("Failed to start audio call. Please try again.");
+          const denied =
+            error?.name === "NotAllowedError" ||
+            /permission|NOT_READABLE|NotAllowed/i.test(
+              String(error?.code || error?.message || ""),
+            );
+          alert(
+            denied
+              ? "Connect needs microphone access for calls. Allow the microphone in your browser settings and try again."
+              : "Failed to start audio call. Please try again.",
+          );
           // The other side already accepted/placed the call and is waiting in
           // the channel; end it for them instead of leaving them connected
           // to nobody.
@@ -843,12 +922,15 @@ const AudioCall = ({ myId }) => {
     console.log("AudioCall: cleanupAudioCall - doing local cleanup only");
 
     stopRingtone();
+    stopRingback();
+    markCallIdle("audio");
     isTerminating.current = true;
 
-    // End minimized call if exists
-    if (currentChannel) {
-      const callId = `audio-${currentChannel}`;
-      endMinimizedCall(callId);
+    // End minimized call if exists. Read the ref: socket listeners call this
+    // through a ref, and the channel in an older closure may be stale.
+    const activeChannel = currentChannelRef.current || currentChannel;
+    if (activeChannel) {
+      endMinimizedCall(`audio-${activeChannel}`);
     }
 
     // Unpublish and close local tracks
@@ -939,6 +1021,15 @@ const AudioCall = ({ myId }) => {
     setCallerProfilePic("");
     setIsMinimized(false);
     setCallDuration(0);
+    setMediaConnected(false);
+    setIsReconnecting(false);
+    setIsMicrophone(true);
+    setOutgoingCallStatus("");
+    receivingCallRef.current = false;
+    currentChannelRef.current = null;
+    callerRef.current = "";
+    tokenRequestRef.current = null;
+    micPromiseRef.current = null;
     callSeenStatusSentRef.current = false;
     callIgnoredStatusSentRef.current = false;
     isTerminating.current = false;
@@ -948,6 +1039,38 @@ const AudioCall = ({ myId }) => {
   useEffect(() => {
     cleanupAudioCallRef.current = cleanupAudioCall;
   }, [cleanupAudioCall]);
+
+  const callerNameRef = useRef("");
+  const callerPicRef = useRef("");
+  callerNameRef.current = callerName;
+  callerPicRef.current = callerProfilePic;
+  const showEndedRef = useRef(null);
+  // Keep the call screen up for a moment with the outcome, like WhatsApp.
+  showEndedRef.current = (label) => {
+    if (endedTimerRef.current) clearTimeout(endedTimerRef.current);
+    setEndedInfo({
+      label,
+      name: callerNameRef.current,
+      pic: callerPicRef.current,
+    });
+    endedTimerRef.current = setTimeout(() => {
+      endedTimerRef.current = null;
+      setEndedInfo(null);
+    }, ENDED_SCREEN_MS);
+  };
+  const clearEnded = () => {
+    if (endedTimerRef.current) clearTimeout(endedTimerRef.current);
+    endedTimerRef.current = null;
+    setEndedInfo(null);
+  };
+
+  useEffect(
+    () => () => {
+      if (endedTimerRef.current) clearTimeout(endedTimerRef.current);
+      stopRingback();
+    },
+    [],
+  );
 
   useEffect(() => {
     return () => {
@@ -1002,16 +1125,26 @@ const AudioCall = ({ myId }) => {
       if (
         isJoiningOrJoined.current ||
         callAcceptedRef.current ||
-        receivingCallRef.current
+        receivingCallRef.current ||
+        // Placing a call of my own right now.
+        (currentChannelRef.current && currentChannelRef.current !== channelName) ||
+        isOtherCallActive("audio")
       ) {
         console.warn("AudioCall: Busy — rejecting incoming call", {
           isJoiningOrJoined: isJoiningOrJoined.current,
           callAccepted: callAcceptedRef.current,
           alreadyReceiving: receivingCallRef.current,
         });
-        socket.emit("audio-call-reject", { to: String(from), channelName });
+        socket.emit("audio-call-reject", {
+          to: String(from),
+          channelName,
+          reason: "busy",
+        });
         return;
       }
+      clearEnded();
+      markCallActive("audio", channelName);
+      prefetchToken(channelName);
       socket.emit("update-call-status", {
         to: String(from),
         status: "Ringing...",
@@ -1113,13 +1246,15 @@ const AudioCall = ({ myId }) => {
       if (to && channelName) {
         socket.emit("audio-call-reject", { to: String(to), channelName });
       }
-      cleanupAudioCall();
+      cleanupAudioCallRef.current?.();
     };
     window.addEventListener("rejectCallFromPush", onRejectFromPush);
 
     // Listen for audio calls initiated by this user (outgoing calls)
     const handleOutgoingAudioCall = (event) => {
-      const { to, channelName, callerName, callerProfilePic } = event.detail;
+      const { to, channelName, callerName, callerProfilePic } =
+        event.detail || {};
+      if (!to || !channelName) return;
       console.log(
         "AudioCall - Starting outgoing audio call to",
         to,
@@ -1131,10 +1266,58 @@ const AudioCall = ({ myId }) => {
       if (
         isJoiningOrJoined.current ||
         callAcceptedRef.current ||
-        receivingCallRef.current
+        receivingCallRef.current ||
+        currentChannelRef.current ||
+        isOtherCallActive("audio")
       ) {
         console.warn("AudioCall: Cannot start outgoing call - already busy");
         return;
+      }
+      clearEnded();
+      markCallActive("audio", channelName);
+      // Place the call from here (not from the chat header) so the other
+      // side never rings for a call this tab refused to start.
+      socket.emit("audio-call", { to: String(to), channelName, isAudio: true });
+      startRingback();
+      prefetchToken(channelName);
+      currentChannelRef.current = channelName;
+      callerRef.current = String(to);
+      receivingCallRef.current = false;
+      // Ask for the microphone as soon as the call is placed (not after the
+      // other side answers) and keep it open, so audio flows on connect.
+      if (!localTracks.current || localTracks.current.length === 0) {
+        micPromiseRef.current = AgoraRTC.createMicrophoneAudioTrack({
+          AEC: true,
+          ANS: true,
+          AGC: true,
+        });
+        micPromiseRef.current
+          .then((track) => {
+            const stillCalling =
+              currentChannelRef.current === channelName &&
+              !isTerminating.current &&
+              (!localTracks.current || localTracks.current.length === 0);
+            if (stillCalling) {
+              localTracks.current = [track];
+            } else {
+              closeAgoraTrack(track);
+            }
+          })
+          .catch((error) => {
+            if (currentChannelRef.current !== channelName) return;
+            if (
+              error?.name === "NotAllowedError" ||
+              /PERMISSION_DENIED|NotAllowed/i.test(
+                String(error?.code || error?.message || ""),
+              )
+            ) {
+              socket.emit("audio-call-cancel", { to: String(to), channelName });
+              alert(
+                "Connect needs microphone access for calls. Allow the microphone in your browser settings and try again.",
+              );
+              cleanupAudioCallRef.current?.();
+            }
+          });
       }
       callSeenStatusSentRef.current = false;
       callIgnoredStatusSentRef.current = false;
@@ -1184,9 +1367,10 @@ const AudioCall = ({ myId }) => {
             callerId,
           });
           setOutgoingCallStatus("");
+          stopRingback();
           callAcceptedRef.current = true;
           acceptedChannelRef.current = channelName;
-          startCall(channelName);
+          startCallRef.current?.(channelName);
         } else {
           console.log(
             "AudioCall: Call accepted but we are the receiver (receivingCall=true), already joined",
@@ -1207,7 +1391,8 @@ const AudioCall = ({ myId }) => {
       if (!isForActiveCall(channelName)) return;
       console.log("AudioCall: Received audio-call-ended event from server");
       stopRingtone();
-      await cleanupAudioCall();
+      if (callAcceptedRef.current) showEndedRef.current?.("Call ended");
+      await cleanupAudioCallRef.current?.();
     };
     socket.on("audio-call-ended", onAudioCallEnded);
 
@@ -1215,11 +1400,11 @@ const AudioCall = ({ myId }) => {
       if (!isForActiveCall(channelName)) return;
       console.log("AudioCall: Received audio-call-cancelled event from server");
       stopRingtone();
-      await cleanupAudioCall();
+      await cleanupAudioCallRef.current?.();
     };
     socket.on("audio-call-cancelled", onAudioCallCancelled);
 
-    const onAudioCallRejected = async ({ channelName } = {}) => {
+    const onAudioCallRejected = async ({ channelName, reason } = {}) => {
       console.log("AudioCall: Received audio-call-rejected event from server");
       // A reject can arrive from a duplicate socket/push delivery after the
       // callee has already accepted. Never tear down the accepted call.
@@ -1238,13 +1423,9 @@ const AudioCall = ({ myId }) => {
       }
       console.warn("AudioCall: Call was rejected by recipient");
       stopRingtone();
-      setOutgoingCallStatus("Call rejected");
-      // Wait briefly before cleanup to let user see the rejection status
-      setTimeout(() => {
-        if (!callAcceptedRef.current && !isJoiningOrJoined.current) {
-          cleanupAudioCall();
-        }
-      }, 500);
+      stopRingback();
+      showEndedRef.current?.(endedLabelFor(reason || "declined"));
+      cleanupAudioCallRef.current?.();
     };
     socket.on("audio-call-rejected", onAudioCallRejected);
 
@@ -1257,11 +1438,9 @@ const AudioCall = ({ myId }) => {
         activeChannel,
       });
       stopRingtone();
-      setOutgoingCallStatus("No answer");
-      // Wait briefly before cleanup to let user see the timeout status
-      setTimeout(() => {
-        cleanupAudioCall();
-      }, 500);
+      stopRingback();
+      if (!receivingCallRef.current) showEndedRef.current?.("No answer");
+      cleanupAudioCallRef.current?.();
     };
     socket.on("call-not-accepted", onCallNotAccepted);
 
@@ -1384,42 +1563,8 @@ const AudioCall = ({ myId }) => {
     if (!incomingCall) return;
 
     console.log("Answering Agora audio call");
-    await unlockAudio();
-
-    // Start local audio immediately when accepting call
-    try {
-      console.log("Starting local audio for call answer");
-
-      // Request microphone permission explicitly
-      try {
-        const mediaStream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-        });
-        // Stop the tracks after getting permission (Agora will create its own)
-        mediaStream.getTracks().forEach((track) => track.stop());
-      } catch (permissionError) {
-        if (permissionError.name === "NotAllowedError") {
-          console.warn("Microphone permission denied by user");
-          throw permissionError;
-        }
-        // If getUserMedia fails for other reasons, still try Agora
-      }
-
-      localTracks.current = [await AgoraRTC.createMicrophoneAudioTrack()];
-      console.log("Local audio started immediately");
-    } catch (error) {
-      console.error("Failed to start local audio immediately:", error);
-      stopRingtone();
-      if (
-        error.name === "NotAllowedError" ||
-        error.message?.includes("Permission denied")
-      ) {
-        console.warn(
-          "Microphone access denied - user must grant microphone permission",
-        );
-      }
-    }
-
+    // Tell the caller first so both sides join the channel in parallel; the
+    // microphone is opened while joining (see startCall).
     socket.emit("answer-call", {
       to: String(incomingCall.from),
       channelName: incomingCall.channelName,
@@ -1427,6 +1572,10 @@ const AudioCall = ({ myId }) => {
     });
     await startCall(incomingCall.channelName);
   }, [incomingCall, startCall]);
+
+  useEffect(() => {
+    startCallRef.current = startCall;
+  }, [startCall]);
 
   useEffect(() => {
     answerCallRef.current = answerCall;
@@ -1478,6 +1627,7 @@ const AudioCall = ({ myId }) => {
         to: String(connectIdToNotify),
         channelName: currentChannel,
       });
+      showEndedRef.current?.("Call ended");
       console.log(
         "AudioCall: Successfully emitted audio-call-end to connect:",
         connectIdToNotify,
@@ -1506,8 +1656,14 @@ const AudioCall = ({ myId }) => {
   ]);
 
   const handleMicrophoneClick = useCallback(async () => {
-    if (localTracks.current[0]) {
-      await localTracks.current[0].setEnabled(!isMicrophone);
+    const track = localTracks.current[0];
+    if (track) {
+      // setMuted keeps the track published, so unmuting is instant.
+      if (typeof track.setMuted === "function") {
+        await track.setMuted(isMicrophone);
+      } else {
+        await track.setEnabled(!isMicrophone);
+      }
     }
     setIsMicrophone((prev) => !prev);
   }, [isMicrophone]);
@@ -1554,148 +1710,44 @@ const AudioCall = ({ myId }) => {
     endCall,
   ]);
 
+  let phase = "outgoing";
+  if (callAccepted) phase = mediaConnected ? "connected" : "connecting";
+  else if (receivingCall) phase = "incoming";
+
+  let statusText = outgoingCallStatus || "Calling…";
+  if (phase === "incoming") statusText = "Incoming voice call";
+  else if (phase === "connecting") statusText = "Connecting…";
+  else if (phase === "connected") statusText = formatCallDuration(callDuration);
+
+  const showEnded = !!endedInfo && !isAudioCall;
+  const screenOpen = (isAudioCall && !isMinimized) || showEnded;
+
   return (
     <div>
-      <ModalContainer
-        title="Audio Call"
-        style={{
-          height: "auto",
-          zIndex: "9999",
-        }}
-        isOpen={isAudioCall && !isMinimized}
-        onRequestClose={closeAudioCall}
-        id="audioCallModal"
-        size="sm"
+      <CallScreen
+        open={screenOpen}
+        type="audio"
+        phase={showEnded ? "ended" : phase}
+        name={showEnded ? endedInfo.name : callerName}
+        avatar={showEnded ? endedInfo.pic : callerProfilePic}
+        statusText={showEnded ? endedInfo.label : statusText}
+        reconnecting={!showEnded && isReconnecting}
+        muted={!isMicrophone}
+        onAccept={answerCall}
+        onDecline={endCall}
+        onEnd={endCall}
+        onToggleMute={callAccepted ? handleMicrophoneClick : undefined}
+        onMinimize={minimizeAudioCall}
       >
-        <div
-          className={`${callAccepted ? "call-accepted" : ""}`}
-          style={{ padding: "20px", textAlign: "center" }}
-        >
-          <h2 className="text-center vc-modal-heading">
-            Audio Call
-            {callAccepted
-              ? ` • ${String(Math.floor(callDuration / 60)).padStart(2, "0")}:${String(callDuration % 60).padStart(2, "0")}`
-              : ""}
-          </h2>
-          <p className="fs-4 text-center">
-            {receivingCall && !callAccepted && `${callerName} is calling you`}
-            {!receivingCall &&
-              !callAccepted &&
-              `Calling ${callerName}${outgoingCallStatus ? ` • ${outgoingCallStatus}` : "..."}`}
-            {callAccepted && `Connected - ${callerName}`}
-          </p>
-
-          <div className="audio-call-avatar" style={{ margin: "30px 0" }}>
-            <div
-              style={{
-                width: "120px",
-                height: "120px",
-                borderRadius: "50%",
-                overflow: "hidden",
-                margin: "0 auto",
-                border: "3px solid #29B1A9",
-              }}
-            >
-              {callerProfilePic ? (
-                <img
-                  src={callerProfilePic}
-                  alt={callerName}
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                  }}
-                  onError={(e) => {
-                    e.target.src = config?.defaultProfile;
-                  }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    background: "#f0f0f0",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "48px",
-                    color: "#666",
-                  }}
-                >
-                  <i className="fas fa-user"></i>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div
-            className="call-buttons"
-            style={{ display: "flex", justifyContent: "center", gap: "20px" }}
-          >
-            <button
-              onClick={endCall}
-              ref={callEndBtn}
-              className="call-button-ends call-button bg-danger"
-            >
-              <i className="fa fa-phone" style={{ color: "white" }}></i>
-            </button>
-
-            {callAccepted && (
-              <>
-                <button
-                  onClick={handleMicrophoneClick}
-                  className="call-button-microphone call-button"
-                >
-                  {isMicrophone ? (
-                    <i
-                      className="fa fa-microphone"
-                      style={{ color: "white" }}
-                    />
-                  ) : (
-                    <i
-                      className="fa fa-microphone-slash"
-                      style={{ color: "white" }}
-                    />
-                  )}
-                </button>
-                <button
-                  onClick={minimizeAudioCall}
-                  className="call-button-minimize call-button"
-                  title="Minimize"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    fill="none"
-                    stroke="white"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    viewBox="0 0 24 24"
-                  >
-                    <path d="M6 9l6 6 6-6" />
-                  </svg>
-                </button>
-              </>
-            )}
-            {!callAccepted && receivingCall && (
-              <>
-                <button
-                  onClick={answerCall}
-                  className="call-button-receive call-button bg-success"
-                >
-                  <i
-                    className="fa fa-phone-volume"
-                    style={{ color: "white" }}
-                  ></i>
-                </button>
-              </>
-            )}
-          </div>
-          {callAccepted && <CallTranscript enabled channelName={currentChannel} peerId={caller} myId={myId} />}
-        </div>
-      </ModalContainer>
+        {callAccepted && !showEnded && (
+          <CallTranscript
+            enabled
+            channelName={currentChannel}
+            peerId={caller}
+            myId={myId}
+          />
+        )}
+      </CallScreen>
       {/* Always render audio element to avoid autoplay issues when tab is not focused */}
       <audio
         ref={ringtoneAudio}

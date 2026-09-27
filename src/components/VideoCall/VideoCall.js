@@ -6,7 +6,7 @@ import React, {
   useMemo,
 } from "react";
 import socket from "../../common/socket";
-import ModalContainer from "../modal/ModalContainer";
+import CallScreen, { formatCallDuration } from "../CallScreen/CallScreen";
 import AgoraRTC from "agora-rtc-sdk-ng";
 import { useSelector } from "react-redux";
 import useIsMobile from "../../utils/useIsMobile";
@@ -18,6 +18,17 @@ import config from "../../config/config.json";
 import audioPreloader from "../../utils/audioPreloader";
 import { CALL_RING_DURATION_MS } from "../../utils/callRingtone";
 import CallTranscript from "../CallTranscript/CallTranscript";
+import {
+  startRingback,
+  stopRingback,
+  endedLabelFor,
+  ENDED_SCREEN_MS,
+} from "../../utils/callFeedback";
+import {
+  markCallActive,
+  markCallIdle,
+  isOtherCallActive,
+} from "../../utils/callSession";
 import {
   unlockAudio,
   playAudioWithWebAudio,
@@ -32,8 +43,14 @@ const RINGTONE_DB_NAME = "connect-audio-cache";
 const RINGTONE_DB_VERSION = 1;
 const RINGTONE_STORE_NAME = "ringtones";
 
-/** Keep full camera frame visible (no crop) */
-const VIDEO_FIT = { fit: "contain" };
+/** Fill the screen like WhatsApp / Messenger video calls. */
+const VIDEO_FIT = { fit: "cover" };
+
+const isPermissionError = (error) =>
+  error?.name === "NotAllowedError" ||
+  /PERMISSION_DENIED|NotAllowed|Permission denied/i.test(
+    String(error?.code || error?.message || ""),
+  );
 
 const stopMediaTracks = (mediaContainer) => {
   if (!mediaContainer) return;
@@ -98,7 +115,6 @@ const VideoCall = ({ myId }) => {
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isBackCamera, setIsBackCamera] = useState(false);
   const [hasVideoInput, setHasVideoInput] = useState(true);
-  const [modalHeight] = useState("auto");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [filterConnectVideo, setFilterConnectVideo] = useState(false);
   const [filterMyVideo, setFilterMyVideo] = useState(false);
@@ -109,6 +125,18 @@ const VideoCall = ({ myId }) => {
   const [outgoingCallStatus, setOutgoingCallStatus] = useState("");
   const [remoteAspectRatio, setRemoteAspectRatio] = useState(null);
   const [localAspectRatio, setLocalAspectRatio] = useState(null);
+  // The other person is in the media channel (timer starts here).
+  const [mediaConnected, setMediaConnected] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [remoteVideoOn, setRemoteVideoOn] = useState(false);
+  const [localPreviewOn, setLocalPreviewOn] = useState(false);
+  const [endedInfo, setEndedInfo] = useState(null);
+  const endedTimerRef = useRef(null);
+  const tokenRequestRef = useRef(null);
+  const startCallRef = useRef(null);
+  // Pending camera/mic start while ringing; startCall waits for it instead of
+  // opening a second camera.
+  const previewPromiseRef = useRef(null);
   const callStartTime = useRef(null);
   const receivingCallRef = useRef(false);
   const callAcceptedRef = useRef(callAccepted);
@@ -143,7 +171,6 @@ const VideoCall = ({ myId }) => {
 
   const myVideo = useRef();
   const userVideo = useRef();
-  const callEndBtn = useRef();
   const ringtoneAudio = useRef();
   const ringtoneBufferSource = useRef(null);
   // Bumped by every play/stop so async ringtone work started earlier can tell
@@ -170,8 +197,6 @@ const VideoCall = ({ myId }) => {
   const localTracks = useRef([]);
   const isJoiningOrJoined = useRef(false);
   const hasBoundClientEvents = useRef(false);
-  const localContainer = useRef();
-  const remoteContainer = useRef();
   const remoteUserCheckInterval = useRef(null);
   const isCleaningUpRef = useRef(false); // Track if cleanup is in progress
   const callAttemptRef = useRef(0);
@@ -189,13 +214,8 @@ const VideoCall = ({ myId }) => {
   }, [myId]);
 
   const isMobile = useIsMobile();
-  const {
-    minimizeCall,
-    restoreCall,
-    endMinimizedCall,
-    getMinimizedCall,
-    updateMinimizedCall,
-  } = useCallMinimize();
+  const { minimizeCall, endMinimizedCall, updateMinimizedCall } =
+    useCallMinimize();
   const normalizeAudioSrc = (src) => {
     try {
       return new URL(src, window.location.href).href;
@@ -646,10 +666,14 @@ const VideoCall = ({ myId }) => {
       remoteUserCheckInterval.current = null;
     }
 
-    // End minimized call if exists
-    if (currentChannel) {
-      const callId = `video-${currentChannel}`;
-      endMinimizedCall(callId);
+    stopRingback();
+    markCallIdle("video");
+
+    // End minimized call if exists. Socket listeners reach this through a
+    // ref, so read the channel from the ref rather than a stale closure.
+    const activeChannel = currentChannelRef.current || currentChannel;
+    if (activeChannel) {
+      endMinimizedCall(`video-${activeChannel}`);
     }
 
     // Unpublish and leave Agora channel if connected, then dispose client
@@ -770,6 +794,17 @@ const VideoCall = ({ myId }) => {
     setIsMinimized(false);
     setCallDuration(0);
     setOutgoingCallStatus("");
+    setMediaConnected(false);
+    setIsReconnecting(false);
+    setRemoteVideoOn(false);
+    setLocalPreviewOn(false);
+    setRemoteAspectRatio(null);
+    receivingCallRef.current = false;
+    callAcceptedRef.current = false;
+    currentChannelRef.current = null;
+    callerRef.current = "";
+    tokenRequestRef.current = null;
+    previewPromiseRef.current = null;
     callSeenStatusSentRef.current = false;
     callIgnoredStatusSentRef.current = false;
     if (minimizedDurationInterval.current) {
@@ -780,12 +815,44 @@ const VideoCall = ({ myId }) => {
     // Reset cleanup flag after a short delay
     setTimeout(() => {
       isCleaningUpRef.current = false;
-    }, 1000);
+    }, 300);
   }, [currentChannel, endMinimizedCall]);
 
   useEffect(() => {
     cleanupVideoCallRef.current = cleanupVideoCall;
   }, [cleanupVideoCall]);
+
+  const callerNameRef = useRef("");
+  const callerPicRef = useRef("");
+  callerNameRef.current = callerName;
+  callerPicRef.current = callerProfilePic;
+  const showEndedRef = useRef(null);
+  // Keep the call screen up for a moment with the outcome, like WhatsApp.
+  showEndedRef.current = (label) => {
+    if (endedTimerRef.current) clearTimeout(endedTimerRef.current);
+    setEndedInfo({
+      label,
+      name: callerNameRef.current,
+      pic: callerPicRef.current,
+    });
+    endedTimerRef.current = setTimeout(() => {
+      endedTimerRef.current = null;
+      setEndedInfo(null);
+    }, ENDED_SCREEN_MS);
+  };
+  const clearEnded = () => {
+    if (endedTimerRef.current) clearTimeout(endedTimerRef.current);
+    endedTimerRef.current = null;
+    setEndedInfo(null);
+  };
+
+  useEffect(
+    () => () => {
+      if (endedTimerRef.current) clearTimeout(endedTimerRef.current);
+      stopRingback();
+    },
+    [],
+  );
 
   useEffect(() => {
     return () => {
@@ -826,6 +893,7 @@ const VideoCall = ({ myId }) => {
             connectIdToNotify,
           );
         }
+        showEndedRef.current?.("Call ended");
         await cleanupVideoCall();
         return;
       }
@@ -872,32 +940,17 @@ const VideoCall = ({ myId }) => {
     endCall();
   }, [endCall]);
 
-  // Consistent mobile button styling (perfect circles)
-  const mobileActionButtonStyle = isMobile
-    ? {
-        width: 56,
-        height: 56,
-        borderRadius: "50%",
-        padding: 0,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        boxShadow: "0 6px 16px rgba(0,0,0,0.35)",
-        border: "1px solid rgba(255,255,255,0.08)",
-        boxSizing: "border-box",
-        overflow: "hidden",
-        flexShrink: 0,
-        flexBasis: 56,
-      }
-    : {};
 
   // Call duration tracking
   useEffect(() => {
     let interval = null;
-    if (callAccepted && !isMinimized) {
+    if (callAccepted && mediaConnected && !isMinimized) {
       if (!callStartTime.current) {
         callStartTime.current = Date.now();
       }
+      setCallDuration(
+        Math.floor((Date.now() - callStartTime.current) / 1000),
+      );
       interval = setInterval(() => {
         const elapsed = Math.floor((Date.now() - callStartTime.current) / 1000);
         setCallDuration(elapsed);
@@ -906,7 +959,7 @@ const VideoCall = ({ myId }) => {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [callAccepted, isMinimized]);
+  }, [callAccepted, mediaConnected, isMinimized]);
 
   // While minimized, push duration into minimized call bar
   useEffect(() => {
@@ -932,13 +985,102 @@ const VideoCall = ({ myId }) => {
     };
   }, [callAccepted, isMinimized, currentChannel, updateMinimizedCall]);
 
-  // Get Agora token
-  const getToken = async (channelName) => {
-    const { data } = await api.post("/agora/token", {
+  // Get Agora token. Requests are shared per channel so the token fetched
+  // while the call is ringing is reused the moment it is answered.
+  const getToken = (channelName, { fresh = false } = {}) => {
+    const cached = tokenRequestRef.current;
+    if (
+      !fresh &&
+      cached &&
+      cached.channelName === channelName &&
+      cached.uid === numericUid &&
+      Date.now() - cached.at < 10 * 60 * 1000
+    ) {
+      return cached.promise;
+    }
+    const promise = api
+      .post("/agora/token", {
+        channelName,
+        uid: numericUid,
+      })
+      .then(({ data }) => data) // { appId, token }
+      .catch((error) => {
+        if (tokenRequestRef.current?.promise === promise) {
+          tokenRequestRef.current = null;
+        }
+        throw error;
+      });
+    tokenRequestRef.current = {
       channelName,
       uid: numericUid,
-    });
-    return data; // { appId, token }
+      at: Date.now(),
+      promise,
+    };
+    return promise;
+  };
+  const prefetchToken = (channelName) => {
+    getToken(channelName).catch(() => {});
+  };
+
+  const playLocalPreview = (videoTrack) => {
+    if (!videoTrack || !myVideo.current) return;
+    try {
+      myVideo.current.replaceChildren();
+      videoTrack.play(myVideo.current, VIDEO_FIT);
+      const ar = readTrackAspectRatio(videoTrack);
+      if (ar) setLocalAspectRatio(ar);
+      setLocalPreviewOn(true);
+    } catch (error) {
+      console.warn("VideoCall: local preview failed", error);
+    }
+  };
+
+  // Open camera + microphone while the call rings (WhatsApp shows your own
+  // camera on the ringing screen) so media is ready the moment it connects.
+  // Falls back to microphone only when there is no usable camera.
+  const startLocalPreview = (channelName) => {
+    if (previewPromiseRef.current) return previewPromiseRef.current;
+    const stillCurrent = () =>
+      currentChannelRef.current === channelName && !isCleaningUpRef.current;
+    const promise = (async () => {
+      let tracks = null;
+      try {
+        tracks = await AgoraRTC.createMicrophoneAndCameraTracks(
+          { AEC: true, ANS: true, AGC: true },
+          {
+            encoderConfig: isMobile ? "480p_2" : "720p_1",
+            optimizationMode: "motion",
+          },
+        );
+        setHasVideoInput(true);
+      } catch (error) {
+        console.warn("VideoCall: camera unavailable, using microphone only", error);
+        if (isPermissionError(error) && !stillCurrent()) return;
+        try {
+          tracks = [
+            await AgoraRTC.createMicrophoneAudioTrack({
+              AEC: true,
+              ANS: true,
+              AGC: true,
+            }),
+          ];
+          setHasVideoInput(false);
+          setIsCameraOn(false);
+        } catch (micError) {
+          console.error("VideoCall: microphone unavailable", micError);
+          throw micError;
+        }
+      }
+      if (!stillCurrent() || (localTracks.current && localTracks.current.length)) {
+        tracks.forEach(closeAgoraTrack);
+        return;
+      }
+      localTracks.current = tracks;
+      playLocalPreview(tracks.find((t) => t.trackMediaType === "video"));
+    })();
+    previewPromiseRef.current = promise;
+    promise.catch(() => {});
+    return promise;
   };
 
   // Start a call (join & publish)
@@ -950,13 +1092,12 @@ const VideoCall = ({ myId }) => {
 
       try {
         console.log("Starting Agora call with channel:", channelName);
+        stopRingback();
+        await unlockAudio();
         setCallAccepted(true);
         setCurrentChannel(channelName);
-
-        // Set call start time for duration tracking
-        if (!callStartTime.current) {
-          callStartTime.current = Date.now();
-        }
+        callAcceptedRef.current = true;
+        currentChannelRef.current = channelName;
 
         // Prevent double join attempts (race-safe)
         if (isJoiningOrJoined.current) {
@@ -965,9 +1106,25 @@ const VideoCall = ({ myId }) => {
         }
         isJoiningOrJoined.current = true;
 
+        // Signal any hidden emotion camera in ChatHeader to stop before grabbing camera
+        try {
+          window.dispatchEvent(new Event("stopEmotionCamera"));
+        } catch (e) {}
+
+        // Token, camera/mic and the channel join are independent: run them
+        // in parallel so the call connects as fast as possible.
+        const tracksReady = (async () => {
+          if (previewPromiseRef.current) {
+            await previewPromiseRef.current.catch(() => {});
+          }
+          if (!localTracks.current || localTracks.current.length === 0) {
+            previewPromiseRef.current = null;
+            await startLocalPreview(channelName);
+          }
+          return localTracks.current;
+        })();
         const { appId, token } = await getToken(channelName);
         if (isStaleAttempt()) return;
-        console.log("Got Agora token for channel:", channelName);
 
         // Ensure previous client is disposed
         if (clientRef.current) {
@@ -980,309 +1137,135 @@ const VideoCall = ({ myId }) => {
           clientRef.current = null;
         }
 
-        // Create new client and join
-        clientRef.current = AgoraRTC.createClient({
-          mode: "rtc",
-          codec: "vp8",
+        const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+        clientRef.current = client;
+        hasBoundClientEvents.current = true;
+
+        const playRemoteVideo = (user) => {
+          if (!userVideo.current || !user?.videoTrack) return;
+          userVideo.current.replaceChildren();
+          user.videoTrack.play(userVideo.current, VIDEO_FIT);
+          setRemoteVideoOn(true);
+          const ar =
+            readTrackAspectRatio(user.videoTrack) ||
+            readElementAspectRatio(userVideo.current);
+          if (ar) setRemoteAspectRatio(ar);
+        };
+        const playRemoteAudio = (user) => {
+          try {
+            const result = user?.audioTrack?.play();
+            if (result?.catch) result.catch(() => {});
+          } catch (error) {
+            console.warn("VideoCall: remote audio play failed", error);
+          }
+        };
+        AgoraRTC.onAudioAutoplayFailed = () => {
+          (client.remoteUsers || []).forEach(playRemoteAudio);
+        };
+
+        // Bind before joining so a fast publisher is never missed.
+        client.on("user-joined", () => {
+          setMediaConnected(true);
         });
-        const client = clientRef.current;
-
-        // Bind before joining/publishing so a fast cross-platform publisher
-        // cannot be missed by the web client.
-        if (!hasBoundClientEvents.current) {
-          hasBoundClientEvents.current = true;
-          client.on("user-published", async (user, mediaType) => {
-            console.log("Remote user published:", user.uid, mediaType);
-            try {
-              await client.subscribe(user, mediaType);
-              console.log("Successfully subscribed to", user.uid, mediaType);
-
-              if (mediaType === "video" && userVideo.current && user.videoTrack) {
-                userVideo.current.innerHTML = "";
-                user.videoTrack.play(userVideo.current, VIDEO_FIT);
-                const ar =
-                  readTrackAspectRatio(user.videoTrack) ||
-                  readElementAspectRatio(userVideo.current);
-                if (ar) setRemoteAspectRatio(ar);
-              }
-
-              if (mediaType === "audio" && user.audioTrack) {
-                user.audioTrack.play();
-                console.log("Playing remote audio from user:", user.uid);
-              }
-            } catch (error) {
-              console.error(
-                "Error subscribing to user:",
-                user.uid,
-                mediaType,
-                error,
-              );
+        client.on("user-published", async (user, mediaType) => {
+          try {
+            await client.subscribe(user, mediaType);
+            setMediaConnected(true);
+            if (mediaType === "video") playRemoteVideo(user);
+            if (mediaType === "audio") playRemoteAudio(user);
+          } catch (error) {
+            console.error("Error subscribing to user:", user.uid, mediaType, error);
+          }
+        });
+        client.on("user-unpublished", (user, mediaType) => {
+          // Only a video unpublish removes the picture (camera turned off);
+          // the other side muting its microphone must not blank it.
+          if (mediaType === "video") {
+            setRemoteVideoOn(false);
+            userVideo.current?.replaceChildren();
+          }
+        });
+        client.on("user-left", async (user) => {
+          console.log("Remote user left the channel:", user?.uid);
+          try {
+            // Peer dropped out of the media channel (app killed, network
+            // lost, tab closed): close the call on the server too so every
+            // device and the call log are updated.
+            const peer = callerRef.current;
+            if (callAcceptedRef.current && peer) {
+              socket.emit("video-call-end", { to: String(peer), channelName });
+              showEndedRef.current?.("Call ended");
             }
-          });
-
-          client.on("user-unpublished", (user, mediaType) => {
-            console.log("Remote user unpublished:", user.uid, mediaType);
-            // Only a video unpublish removes the picture; the other side
-            // muting or restarting its microphone must not blank it.
-            if (mediaType === "video" && userVideo.current) {
-              userVideo.current.innerHTML = "";
-            }
-          });
-
-          client.on("user-left", async (user) => {
-            console.log("Remote user left the channel:", user?.uid);
-            try {
-              // Peer dropped out of the media channel (app killed, network
-              // lost, tab closed): close the call on the server too so every
-              // device and the call log are updated.
-              const peer = callerRef.current;
-              if (callAcceptedRef.current && peer) {
-                socket.emit("video-call-end", { to: String(peer), channelName });
-              }
-              await cleanupVideoCallRef.current?.();
-            } catch (e) {
-              console.warn("Cleanup after remote user-left failed:", e);
-            }
-          });
-        }
-
-        await client.join(appId, channelName, token, numericUid);
+            await cleanupVideoCallRef.current?.();
+          } catch (e) {
+            console.warn("Cleanup after remote user-left failed:", e);
+          }
+        });
+        client.on("connection-state-change", (curState) => {
+          setIsReconnecting(curState === "RECONNECTING");
+        });
+        client.on("token-privilege-will-expire", async () => {
+          try {
+            const { token: nextToken } = await getToken(channelName, {
+              fresh: true,
+            });
+            await client.renewToken(nextToken);
+          } catch (error) {
+            console.warn("VideoCall: token renewal failed", error);
+          }
+        });
+        const [, tracks] = await Promise.all([
+          client.join(appId, channelName, token, numericUid),
+          tracksReady,
+        ]);
         if (isStaleAttempt()) return;
         console.log("Joined Agora channel successfully");
 
-        // Immediately check for existing users after joining
-        setTimeout(() => {
-          const remoteUsers = client.remoteUsers;
-          console.log(
-            "Immediate check - Remote users in channel:",
-            remoteUsers.length,
-          );
-          remoteUsers.forEach((user) => {
-            console.log("Remote user details:", {
-              uid: user.uid,
-              hasVideo: user.hasVideo,
-              hasAudio: user.hasAudio,
-            });
-          });
-        }, 500);
-
-        // Signal any hidden emotion camera in ChatHeader to stop before grabbing camera
-        try {
-          window.dispatchEvent(new Event("stopEmotionCamera"));
-        } catch (e) {}
-
-        // Create local audio/video tracks if they don't exist
-        if (!localTracks.current || localTracks.current.length === 0) {
-          try {
-            localTracks.current =
-              await AgoraRTC.createMicrophoneAndCameraTracks();
-            if (isStaleAttempt()) return;
-          } catch (trackErr) {
-            if (isStaleAttempt()) return;
-            console.error(
-              "createMicrophoneAndCameraTracks failed, falling back to mic only:",
-              trackErr,
-            );
-            // Fallback to microphone-only to keep the call connected
-            localTracks.current = [await AgoraRTC.createMicrophoneAudioTrack()];
-            setHasVideoInput(false);
-            setIsCameraOn(false);
-          }
-          console.log("Created local tracks");
-
-          // Play local video in myVideo ref if exists (full frame, no crop)
-          if (myVideo.current && localTracks.current[1]) {
-            localTracks.current[1].play(myVideo.current, VIDEO_FIT);
-            const ar = readTrackAspectRatio(localTracks.current[1]);
-            if (ar) setLocalAspectRatio(ar);
-            console.log("Playing local video");
-          }
-        } else {
-          console.log("Using existing local tracks");
+        if (tracks && tracks.length) {
+          await client.publish(tracks);
+          if (isStaleAttempt()) return;
+          console.log("Published local tracks");
         }
 
-        await client.publish(localTracks.current);
-        if (isStaleAttempt()) return;
-        console.log("Published local tracks");
-
-        // Bind client events only once
-        if (!hasBoundClientEvents.current) {
-          hasBoundClientEvents.current = true;
-          client.on("user-published", async (user, mediaType) => {
-            console.log("Remote user published:", user.uid, mediaType);
-            try {
-              await client.subscribe(user, mediaType);
-              console.log("Successfully subscribed to", user.uid, mediaType);
-
-              if (mediaType === "video") {
-                if (userVideo.current && user.videoTrack) {
-                  // Clear any existing content first
-                  userVideo.current.innerHTML = "";
-                  user.videoTrack.play(userVideo.current, VIDEO_FIT);
-                  const ar =
-                    readTrackAspectRatio(user.videoTrack) ||
-                    readElementAspectRatio(userVideo.current);
-                  if (ar) setRemoteAspectRatio(ar);
-                  // Retry aspect after decoder fills videoWidth/videoHeight
-                  setTimeout(() => {
-                    const next = readElementAspectRatio(userVideo.current);
-                    if (next) setRemoteAspectRatio(next);
-                  }, 400);
-                  console.log("Playing remote video from user:", user.uid);
-                } else {
-                  console.warn(
-                    "Cannot play remote video - missing userVideo ref or videoTrack",
-                  );
-                }
-              }
-
-              if (mediaType === "audio") {
-                if (user.audioTrack) {
-                  user.audioTrack.play();
-                  console.log("Playing remote audio from user:", user.uid);
-                } else {
-                  console.warn("Cannot play remote audio - missing audioTrack");
-                }
-              }
-            } catch (error) {
-              console.error(
-                "Error subscribing to user:",
-                user.uid,
-                mediaType,
-                error,
-              );
-            }
-          });
-
-          client.on("user-unpublished", (user, mediaType) => {
-            console.log("Remote user unpublished:", user.uid, mediaType);
-            // Only a video unpublish removes the picture; the other side
-            // muting or restarting its microphone must not blank it.
-            if (mediaType === "video" && userVideo.current) {
-              userVideo.current.innerHTML = "";
-            }
-          });
-
-          // End locally when remote user leaves the channel
-          client.on("user-left", async (user) => {
-            console.log("Remote user left the channel:", user?.uid);
-            try {
-              // Peer dropped out of the media channel (app killed, network
-              // lost, tab closed): close the call on the server too so every
-              // device and the call log are updated.
-              const peer = callerRef.current;
-              if (callAcceptedRef.current && peer) {
-                socket.emit("video-call-end", { to: String(peer), channelName });
-              }
-              await cleanupVideoCallRef.current?.();
-            } catch (e) {
-              console.warn("Cleanup after remote user-left failed:", e);
-            }
-          });
-        }
-
-        // Check for existing remote users who may have already published before we joined
-        setTimeout(async () => {
+        // Anyone already in the channel published before we joined.
+        for (const user of client.remoteUsers || []) {
+          setMediaConnected(true);
           try {
-            const remoteUsers = client.remoteUsers;
-            console.log(
-              "Checking for existing remote users:",
-              remoteUsers.length,
-            );
-
-            for (const user of remoteUsers) {
-              console.log(
-                "Found existing remote user:",
-                user.uid,
-                "hasVideo:",
-                user.hasVideo,
-                "hasAudio:",
-                user.hasAudio,
-              );
-
-              // Subscribe to video if available
-              if (user.hasVideo && !user.videoTrack) {
-                console.log("Subscribing to existing user video:", user.uid);
-                await client.subscribe(user, "video");
-                if (userVideo.current && user.videoTrack) {
-                  user.videoTrack.play(userVideo.current, VIDEO_FIT);
-                  const ar = readTrackAspectRatio(user.videoTrack);
-                  if (ar) setRemoteAspectRatio(ar);
-                  console.log("Playing existing remote user video");
-                }
-              } else if (
-                user.hasVideo &&
-                user.videoTrack &&
-                userVideo.current
-              ) {
-                // Video track already exists, just play it
-                user.videoTrack.play(userVideo.current, VIDEO_FIT);
-                const ar = readTrackAspectRatio(user.videoTrack);
-                if (ar) setRemoteAspectRatio(ar);
-                console.log("Playing already subscribed remote video");
-              }
-
-              // Subscribe to audio if available
-              if (user.hasAudio && !user.audioTrack) {
-                console.log("Subscribing to existing user audio:", user.uid);
-                await client.subscribe(user, "audio");
-                if (user.audioTrack) {
-                  user.audioTrack.play();
-                  console.log("Playing existing remote user audio");
-                }
-              } else if (user.hasAudio && user.audioTrack) {
-                // Audio track already exists, just play it
-                user.audioTrack.play();
-                console.log("Playing already subscribed remote audio");
-              }
+            if (user.hasVideo) {
+              if (!user.videoTrack) await client.subscribe(user, "video");
+              playRemoteVideo(user);
+            }
+            if (user.hasAudio) {
+              if (!user.audioTrack) await client.subscribe(user, "audio");
+              playRemoteAudio(user);
             }
           } catch (error) {
-            console.error("Error checking for existing remote users:", error);
+            console.error("Error subscribing to existing remote user:", error);
           }
-        }, 1000); // Small delay to ensure everything is properly initialized
+        }
 
-        // Additional periodic check for the first few seconds to catch any missed remote users
+        // Safety net for a few seconds: replay remote media a browser paused.
         let checkCount = 0;
-        const maxChecks = 5;
-        remoteUserCheckInterval.current = setInterval(async () => {
+        remoteUserCheckInterval.current = setInterval(() => {
           checkCount++;
           try {
-            const remoteUsers = client.remoteUsers;
-            if (remoteUsers.length > 0) {
-              console.log(
-                `Periodic check ${checkCount}: Found ${remoteUsers.length} remote users`,
-              );
-
-              for (const user of remoteUsers) {
-                // Check if we have video but it's not playing
-                if (user.hasVideo && user.videoTrack && userVideo.current) {
-                  const videoElement = userVideo.current.querySelector("video");
-                  if (
-                    !videoElement ||
-                    videoElement.paused ||
-                    videoElement.readyState === 0
-                  ) {
-                    console.log(
-                      `Periodic check ${checkCount}: Re-attempting to play remote video for user ${user.uid}`,
-                    );
-                    userVideo.current.innerHTML = "";
-                    user.videoTrack.play(userVideo.current, VIDEO_FIT);
-                    const ar = readTrackAspectRatio(user.videoTrack);
-                    if (ar) setRemoteAspectRatio(ar);
-                  }
-                }
+            for (const user of client.remoteUsers || []) {
+              if (user.videoTrack && userVideo.current) {
+                const videoElement = userVideo.current.querySelector("video");
+                if (!videoElement || videoElement.paused) playRemoteVideo(user);
+              }
+              if (user.audioTrack && !user.audioTrack.isPlaying) {
+                playRemoteAudio(user);
               }
             }
-
-            if (checkCount >= maxChecks) {
-              clearInterval(remoteUserCheckInterval.current);
-              remoteUserCheckInterval.current = null;
-              console.log("Stopped periodic remote user checks");
-            }
           } catch (error) {
-            console.error(`Error in periodic check ${checkCount}:`, error);
+            console.error("Error in periodic remote check:", error);
           }
-        }, 2000); // Check every 2 seconds
+          if (checkCount >= 5 && remoteUserCheckInterval.current) {
+            clearInterval(remoteUserCheckInterval.current);
+            remoteUserCheckInterval.current = null;
+          }
+        }, 2000);
       } catch (error) {
         const message = String(error?.message || error || "");
         if (
@@ -1295,7 +1278,11 @@ const VideoCall = ({ myId }) => {
         }
         console.error("Failed to start call:", error);
         stopRingtone();
-        alert("Failed to start call. Please try again.");
+        alert(
+          isPermissionError(error)
+            ? "Connect needs camera and microphone access for video calls. Allow them in your browser settings and try again."
+            : "Failed to start call. Please try again.",
+        );
         // The other side is already waiting in the channel; end the call for
         // them instead of leaving them connected to nobody.
         const peer = callerRef.current;
@@ -1308,8 +1295,13 @@ const VideoCall = ({ myId }) => {
         cleanupVideoCallRef.current?.();
       }
     },
-    [myId, getToken],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [myId, numericUid],
   );
+
+  useEffect(() => {
+    startCallRef.current = startCall;
+  }, [startCall]);
 
   useEffect(() => {
     const defaultRingtoneSrc =
@@ -1355,26 +1347,41 @@ const VideoCall = ({ myId }) => {
   }, [receivingCall, incomingCall, ensureRingtoneSourceReady, playRingtone]);
 
   useEffect(() => {
-    // Listen for video calls initiated by this user (outgoing calls from sticky chat box)
-    const handleOutgoingVideoCall = async (event) => {
-      // Clean up any previous call state first
-      if (isCleaningUpRef.current || isVideoCall || currentChannel) {
-        console.log(
-          "VideoCall - Cleaning up previous call before starting new one",
-        );
-        await cleanupVideoCall();
-        // Wait a bit for cleanup to complete
-        await new Promise((resolve) => setTimeout(resolve, 100));
+    // Listen for video calls initiated by this user (chat header, sticky
+    // chat box, AI agent).
+    const handleOutgoingVideoCall = (event) => {
+      const { to, channelName, callerName, callerProfilePic } =
+        event.detail || {};
+      if (!to || !channelName) return;
+      // Never start a second call on top of one in progress.
+      if (
+        isCleaningUpRef.current ||
+        isJoiningOrJoined.current ||
+        callAcceptedRef.current ||
+        receivingCallRef.current ||
+        currentChannelRef.current ||
+        isOtherCallActive("video")
+      ) {
+        console.warn("VideoCall: Cannot start outgoing call - already busy");
+        return;
       }
-
-      const { to, channelName, callerName, callerProfilePic } = event.detail;
+      markCallActive("video", channelName);
       console.log(
         "VideoCall - Starting outgoing video call to",
         to,
         "channel:",
         channelName,
       );
-      console.log("VideoCall - Connect info:", { callerName, callerProfilePic });
+      clearEnded();
+      // Place the call from here so the other side never rings for a call
+      // this tab refused to start.
+      socket.emit("video-call", { to: String(to), channelName, isAudio: false });
+      startRingback();
+      prefetchToken(channelName);
+      currentChannelRef.current = channelName;
+      callerRef.current = String(to);
+      receivingCallRef.current = false;
+      callAcceptedRef.current = false;
       callSeenStatusSentRef.current = false;
       callIgnoredStatusSentRef.current = false;
       setIsVideoCall(true);
@@ -1390,27 +1397,19 @@ const VideoCall = ({ myId }) => {
         name: callerName || "Connect",
         profilePic: callerProfilePic,
       });
-      setOutgoingCallStatus("Calling...");
-      console.log("VideoCall - Outgoing call modal should now be visible");
+      setOutgoingCallStatus("Calling…");
 
-      // Start local video immediately when initiating call
-      try {
-        console.log("VideoCall - Starting local video for outgoing call");
-        localTracks.current = await AgoraRTC.createMicrophoneAndCameraTracks();
-
-        // Show local video immediately
-        if (myVideo.current && localTracks.current[1]) {
-          localTracks.current[1].play(myVideo.current, VIDEO_FIT);
-          const ar = readTrackAspectRatio(localTracks.current[1]);
-          if (ar) setLocalAspectRatio(ar);
-          console.log("VideoCall - Local video started for outgoing call");
-        }
-      } catch (error) {
-        console.error(
-          "VideoCall - Failed to start local video for outgoing call:",
-          error,
+      // Show my camera while it rings.
+      startLocalPreview(channelName).catch((error) => {
+        if (currentChannelRef.current !== channelName) return;
+        socket.emit("video-call-cancel", { to: String(to), channelName });
+        alert(
+          isPermissionError(error)
+            ? "Connect needs camera and microphone access for video calls. Allow them in your browser settings and try again."
+            : "Could not start your camera or microphone.",
         );
-      }
+        cleanupVideoCallRef.current?.();
+      });
     };
 
     window.addEventListener("startVideoCall", handleOutgoingVideoCall);
@@ -1442,16 +1441,27 @@ const VideoCall = ({ myId }) => {
       if (
         isJoiningOrJoined.current ||
         callAcceptedRef.current ||
-        receivingCallRef.current
+        receivingCallRef.current ||
+        // Placing a call of my own right now.
+        (currentChannelRef.current && currentChannelRef.current !== channelName) ||
+        isOtherCallActive("video")
       ) {
         console.warn("VideoCall: Busy — rejecting incoming call", {
           isJoiningOrJoined: isJoiningOrJoined.current,
           callAccepted: callAcceptedRef.current,
           alreadyReceiving: receivingCallRef.current,
         });
-        socket.emit("video-call-reject", { to: String(from), channelName });
+        socket.emit("video-call-reject", {
+          to: String(from),
+          channelName,
+          reason: "busy",
+        });
         return;
       }
+      clearEnded();
+      markCallActive("video", channelName);
+      prefetchToken(channelName);
+      callerRef.current = String(from);
       socket.emit("update-call-status", {
         to: String(from),
         status: "Ringing...",
@@ -1493,61 +1503,8 @@ const VideoCall = ({ myId }) => {
 
       startFlashingTitle(callerName || "Unknown Caller");
 
-      try {
-        // Request permissions explicitly
-        const constraints = {
-          audio: true,
-          video: {
-            width: { ideal: 640 },
-            height: { ideal: 480 },
-            frameRate: { ideal: 15 },
-          },
-        };
-
-        // First, get user permission for media
-        const mediaStream =
-          await navigator.mediaDevices.getUserMedia(constraints);
-        // Stop the tracks after getting permission (Agora will create its own)
-        mediaStream.getTracks().forEach((track) => track.stop());
-
-        // Now create Agora tracks with permission granted
-        localTracks.current = await AgoraRTC.createMicrophoneAndCameraTracks();
-        if (myVideo.current && localTracks.current[1]) {
-          localTracks.current[1].play(myVideo.current, VIDEO_FIT);
-          const ar = readTrackAspectRatio(localTracks.current[1]);
-          if (ar) setLocalAspectRatio(ar);
-          setHasVideoInput(true);
-        }
-      } catch (error) {
-        console.error("Failed to start local video preview:", error);
-
-        // Check if it's a permission denied error
-        if (
-          error.name === "NotAllowedError" ||
-          error.message?.includes("Permission denied")
-        ) {
-          console.warn("Camera/Microphone permission denied by user");
-          // Don't show error - user denied, just fall back to audio only
-        }
-
-        // Fallback to audio only
-        try {
-          localTracks.current = [await AgoraRTC.createMicrophoneAudioTrack()];
-          setHasVideoInput(false);
-          console.log("Fallback to audio-only mode");
-        } catch (micErr) {
-          console.error("Mic fallback also failed:", micErr);
-          // Even audio failed - might want to show alert to user
-          if (
-            micErr.name === "NotAllowedError" ||
-            micErr.message?.includes("Permission denied")
-          ) {
-            console.warn(
-              "Microphone permission denied - user must grant permissions to participate",
-            );
-          }
-        }
-      }
+      // Show my camera behind the incoming-call screen, like WhatsApp.
+      startLocalPreview(channelName).catch(() => {});
 
       showCallNotification({
         callerName: callerName || "Unknown Caller",
@@ -1611,7 +1568,7 @@ const VideoCall = ({ myId }) => {
       if (to && channelName) {
         socket.emit("video-call-reject", { to: String(to), channelName });
       }
-      cleanupVideoCall();
+      cleanupVideoCallRef.current?.();
     };
     window.addEventListener("rejectCallFromPush", onRejectFromPush);
 
@@ -1629,9 +1586,10 @@ const VideoCall = ({ myId }) => {
       if (!isAudio && !receivingCallRef.current) {
         console.log("Agora video call accepted, joining channel:", channelName);
         stopRingtone();
+        stopRingback();
         stopFlashingTitle();
         setOutgoingCallStatus("");
-        startCall(channelName);
+        startCallRef.current?.(channelName);
       } else if (!isAudio && receivingCallRef.current) {
         console.log(
           "VideoCall: Ignoring call-accepted echo (callee already joined)",
@@ -1675,8 +1633,9 @@ const VideoCall = ({ myId }) => {
       stopRingtone();
       stopFlashingTitle();
       setOutgoingCallStatus("");
+      if (callAcceptedRef.current) showEndedRef.current?.("Call ended");
       // Local cleanup ONLY — do not re-emit end
-      await cleanupVideoCall();
+      await cleanupVideoCallRef.current?.();
     };
     socket.on("video-call-ended", onVideoCallEnded);
 
@@ -1688,21 +1647,23 @@ const VideoCall = ({ myId }) => {
       stopRingtone();
       stopFlashingTitle();
       setOutgoingCallStatus("");
-      await cleanupVideoCall();
+      await cleanupVideoCallRef.current?.();
     };
     socket.on("video-call-cancelled", onVideoCallCancelled);
 
-    const onVideoCallRejected = async ({ channelName } = {}) => {
+    const onVideoCallRejected = async ({ channelName, reason } = {}) => {
       if (!isForActiveCall(channelName)) return;
       // A late duplicate reject must never tear down an answered call.
-      if (callAcceptedRef.current) return;
+      if (callAcceptedRef.current || isJoiningOrJoined.current) return;
       console.log(
         "VideoCall: Received video-call-rejected event from remote user",
       );
       stopRingtone();
+      stopRingback();
       stopFlashingTitle();
       setOutgoingCallStatus("");
-      await cleanupVideoCall();
+      showEndedRef.current?.(endedLabelFor(reason || "declined"));
+      await cleanupVideoCallRef.current?.();
     };
     socket.on("video-call-rejected", onVideoCallRejected);
 
@@ -1716,9 +1677,10 @@ const VideoCall = ({ myId }) => {
         return;
       console.log("VideoCall: Call not accepted (timeout)");
       stopRingtone();
+      stopRingback();
       stopFlashingTitle();
-      setOutgoingCallStatus("No answer");
-      await cleanupVideoCall();
+      if (!receivingCallRef.current) showEndedRef.current?.("No answer");
+      await cleanupVideoCallRef.current?.();
     };
     socket.on("call-not-accepted", onCallNotAccepted);
 
@@ -1851,11 +1813,11 @@ const VideoCall = ({ myId }) => {
 
     console.log("Answering Agora call");
 
-    // Local video should already be showing from when call was received
-    // Just proceed to join the channel
+    // Tell the caller first so both sides join the channel in parallel.
     socket.emit("answer-call", {
       to: String(incomingCall.from),
       channelName: incomingCall.channelName,
+      isAudio: false,
     });
     await startCall(incomingCall.channelName);
   }, [incomingCall, startCall]);
@@ -1864,76 +1826,34 @@ const VideoCall = ({ myId }) => {
     answerCallRef.current = answerCall;
   }, [answerCall]);
 
-  const handleMicrophoneClick = useCallback(async () => {
-    // Find the audio track specifically using 'kind' property
-    const audioTrack = localTracks.current.find(
-      (track) => track.kind === "audio",
+  const findLocalTrack = (kind) =>
+    localTracks.current.find(
+      (track) => track.trackMediaType === kind || track.kind === kind,
     );
+
+  const handleMicrophoneClick = useCallback(async () => {
+    const audioTrack = findLocalTrack("audio");
     if (audioTrack) {
-      console.log(
-        "VideoCall - Toggling microphone. Current state:",
-        isMicrophone,
-        "New state:",
-        !isMicrophone,
-      );
-      console.log("VideoCall - Audio track found:", audioTrack);
-      console.log("VideoCall - Audio track kind:", audioTrack.kind);
-      await audioTrack.setEnabled(!isMicrophone);
-      console.log(
-        "VideoCall - Audio track enabled state after toggle:",
-        audioTrack.enabled,
-      );
-    } else {
-      console.log(
-        "VideoCall - No audio track found in tracks:",
-        localTracks.current,
-      );
-      // Fallback to index 0 (should be audio according to Agora docs)
-      if (localTracks.current[0]) {
-        console.log(
-          "VideoCall - Using fallback - index 0 track:",
-          localTracks.current[0],
-        );
-        await localTracks.current[0].setEnabled(!isMicrophone);
+      // setMuted keeps the track published, so unmuting is instant.
+      if (typeof audioTrack.setMuted === "function") {
+        await audioTrack.setMuted(isMicrophone);
+      } else {
+        await audioTrack.setEnabled(!isMicrophone);
       }
     }
     setIsMicrophone((prev) => !prev);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMicrophone]);
 
   const handleCameraToggle = useCallback(async () => {
-    // Find the video track specifically using 'kind' property
-    const videoTrack = localTracks.current.find(
-      (track) => track.kind === "video",
-    );
+    const videoTrack = findLocalTrack("video");
     if (videoTrack) {
-      console.log(
-        "VideoCall - Toggling camera. Current state:",
-        isCameraOn,
-        "New state:",
-        !isCameraOn,
-      );
-      console.log("VideoCall - Video track found:", videoTrack);
-      console.log("VideoCall - Video track kind:", videoTrack.kind);
+      // Disabling releases the camera (light goes off) and the other side
+      // sees your profile picture instead, like WhatsApp.
       await videoTrack.setEnabled(!isCameraOn);
-      console.log(
-        "VideoCall - Video track enabled state after toggle:",
-        videoTrack.enabled,
-      );
-    } else {
-      console.log(
-        "VideoCall - No video track found in tracks:",
-        localTracks.current,
-      );
-      // Fallback to index 1 (should be video according to Agora docs)
-      if (localTracks.current[1]) {
-        console.log(
-          "VideoCall - Using fallback - index 1 track:",
-          localTracks.current[1],
-        );
-        await localTracks.current[1].setEnabled(!isCameraOn);
-      }
     }
     setIsCameraOn((prev) => !prev);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCameraOn]);
 
   const minimizeVideoCall = useCallback(() => {
@@ -1982,56 +1902,29 @@ const VideoCall = ({ myId }) => {
     handleCameraToggle,
   ]);
 
-  const restoreVideoCall = useCallback(() => {
-    const callId = `video-${currentChannel}`;
-    restoreCall(callId);
-    setIsMinimized(false);
-    setIsVideoCall(true);
-  }, [currentChannel, restoreCall]);
 
   const handleSwitchClick = useCallback(async () => {
-    const videoTrack = localTracks.current.find(
-      (track) => track.kind === "video",
-    );
-    if (videoTrack && callAccepted && clientRef.current) {
-      try {
-        // Unpublish current video track
-        await clientRef.current.unpublish([videoTrack]);
-
-        // Stop current video track
-        videoTrack.close();
-
-        // Create new video track with switched camera
-        const newVideoTrack = await AgoraRTC.createCameraVideoTrack({
-          facingMode: isBackCamera ? "user" : "environment",
-        });
-
-        // Replace the track in the array
-        const videoIndex = localTracks.current.findIndex(
-          (track) => track.kind === "video",
-        );
-        if (videoIndex !== -1) {
-          localTracks.current[videoIndex] = newVideoTrack;
-        }
-
-        // Publish new track
-        await clientRef.current.publish([newVideoTrack]);
-
-        // Play new track in local video element
-        if (myVideo.current) {
-          newVideoTrack.play(myVideo.current, VIDEO_FIT);
-          const ar = readTrackAspectRatio(newVideoTrack);
-          if (ar) setLocalAspectRatio(ar);
-        }
-
-        setIsBackCamera((prev) => !prev);
-      } catch (error) {
-        console.error("Failed to switch camera:", error);
+    const videoTrack = findLocalTrack("video");
+    if (!videoTrack) return;
+    const nextFacing = isBackCamera ? "user" : "environment";
+    try {
+      // Swap the camera in place: no unpublish/republish, so the other side
+      // never loses the picture.
+      const cameras = await AgoraRTC.getCameras().catch(() => []);
+      if (cameras.length > 1) {
+        const currentLabel = videoTrack.getTrackLabel?.() || "";
+        const index = cameras.findIndex((c) => c.label === currentLabel);
+        const next = cameras[(index + 1) % cameras.length];
+        await videoTrack.setDevice(next.deviceId);
+      } else {
+        await videoTrack.setDevice({ facingMode: nextFacing });
       }
-    } else {
       setIsBackCamera((prev) => !prev);
+    } catch (error) {
+      console.error("Failed to switch camera:", error);
     }
-  }, [isBackCamera, callAccepted]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isBackCamera]);
 
   const toggleFullscreen = useCallback(async () => {
     if (!isFullscreen) {
@@ -2128,447 +2021,57 @@ const VideoCall = ({ myId }) => {
     };
   }, []);
 
-  const formatDuration = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
-  };
+  let phase = "outgoing";
+  if (callAccepted) phase = mediaConnected ? "connected" : "connecting";
+  else if (receivingCall) phase = "incoming";
+
+  let statusText = outgoingCallStatus || "Calling…";
+  if (phase === "incoming") statusText = "Incoming video call";
+  else if (phase === "connecting") statusText = "Connecting…";
+  else if (phase === "connected") statusText = formatCallDuration(callDuration);
+
+  const showEnded = !!endedInfo && !isVideoCall;
+  const screenOpen = (isVideoCall && !isMinimized) || showEnded;
 
   return (
-    <div>
-      <ModalContainer
-        title="Video Call"
-        style={
-          isFullscreen
-            ? {}
-            : {
-                height: modalHeight,
-                maxHeight: "min(92dvh, 100svh)",
-              }
-        }
-        isOpen={isVideoCall && !isMinimized}
-        onRequestClose={closeVideoCall}
-        id="videoCallModal"
-        isFullscreen={isFullscreen}
+    <div id="videoCallModal">
+      <CallScreen
+        open={screenOpen}
+        type="video"
+        phase={showEnded ? "ended" : phase}
+        name={showEnded ? endedInfo.name : callerName}
+        avatar={showEnded ? endedInfo.pic : callerProfilePic}
+        statusText={showEnded ? endedInfo.label : statusText}
+        reconnecting={!showEnded && isReconnecting}
+        muted={!isMicrophone}
+        cameraOn={isCameraOn}
+        hasCamera={hasVideoInput}
+        remoteVideoOn={remoteVideoOn}
+        remoteVideoRef={userVideo}
+        localVideoRef={myVideo}
+        remoteVideoClassName={filterConnectVideo || ""}
+        localVideoClassName={filterMyVideo || ""}
+        localPreviewVisible={localPreviewOn && !showEnded}
+        onAccept={answerCall}
+        onDecline={closeVideoCall}
+        onEnd={closeVideoCall}
+        onToggleMute={handleMicrophoneClick}
+        onToggleCamera={hasVideoInput ? handleCameraToggle : undefined}
+        onSwitchCamera={hasVideoInput ? handleSwitchClick : undefined}
+        onToggleFilter={toggleVideoFilter}
+        filterActive={!!filterMyVideo}
+        onMinimize={minimizeVideoCall}
+        onToggleFullscreen={isMobile ? undefined : toggleFullscreen}
       >
-        <div
-          className={`${callAccepted ? "call-accepted" : ""} ${isFullscreen ? "fullscreen-content" : ""}`}
-          style={{
-            padding: 0,
-            ["--call-ar"]: String(
-              (callAccepted && remoteAspectRatio) ||
-                localAspectRatio ||
-                (isMobile ? 0.75 : 1.777),
-            ),
-            ["--local-ar"]: String(localAspectRatio || 0.75),
-            display: "flex",
-            flexDirection: "column",
-            height: "100%",
-          }}
-        >
-          {/* Professional Header */}
-          <div
-            style={{
-              padding: "16px 20px",
-              background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)",
-              borderBottom: "1px solid rgba(41, 177, 169, 0.15)",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              backdropFilter: "blur(10px)",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "12px",
-                flex: 1,
-              }}
-            >
-              <div
-                style={{
-                  width: "40px",
-                  height: "40px",
-                  borderRadius: "50%",
-                  overflow: "hidden",
-                  border: "2px solid #29B1A9",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  background:
-                    "linear-gradient(135deg, #29B1A9 0%, #1a8078 100%)",
-                  flexShrink: 0,
-                }}
-              >
-                {callerProfilePic ? (
-                  <img
-                    src={callerProfilePic}
-                    alt={callerName}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                    }}
-                    onError={(e) => {
-                      e.target.src = config?.defaultProfile;
-                    }}
-                  />
-                ) : (
-                  <i
-                    className="fas fa-user"
-                    style={{ color: "white", fontSize: "18px" }}
-                  ></i>
-                )}
-              </div>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <h3
-                  style={{
-                    margin: "0 0 4px 0",
-                    fontSize: isMobile ? "16px" : "18px",
-                    fontWeight: "600",
-                    color: "#fff",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {callerName}
-                </h3>
-                <p style={{ margin: 0, fontSize: "12px", color: "#29B1A9" }}>
-                  {callAccepted
-                    ? `Duration: ${formatDuration(callDuration)}`
-                    : receivingCall
-                      ? "Incoming call"
-                      : "Calling..."}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Video Container Section */}
-          {!callAccepted && !receivingCall && (
-            <div
-              style={{
-                // flex: 1,
-                display: "flex",
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                background: "linear-gradient(135deg, #0b0f17 0%, #1a1a2e 100%)",
-                padding: "40px 20px",
-                gap: "24px",
-              }}
-            >
-              <div
-                style={{
-                  width: isMobile ? "80px" : "120px",
-                  height: isMobile ? "80px" : "120px",
-                  borderRadius: "50%",
-                  background:
-                    "linear-gradient(135deg, #29B1A9 0%, #1a8078 100%)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  animation: "pulse 2s infinite",
-                  boxShadow: "0 0 40px rgba(41, 177, 169, 0.3)",
-                }}
-              >
-                <i
-                  className="fas fa-phone"
-                  style={{
-                    color: "white",
-                    fontSize: isMobile ? "32px" : "48px",
-                  }}
-                ></i>
-              </div>
-              <div style={{ textAlign: "center" }}>
-                <p
-                  style={{
-                    margin: "0 0 8px 0",
-                    color: "#29B1A9",
-                    fontSize: "12px",
-                    fontWeight: "600",
-                    textTransform: "uppercase",
-                    letterSpacing: "1px",
-                  }}
-                >
-                  Calling
-                </p>
-                <h2
-                  style={{
-                    margin: 0,
-                    color: "#fff",
-                    fontSize: isMobile ? "20px" : "24px",
-                    fontWeight: "600",
-                  }}
-                >
-                  {callerName}
-                </h2>
-                {outgoingCallStatus && (
-                  <p
-                    style={{
-                      margin: "8px 0 0 0",
-                      color: "#888",
-                      fontSize: "14px",
-                    }}
-                  >
-                    {outgoingCallStatus}
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div
-            className={`video-call-container ${isMobile ? "mobile" : ""} fit-camera`}
-            style={{
-              width: "100%",
-              flex: callAccepted ? 1 : 0,
-              aspectRatio: callAccepted
-                ? String(
-                    (callAccepted && remoteAspectRatio) ||
-                      localAspectRatio ||
-                      (isMobile ? 3 / 4 : 16 / 9),
-                  )
-                : "auto",
-              maxHeight: isFullscreen ? "100vh"  : '600', 
-            // callAccepted  ? "650px" : "200px",
-              minHeight: callAccepted ? "200px" : "0",
-              position: "relative",
-              overflow: "hidden",
-              background: "#0b0f17",
-              display: callAccepted ? "block" : "none",
-            }}
-          >
-            <div
-              ref={userVideo}
-              className={`receive-connects-video ${filterConnectVideo || ""}`}
-              style={{
-                width: "100%",
-                height: "100%",
-                display: callAccepted ? "block" : "none",
-                background: "#0b0f17",
-                border: filterConnectVideo ? "3px solid #29B1A9" : "none",
-              }}
-              data-video-type="connect-remote-video"
-            />
-            <div
-              ref={myVideo}
-              className={`receive-my-video ${filterMyVideo || ""}`}
-              style={{
-                width: isMobile ? 112 : 160,
-                aspectRatio: String(localAspectRatio || 3 / 4),
-                height: "auto",
-                position: "absolute",
-                bottom: 10,
-                right: 10,
-                background: "#222",
-                display: isVideoCall || receivingCall ? "block" : "none",
-                borderRadius: 8,
-                zIndex: 10,
-                border: "2px solid rgba(255,255,255,0.35)",
-                overflow: "hidden",
-              }}
-              data-video-type="my-local-video"
-            />
-          </div>
-
-          <div
-            className="call-buttons"
-            style={{
-              display: "flex",
-              gap: isMobile ? "8px" : "12px",
-              justifyContent: "center",
-              alignItems: "center",
-              flexWrap: "wrap",
-              background:
-                "linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.6) 100%)",
-              backdropFilter: "blur(12px)",
-              padding: isMobile ? "16px 12px 20px" : "20px 16px",
-              marginTop: callAccepted ? "auto" : "12px",
-              borderTop: callAccepted
-                ? "1px solid rgba(41, 177, 169, 0.1)"
-                : "none",
-            }}
-          >
-            <button
-              onClick={endCall}
-              ref={callEndBtn}
-              className="call-button-ends call-button bg-danger"
-              style={mobileActionButtonStyle}
-            >
-              <i className="fa fa-phone" style={{ color: "white" }}></i>
-            </button>
-
-            {callAccepted && (
-              <>
-                <button
-                  onClick={handleMicrophoneClick}
-                  className="call-button-microphone call-button"
-                  style={mobileActionButtonStyle}
-                >
-                  {isMicrophone ? (
-                    <i
-                      className="fa fa-microphone"
-                      style={{ color: "white" }}
-                    />
-                  ) : (
-                    <i
-                      className="fa fa-microphone-slash"
-                      style={{ color: "white" }}
-                    />
-                  )}
-                </button>
-                {hasVideoInput && (
-                  <button
-                    onClick={handleCameraToggle}
-                    className="call-button-camera call-button"
-                    style={mobileActionButtonStyle}
-                  >
-                    {isCameraOn ? (
-                      <i className="fa fa-video" style={{ color: "white" }} />
-                    ) : (
-                      <i
-                        className="fa fa-video-slash"
-                        style={{ color: "white" }}
-                      />
-                    )}
-                  </button>
-                )}
-
-                <button
-                  onClick={toggleVideoFilter}
-                  className={`call-button-filter call-button ${filterMyVideo ? "active" : ""}`}
-                  title={
-                    filterMyVideo
-                      ? `Filter: ${filterMyVideo.replace("video-vivid-", "").replace("filter", "vivid")}`
-                      : "No filter"
-                  }
-                  style={mobileActionButtonStyle}
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    fill="none"
-                    stroke="white"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    viewBox="0 0 24 24"
-                  >
-                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-                  </svg>
-                </button>
-                {!isMobile && (
-                  <>
-                    <button
-                      onClick={toggleFullscreen}
-                      className="call-button-fullscreen call-button"
-                    >
-                      {isFullscreen ? (
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="24"
-                          height="24"
-                          fill="none"
-                          stroke="white"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          viewBox="0 0 24 24"
-                        >
-                          <path d="M8 3v3a2 2 0 0 1-2 2H3" />
-                          <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
-                          <path d="M3 16h3a2 2 0 0 1 2 2v3" />
-                          <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
-                        </svg>
-                      ) : (
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="24"
-                          height="24"
-                          fill="none"
-                          stroke="white"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          viewBox="0 0 24 24"
-                        >
-                          <path d="M3 7V3a2 2 0 0 1 2-2h4" />
-                          <path d="M17 3h4a2 2 0 0 1 2 2v4" />
-                          <path d="M21 17v4a2 2 0 0 1-2 2h-4" />
-                          <path d="M7 21H3a2 2 0 0 1-2-2v-4" />
-                        </svg>
-                      )}
-                    </button>
-                    <button
-                      onClick={minimizeVideoCall}
-                      className="call-button-minimize call-button"
-                      title="Minimize"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="24"
-                        height="24"
-                        fill="none"
-                        stroke="white"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        viewBox="0 0 24 24"
-                      >
-                        <path d="M6 9l6 6 6-6" />
-                      </svg>
-                    </button>
-                  </>
-                )}
-              </>
-            )}
-            {callAccepted && <CallTranscript enabled channelName={currentChannel} peerId={caller} myId={myId} />}
-
-            {!callAccepted && receivingCall && (
-              <>
-                <button
-                  onClick={answerCall}
-                  className="call-button-receive call-button bg-success"
-                  style={{
-                    ...mobileActionButtonStyle,
-                    background:
-                      "linear-gradient(135deg, #29B1A9 0%, #1a8078 100%)",
-                    boxShadow: "0 0 20px rgba(41, 177, 169, 0.4)",
-                    transform: "scale(1)",
-                    transition: "all 0.3s ease",
-                    "&:hover": {
-                      transform: "scale(1.1)",
-                      boxShadow: "0 0 30px rgba(41, 177, 169, 0.6)",
-                    },
-                  }}
-                  onMouseEnter={(e) => {
-                    e.target.style.transform = "scale(1.1)";
-                    e.target.style.boxShadow =
-                      "0 0 30px rgba(41, 177, 169, 0.6)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.target.style.transform = "scale(1)";
-                    e.target.style.boxShadow =
-                      "0 0 20px rgba(41, 177, 169, 0.4)";
-                  }}
-                >
-                  <i
-                    className="fa fa-phone-volume"
-                    style={{
-                      color: "white",
-                      fontSize: isMobile ? "18px" : "20px",
-                    }}
-                  ></i>
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      </ModalContainer>
+        {callAccepted && !showEnded && (
+          <CallTranscript
+            enabled
+            channelName={currentChannel}
+            peerId={caller}
+            myId={myId}
+          />
+        )}
+      </CallScreen>
       {/* Always render audio element to avoid autoplay issues when tab is not focused */}
       <audio
         ref={ringtoneAudio}

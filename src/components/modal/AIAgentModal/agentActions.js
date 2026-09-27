@@ -1015,11 +1015,6 @@ export const executeAction = async ({
             },
           }),
         );
-        socket.emit("video-call", {
-          to: connect._id,
-          channelName,
-          isAudio: false,
-        });
         if (onClose) onClose();
         return {
           success: true,
@@ -1040,11 +1035,6 @@ export const executeAction = async ({
             },
           }),
         );
-        socket.emit("audio-call", {
-          to: connect._id,
-          channelName,
-          isAudio: true,
-        });
         if (onClose) onClose();
         return {
           success: true,
