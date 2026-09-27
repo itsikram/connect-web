@@ -90,7 +90,13 @@ const AudioCall = ({ myId }) => {
   const callEndBtn = useRef();
   const ringtoneAudio = useRef();
   const ringtoneBufferSource = useRef(null);
+  // Bumped by every play/stop so async ringtone work started earlier can tell
+  // it has been superseded and must not (re)start audio.
   const ringtonePlaybackToken = useRef(0);
+  // True only between an incoming call arriving and the ringtone being
+  // stopped (accept, decline, end, cancel, failure, timeout).
+  const ringtoneAllowedRef = useRef(false);
+  const ringtoneCanPlayHandlerRef = useRef(null);
   const ringtoneStopTimer = useRef(null);
   const ringtoneStartedAt = useRef(null);
   const ringtoneObjectUrlRef = useRef(null);
@@ -287,6 +293,7 @@ const AudioCall = ({ myId }) => {
 
   const stopRingtone = () => {
     ringtonePlaybackToken.current += 1;
+    ringtoneAllowedRef.current = false;
     if (ringtoneStopTimer.current) {
       clearTimeout(ringtoneStopTimer.current);
       ringtoneStopTimer.current = null;
@@ -295,6 +302,13 @@ const AudioCall = ({ myId }) => {
     try {
       if (ringtoneAudio?.current) {
         const audio = ringtoneAudio.current;
+        if (ringtoneCanPlayHandlerRef.current) {
+          audio.removeEventListener(
+            "canplaythrough",
+            ringtoneCanPlayHandlerRef.current,
+          );
+          ringtoneCanPlayHandlerRef.current = null;
+        }
         audio.pause();
         audio.currentTime = 0;
         audio.loop = false;
@@ -322,6 +336,39 @@ const AudioCall = ({ myId }) => {
     }
 
     closeCallNotification();
+  };
+
+  const isRingtoneCurrent = (token) =>
+    token === ringtonePlaybackToken.current &&
+    ringtoneAllowedRef.current &&
+    receivingCallRef.current &&
+    !callAcceptedRef.current;
+
+  // Resume the element ringtone after the tab was hidden. Never restarts a
+  // ringtone that was stopped, and never doubles one playing via AudioBuffer.
+  const resumeRingtoneIfNeeded = async (reason) => {
+    const audio = ringtoneAudio?.current;
+    if (!audio || ringtoneBufferSource.current) return;
+    if (!audio.paused || !audio.src || audio.src === window.location.href) {
+      return;
+    }
+    const token = ringtonePlaybackToken.current;
+    if (!isRingtoneCurrent(token)) return;
+    console.log(`AudioCall: Resuming ringtone on ${reason}`);
+    await unlockAudio();
+    if (!isRingtoneCurrent(token)) return;
+    audio.muted = false;
+    audio.volume = 1.0;
+    try {
+      await playAudioWithWebAudio(audio);
+    } catch (error) {
+      try {
+        await audio.play();
+      } catch (e) {
+        console.warn(`Failed to resume ringtone on ${reason}:`, e);
+      }
+    }
+    if (!isRingtoneCurrent(token)) audio.pause();
   };
 
   const markCallSeenIfNeeded = useCallback(() => {
@@ -364,16 +411,12 @@ const AudioCall = ({ myId }) => {
   }, []);
 
   const playRingtone = useCallback(async () => {
-    const playbackToken = ringtonePlaybackToken.current;
+    if (!ringtoneAllowedRef.current) return;
+    // Supersede any earlier in-flight playRingtone call.
+    const playbackToken = ++ringtonePlaybackToken.current;
     await unlockAudio();
 
-    if (
-      !ringtoneAudio?.current ||
-      !receivingCallRef.current ||
-      callAcceptedRef.current ||
-      playbackToken !== ringtonePlaybackToken.current
-    )
-      return;
+    if (!ringtoneAudio?.current || !isRingtoneCurrent(playbackToken)) return;
 
     if (ringtoneStartedAt.current === null) {
       ringtoneStartedAt.current = Date.now();
@@ -397,11 +440,9 @@ const AudioCall = ({ myId }) => {
       await ensureRingtoneSourceReady();
     }
 
-    if (
-      !audio.src ||
-      audio.src === window.location.href ||
-      playbackToken !== ringtonePlaybackToken.current
-    ) {
+    if (!isRingtoneCurrent(playbackToken)) return;
+
+    if (!audio.src || audio.src === window.location.href) {
       console.warn("Ringtone audio has no valid source");
       return;
     }
@@ -415,6 +456,8 @@ const AudioCall = ({ myId }) => {
 
     try {
       if (audioPreloader.hasBuffer(toneSrc)) {
+        // Never stack a second looping buffer on top of an earlier one.
+        audioPreloader.stopBuffer(toneSrc);
         const source = audioPreloader.playBuffer(toneSrc, { loop: true });
         if (source) {
           ringtoneBufferSource.current = source;
@@ -427,43 +470,54 @@ const AudioCall = ({ myId }) => {
     }
 
     const tryElementPlay = async () => {
+      let played = false;
       try {
         await playAudioWithWebAudio(audio);
         console.log(
           "Ringtone playing successfully (element via WebAudio helper)",
         );
-        return true;
+        played = true;
       } catch (err) {
         console.warn("playAudioWithWebAudio failed:", err);
       }
-      try {
-        await audio.play();
-        console.log("Ringtone playing with audio.play fallback");
-        return true;
-      } catch (err) {
-        console.warn("audio.play fallback failed:", err);
+      if (!played && isRingtoneCurrent(playbackToken)) {
+        try {
+          await audio.play();
+          console.log("Ringtone playing with audio.play fallback");
+          played = true;
+        } catch (err) {
+          console.warn("audio.play fallback failed:", err);
+        }
+      }
+      // The call may have been answered/declined/ended while play() was
+      // pending; don't leave the ringtone running.
+      if (!isRingtoneCurrent(playbackToken)) {
+        audio.pause();
         return false;
       }
+      return played;
     };
 
     if (audio.readyState < 2) {
+      if (ringtoneCanPlayHandlerRef.current) {
+        audio.removeEventListener(
+          "canplaythrough",
+          ringtoneCanPlayHandlerRef.current,
+        );
+      }
       const onCanPlay = async () => {
         audio.removeEventListener("canplaythrough", onCanPlay);
-        if (
-          receivingCallRef.current &&
-          !callAcceptedRef.current &&
-          playbackToken === ringtonePlaybackToken.current
-        ) {
+        if (ringtoneCanPlayHandlerRef.current === onCanPlay) {
+          ringtoneCanPlayHandlerRef.current = null;
+        }
+        if (isRingtoneCurrent(playbackToken)) {
           await tryElementPlay();
         }
       };
+      ringtoneCanPlayHandlerRef.current = onCanPlay;
       audio.addEventListener("canplaythrough", onCanPlay);
       if (audio.readyState === 0) audio.load();
-    } else if (
-      receivingCallRef.current &&
-      !callAcceptedRef.current &&
-      playbackToken === ringtonePlaybackToken.current
-    ) {
+    } else if (isRingtoneCurrent(playbackToken)) {
       await tryElementPlay();
     }
   }, [ensureRingtoneSourceReady]);
@@ -970,6 +1024,7 @@ const AudioCall = ({ myId }) => {
       );
       receivingCallRef.current = true;
       callAcceptedRef.current = false;
+      ringtoneAllowedRef.current = true;
       currentChannelRef.current = channelName;
       callSeenStatusSentRef.current = false;
       callIgnoredStatusSentRef.current = false;
@@ -1276,24 +1331,8 @@ const AudioCall = ({ myId }) => {
         ringtoneAudio?.current
       ) {
         markCallSeenIfNeeded();
-        const audio = ringtoneAudio.current;
         // Resume playback if it was paused due to tab being hidden
-        if (audio.paused && audio.src && audio.src !== window.location.href) {
-          console.log("AudioCall: Resuming ringtone on visibility change");
-          await unlockAudio();
-          audio.muted = false;
-          audio.volume = 1.0;
-          try {
-            await playAudioWithWebAudio(audio);
-          } catch (error) {
-            audio.play().catch((e) => {
-              console.warn(
-                "Failed to resume ringtone on visibility change:",
-                e,
-              );
-            });
-          }
-        }
+        await resumeRingtoneIfNeeded("visibility change");
       }
     };
 
@@ -1305,20 +1344,7 @@ const AudioCall = ({ myId }) => {
         ringtoneAudio?.current
       ) {
         markCallSeenIfNeeded();
-        const audio = ringtoneAudio.current;
-        if (audio.paused && audio.src && audio.src !== window.location.href) {
-          console.log("AudioCall: Resuming ringtone on window focus");
-          await unlockAudio();
-          audio.muted = false;
-          audio.volume = 1.0;
-          try {
-            await playAudioWithWebAudio(audio);
-          } catch (error) {
-            audio.play().catch((e) => {
-              console.warn("Failed to resume ringtone on window focus:", e);
-            });
-          }
-        }
+        await resumeRingtoneIfNeeded("window focus");
       }
     };
 

@@ -6,6 +6,7 @@ import React, {
   useCallback,
 } from "react";
 import { useSelector } from "react-redux";
+import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import siteConfig from "../../config/config.json";
 import { io } from "socket.io-client";
@@ -60,6 +61,7 @@ import { PendingInvitesBanner } from "./components/PendingInvitesBanner";
 import { PlayerSelectionModal } from "./components/PlayerSelectionModal";
 import { useAudio } from "./hooks/useAudio";
 import { useLudoVoice } from "./hooks/useLudoVoice";
+import { useConnectionHealth } from "./hooks/useConnectionHealth";
 import { showLudoInviteToast } from "../../utils/toastUtils";
 import {
   shouldShowLudoInviteAlert,
@@ -210,6 +212,7 @@ const LudoGame = () => {
 
   // User profile from Redux store
   const myProfile = useSelector((state) => state.profile);
+  const navigate = useNavigate();
 
   // Game state
   const [players, setPlayers] = useState([]);
@@ -279,6 +282,12 @@ const LudoGame = () => {
   const [isReplacingWaitingPlayers, setIsReplacingWaitingPlayers] =
     useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
+  // Socket handlers are bound once per room; they read this ref for the live value.
+  const isReconnectingRef = useRef(false);
+  isReconnectingRef.current = isReconnecting;
+  // Live socket state for the connection-health indicator and overlay.
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showReconnectModal, setShowReconnectModal] = useState(false);
   const [disconnectedPlayers, setDisconnectedPlayers] = useState(new Set());
 
@@ -402,6 +411,7 @@ const LudoGame = () => {
   // ============================================================================
 
   const socketRef = useRef(null);
+  const persistAndBroadcastGameStateRef = useRef(null);
   const socketCreatingRef = useRef(false);
   const socketEventsAttachedRef = useRef(false);
   const pendingConnectActionsRef = useRef(new Map());
@@ -870,6 +880,16 @@ const LudoGame = () => {
     gameId,
     profileId: myProfile?._id,
   });
+  const connectionHealth = useConnectionHealth(
+    Boolean(onlineMode && gameId && !gameEnded),
+    socketConnected,
+    socketRef,
+  );
+  // Online actions sent over a dead or very slow link arrive late or not at
+  // all, so the board waits until the connection is usable again.
+  const connectionReady = !onlineMode || !gameId || connectionHealth === "ok";
+  const connectionReadyRef = useRef(connectionReady);
+  connectionReadyRef.current = connectionReady;
   const [rollingFace, setRollingFace] = useState(1);
   const [diceRotation, setDiceRotation] = useState({ x: 0, y: 0, z: 0 });
   const diceRotationRef = useRef({ x: 0, y: 0, z: 0 });
@@ -1121,8 +1141,30 @@ const LudoGame = () => {
         console.error("[SOCKET] Error:", err);
       });
 
+      setSocketConnected(Boolean(socket.connected));
+
       socket.on("connect", () => {
+        setSocketConnected(true);
         emitInviteSyncRequest("connect");
+        // A reconnect gets a new socket that is not in the game room yet.
+        // Rejoin and resync straight away; otherwise the board silently stops
+        // receiving moves and the reconnecting overlay never clears.
+        const liveGameId = gameIdRef.current;
+        if (liveGameId && !isJoiningViaInviteRef.current) {
+          setIsReconnecting(false);
+          setShowReconnectModal(false);
+          lastJoinRequestRef.current = { gameId: null, timestamp: 0 };
+          lastPlayersGetRequestRef.current = { gameId: null, timestamp: 0 };
+          try {
+            socket.emit("ludo:join", { gameId: liveGameId });
+            socket.emit("ludo:players:get", { gameId: liveGameId });
+          } catch (_e) {}
+          if (myPlayerIndexRef.current === 0 && gameStartedRef.current) {
+            setTimeout(() => {
+              persistAndBroadcastGameStateRef.current?.("host_resync");
+            }, 300);
+          }
+        }
         try {
           for (const [
             key,
@@ -1137,6 +1179,7 @@ const LudoGame = () => {
       });
 
       socket.on("disconnect", (reason) => {
+        setSocketConnected(false);
         // If we were in an online game, show reconnect option
         // CRITICAL: Only show reconnection if we were actually in a started game
         // Don't show it if we're just joining (accepting invite) - check if game was actually started
@@ -3318,6 +3361,8 @@ const LudoGame = () => {
     },
     [gameId, onlineMode, buildMinimalGameState, saveGameStateToDatabase],
   );
+  // Socket connection handlers are created earlier; they reach this through a ref.
+  persistAndBroadcastGameStateRef.current = persistAndBroadcastGameState;
 
   // Emit player state ONLY after database save completes (host only)
   const emitPlayersStateAfterSave = useCallback(
@@ -3436,6 +3481,8 @@ const LudoGame = () => {
     },
     [gameId, onlineMode, persistAndBroadcastGameState, players],
   );
+  const replacePlayerWithBotRef = useRef(replacePlayerWithBot);
+  replacePlayerWithBotRef.current = replacePlayerWithBot;
 
   const replaceWaitingPlayersWithBots = useCallback(async () => {
     const activeGameId = gameIdRef.current || gameId;
@@ -4087,9 +4134,9 @@ const LudoGame = () => {
                 persistAndBroadcastGameState("game_auto_start", {
                   trigger: "recomputeWaitingState",
                 });
-              }, 300); // Small delay to ensure state is synchronized
+              }, 50); // Let the start state render before broadcasting
             }
-          }, 500); // Small delay to ensure UI updates
+          }, 100); // Short pause so the last join renders first
         }
       }
     } catch (_e) {
@@ -4689,6 +4736,11 @@ const LudoGame = () => {
       if (nextGameEnded) {
         setGameEnded(true);
         gameEndedRef.current = true;
+        // Announce the result right away rather than with the next turn
+        // update, so the others see it even if the host leaves on winning.
+        if (myPlayerIndexRef.current === 0 && onlineMode && gameIdRef.current) {
+          setTimeout(() => persistAndBroadcastGameState("game_ended"), 0);
+        }
       }
 
       return {
@@ -4698,7 +4750,7 @@ const LudoGame = () => {
         gameEnded: nextGameEnded,
       };
     },
-    [playSound],
+    [playSound, onlineMode, persistAndBroadcastGameState],
   );
 
   /**
@@ -4707,6 +4759,7 @@ const LudoGame = () => {
    */
   const rollDice = (controlledValue = null, bypassControlModal = false) => {
     resumeAudioFromGesture();
+    if (!connectionReadyRef.current) return;
     const chosenDiceValue =
       Number.isInteger(controlledValue) &&
       controlledValue >= 1 &&
@@ -5351,6 +5404,11 @@ const LudoGame = () => {
 
   const movePiece = (pieceId) => {
     resumeAudioFromGesture();
+    if (!connectionReadyRef.current) {
+      // Keep the roll; the piece can be moved once the connection is back.
+      isAutoMovingRef.current = false;
+      return;
+    }
     // Prevent multiple moves from a single dice roll - check moving flag
     // But allow automatic moves to proceed (they set isAutoMovingRef instead)
     if (isMovingRef.current && !isAutoMovingRef.current) {
@@ -6563,6 +6621,69 @@ const LudoGame = () => {
           gameIdRef.current || savedGameStateRef.current?.gameId;
         if (String(payload.gameId) !== String(currentGid)) return;
 
+        // The host is the authority for turn, dice and match start. Once it has
+        // started (or is starting) the match, every snapshot it receives is its
+        // own echo or a server re-broadcast of an older snapshot with a seat
+        // change (accept/leave). Applying one would roll the host back — e.g.
+        // a lobby snapshot arriving during auto-start flipped gameStarted back
+        // to false and the host broadcast a match that never began. Take only
+        // the seat details and keep the host's own game state.
+        const hostOwnsLiveMatch =
+          myPlayerIndexRef.current === 0 &&
+          !isReconnectingRef.current &&
+          (gameStartedRef.current || autoStartTriggeredRef.current) &&
+          String(playersRef.current?.[0]?.profileId || "") ===
+            String(myProfile?._id || "");
+        if (hostOwnsLiveMatch) {
+          if (payloadSeq > 0) {
+            latestAppliedPlayersSeqRef.current = Math.max(
+              latestAppliedPlayersSeqRef.current,
+              payloadSeq,
+            );
+            latestSentPlayersSeqRef.current = Math.max(
+              latestSentPlayersSeqRef.current,
+              payloadSeq,
+            );
+          }
+          if (Array.isArray(payload.players)) {
+            let changed = false;
+            const merged = (playersRef.current || []).map((seat, index) => {
+              const incoming = payload.players[index];
+              if (!seat || !incoming || index === 0) return seat;
+              const next = { ...seat };
+              if (
+                !seat.isBot &&
+                isHumanLudoProfileId(incoming.profileId) &&
+                String(incoming.profileId) !== String(seat.profileId || "")
+              ) {
+                Object.assign(next, {
+                  profileId: incoming.profileId,
+                  name: incoming.name || seat.name,
+                  avatar: incoming.avatar || seat.avatar,
+                  cover: incoming.cover || seat.cover,
+                  isActive: true,
+                });
+                changed = true;
+              }
+              if (
+                String(incoming.profileId || "") ===
+                  String(next.profileId || "") &&
+                Boolean(incoming.isOffline) !== Boolean(seat.isOffline)
+              ) {
+                next.isOffline = Boolean(incoming.isOffline);
+                next.offlineSince = incoming.offlineSince;
+                changed = true;
+              }
+              return next;
+            });
+            if (changed) {
+              playersRef.current = merged;
+              setPlayers(merged);
+            }
+          }
+          return;
+        }
+
         // A versioned dice snapshot may have started saving before a token was
         // moved. Do not let that pre-move board overwrite an optimistic move
         // while the host is preparing the newer post-move snapshot.
@@ -7660,10 +7781,34 @@ const LudoGame = () => {
           );
         } catch (_e) {}
 
-        // Mark waiting state for remaining players so UI shows leave/reconnect flow
-        try {
-          setWaitingForPlayers(true);
-        } catch (_e) {}
+        // In a running match the host hands the empty seat to the computer so
+        // the game carries on for everyone; retry while a move is animating.
+        if (
+          myPlayerIndexRef.current === 0 &&
+          gameStartedRef.current &&
+          !gameEndedRef.current &&
+          leftPlayerIndex > 0
+        ) {
+          const replaceLeftSeat = (attempt = 0) => {
+            const seat = playersRef.current?.[leftPlayerIndex];
+            if (!seat || seat.isBot || gameEndedRef.current) return;
+            if (
+              isRollingRef.current ||
+              isMovingRef.current ||
+              isAutoMovingRef.current
+            ) {
+              if (attempt < 20) setTimeout(() => replaceLeftSeat(attempt + 1), 300);
+              return;
+            }
+            replacePlayerWithBotRef.current?.(leftPlayerIndex);
+          };
+          setTimeout(() => replaceLeftSeat(0), 0);
+        } else if (!gameStartedRef.current) {
+          // Lobby: show the waiting card again so the host can re-invite.
+          try {
+            setWaitingForPlayers(true);
+          } catch (_e) {}
+        }
 
         setPlayers((prev) => {
           const updated = prev.map((p, idx) => {
@@ -8164,7 +8309,13 @@ const LudoGame = () => {
     const canControlBots = onlineMode
       ? myPlayerIndexRef.current === 0 && Boolean(gameId)
       : playWithComputer || playersRef.current.some((player) => player?.isBot);
-    if (!canControlBots || !gameStarted || gameEnded || waitingForPlayers)
+    if (
+      !canControlBots ||
+      !gameStarted ||
+      gameEnded ||
+      waitingForPlayers ||
+      !connectionReady
+    )
       return;
 
     const cp = currentPlayerRef.current;
@@ -8268,6 +8419,7 @@ const LudoGame = () => {
     currentPlayer,
     diceValue,
     canRollDice,
+    connectionReady,
   ]);
 
   // DEBUG: Track canRollDice changes (reduced logging to prevent spam)
@@ -8983,21 +9135,18 @@ const LudoGame = () => {
   // Every user-facing start action must begin with the same clean session.
   const startGame = startNewGame;
 
-  // Explicitly leaving always removes local state and persisted online data.
+  // Leave asks for confirmation in an in-app dialog (see leaveConfirm below).
   const exitGame = () => {
-    const isOnlineGame = Boolean(onlineMode && gameId && myProfile?._id);
-    const isHost = Boolean(
-      isOnlineGame &&
-      playersRef.current?.[0]?.profileId &&
-      String(playersRef.current[0].profileId) === String(myProfile._id),
-    );
+    playSound("buttonClick");
+    setShowLeaveConfirm(true);
+  };
 
-    const confirmed = window.confirm(
-      isHost
-        ? "Leave this game? The match will end for everyone and all game data will be removed."
-        : "Leave this game? Your game data and progress will be removed.",
-    );
-    if (!confirmed) return;
+  // Explicitly leaving always removes local state and persisted online data,
+  // then takes the player off the Ludo page (it used to drop them on a fresh
+  // board, which looked like the game had restarted).
+  const confirmExitGame = () => {
+    setShowLeaveConfirm(false);
+    const isOnlineGame = Boolean(onlineMode && gameId && myProfile?._id);
 
     console.log("[EXIT_GAME] Starting complete cleanup of all game state");
 
@@ -9211,6 +9360,15 @@ const LudoGame = () => {
     initializeGame(4); // Reset to default 4 players
 
     console.log("[EXIT_GAME] Complete cleanup finished - all state reset");
+
+    // Go back to where the player came from (or home when opened directly).
+    try {
+      if (window.history.state && Number(window.history.state.idx) > 0) {
+        navigate(-1);
+      } else {
+        navigate("/", { replace: true });
+      }
+    } catch (_e) {}
   };
 
   const confirmPlayerCount = () => {
@@ -9363,6 +9521,43 @@ const LudoGame = () => {
           }
         });
         // Update ref immediately to keep state synchronized
+        playersRef.current = copy;
+        return copy;
+      });
+    }
+
+    // Seats nobody was invited to are played by the computer, so the match
+    // starts the moment every invited connect accepts.
+    if (onlineMode) {
+      const reservedSlots = new Set(
+        Object.values(invitedSlotByConnectIdRef.current || {}).map(Number),
+      );
+      let unslottedInvites = (selectedConnects || []).filter(
+        (connect) =>
+          invitedSlotByConnectIdRef.current?.[String(connect?._id)] ===
+          undefined,
+      ).length;
+      setPlayers((prev) => {
+        const copy = prev.map((p) => ({
+          ...p,
+          pieces: p.pieces.map((pc) => ({ ...pc })),
+        }));
+        for (let i = 1; i < copy.length; i++) {
+          if (reservedSlots.has(i) || copy[i]?.isBot) continue;
+          if (unslottedInvites > 0) {
+            unslottedInvites -= 1;
+            continue;
+          }
+          copy[i] = {
+            ...copy[i],
+            name: `Computer ${i}`,
+            avatar: undefined,
+            cover: undefined,
+            profileId: `bot-${i}`,
+            isBot: true,
+            isActive: true,
+          };
+        }
         playersRef.current = copy;
         return copy;
       });
@@ -10862,6 +11057,7 @@ const LudoGame = () => {
       isCurrentPlayer && diceValue === 0 && diceValueRef.current === 0;
     const canMove =
       isCurrentPlayer &&
+      connectionReady &&
       effectiveDiceValue > 0 &&
       !isMovingRef.current &&
       !isAutoMovingRef.current &&
@@ -11176,7 +11372,8 @@ const LudoGame = () => {
       ? currentPlayerRef.current
       : currentPlayer;
   const effectiveDiceForUi = diceValueRef.current || diceValue || 0;
-  const canTapDice = canRollDice && effectiveDiceForUi === 0 && isMyTurn;
+  const canTapDice =
+    canRollDice && effectiveDiceForUi === 0 && isMyTurn && connectionReady;
   const turnHint = !gameStarted
     ? "Waiting…"
     : !isMyTurn
@@ -11335,6 +11532,54 @@ const LudoGame = () => {
           onPointerDown={resumeAudioFromGesture}
           onTouchStart={resumeAudioFromGesture}
         >
+          {(() => {
+            // Non-blocking notice: the match keeps going (their turns are
+            // skipped) and the host can hand an absent seat to the computer.
+            if (!onlineMode || !gameStarted || gameEnded) return null;
+            const offlinePeers = players
+              .map((seat, index) => ({ seat, index }))
+              .filter(
+                ({ seat, index }) =>
+                  index !== myPlayerIndex &&
+                  seat &&
+                  !seat.isBot &&
+                  seat.isOffline &&
+                  isHumanLudoProfileId(seat.profileId),
+              );
+            if (offlinePeers.length === 0) return null;
+            const hostAway = offlinePeers.some(({ index }) => index === 0);
+            return (
+              <div
+                className="ludo-peer-banner"
+                data-testid="ludo-peer-offline"
+                role="status"
+                aria-live="polite"
+                style={{ maxWidth: BOARD_SIZE }}
+              >
+                <span className="ludo-spinner ludo-spinner--sm" aria-hidden="true" />
+                <span className="ludo-peer-banner__text">
+                  {offlinePeers.map(({ seat }) => seat.name || "A player").join(", ")}{" "}
+                  {offlinePeers.length === 1 ? "is" : "are"} reconnecting…{" "}
+                  {hostAway
+                    ? "The game resumes when the host is back."
+                    : "Their turns are skipped."}
+                </span>
+                {myPlayerIndex === 0 &&
+                  offlinePeers
+                    .filter(({ index }) => index > 0)
+                    .map(({ index }) => (
+                      <button
+                        key={`peer-bot-${index}`}
+                        type="button"
+                        className="ludo-btn ludo-btn--sm ludo-peer-banner__btn"
+                        onClick={() => replacePlayerWithBot(index)}
+                      >
+                        Use computer
+                      </button>
+                    ))}
+              </div>
+            );
+          })()}
           <div className="ludo-board-wrap" style={boardStyle}>
             <svg
               width={BOARD_SIZE}
@@ -11448,76 +11693,35 @@ const LudoGame = () => {
               </div>
             )}
 
-            {isReconnecting && (
-              <div className="ludo-overlay">
+            {(isReconnecting ||
+              (onlineMode && gameId && connectionHealth !== "ok")) && (
+              <div
+                className="ludo-overlay"
+                data-testid="ludo-reconnecting"
+                role="status"
+                aria-live="polite"
+              >
                 <div className="ludo-card">
+                  <div className="ludo-spinner" />
                   <div className="ludo-card__title">Reconnecting…</div>
                   <div className="ludo-card__body">
-                    Restoring your game session. Hang tight.
+                    {connectionHealth === "slow"
+                      ? "Your connection is slow. Moves are paused until it recovers."
+                      : connectionHealth === "offline"
+                        ? "Connection lost. Your game is safe and resumes automatically."
+                        : "Restoring your game session. Hang tight."}
                   </div>
-                  <div className="ludo-spinner" />
                   <button
                     type="button"
-                    className="ludo-btn ludo-btn--primary"
-                    onClick={startNewGame}
+                    className="ludo-btn ludo-btn--ghost ludo-btn--sm"
+                    onClick={exitGame}
                   >
-                    Start New Game
+                    Leave game
                   </button>
                 </div>
               </div>
             )}
 
-            {(() => {
-              const isHost =
-                myPlayerIndex === 0 ||
-                (players &&
-                  players[0]?.profileId &&
-                  String(players[0].profileId) === String(myProfile?._id));
-              const hasDisconnectedConnects =
-                disconnectedPlayers.size > 0 &&
-                gameStarted &&
-                onlineMode &&
-                isHost &&
-                !isReconnecting;
-              if (!hasDisconnectedConnects) return null;
-              const disconnectedNames = Array.from(disconnectedPlayers)
-                .map((pid) => {
-                  const player = players.find(
-                    (p) => p.profileId && String(p.profileId) === pid,
-                  );
-                  return player?.name || "Connect";
-                })
-                .filter(Boolean);
-              return (
-                <div className="ludo-overlay ludo-overlay--warn">
-                  <div className="ludo-card ludo-card--danger">
-                    <div className="ludo-card__title ludo-card__title--danger">
-                      Connect Disconnected
-                    </div>
-                    <div className="ludo-card__body">
-                      {disconnectedNames.length === 1
-                        ? `${disconnectedNames[0]} left the match.`
-                        : `${disconnectedNames.length} connects left the match.`}
-                    </div>
-                    {disconnectedNames.length > 0 && (
-                      <div
-                        className="ludo-seat"
-                        style={{ marginBottom: 12, justifyContent: "center" }}
-                      >
-                        <div
-                          className="ludo-seat__name"
-                          style={{ textAlign: "center", whiteSpace: "normal" }}
-                        >
-                          {disconnectedNames.join(", ")}
-                        </div>
-                      </div>
-                    )}
-                    <div className="ludo-spinner ludo-spinner--danger" />
-                    <div className="ludo-muted">Waiting for reconnection…</div>
-                  </div>
-                </div>
-              );
-            })()}
 
             <div
               className={`ludo-dice-hit ${(diceValueRef.current > 0 || diceValue > 0) && currentPlayer === myPlayerIndex ? "ludo-dice-hit--low" : ""} ${canTapDice ? "ludo-dice-hit--active" : ""}`}
@@ -11526,11 +11730,7 @@ const LudoGame = () => {
                 type="button"
                 className={`ludo-dice-btn ${canTapDice ? "ludo-dice-btn--ready" : ""}`}
                 onClick={rollDice}
-                disabled={
-                  !canRollDice ||
-                  ((onlineMode || playWithComputer) &&
-                    effectiveCurrentPlayer !== myPlayerIndex)
-                }
+                disabled={!canTapDice}
                 aria-label={canTapDice ? "Roll dice" : "Dice"}
               >
                 {(() => {
@@ -11936,6 +12136,52 @@ const LudoGame = () => {
         onAccept={wrappedAcceptIncomingInvite}
         onDecline={declineIncomingInvite}
       />
+
+      {showLeaveConfirm && (
+        <div
+          className="ludo-modal-backdrop"
+          role="presentation"
+          onClick={() => setShowLeaveConfirm(false)}
+        >
+          <div
+            className="ludo-modal ludo-leave-confirm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ludo-leave-title"
+            data-testid="leave-confirm"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="ludo-leave-title" className="ludo-modal__title">
+              Leave this game?
+            </h2>
+            <p className="ludo-modal__subtitle">
+              {onlineMode && gameId
+                ? myPlayerIndex === 0
+                  ? "You're the host — the match ends for everyone who joined."
+                  : "You'll leave the match; a computer takes over your seat."
+                : "Your progress on this board will be lost."}
+            </p>
+            <div className="ludo-leave-confirm__actions">
+              <button
+                type="button"
+                className="ludo-btn ludo-btn--ghost"
+                onClick={() => setShowLeaveConfirm(false)}
+                autoFocus
+              >
+                Stay
+              </button>
+              <button
+                type="button"
+                className="ludo-btn ludo-btn--danger"
+                data-testid="leave-confirm-yes"
+                onClick={confirmExitGame}
+              >
+                Leave game
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ConnectionStatus
         socket={socketRef.current}

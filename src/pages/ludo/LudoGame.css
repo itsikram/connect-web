@@ -2067,3 +2067,59 @@
         transition-duration: 0.01ms !important;
     }
 }
+
+/* Another player is reconnecting: non-blocking notice above the board. */
+.ludo-peer-banner {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 auto 10px;
+    padding: 10px 12px;
+    border-radius: var(--ludo-radius-sm);
+    border: 1px solid rgba(240, 180, 41, 0.45);
+    background: rgba(240, 180, 41, 0.12);
+    color: var(--ludo-text);
+    font-size: 0.8rem;
+    line-height: 1.35;
+    animation: ludo-fade-up 0.25s ease;
+}
+
+.ludo-peer-banner__text {
+    flex: 1;
+    min-width: 0;
+}
+
+.ludo-peer-banner__btn {
+    flex-shrink: 0;
+    background: var(--ludo-warn);
+    color: #1b1300;
+    border: none;
+    font-weight: 800;
+}
+
+.ludo-spinner--sm {
+    width: 16px;
+    height: 16px;
+    border-width: 2px;
+    margin: 0;
+    flex-shrink: 0;
+    border-color: rgba(240, 180, 41, 0.3);
+    border-top-color: var(--ludo-warn);
+}
+
+.ludo-leave-confirm {
+    max-width: 360px;
+    text-align: center;
+}
+
+.ludo-leave-confirm__actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 14px;
+}
+
+.ludo-leave-confirm__actions .ludo-btn {
+    flex: 1;
+}
