@@ -771,6 +771,30 @@
   font-size: 13px;
 }
 
+.ec-key-row {
+  display: flex;
+  gap: 8px;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.ec-key-input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 11px;
+  border: 1px solid var(--ec-border-strong);
+  background: var(--ec-surface-2);
+  color: var(--ec-text);
+  font: inherit;
+}
+
+.ec-key-input:focus {
+  outline: 2px solid var(--ec-accent);
+  outline-offset: 1px;
+}
+
 .ec-spin { animation: ec-spin 1s linear infinite; }
 
 @keyframes ec-spin {

@@ -1,6 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
+const os = require("os");
 const { spawn } = require("child_process");
 
 const EXPO_CONTROL_PORT = Number(process.env.EXPO_CONTROL_PORT) || 19010;
@@ -45,8 +46,21 @@ function pingExpoControl() {
  * detached, so restarting the web dev server does not kill a running tunnel.
  * Opt out with EXPO_CONTROL_AUTOSTART=false.
  */
+/** True when PM2 (home-cobalt/install-expo-control.ps1) owns the daemon. */
+function isManagedByPm2() {
+  try {
+    const dump = fs.readFileSync(path.join(os.homedir(), ".pm2", "dump.pm2"), "utf8");
+    return dump.includes('"connect-expo-control"');
+  } catch (_) {
+    return false;
+  }
+}
+
 async function autostartExpoControl() {
   if (process.env.EXPO_CONTROL_AUTOSTART === "false") return false;
+  // PM2 keeps its own instance running (and restarts it); a second copy
+  // started here would grab the port and leave PM2's standing by.
+  if (isManagedByPm2()) return true;
   if (!fs.existsSync(EXPO_CONTROL_ENTRY)) return false;
   if (Date.now() - lastAutostartAt < 10000) return true;
   lastAutostartAt = Date.now();

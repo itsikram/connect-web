@@ -10,6 +10,7 @@ import {
   FiCpu,
   FiDownload,
   FiExternalLink,
+  FiLock,
   FiGlobe,
   FiMenu,
   FiPlay,
@@ -317,21 +318,99 @@ function LogConsole({ logs, onClear }) {
   );
 }
 
-function OfflinePanel({ connection, onRetry }) {
-  const starting = connection === "starting" || connection === "connecting";
+function timeSince(iso) {
+  if (!iso) return "never";
+  return timeAgo(Date.parse(iso), Date.now());
+}
+
+function OfflinePanel({ connection, mode, remote, onRetry }) {
+  const busy = connection === "starting" || connection === "connecting";
+  let title;
+  let body;
+  if (busy) {
+    title = mode === "remote" ? "Connecting to your PC…" : "Connecting to the Expo control service…";
+    body = null;
+  } else if (connection === "signed-out") {
+    title = "Sign in to control Expo";
+    body = <p>Log in to Connect first; the live console only opens for signed-in accounts.</p>;
+  } else if (connection === "remote-disabled") {
+    title = "Remote access isn't set up on your PC";
+    body = (
+      <>
+        <p>The Expo control service is reachable but has no access key yet. On your PC run:</p>
+        <pre className="ec-code">{"cd E:\\Connect\\home-cobalt\n.\\install-expo-control.ps1"}</pre>
+      </>
+    );
+  } else if (mode === "remote") {
+    title = "Your PC isn't reachable";
+    body = (
+      <>
+        <p>
+          The live site reaches Expo through the PM2 services on your PC (like face login).
+          {remote && remote.lastSyncAt ? ` Last heard from ${timeSince(remote.lastSyncAt)}.` : " It hasn't checked in yet."} Make sure the PC
+          is on, then check:
+        </p>
+        <pre className="ec-code">{"pm2 status\npm2 logs connect-expo-control-url-sync"}</pre>
+      </>
+    );
+  } else {
+    title = "The Expo control service isn't running";
+    body = (
+      <>
+        <p>
+          This page talks to a small service on your computer that starts and watches Expo. PM2 runs it
+          (<code>home-cobalt\install-expo-control.ps1</code>), or start it by hand:
+        </p>
+        <pre className="ec-code">{"cd expo-connect-app\nnpm run control"}</pre>
+      </>
+    );
+  }
   return (
     <div className="ec-offline">
-      <div className={`ec-offline-icon ${starting ? "is-busy" : ""}`}>{starting ? <FiRefreshCw /> : <FiCpu />}</div>
-      <h2>{starting ? "Connecting to the Expo control service…" : "The Expo control service isn't running"}</h2>
-      <p>
-        This page talks to a small service on your computer that starts and watches Expo. It starts automatically with the web
-        dev server (<code>npm start</code> in <code>web</code>). To run it on its own:
-      </p>
-      <pre className="ec-code">cd expo-connect-app{"\n"}npm run control</pre>
-      <button type="button" className="ec-btn ec-btn-secondary" onClick={onRetry}>
-        <FiRefreshCw /> Try again
-      </button>
+      <div className={`ec-offline-icon ${busy ? "is-busy" : ""}`}>{busy ? <FiRefreshCw /> : <FiCpu />}</div>
+      <h2>{title}</h2>
+      {body}
+      {!busy && (
+        <button type="button" className="ec-btn ec-btn-secondary" onClick={onRetry}>
+          <FiRefreshCw /> Try again
+        </button>
+      )}
     </div>
+  );
+}
+
+function AccessKeyPanel({ rejected, onSubmit }) {
+  const [value, setValue] = useState("");
+  const submit = (event) => {
+    event.preventDefault();
+    if (value.trim()) onSubmit(value.trim());
+  };
+  return (
+    <form className="ec-offline" onSubmit={submit}>
+      <div className="ec-offline-icon">
+        <FiLock />
+      </div>
+      <h2>{rejected ? "That access key didn't work" : "Enter your Expo control access key"}</h2>
+      <p>
+        Your PC is online. For safety, controlling it from the live site needs the key from{" "}
+        <code>home-cobalt\live.env</code> (<code>EXPO_CONTROL_ACCESS_KEY</code>). It's saved in this browser, so you only enter it once.
+      </p>
+      <div className="ec-key-row">
+        <input
+          type="password"
+          className="ec-key-input"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="Access key"
+          autoComplete="off"
+          aria-label="Access key"
+          autoFocus
+        />
+        <button type="submit" className="ec-btn ec-btn-primary" disabled={!value.trim()}>
+          Connect
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -339,7 +418,7 @@ function OfflinePanel({ connection, onRetry }) {
 
 export default function ExpoConsole() {
   const navigate = useNavigate();
-  const { connection, state, logs, actions, reconnect } = useExpoControl();
+  const { connection, mode, remote, keyRejected, state, logs, actions, reconnect, setAccessKey, forgetAccessKey } = useExpoControl();
   const [pending, setPending] = useState(null);
   const onIOS = useMemo(isIOSDevice, []);
 
@@ -369,9 +448,13 @@ export default function ExpoConsole() {
   if (connection !== "online" || !state) {
     return (
       <div className="expo-console">
-        <TopBar connection={connection} onBack={() => navigate(-1)} />
+        <TopBar connection={connection} mode={mode} onBack={() => navigate(-1)} />
         <main className="ec-main">
-          <OfflinePanel connection={connection} onRetry={reconnect} />
+          {connection === "needs-key" ? (
+            <AccessKeyPanel rejected={keyRejected} onSubmit={setAccessKey} />
+          ) : (
+            <OfflinePanel connection={connection} mode={mode} remote={remote} onRetry={reconnect} />
+          )}
         </main>
       </div>
     );
@@ -402,7 +485,7 @@ export default function ExpoConsole() {
 
   return (
     <div className="expo-console">
-      <TopBar connection={connection} onBack={() => navigate(-1)} />
+      <TopBar connection={connection} mode={mode} onBack={() => navigate(-1)} onForgetKey={mode === "remote" ? forgetAccessKey : null} />
 
       <main className="ec-main">
         <div className="ec-layout">
@@ -768,9 +851,19 @@ export default function ExpoConsole() {
   );
 }
 
-function TopBar({ connection, onBack }) {
-  const tone = connection === "online" ? "success" : connection === "offline" ? "danger" : "warn";
-  const label = connection === "online" ? "Live" : connection === "offline" ? "Offline" : "Connecting";
+function TopBar({ connection, mode, onBack, onForgetKey }) {
+  const offline = ["offline", "remote-offline", "remote-disabled", "signed-out"].includes(connection);
+  const tone = connection === "online" ? "success" : offline ? "danger" : "warn";
+  const label =
+    connection === "online"
+      ? mode === "remote"
+        ? "Live · via tunnel"
+        : "Live"
+      : offline
+        ? "Offline"
+        : connection === "needs-key"
+          ? "Locked"
+          : "Connecting";
   return (
     <header className="ec-topbar">
       <button type="button" className="ec-icon-btn" onClick={onBack} aria-label="Go back">
@@ -780,6 +873,11 @@ function TopBar({ connection, onBack }) {
         <h1>Expo Go Tunnel</h1>
         <p>Start, restart and share your dev server with Expo Go on iOS</p>
       </div>
+      {onForgetKey && connection === "online" && (
+        <button type="button" className="ec-icon-btn" onClick={onForgetKey} aria-label="Forget access key" title="Forget access key on this browser">
+          <FiLock />
+        </button>
+      )}
       <Pill tone={tone} pulse={connection === "online"}>
         {label}
       </Pill>
