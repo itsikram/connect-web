@@ -2,8 +2,8 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as Md from 'react-icons/md';
 
-/** Material Community icon names used by the Expo screens, mapped to react-icons. */
-const ICONS = {
+/** Material Community icon names used by the Expo screens, mapped to react-icons. Other ports may add to it. */
+export const ICONS = {
   'chevron-left': Md.MdChevronLeft,
   'cog-outline': Md.MdSettings,
   'silverware-fork-knife': Md.MdRestaurant,
@@ -142,9 +142,9 @@ export const shortDate = (value) => {
 
 export const Spinner = ({ large }) => <span className={`fit-spinner${large ? ' is-large' : ''}`} role="status" aria-label="Loading" />;
 
-export const FitnessPage = ({ title, subtitle, onBack, right, children, footer, contentRef }) => {
+export const FitnessPage = ({ title, subtitle, onBack, right, children, footer, contentRef, section = 'Fitness' }) => {
   const navigate = useNavigate();
-  useEffect(() => { document.title = `${title} · Fitness`; }, [title]);
+  useEffect(() => { document.title = `${title} · ${section}`; }, [title, section]);
   return (
     <div className="fit-root">
       <header className="fit-header">

@@ -1674,48 +1674,205 @@ const VideoPlayer = () => {
     handlers: mediaSessionHandlers,
   });
 
+  const tabCounts = {
+    queue: playQueue.length,
+    library: stats.total,
+    saved: savedPlaylists.length,
+  };
+
+  const renderWatchResult = (video) => {
+    const author = watchAuthors[video.sourceId];
+    return (
+      <div
+        key={`w-${video.id}`}
+        className="vp-result"
+        role="button"
+        tabIndex={0}
+        onClick={() => handlePlayWatchResult(video)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") handlePlayWatchResult(video);
+        }}
+      >
+        <div className="vp-result-thumb">
+          {video.thumbnail ? <img src={video.thumbnail} alt="" loading="lazy" /> : <i className="fas fa-film" />}
+          <span className="vp-result-play"><i className="fas fa-play" /></span>
+        </div>
+        <div className="vp-result-info">
+          <strong>{video.title}</strong>
+          <small>{video.type === "saved" ? "Saved on this device" : author || "Watch"}</small>
+        </div>
+        <button
+          type="button"
+          className="vp-icon-btn vp-icon-btn-accent"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleQueueWatchResult(video);
+          }}
+          title="Add to Up next"
+          aria-label={`Add ${video.title} to Up next`}
+        >
+          <i className="fas fa-plus" />
+        </button>
+      </div>
+    );
+  };
+
+  const renderYoutubeResult = (result) => (
+    <div
+      key={`y-${result.videoId}`}
+      className="vp-result"
+      role="button"
+      tabIndex={0}
+      onClick={() => handleSelectYoutubeResult(result)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") handleSelectYoutubeResult(result);
+      }}
+      title={result.localWatch ? "Play from Watch" : "Download to Watch and add to Up next"}
+    >
+      <div className="vp-result-thumb">
+        {result.thumbnail ? <img src={result.thumbnail} alt="" loading="lazy" /> : null}
+      </div>
+      <div className="vp-result-info">
+        <strong>{result.title}</strong>
+        <small>
+          {result.localWatch ? (
+            <span className="vp-in-watch"><i className="fas fa-check" /> In Watch</span>
+          ) : null}
+          {result.channelTitle}
+        </small>
+      </div>
+      <span className="vp-result-action" aria-hidden="true">
+        <i className={`fas ${result.localWatch ? "fa-play" : "fa-download"}`} />
+      </span>
+    </div>
+  );
+
   return (
     <div className="video-player-page">
-      <div className="video-player-container">
-        <div className="video-player-main">
-          <div className="video-player-header">
-            <h1>Video Player</h1>
+      <header className="vp-topbar">
+        <div className="vp-topbar-title">
+          <h1>Media</h1>
+          <p>
+            {stats.total} in library · {playQueue.length} up next
+          </p>
+        </div>
 
+        <div className="vp-search" ref={searchBoxRef}>
+          <div className={`vp-search-bar ${showSearchPanel ? "open" : ""}`}>
+            <i className="fas fa-search" aria-hidden="true" />
+            <input
+              type="search"
+              placeholder="Search Watches & YouTube"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setSearchOpen(true);
+              }}
+              onFocus={() => setSearchOpen(true)}
+              aria-label="Search Watches and YouTube"
+              autoComplete="off"
+            />
+            {searchQuery ? (
+              <button
+                type="button"
+                className="vp-search-clear"
+                onClick={() => setSearchQuery("")}
+                aria-label="Clear search"
+              >
+                <i className="fas fa-times" />
+              </button>
+            ) : null}
           </div>
 
-          <div className="video-player-stats">
-            <span>{stats.total} total</span>
-            <span>{stats.watches} watches</span>
-            <span>{stats.saved} saved</span>
-            <span>{stats.custom} custom</span>
-          </div>
-
-          {libraryError ? (
-            <p className="video-player-error">{libraryError}</p>
-          ) : null}
-          {currentVideo ? (
-            <div className="video-stage">
-              <div className="video-stage-header">
-                <div className="video-stage-title-wrap">
-                  <h3 className="video-stage-title">{currentVideo.title}</h3>
-                  <p className="video-stage-meta">
-                    {getSourceLabel(currentVideo)}
-                    {" · "}
-                    {usingQueue ? "Playlist" : "Library"} {playbackIndex + 1} of{" "}
-                    {playbackList.length}
-                    {currentPlayback?.playCount > 1
-                      ? ` · Repeat ${playPass}/${clampPlayCount(currentPlayback.playCount)}`
-                      : ""}
-                  </p>
-                </div>
-                <span className="video-stage-badge">
-                  {getTypeLabel(currentVideo.type)}
-                </span>
+          {showSearchPanel ? (
+            <div className="vp-search-panel" role="listbox">
+              <div className="vp-scope-row">
+                {[
+                  { id: "all", label: "All", count: watchResults.length + youtubeResults.length, loading: watchSearching || youtubeSearching },
+                  { id: "watch", label: "Watches", count: watchResults.length, loading: watchSearching },
+                  { id: "youtube", label: "YouTube", count: youtubeResults.length, loading: youtubeSearching },
+                ].map((scope) => (
+                  <button
+                    key={scope.id}
+                    type="button"
+                    className={`vp-scope ${searchScope === scope.id ? "active" : ""}`}
+                    onClick={() => setSearchScope(scope.id)}
+                  >
+                    {scope.label}
+                    <span className="vp-scope-count">
+                      {scope.loading ? <i className="fas fa-circle-notch fa-spin" /> : scope.count}
+                    </span>
+                  </button>
+                ))}
               </div>
 
+              <div className="vp-search-scroll">
+                {searchScope !== "youtube" ? (
+                  <section className="vp-result-section">
+                    <div className="vp-section-head">
+                      <span className="vp-section-icon vp-section-icon-watch"><i className="fas fa-play-circle" /></span>
+                      <strong>Watches</strong>
+                      <small>on Connect</small>
+                    </div>
+                    {watchSearchError && watchResults.length === 0 ? (
+                      <p className="vp-result-note error">{watchSearchError}</p>
+                    ) : null}
+                    {watchResults.map(renderWatchResult)}
+                    {!watchSearching && !watchSearchError && watchResults.length === 0 ? (
+                      <p className="vp-result-note">No Watches match “{searchQuery.trim()}”</p>
+                    ) : null}
+                    {watchSearching && watchResults.length === 0 ? <div className="vp-skeleton-rows"><span /><span /></div> : null}
+                  </section>
+                ) : null}
+
+                {searchScope !== "watch" ? (
+                  <section className="vp-result-section">
+                    <div className="vp-section-head">
+                      <span className="vp-section-icon vp-section-icon-yt"><i className="fab fa-youtube" /></span>
+                      <strong>YouTube</strong>
+                      <small>downloads to Watch</small>
+                    </div>
+                    {youtubeSearchError ? (
+                      <p className="vp-result-note error">{youtubeSearchError}</p>
+                    ) : null}
+                    {youtubeResults.map(renderYoutubeResult)}
+                    {!youtubeSearching && !youtubeSearchError && youtubeResults.length === 0 ? (
+                      <p className="vp-result-note">No YouTube results</p>
+                    ) : null}
+                    {youtubeSearching && youtubeResults.length === 0 ? <div className="vp-skeleton-rows"><span /><span /></div> : null}
+                  </section>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <button
+          type="button"
+          className="vp-icon-btn vp-topbar-refresh"
+          onClick={() => refreshLibrary({ showSpinner: true })}
+          disabled={libraryLoading}
+          title="Refresh library"
+          aria-label="Refresh library"
+        >
+          <i className={`fas fa-sync-alt${libraryLoading ? " fa-spin" : ""}`} />
+        </button>
+      </header>
+
+      <div className="video-player-container">
+        <div className="video-player-main">
+          {libraryError ? (
+            <div className="vp-error-banner">
+              <i className="fas fa-exclamation-circle" /> {libraryError}
+            </div>
+          ) : null}
+
+          {currentVideo ? (
+            <div className="video-stage">
               <div className="video-stage-frame">
                 {isThisPip ? (
                   <div className="video-pip-inline-placeholder">
+                    <i className="fas fa-external-link-alt" />
                     <span>Playing in pop-out mode</span>
                     <button type="button" onClick={restoreFromPip}>
                       Return here
@@ -1742,378 +1899,415 @@ const VideoPlayer = () => {
                       <div className="video-media-cover" aria-hidden="true">
                         {currentVideo.thumbnail ? (
                           <img src={currentVideo.thumbnail} alt="" />
-                        ) : (
-                          <i className="fas fa-spinner fa-spin" />
-                        )}
+                        ) : null}
+                        <i className="fas fa-circle-notch fa-spin video-media-spinner" />
                       </div>
                     ) : null}
                   </>
                 )}
               </div>
 
-              <div className="video-stage-toolbar">
-                <button
-                  type="button"
-                  className="video-tool-btn"
-                  onClick={() => refreshLibrary({ showSpinner: true })}
-                  disabled={libraryLoading}
-                  title="Refresh library"
-                >
-                  <i
-                    className={`fas fa-sync-alt${libraryLoading ? " fa-spin" : ""}`}
-                  />
-                </button>
-                <button
-                  type="button"
-                  className="video-tool-btn"
-                  onClick={handlePrev}
-                  disabled={playbackList.length <= 1}
-                  title="Previous"
-                >
-                  <i className="fas fa-step-backward" />
-                </button>
-                <button
-                  type="button"
-                  className="video-tool-btn video-tool-btn-primary"
-                  onClick={togglePlayPause}
-                  title={playerIsPlaying ? "Pause" : "Play"}
-                >
-                  <i
-                    className={`fas ${playerIsPlaying ? "fa-pause" : "fa-play"}`}
-                  />
-                </button>
-                <button
-                  type="button"
-                  className="video-tool-btn"
-                  onClick={handleNext}
-                  disabled={playbackList.length <= 1}
-                  title="Next"
-                >
-                  <i className="fas fa-step-forward" />
-                </button>
-                <button
-                  type="button"
-                  className={`video-tool-btn ${isLooping ? "active" : ""}`}
-                  onClick={() => {
-                    setIsLooping((prev) => {
-                      const next = !prev;
-                      if (isThisPip) watchPip?.updatePip?.({ looping: next });
-                      return next;
-                    });
-                  }}
-                  title={
-                    isLooping
-                      ? "Repeat playlist on"
-                      : "Repeat playlist off"
-                  }
-                >
-                  <i className="fas fa-redo" />
-                </button>
-                {watchPip && !isThisPip && (
-                  <button
-                    type="button"
-                    className="video-tool-btn"
-                    onClick={minimizeToPip}
-                    title="Pop out"
-                  >
-                    <i className="fas fa-external-link-alt" />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="video-tool-btn"
-                  onClick={toggleFullscreen}
-                  title={isFullscreen ? "Exit fullscreen" : "Fullscreen landscape"}
-                  aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen landscape"}
-                >
-                  <i className={`fas ${isFullscreen ? "fa-compress" : "fa-expand"}`} />
-                </button>
+              <div className="video-stage-body">
+                <div className="video-stage-heading">
+                  <div className="video-stage-title-wrap">
+                    <h2 className="video-stage-title">{currentVideo.title}</h2>
+                    <p className="video-stage-meta">
+                      <span className="vp-badge">{getTypeLabel(currentVideo.type)}</span>
+                      {getSourceLabel(currentVideo)}
+                      {" · "}
+                      {usingQueue ? "Up next" : "Library"} {playbackIndex + 1}/{playbackList.length}
+                      {currentPlayback?.playCount > 1
+                        ? ` · Repeat ${playPass}/${clampPlayCount(currentPlayback.playCount)}`
+                        : ""}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="vp-controls">
+                  <div className="vp-transport">
+                    <button
+                      type="button"
+                      className={`vp-ctrl ${isLooping ? "active" : ""}`}
+                      onClick={() => {
+                        setIsLooping((prev) => {
+                          const next = !prev;
+                          if (isThisPip) watchPip?.updatePip?.({ looping: next });
+                          return next;
+                        });
+                      }}
+                      title={isLooping ? "Repeat playlist on" : "Repeat playlist off"}
+                      aria-pressed={isLooping}
+                    >
+                      <i className="fas fa-redo" />
+                    </button>
+                    <button
+                      type="button"
+                      className="vp-ctrl vp-ctrl-lg"
+                      onClick={handlePrev}
+                      disabled={playbackList.length <= 1}
+                      title="Previous"
+                    >
+                      <i className="fas fa-step-backward" />
+                    </button>
+                    <button
+                      type="button"
+                      className="vp-play"
+                      onClick={togglePlayPause}
+                      title={playerIsPlaying ? "Pause" : "Play"}
+                    >
+                      <i className={`fas ${playerIsPlaying ? "fa-pause" : "fa-play"}`} />
+                    </button>
+                    <button
+                      type="button"
+                      className="vp-ctrl vp-ctrl-lg"
+                      onClick={handleNext}
+                      disabled={playbackList.length <= 1}
+                      title="Next"
+                    >
+                      <i className="fas fa-step-forward" />
+                    </button>
+                    <button
+                      type="button"
+                      className="vp-ctrl"
+                      onClick={toggleFullscreen}
+                      title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                      aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                    >
+                      <i className={`fas ${isFullscreen ? "fa-compress" : "fa-expand"}`} />
+                    </button>
+                  </div>
+                  {watchPip && !isThisPip ? (
+                    <button type="button" className="vp-chip-btn" onClick={minimizeToPip}>
+                      <i className="fas fa-external-link-alt" /> Pop out
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </div>
           ) : (
             <div className="no-video-placeholder">
-              <div className="placeholder-icon">🎬</div>
-              <h3>No videos in library</h3>
+              <div className="placeholder-icon"><i className="fas fa-photo-video" /></div>
+              <h3>Nothing playing yet</h3>
               <p>
-                Add a URL, upload a file, or save/download videos to populate
-                your playlist
+                Search Watches or YouTube above, pick something from your
+                library, or add a video link.
               </p>
-              <button
-                type="button"
-                className="btn btn-sm btn-secondary"
-                onClick={() => refreshLibrary({ showSpinner: true })}
-                disabled={libraryLoading}
-              >
-                {libraryLoading ? "Refreshing…" : "Refresh library"}
-              </button>
+              <div className="no-video-actions">
+                <button type="button" className="vp-btn vp-btn-primary" onClick={() => setActiveTab("library")}>
+                  Browse library
+                </button>
+                <button
+                  type="button"
+                  className="vp-btn vp-btn-ghost"
+                  onClick={() => refreshLibrary({ showSpinner: true })}
+                  disabled={libraryLoading}
+                >
+                  {libraryLoading ? "Refreshing…" : "Refresh"}
+                </button>
+              </div>
             </div>
           )}
         </div>
 
-        <div className="video-player-sidebar-column">
-          <div className="video-playlist-sidebar video-play-queue">
-            <div className="playlist-header">
-              <h2>Playlist</h2>
-              <span className="playlist-count">{playQueue.length} videos</span>
-            </div>
-            <p className="video-player-sort-hint">
-              Add clips, then set how many times each one plays before the next
-              video starts.
-            </p>
-            {playQueue.length > 0 ? (
-              <div className="playlist-queue-actions">
-                <button
-                  type="button"
-                  className="btn btn-sm btn-secondary"
-                  onClick={clearPlayQueue}
-                >
-                  Clear playlist
-                </button>
-              </div>
-            ) : null}
-            {playQueue.length > 1 ? (
-              <p className="video-player-sort-hint">
-                {useTouchReorder
-                  ? "Use the arrow buttons to reorder the playlist"
-                  : "Drag items to reorder"}
-              </p>
-            ) : null}
-            {playQueue.length > 0 ? (
-              <div className="playlist-items">
-                {playQueue.map((item, index) => (
-                  <div
-                    key={item.queueId}
-                    className={`playlist-item ${usingQueue && index === queueIndex ? "active" : ""} ${queueDragIndex === index ? "dragging" : ""}`}
-                    draggable={canDragQueue}
-                    onDragStart={() => handleQueueDragStart(index)}
-                    onDragOver={(e) => handleQueueDragOver(e, index)}
-                    onDrop={() => handleQueueDrop(index)}
-                    onDragEnd={() => setQueueDragIndex(null)}
-                    onClick={() => handlePlayQueueItem(index)}
-                  >
-                    {canDragQueue ? (
-                      <span
-                        className="playlist-drag-handle"
-                        title="Drag to reorder"
-                      >
-                        <i className="fas fa-grip-vertical" />
-                      </span>
-                    ) : null}
-                    {useTouchReorder && playQueue.length > 1 ? (
-                      <div className="playlist-reorder-btns">
-                        <button
-                          type="button"
-                          className="playlist-reorder-btn"
-                          disabled={index === 0}
-                          onClick={(e) => moveQueueItem(index, "up", e)}
-                          aria-label="Move playlist item up"
-                        >
-                          <i className="fas fa-chevron-up" aria-hidden="true" />
-                        </button>
-                        <button
-                          type="button"
-                          className="playlist-reorder-btn"
-                          disabled={index === playQueue.length - 1}
-                          onClick={(e) => moveQueueItem(index, "down", e)}
-                          aria-label="Move playlist item down"
-                        >
-                          <i
-                            className="fas fa-chevron-down"
-                            aria-hidden="true"
-                          />
-                        </button>
-                      </div>
-                    ) : null}
-                    <div className="playlist-item-thumbnail">
-                      {item.thumbnail ? (
-                        <img src={item.thumbnail} alt="" />
-                      ) : usingQueue &&
-                        index === queueIndex &&
-                        playerIsPlaying ? (
-                        <div className="playing-indicator">▶</div>
-                      ) : (
-                        <div className="play-number">{index + 1}</div>
-                      )}
-                    </div>
-                    <div className="playlist-item-info">
-                      <div className="playlist-item-title">{item.title}</div>
-                      <div className="playlist-item-type">
-                        {usingQueue && index === queueIndex
-                          ? `Playing ${playPass} of ${clampPlayCount(item.playCount)}`
-                          : `Play ${clampPlayCount(item.playCount)} time${clampPlayCount(item.playCount) === 1 ? "" : "s"}`}
-                      </div>
-                      {youtubeDownload?.queueId === item.queueId ? (
-                        <div className="video-player-download-progress" role="status">
-                          <div className="video-player-download-progress-header">
-                            <strong>{youtubeDownload.percent}%</strong>
-                            <small>{youtubeDownload.error || youtubeDownload.stage}</small>
-                          </div>
-                          <div className="video-player-download-track">
-                            <span style={{ width: `${Math.min(100, Math.max(0, youtubeDownload.percent))}%` }} />
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                    <div
-                      className="playlist-repeat-control"
-                      onClick={(e) => e.stopPropagation()}
-                      onPointerDown={(e) => e.stopPropagation()}
-                    >
-                      <button
-                        type="button"
-                        className="playlist-repeat-btn"
-                        disabled={item.playCount <= MIN_PLAY_COUNT}
-                        onClick={() =>
-                          updateQueuePlayCount(item.queueId, item.playCount - 1)
-                        }
-                        aria-label="Play fewer times"
-                      >
-                        −
-                      </button>
-                      <input
-                        type="number"
-                        min={MIN_PLAY_COUNT}
-                        max={MAX_PLAY_COUNT}
-                        className="playlist-repeat-input"
-                        value={item.playCount}
-                        aria-label="Times to play this video"
-                        onChange={(e) =>
-                          updateQueuePlayCount(item.queueId, e.target.value)
-                        }
-                      />
-                      <button
-                        type="button"
-                        className="playlist-repeat-btn"
-                        disabled={item.playCount >= MAX_PLAY_COUNT}
-                        onClick={() =>
-                          updateQueuePlayCount(item.queueId, item.playCount + 1)
-                        }
-                        aria-label="Play more times"
-                      >
-                        +
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      className="playlist-item-remove"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeFromPlayQueue(item.queueId);
-                      }}
-                      title="Remove from playlist"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="playlist-empty">
-                <p>Playlist is empty</p>
-                <p className="playlist-empty-hint">
-                  Add videos from the library below, or paste a URL
-                </p>
-              </div>
-            )}
+        <aside className="video-player-sidebar-column">
+          <div className="vp-tabs" role="tablist">
+            {[
+              { id: "queue", label: "Up next", icon: "fa-list-ol" },
+              { id: "library", label: "Library", icon: "fa-photo-video" },
+              { id: "saved", label: "Playlists", icon: "fa-layer-group" },
+              { id: "add", label: "Add", icon: "fa-plus" },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                className={`vp-tab ${activeTab === tab.id ? "active" : ""}`}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                <i className={`fas ${tab.icon}`} aria-hidden="true" />
+                <span>{tab.label}</span>
+                {tabCounts[tab.id] ? <em>{tabCounts[tab.id]}</em> : null}
+              </button>
+            ))}
           </div>
 
-          <div className="video-playlist-sidebar saved-playlists-panel">
-            <div className="playlist-header">
-              <h2>Saved playlists</h2>
-              <span className="playlist-count">{savedPlaylists.length}</span>
-            </div>
-            {myProfileId ? (
-              <>
-                <div className="playlist-save-form">
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="Playlist name"
-                    value={playlistName}
-                    maxLength={120}
-                    onChange={(e) => setPlaylistName(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-primary"
-                    onClick={saveCurrentPlaylist}
-                    disabled={!playlistName.trim() || playQueue.length === 0 || savingPlaylist}
-                  >
-                    {savingPlaylist ? "Saving…" : "Save current"}
-                  </button>
+          {activeTab === "queue" ? (
+            <div className="vp-panel">
+              <div className="vp-panel-head">
+                <div>
+                  <h2>Up next</h2>
+                  <p>Set how many times each video plays before moving on.</p>
                 </div>
-                {savedPlaylists.length > 0 ? (
-                  <div className="saved-playlist-list">
-                    {savedPlaylists.map((playlist) => (
-                      <div className="saved-playlist-row" key={playlist._id}>
-                        <button type="button" className="saved-playlist-load" onClick={() => loadNamedPlaylist(playlist)}>
-                          <strong>{playlist.name}</strong>
-                          <span>{playlist.items?.length || 0} videos</span>
-                        </button>
-                        <button type="button" className="playlist-item-remove" onClick={() => removeNamedPlaylist(playlist)} title="Delete saved playlist">×</button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="playlist-empty-hint">Save the current playlist to access it on any device.</p>
-                )}
-              </>
-            ) : (
-              <p className="playlist-empty-hint">Sign in to save playlists across devices.</p>
-            )}
-          </div>
-
-          <div className="video-playlist-sidebar">
-            <div className="playlist-header">
-              <h2>Library</h2>
-              <div className="playlist-header-actions">
-                <span className="playlist-count">
-                  {filteredVideos.length} videos
-                </span>
-                {filteredVideos.length > 0 ? (
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-secondary"
-                    onClick={() =>
-                      filteredVideos.forEach((video) => addToPlayQueue(video))
-                    }
-                  >
-                    Add all
+                {playQueue.length > 0 ? (
+                  <button type="button" className="vp-chip-btn" onClick={clearPlayQueue}>
+                    <i className="fas fa-broom" /> Clear
                   </button>
                 ) : null}
               </div>
+              {playQueue.length > 1 ? (
+                <p className="vp-hint">
+                  {useTouchReorder ? "Use the arrows to reorder" : "Drag items to reorder"}
+                </p>
+              ) : null}
+              {playQueue.length > 0 ? (
+                <div className="playlist-items">
+                  {playQueue.map((item, index) => {
+                    const isCurrent = usingQueue && index === queueIndex;
+                    return (
+                      <div
+                        key={item.queueId}
+                        className={`playlist-item ${isCurrent ? "active" : ""} ${queueDragIndex === index ? "dragging" : ""}`}
+                        draggable={canDragQueue}
+                        onDragStart={() => handleQueueDragStart(index)}
+                        onDragOver={(e) => handleQueueDragOver(e, index)}
+                        onDrop={() => handleQueueDrop(index)}
+                        onDragEnd={() => setQueueDragIndex(null)}
+                        onClick={() => handlePlayQueueItem(index)}
+                      >
+                        {canDragQueue ? (
+                          <span className="playlist-drag-handle" title="Drag to reorder">
+                            <i className="fas fa-grip-vertical" />
+                          </span>
+                        ) : null}
+                        {useTouchReorder && playQueue.length > 1 ? (
+                          <div className="playlist-reorder-btns">
+                            <button
+                              type="button"
+                              className="playlist-reorder-btn"
+                              disabled={index === 0}
+                              onClick={(e) => moveQueueItem(index, "up", e)}
+                              aria-label="Move playlist item up"
+                            >
+                              <i className="fas fa-chevron-up" aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              className="playlist-reorder-btn"
+                              disabled={index === playQueue.length - 1}
+                              onClick={(e) => moveQueueItem(index, "down", e)}
+                              aria-label="Move playlist item down"
+                            >
+                              <i className="fas fa-chevron-down" aria-hidden="true" />
+                            </button>
+                          </div>
+                        ) : null}
+                        <div className="playlist-item-thumbnail">
+                          {item.thumbnail ? (
+                            <img src={item.thumbnail} alt="" loading="lazy" />
+                          ) : (
+                            <span className="play-number">{index + 1}</span>
+                          )}
+                          {isCurrent ? (
+                            <span className="playlist-item-now">
+                              <i className={`fas ${playerIsPlaying ? "fa-volume-up" : "fa-pause"}`} />
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="playlist-item-info">
+                          <div className="playlist-item-title">{item.title}</div>
+                          <div className="playlist-item-type">
+                            {isCurrent
+                              ? `Now playing · ${playPass} of ${clampPlayCount(item.playCount)}`
+                              : `${getTypeLabel(item.type)} · plays ${clampPlayCount(item.playCount)}×`}
+                          </div>
+                          {youtubeDownload?.queueId === item.queueId ? (
+                            <div className="video-player-download-progress" role="status">
+                              <div className="video-player-download-progress-header">
+                                <strong>{youtubeDownload.percent}%</strong>
+                                <small className={youtubeDownload.error ? "error" : ""}>
+                                  {youtubeDownload.error || youtubeDownload.stage}
+                                </small>
+                              </div>
+                              <div className={`video-player-download-track ${youtubeDownload.error ? "error" : ""}`}>
+                                <span style={{ width: `${Math.min(100, Math.max(0, youtubeDownload.percent))}%` }} />
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                        <div
+                          className="playlist-repeat-control"
+                          onClick={(e) => e.stopPropagation()}
+                          onPointerDown={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            className="playlist-repeat-btn"
+                            disabled={item.playCount <= MIN_PLAY_COUNT}
+                            onClick={() => updateQueuePlayCount(item.queueId, item.playCount - 1)}
+                            aria-label="Play fewer times"
+                          >
+                            <i className="fas fa-minus" />
+                          </button>
+                          <input
+                            type="number"
+                            min={MIN_PLAY_COUNT}
+                            max={MAX_PLAY_COUNT}
+                            className="playlist-repeat-input"
+                            value={item.playCount}
+                            aria-label="Times to play this video"
+                            onChange={(e) => updateQueuePlayCount(item.queueId, e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            className="playlist-repeat-btn"
+                            disabled={item.playCount >= MAX_PLAY_COUNT}
+                            onClick={() => updateQueuePlayCount(item.queueId, item.playCount + 1)}
+                            aria-label="Play more times"
+                          >
+                            <i className="fas fa-plus" />
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          className="vp-icon-btn vp-icon-btn-quiet"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeFromPlayQueue(item.queueId);
+                          }}
+                          title="Remove from Up next"
+                          aria-label="Remove from Up next"
+                        >
+                          <i className="fas fa-times" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="playlist-empty">
+                  <i className="fas fa-stream" />
+                  <p>Your queue is empty</p>
+                  <p className="playlist-empty-hint">Search above or add videos from your library.</p>
+                  <button type="button" className="vp-btn vp-btn-soft" onClick={() => setActiveTab("library")}>
+                    Open library
+                  </button>
+                </div>
+              )}
             </div>
+          ) : null}
 
-            <div className="video-player-filters">
-              {FILTER_OPTIONS.map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  className={`video-player-filter-btn ${filter === opt.id ? "active" : ""}`}
-                  onClick={() => {
-                    setFilter(opt.id);
-                    setCurrentVideoIndex(0);
-                  }}
-                >
-                  {opt.label}
-                </button>
-              ))}
+          {activeTab === "saved" ? (
+            <div className="vp-panel">
+              <div className="vp-panel-head">
+                <div>
+                  <h2>Saved playlists</h2>
+                  <p>Synced across all your devices.</p>
+                </div>
+              </div>
+              {myProfileId ? (
+                <>
+                  <form
+                    className="playlist-save-form"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      saveCurrentPlaylist();
+                    }}
+                  >
+                    <input
+                      type="text"
+                      className="vp-input"
+                      placeholder={playQueue.length ? "Name this queue…" : "Add videos to Up next first"}
+                      value={playlistName}
+                      maxLength={120}
+                      disabled={playQueue.length === 0}
+                      onChange={(e) => setPlaylistName(e.target.value)}
+                    />
+                    <button
+                      type="submit"
+                      className="vp-btn vp-btn-primary"
+                      disabled={!playlistName.trim() || playQueue.length === 0 || savingPlaylist}
+                    >
+                      {savingPlaylist ? "Saving…" : "Save"}
+                    </button>
+                  </form>
+                  {savedPlaylists.length > 0 ? (
+                    <div className="saved-playlist-list">
+                      {savedPlaylists.map((playlist) => (
+                        <div className="saved-playlist-row" key={playlist._id}>
+                          <button
+                            type="button"
+                            className="saved-playlist-load"
+                            onClick={() => {
+                              loadNamedPlaylist(playlist);
+                              setActiveTab("queue");
+                            }}
+                          >
+                            <span className="saved-playlist-icon"><i className="fas fa-list" /></span>
+                            <span className="saved-playlist-text">
+                              <strong>{playlist.name}</strong>
+                              <span>{playlist.items?.length || 0} videos · click to load</span>
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className="vp-icon-btn vp-icon-btn-quiet"
+                            onClick={() => removeNamedPlaylist(playlist)}
+                            title="Delete saved playlist"
+                            aria-label={`Delete ${playlist.name}`}
+                          >
+                            <i className="far fa-trash-alt" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="playlist-empty">
+                      <i className="fas fa-layer-group" />
+                      <p className="playlist-empty-hint">No saved playlists yet. Name your current queue to save it.</p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="vp-hint">Sign in to save playlists across devices.</p>
+              )}
             </div>
+          ) : null}
 
-            <div className="video-player-list-controls">
-              <input
-                type="text"
-                className="form-input video-player-search"
-                placeholder="Search library…"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              <label className="video-player-sort-label">
+          {activeTab === "library" ? (
+            <div className="vp-panel">
+              <div className="vp-panel-head">
+                <div>
+                  <h2>Library</h2>
+                  <p>
+                    {stats.watches} watches · {stats.saved} saved · {stats.custom} custom
+                  </p>
+                </div>
+                {filteredVideos.length > 0 ? (
+                  <button
+                    type="button"
+                    className="vp-chip-btn accent"
+                    onClick={() => filteredVideos.forEach((video) => addToPlayQueue(video))}
+                  >
+                    <i className="fas fa-plus" /> Add all
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="vp-library-controls">
+                <div className="vp-filter-input">
+                  <i className="fas fa-filter" aria-hidden="true" />
+                  <input
+                    type="text"
+                    placeholder="Filter your library"
+                    value={libraryQuery}
+                    onChange={(e) => {
+                      setLibraryQuery(e.target.value);
+                      setCurrentVideoIndex(0);
+                    }}
+                    aria-label="Filter library"
+                  />
+                  {libraryQuery ? (
+                    <button type="button" onClick={() => setLibraryQuery("")} aria-label="Clear filter">
+                      <i className="fas fa-times" />
+                    </button>
+                  ) : null}
+                </div>
                 <select
-                  className="form-input video-player-sort"
+                  className="vp-select"
                   value={sortMode}
                   onChange={handleSortChange}
-                  aria-label="Sort playlist"
+                  aria-label="Sort library"
                 >
                   {SORT_OPTIONS.map((opt) => (
                     <option key={opt.id} value={opt.id}>
@@ -2121,202 +2315,202 @@ const VideoPlayer = () => {
                     </option>
                   ))}
                 </select>
-              </label>
-            </div>
-            {searchQuery.trim() ? (
-              <div className="video-player-youtube-results">
-                <div className="video-player-youtube-heading">
-                  YouTube {youtubeSearching ? "searching…" : ""}
-                </div>
-                {youtubeSearchError ? (
-                  <p className="video-player-error">{youtubeSearchError}</p>
-                ) : youtubeResults.length ? (
-                  youtubeResults.map((result) => (
-                    <button
-                      type="button"
-                      className="video-player-youtube-result"
-                      key={result.videoId}
-                      onClick={() => handleSelectYoutubeResult(result)}
-                    >
-                      <img src={result.thumbnail} alt="" />
-                      <span>
-                        <strong>{result.title}</strong>
-                        <small>
-                          {result.localWatch
-                            ? "Already in Watch · added instantly"
-                            : result.channelTitle}
-                        </small>
-                      </span>
-                      <i className="fas fa-plus" aria-hidden="true" />
-                    </button>
-                  ))
-                ) : !youtubeSearching ? (
-                  <p className="video-player-search-hint">No YouTube results</p>
-                ) : null}
               </div>
-            ) : null}
 
-            {sortMode === "custom" && filteredVideos.length > 1 ? (
-              <p className="video-player-sort-hint">
-                {useTouchReorder
-                  ? "Use the arrow buttons to reorder videos"
-                  : "Drag items to reorder"}
-              </p>
-            ) : null}
-
-            {libraryLoading && filteredVideos.length === 0 ? (
-              <div className="playlist-empty">
-                <p>Loading your videos…</p>
-              </div>
-            ) : filteredVideos.length > 0 ? (
-              <div className="playlist-items">
-                {filteredVideos.map((video, index) => (
-                  <div
-                    key={video.id}
-                    className={`playlist-item ${(!usingQueue && index === currentVideoIndex) || (usingQueue && currentPlayback?.videoId === video.id) ? "active" : ""} ${dragIndex === index ? "dragging" : ""}`}
-                    draggable={canDragReorder}
-                    onDragStart={() => handleDragStart(index)}
-                    onDragOver={(e) => handleDragOver(e, index)}
-                    onDrop={() => handleDrop(index)}
-                    onDragEnd={() => setDragIndex(null)}
-                    onClick={() => handlePlayVideo(index)}
+              <div className="video-player-filters">
+                {FILTER_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    className={`video-player-filter-btn ${filter === opt.id ? "active" : ""}`}
+                    onClick={() => {
+                      setFilter(opt.id);
+                      setCurrentVideoIndex(0);
+                    }}
                   >
-                    {sortMode === "custom" && canDragReorder ? (
-                      <span
-                        className="playlist-drag-handle"
-                        title="Drag to reorder"
-                      >
-                        <i className="fas fa-grip-vertical" />
-                      </span>
-                    ) : null}
-                    {sortMode === "custom" && useTouchReorder ? (
-                      <div className="playlist-reorder-btns">
-                        <button
-                          type="button"
-                          className="playlist-reorder-btn"
-                          disabled={index === 0}
-                          onClick={(e) => movePlaylistItem(index, "up", e)}
-                          aria-label="Move video up"
-                        >
-                          <i className="fas fa-chevron-up" aria-hidden="true" />
-                        </button>
-                        <button
-                          type="button"
-                          className="playlist-reorder-btn"
-                          disabled={index === filteredVideos.length - 1}
-                          onClick={(e) => movePlaylistItem(index, "down", e)}
-                          aria-label="Move video down"
-                        >
-                          <i
-                            className="fas fa-chevron-down"
-                            aria-hidden="true"
-                          />
-                        </button>
-                      </div>
-                    ) : null}
-                    <div className="playlist-item-thumbnail">
-                      {video.thumbnail ? (
-                        <img src={video.thumbnail} alt="" />
-                      ) : !usingQueue &&
-                        index === currentVideoIndex &&
-                        playerIsPlaying ? (
-                        <div className="playing-indicator">▶</div>
-                      ) : (
-                        <div className="play-number">{index + 1}</div>
-                      )}
-                    </div>
-                    <div className="playlist-item-info">
-                      <div className="playlist-item-title">{video.title}</div>
-                      <div className="playlist-item-type">
-                        {getSourceLabel(video)}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      className="playlist-add-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        addToPlayQueue(video);
-                      }}
-                      title="Add to playlist"
-                    >
-                      Add
-                    </button>
-                    {(video.type === "url" || video.type === "file") && (
-                      <button
-                        type="button"
-                        className="playlist-item-remove"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRemoveVideo(video);
-                        }}
-                        title="Remove video"
-                      >
-                        ×
-                      </button>
-                    )}
-                  </div>
+                    {opt.label}
+                  </button>
                 ))}
               </div>
-            ) : (
-              <div className="playlist-empty">
-                <p>No videos match this filter</p>
-                <p className="playlist-empty-hint">
-                  Try All or Server, or refresh the library
-                </p>
-              </div>
-            )}
-          </div>
 
-          <div className="add-video-form">
-            <h3>Add custom video</h3>
-            <form onSubmit={handleAddVideo}>
-              <div className="form-group">
-                <label>Video title (optional)</label>
-                <input
-                  type="text"
-                  value={videoTitle}
-                  onChange={(e) => setVideoTitle(e.target.value)}
-                  placeholder="Enter video title"
-                  className="form-input"
-                />
+              {sortMode === "custom" && filteredVideos.length > 1 ? (
+                <p className="vp-hint">
+                  {useTouchReorder ? "Use the arrows to reorder" : "Drag items to reorder"}
+                </p>
+              ) : null}
+
+              {libraryLoading && filteredVideos.length === 0 ? (
+                <div className="vp-skeleton-rows"><span /><span /><span /></div>
+              ) : filteredVideos.length > 0 ? (
+                <div className="playlist-items">
+                  {filteredVideos.map((video, index) => {
+                    const isCurrent =
+                      (!usingQueue && index === currentVideoIndex) ||
+                      (usingQueue && currentPlayback?.videoId === video.id);
+                    return (
+                      <div
+                        key={video.id}
+                        className={`playlist-item ${isCurrent ? "active" : ""} ${dragIndex === index ? "dragging" : ""}`}
+                        draggable={canDragReorder}
+                        onDragStart={() => handleDragStart(index)}
+                        onDragOver={(e) => handleDragOver(e, index)}
+                        onDrop={() => handleDrop(index)}
+                        onDragEnd={() => setDragIndex(null)}
+                        onClick={() => handlePlayVideo(index)}
+                      >
+                        {sortMode === "custom" && canDragReorder ? (
+                          <span className="playlist-drag-handle" title="Drag to reorder">
+                            <i className="fas fa-grip-vertical" />
+                          </span>
+                        ) : null}
+                        {sortMode === "custom" && useTouchReorder ? (
+                          <div className="playlist-reorder-btns">
+                            <button
+                              type="button"
+                              className="playlist-reorder-btn"
+                              disabled={index === 0}
+                              onClick={(e) => movePlaylistItem(index, "up", e)}
+                              aria-label="Move video up"
+                            >
+                              <i className="fas fa-chevron-up" aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              className="playlist-reorder-btn"
+                              disabled={index === filteredVideos.length - 1}
+                              onClick={(e) => movePlaylistItem(index, "down", e)}
+                              aria-label="Move video down"
+                            >
+                              <i className="fas fa-chevron-down" aria-hidden="true" />
+                            </button>
+                          </div>
+                        ) : null}
+                        <div className="playlist-item-thumbnail wide">
+                          {video.thumbnail ? (
+                            <img src={video.thumbnail} alt="" loading="lazy" />
+                          ) : (
+                            <i className="fas fa-film" />
+                          )}
+                          {isCurrent ? (
+                            <span className="playlist-item-now">
+                              <i className={`fas ${playerIsPlaying ? "fa-volume-up" : "fa-pause"}`} />
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="playlist-item-info">
+                          <div className="playlist-item-title">{video.title}</div>
+                          <div className="playlist-item-type">
+                            <i className={`fas ${video.online === false ? "fa-hdd" : "fa-cloud"}`} />{" "}
+                            {getSourceLabel(video)}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="vp-icon-btn vp-icon-btn-accent"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addToPlayQueue(video);
+                          }}
+                          title="Add to Up next"
+                          aria-label="Add to Up next"
+                        >
+                          <i className="fas fa-plus" />
+                        </button>
+                        {(video.type === "url" || video.type === "file") && (
+                          <button
+                            type="button"
+                            className="vp-icon-btn vp-icon-btn-quiet"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveVideo(video);
+                            }}
+                            title="Remove video"
+                            aria-label="Remove video"
+                          >
+                            <i className="fas fa-times" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="playlist-empty">
+                  <i className="fas fa-search" />
+                  <p>No videos match</p>
+                  <p className="playlist-empty-hint">
+                    Try another filter, or search Watches &amp; YouTube at the top.
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          {activeTab === "add" ? (
+            <div className="vp-panel">
+              <div className="vp-panel-head">
+                <div>
+                  <h2>Add a video</h2>
+                  <p>Paste a direct link or pick a file from this device.</p>
+                </div>
               </div>
-              <div className="form-group">
-                <label>Video URL</label>
-                <input
-                  type="url"
-                  value={videoUrl}
-                  onChange={(e) => setVideoUrl(e.target.value)}
-                  placeholder="https://example.com/video.mp4"
-                  className="form-input"
-                />
-              </div>
-              <div className="form-actions">
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={!videoUrl.trim()}
-                >
-                  Add from URL
+              <button
+                type="button"
+                className="vp-upload-tile"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <span className="vp-upload-icon"><i className="fas fa-file-upload" /></span>
+                <span className="vp-upload-text">
+                  <strong>Choose from device</strong>
+                  <small>MP4, MOV, WEBM and more</small>
+                </span>
+                <i className="fas fa-chevron-right" />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="video/*"
+                onChange={(e) => {
+                  handleFileUpload(e);
+                  setActiveTab("queue");
+                }}
+                style={{ display: "none" }}
+              />
+              <div className="vp-divider"><span>or from a link</span></div>
+              <form
+                className="vp-add-form"
+                onSubmit={(e) => {
+                  handleAddVideo(e);
+                  if (videoUrl.trim()) setActiveTab("queue");
+                }}
+              >
+                <label className="vp-field">
+                  <span>Video URL</span>
+                  <input
+                    type="url"
+                    value={videoUrl}
+                    onChange={(e) => setVideoUrl(e.target.value)}
+                    placeholder="https://example.com/video.mp4"
+                    className="vp-input"
+                  />
+                </label>
+                <label className="vp-field">
+                  <span>Title (optional)</span>
+                  <input
+                    type="text"
+                    value={videoTitle}
+                    onChange={(e) => setVideoTitle(e.target.value)}
+                    placeholder="Give it a name"
+                    className="vp-input"
+                  />
+                </label>
+                <button type="submit" className="vp-btn vp-btn-primary vp-btn-block" disabled={!videoUrl.trim()}>
+                  <i className="fas fa-link" /> Add to Up next
                 </button>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="btn btn-secondary"
-                >
-                  Upload file
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="video/*"
-                  onChange={handleFileUpload}
-                  style={{ display: "none" }}
-                />
-              </div>
-            </form>
-          </div>
-        </div>
+              </form>
+            </div>
+          ) : null}
+        </aside>
       </div>
     </div>
   );

@@ -148,8 +148,9 @@ const Flashcards = lazy(() => import("./Flashcards.js"));
 const Calendar = lazy(() => import("./Calendar.js"));
 const Habits = lazy(() => import("./Habits.js"));
 const Health = lazy(() => import("./Health.js"));
-const Rehab = lazy(() => import("./Rehab.js"));
+const Rehab = lazy(() => import("./recovery/RecoveryRoutes"));
 const Camera = lazy(() => import("./Camera.js"));
+const ExpoConsole = lazy(() => import("./ExpoConsole.js"));
 const AIAgentModal = lazy(() =>
   import("../components/modal/AIAgentModal/AIAgentModal"),
 );
@@ -2552,7 +2553,8 @@ const Main = () => {
   const isHeaderHiddenRoute =
     location.pathname.startsWith("/portfolio") ||
     location.pathname.startsWith("/youtube") ||
-    location.pathname.startsWith("/camera");
+    location.pathname.startsWith("/camera") ||
+    location.pathname.startsWith("/expo");
 
   // AI Agent Modal State
   const [isAIAgentModalOpen, setIsAIAgentModalOpen] = useState(false);
@@ -2649,6 +2651,7 @@ const Main = () => {
               element={<VideoCallPage socket={socket} />}
             ></Route>
             <Route path="youtube" element={<Youtebe />}></Route>
+            <Route path="expo" element={<ExpoConsole />}></Route>
             <Route path="downloads" element={<SavedVideos />}></Route>
             <Route path="downloads/:videoId" element={<SingleVideo />}></Route>
             <Route
@@ -2913,7 +2916,7 @@ const Main = () => {
               {" "}
             </Route>
             <Route
-              path="/rehab"
+              path="/rehab/*"
               element={
                 <ProtectedRoute>
                   <Rehab />
