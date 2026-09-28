@@ -60,6 +60,8 @@ import { LudoIcon } from "./components/LudoIcon";
 import { PendingInvitesBanner } from "./components/PendingInvitesBanner";
 import { PlayerSelectionModal } from "./components/PlayerSelectionModal";
 import { useAudio } from "./hooks/useAudio";
+import { playFunSound } from "./utils/funSounds";
+import FunFxLayer, { createBurst } from "./components/FunFxLayer";
 import { useLudoVoice } from "./hooks/useLudoVoice";
 import { useConnectionHealth } from "./hooks/useConnectionHealth";
 import { showLudoInviteToast } from "../../utils/toastUtils";
@@ -935,56 +937,45 @@ const LudoGame = () => {
     };
   }, []);
 
+  // Comic pop-ups and board shake/jiggle that accompany the fun sounds.
+  const [fxBursts, setFxBursts] = useState([]);
+  const [boardFx, setBoardFx] = useState("");
+  const boardFxTimerRef = useRef(null);
+  const soundsEnabledRef = useRef(soundsEnabled);
+  soundsEnabledRef.current = soundsEnabled;
+
+  const removeFxBurst = useCallback((id) => {
+    setFxBursts((prev) => prev.filter((b) => b.id !== id));
+  }, []);
+
+  const triggerFx = useCallback((kind) => {
+    const burst = createBurst(kind);
+    if (burst) setFxBursts((prev) => [...prev.slice(-3), burst]);
+    const boardAnim =
+      kind === "capture" || kind === "threeSixes"
+        ? "ludo-shake"
+        : kind === "rolledSix" || kind === "win"
+          ? "ludo-jiggle"
+          : "";
+    if (!boardAnim) return;
+    // Drop the class for a frame so back-to-back effects restart the animation.
+    setBoardFx("");
+    clearTimeout(boardFxTimerRef.current);
+    requestAnimationFrame(() => setBoardFx(boardAnim));
+    boardFxTimerRef.current = setTimeout(() => setBoardFx(""), 700);
+  }, []);
+
+  useEffect(() => () => clearTimeout(boardFxTimerRef.current), []);
+
+  // Stable across renders (reads sound toggle from a ref) so socket handlers
+  // registered once still respect the latest setting.
   const playSound = useCallback(
     (soundType, options = {}) => {
-      if (!soundsEnabled) return;
-
-      resumeAudioFromGesture();
-
-      const soundConfigs = {
-          diceRoll: {
-            frequency: 400,
-            duration: 0.2,
-            type: "sine",
-            volume: 0.45,
-          },
-          pieceMove: {
-            frequency: 300,
-            duration: 0.15,
-            type: "sine",
-            volume: 0.4,
-          },
-          capture: {
-            frequency: 200,
-            duration: 0.3,
-            type: "square",
-            volume: 0.5,
-          },
-          win: { frequency: 600, duration: 0.5, type: "sine", volume: 0.6 },
-          turnChange: {
-            frequency: 350,
-            duration: 0.2,
-            type: "sine",
-            volume: 0.4,
-          },
-          buttonClick: {
-            frequency: 500,
-            duration: 0.1,
-            type: "sine",
-            volume: 0.35,
-          },
-          pieceOut: {
-            frequency: 450,
-            duration: 0.25,
-            type: "sine",
-            volume: 0.45,
-          },
-      };
-
-      const config = soundConfigs[soundType] || soundConfigs.buttonClick;
-      playTone({ ...config, ...options }).catch(() => {});
+      triggerFx(soundType);
+      if (!soundsEnabledRef.current) return;
+      playFunSound(soundType, options);
     },
-    [soundsEnabled],
+    [triggerFx],
   );
   const socketBaseUrl = useMemo(() => {
     try {
@@ -5047,8 +5038,8 @@ const LudoGame = () => {
           lastLocalDiceRollTimeRef.current = Date.now();
           isRollingRef.current = false;
 
-          // Play sound for rolling a 6 (special)
-          playSound("pieceOut", { frequency: 500, duration: 0.3 });
+          // Three sixes in a row forfeits the turn: sad trombone.
+          playSound("threeSixes");
 
           // Broadcast dice roll to other players immediately
           if (onlineMode && socketRef.current && gameId) {
@@ -5125,7 +5116,7 @@ const LudoGame = () => {
 
       // Play sound for rolling a 6 (special)
       if (value === 6) {
-        playSound("pieceOut", { frequency: 500, duration: 0.3 });
+        playSound("rolledSix");
       }
 
       // Broadcast dice roll intent for responsiveness; host snapshot remains authoritative
@@ -6388,6 +6379,8 @@ const LudoGame = () => {
         );
       }
 
+      playSound("diceRoll");
+
       // CRITICAL: Track consecutive 6s for remote players and handle limit
       const currentSixCount = consecutiveSixesRef.current[rollingPlayer] || 0;
       console.log("[ON_ROLL] Tracking consecutive 6s", {
@@ -6422,6 +6415,8 @@ const LudoGame = () => {
               reachedLimit: payload.reachedSixLimit,
             },
           );
+
+          playSound("threeSixes");
 
           // Reset consecutive 6s count for this player
           setConsecutiveSixes((prev) => ({
@@ -6458,6 +6453,7 @@ const LudoGame = () => {
 
           return; // Exit early - don't proceed with normal move logic
         }
+        playSound("rolledSix");
       } else {
         // Reset consecutive 6s count if non-6 is rolled
         if (currentSixCount > 0) {
@@ -11164,64 +11160,71 @@ const LudoGame = () => {
             playerNames[getBoardSeatIndex(playerIndex, selectedPlayerCount)]
           }`}
         >
-          {/* Actual token visual - centered in the larger touch area */}
+          {/* Re-keyed per square so the hop replays each time the token lands. */}
           <div
-            style={{
-              position: "absolute",
-              left: `${touchPadding}px`,
-              top: `${touchPadding}px`,
-              width: `${tokenSize}px`,
-              height: `${tokenSize}px`,
-              borderRadius: "50%",
-              background: `radial-gradient(circle at 35% 30%, ${adjustHexColor(piece.color, 35)}, ${piece.color} 55%, ${adjustHexColor(piece.color, -25)})`,
-              border: `2.5px solid ${adjustHexColor(piece.color, -40)}`,
-              boxShadow: isActivePlayer
-                ? `0 3px 0 ${adjustHexColor(piece.color, -45)}, 0 6px 12px rgba(0,0,0,0.35)`
-                : "none",
-              opacity: 1,
-              overflow: "hidden",
-              animation: canMove
-                ? "ludo-token-pulse 900ms ease-in-out infinite, ludo-token-glow 1200ms ease-in-out infinite"
-                : "none",
-              transform: "translateZ(0)",
-              backfaceVisibility: "hidden",
-              pointerEvents: "none",
-            }}
+            key={`hop-${x}-${y}`}
+            className="ludo-token-hop"
+            style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
           >
+            {/* Actual token visual - centered in the larger touch area */}
             <div
               style={{
                 position: "absolute",
-                left: 3,
-                top: 3,
-                right: 3,
-                bottom: 3,
-                border: `2px solid rgba(255,255,255,0.55)`,
-                borderRadius: tokenSize / 2 - 3,
+                left: `${touchPadding}px`,
+                top: `${touchPadding}px`,
+                width: `${tokenSize}px`,
+                height: `${tokenSize}px`,
+                borderRadius: "50%",
+                background: `radial-gradient(circle at 35% 30%, ${adjustHexColor(piece.color, 35)}, ${piece.color} 55%, ${adjustHexColor(piece.color, -25)})`,
+                border: `2.5px solid ${adjustHexColor(piece.color, -40)}`,
+                boxShadow: isActivePlayer
+                  ? `0 3px 0 ${adjustHexColor(piece.color, -45)}, 0 6px 12px rgba(0,0,0,0.35)`
+                  : "none",
+                opacity: 1,
+                overflow: "hidden",
+                animation: canMove
+                  ? "ludo-token-pulse 900ms ease-in-out infinite, ludo-token-glow 1200ms ease-in-out infinite"
+                  : "none",
+                transform: "translateZ(0)",
+                backfaceVisibility: "hidden",
                 pointerEvents: "none",
               }}
-            />
-            {avatar ? (
-              <img
-                src={avatar}
-                alt={players[playerIndex]?.name || "avatar"}
+            >
+              <div
                 style={{
                   position: "absolute",
-                  left: "50%",
-                  top: "50%",
-                  transform: "translate(-50%, -50%)",
-                  width: tokenSize * 0.68,
-                  height: tokenSize * 0.68,
-                  borderRadius: (tokenSize * 0.68) / 2,
-                  objectFit: "cover",
+                  left: 3,
+                  top: 3,
+                  right: 3,
+                  bottom: 3,
+                  border: `2px solid rgba(255,255,255,0.55)`,
+                  borderRadius: tokenSize / 2 - 3,
                   pointerEvents: "none",
-                  border: "1.5px solid rgba(255,255,255,0.7)",
-                  imageRendering: "-webkit-optimize-contrast",
-                  WebkitFontSmoothing: "antialiased",
-                  backfaceVisibility: "hidden",
-                  willChange: "auto",
                 }}
               />
-            ) : null}
+              {avatar ? (
+                <img
+                  src={avatar}
+                  alt={players[playerIndex]?.name || "avatar"}
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    top: "50%",
+                    transform: "translate(-50%, -50%)",
+                    width: tokenSize * 0.68,
+                    height: tokenSize * 0.68,
+                    borderRadius: (tokenSize * 0.68) / 2,
+                    objectFit: "cover",
+                    pointerEvents: "none",
+                    border: "1.5px solid rgba(255,255,255,0.7)",
+                    imageRendering: "-webkit-optimize-contrast",
+                    WebkitFontSmoothing: "antialiased",
+                    backfaceVisibility: "hidden",
+                    willChange: "auto",
+                  }}
+                />
+              ) : null}
+            </div>
           </div>
         </button>
       </div>
@@ -11580,7 +11583,11 @@ const LudoGame = () => {
               </div>
             );
           })()}
-          <div className="ludo-board-wrap" style={boardStyle}>
+          <div
+            className={`ludo-board-wrap${boardFx ? ` ${boardFx}` : ""}`}
+            style={boardStyle}
+          >
+            <FunFxLayer bursts={fxBursts} onDone={removeFxBurst} />
             <svg
               width={BOARD_SIZE}
               height={BOARD_SIZE}

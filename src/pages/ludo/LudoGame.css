@@ -2123,3 +2123,128 @@
 .ludo-leave-confirm__actions .ludo-btn {
     flex: 1;
 }
+
+/* ---------------------------------------------------------------------------
+   Fun FX: comic captions, emoji bursts, board shake, dice wiggle
+   --------------------------------------------------------------------------- */
+.ludo-fx-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ludo-fx-burst {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: ludo-fx-life 1.3s ease forwards;
+}
+
+.ludo-fx-win {
+    animation-duration: 2.2s;
+}
+
+.ludo-fx-caption {
+    font-family: "Comic Sans MS", "Chalkboard SE", "Baloo 2", system-ui, sans-serif;
+    font-size: clamp(22px, calc(var(--ludo-board-size, 360px) * 0.1), 44px);
+    font-weight: 900;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    color: #fff;
+    padding: 6px 16px;
+    border-radius: 999px;
+    background: var(--fx-color, #ff4d4f);
+    border: 3px solid #fff;
+    box-shadow: 0 6px 0 rgba(0, 0, 0, 0.18), 0 10px 24px rgba(0, 0, 0, 0.25);
+    text-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+    animation: ludo-fx-caption-pop 0.55s cubic-bezier(0.2, 1.8, 0.4, 1) both;
+}
+
+.ludo-fx-particle {
+    position: absolute;
+    font-size: clamp(18px, calc(var(--ludo-board-size, 360px) * 0.065), 30px);
+    animation: ludo-fx-fly 0.95s cubic-bezier(0.15, 0.7, 0.3, 1) both;
+}
+
+.ludo-fx-win .ludo-fx-particle {
+    animation-duration: 1.6s;
+}
+
+@keyframes ludo-fx-life {
+    0%, 75% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-18px); }
+}
+
+@keyframes ludo-fx-caption-pop {
+    0% { transform: scale(0) rotate(-14deg); }
+    60% { transform: scale(1.18) rotate(4deg); }
+    100% { transform: scale(1) rotate(-3deg); }
+}
+
+@keyframes ludo-fx-fly {
+    0% { transform: translate(0, 0) scale(0.2) rotate(0); opacity: 0; }
+    15% { opacity: 1; }
+    100% {
+        transform: translate(var(--fx-dx), var(--fx-dy)) scale(1.1) rotate(var(--fx-rot));
+        opacity: 0;
+    }
+}
+
+.ludo-board-wrap.ludo-shake {
+    animation: ludo-board-shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+.ludo-board-wrap.ludo-jiggle {
+    animation: ludo-board-jiggle 0.6s ease both;
+}
+
+@keyframes ludo-board-shake {
+    10%, 90% { transform: translate3d(-2px, 0, 0) rotate(-0.4deg); }
+    20%, 80% { transform: translate3d(4px, 1px, 0) rotate(0.6deg); }
+    30%, 50%, 70% { transform: translate3d(-7px, -1px, 0) rotate(-1deg); }
+    40%, 60% { transform: translate3d(7px, 1px, 0) rotate(1deg); }
+}
+
+@keyframes ludo-board-jiggle {
+    0%, 100% { transform: scale(1); }
+    30% { transform: scale(1.025, 0.975); }
+    55% { transform: scale(0.985, 1.015); }
+    80% { transform: scale(1.008, 0.992); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ludo-board-wrap.ludo-shake,
+    .ludo-board-wrap.ludo-jiggle,
+    .ludo-fx-particle {
+        animation: none;
+    }
+    .ludo-fx-particle {
+        display: none;
+    }
+    .ludo-fx-caption {
+        animation-duration: 0.01s;
+    }
+}
+
+/* Tokens hop onto each square they land on. */
+.ludo-token-hop {
+    animation: ludo-token-hop 0.26s cubic-bezier(0.3, 0.7, 0.4, 1.5);
+}
+
+@keyframes ludo-token-hop {
+    0% { transform: translateY(0) scale(1); }
+    45% { transform: translateY(-38%) scale(1.18); }
+    78% { transform: translateY(0) scale(1.08, 0.92); }
+    100% { transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ludo-token-hop {
+        animation: none;
+    }
+}
