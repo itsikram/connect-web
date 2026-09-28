@@ -78,6 +78,13 @@ export const AGENT_ACTIONS = {
   RECOVERY_SUPPORT: "RECOVERY_SUPPORT",
   ADD_RECOVERY_DATA: "ADD_RECOVERY_DATA",
   UPDATE_LANGUAGE_SETTINGS: "UPDATE_LANGUAGE_SETTINGS",
+  // Same as the Connect app: exact settings keys and relationship tags.
+  CHANGE_SETTING: "CHANGE_SETTING",
+  SET_RELATIONSHIP: "SET_RELATIONSHIP",
+  // Handled by the agent itself (speech, chat, session).
+  SPEAK_TEXT: "SPEAK_TEXT",
+  LOGOUT: "LOGOUT",
+  CLEAR_AGENT_CHAT: "CLEAR_AGENT_CHAT",
 
   // Search / lookup
   SEARCH_VIDEO: "SEARCH_VIDEO",
@@ -137,6 +144,7 @@ export const CONNECT_REQUIRED_ACTIONS = new Set([
   AGENT_ACTIONS.ADD_CONNECT,
   AGENT_ACTIONS.UNFRIEND,
   AGENT_ACTIONS.NAVIGATE_PROFILE,
+  AGENT_ACTIONS.SET_RELATIONSHIP,
 ]);
 
 /** People lookups that should search Connect globally, not just connects. */
@@ -181,6 +189,7 @@ export const NO_CONNECT_ACTIONS = new Set([
   AGENT_ACTIONS.SEARCH_YOUTUBE,
   AGENT_ACTIONS.OPEN_VIDEO_PLAYER,
   AGENT_ACTIONS.UPDATE_SETTINGS,
+  AGENT_ACTIONS.CHANGE_SETTING,
   AGENT_ACTIONS.LOG_HEALTH,
   AGENT_ACTIONS.LOG_RECOVERY,
   AGENT_ACTIONS.RECOVERY_SUPPORT,
@@ -642,7 +651,8 @@ export const getMissingIntentSlots = (intent) => {
     (CONNECT_REQUIRED_ACTIONS.has(action) ||
       (action === AGENT_ACTIONS.QUERY_CONTENT &&
         String(intent.queryType || "").toLowerCase() === "user")) &&
-    !hasValue(intent.targetName)
+    !hasValue(intent.targetName) &&
+    !hasValue(intent.targetId)
   ) {
     missing.push("targetName");
   }

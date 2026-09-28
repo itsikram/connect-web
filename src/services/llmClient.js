@@ -577,7 +577,7 @@ const completeViaServer = async ({
     if (settings.provider === "gemini" && settings.usingUserKey && settings.apiKey) {
       payload.apiKey = settings.apiKey;
     }
-    const timeout = settings.provider === "cursor" ? 90000 : json ? 10000 : 16000;
+    const timeout = settings.provider === "cursor" ? 90000 : json ? 20000 : 16000;
     const response = await api.post("/ai-chat/complete", payload, {
       timeout,
     });
@@ -606,11 +606,14 @@ const streamViaServer = async ({
   maxTokens,
   onDelta,
   signal,
+  timeoutMs: requestedTimeoutMs,
 }) => {
   const [{ getUserFromStorage }, { getServerAddress }] = await getStreamHelpers();
   const token = getUserFromStorage()?.accessToken || "";
   const timeoutMs =
-    settings.provider === "cursor"
+    settings.provider !== "cursor" && settings.provider !== "ollama" && requestedTimeoutMs
+      ? requestedTimeoutMs
+      : settings.provider === "cursor"
       ? 90000
       : settings.provider === "ollama"
         ? 180000
@@ -860,6 +863,7 @@ export const streamChat = async ({
     maxTokens,
     onDelta,
     signal,
+    timeoutMs,
   });
 };
 

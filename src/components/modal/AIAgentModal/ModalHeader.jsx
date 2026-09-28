@@ -12,10 +12,11 @@ const ModalHeader = ({
   onToggleAutoRun,
   speakReplies = false,
   onToggleSpeak,
-  onOpenSettings,
+  onToggleProviderMenu,
+  providerMenuOpen = false,
+  showProviderCaret = true,
   onClearChat,
   canClearChat = false,
-  settingsOpen = false,
   providerLabel = "Gemini",
   modelLabel = "",
   statusLabel = "Ready",
@@ -80,14 +81,17 @@ const ModalHeader = ({
     <div className="xa-toolbar">
       <button
         type="button"
-        className={`xa-chip${settingsOpen ? " is-active" : ""}`}
-        onClick={onOpenSettings}
+        className={`xa-chip${providerMenuOpen ? " is-active" : ""}`}
+        onClick={onToggleProviderMenu}
+        aria-expanded={providerMenuOpen}
         aria-label="Select AI provider"
         title={modelLabel ? `${providerLabel} · ${modelLabel}` : providerLabel}
       >
         <i className="fas fa-brain xa-chip-accent" />
         <span>{providerLabel}</span>
-        <i className={`fas ${settingsOpen ? "fa-chevron-up" : "fa-chevron-down"} xa-chip-caret`} />
+        {showProviderCaret ? (
+          <i className={`fas ${providerMenuOpen ? "fa-chevron-up" : "fa-chevron-down"} xa-chip-caret`} />
+        ) : null}
       </button>
       <span className="xa-flex" />
       <button

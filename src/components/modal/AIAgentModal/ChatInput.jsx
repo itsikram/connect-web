@@ -8,12 +8,14 @@ import {
   isAgentSpeaking,
   isLikelyAgentEcho,
 } from "./agentEcho";
+import { playListenCue } from "./listenCue";
 
 const AUTO_SEND_DELAY_MS = 800;
 const LIVE_TALK_SILENCE_MS = 2000;
 // The server's corrected (Gemini) final already marks the end of a sentence.
 const REFINED_FINAL_SEND_MS = 300;
-const VOICE_MODES = ["bn", "en", "auto"];
+// Same order as the app's voice menu: Auto, বাংলা, English.
+const VOICE_MODES = ["auto", "bn", "en"];
 const VOICE_MODE_LANG = { bn: "bn-BD", en: "en-US", auto: "auto" };
 const VOICE_MODE_LABEL = { bn: "Bangla", en: "English", auto: "Auto (Bangla + English)" };
 const VOICE_MODE_BADGE = { bn: "বাং", en: "EN", auto: "A" };
@@ -48,6 +50,10 @@ const ChatInput = ({
   onStop,
   runningLabel = "",
   bn = false,
+  onListeningChange,
+  onRefiningChange,
+  onVoiceModeChange,
+  controlRef,
 }) => {
   const [isFocused, setIsFocused] = useState(false);
   const [voiceMode, setVoiceMode] = useState(readVoiceMode);
@@ -250,6 +256,7 @@ const ChatInput = ({
       transcribeBaseRef.current = String(valueRef.current || "").trim();
       let started = false;
       try {
+        await playListenCue();
         started = await startTranscription(nextLangCode);
       } catch (error) {
         console.error("Live transcription failed:", error);
@@ -322,6 +329,8 @@ const ChatInput = ({
     if (isListening) return undefined;
     let cancelled = false;
     let retryTimer = 0;
+    // The "your turn" chime plays once per opening, not on every retry.
+    let chimed = false;
     const tryStart = (requestedDelay) => {
       // Reopen the mic only after the speaker has been quiet for a moment,
       // so the tail of the agent's own reply is not transcribed.
@@ -336,7 +345,15 @@ const ChatInput = ({
           return;
         }
         transcribeBaseRef.current = String(valueRef.current || "").trim();
-        startTranscription(langCode)
+        const cue = chimed ? Promise.resolve() : playListenCue();
+        chimed = true;
+        cue
+          .then(() => {
+            if (cancelled || !liveTalkOnRef.current || isSpeakingRef.current) {
+              return false;
+            }
+            return startTranscription(langCode);
+          })
           .then((ok) => {
             if (cancelled || ok || !liveTalkOnRef.current) return;
             tryStart(Math.min(4000, Math.max(700, delay * 1.6)));
@@ -421,6 +438,9 @@ const ChatInput = ({
     } catch {
       /* storage unavailable */
     }
+    // Like the app: picking a language starts listening in it right away.
+    if (isListening) stopTranscription();
+    if (!liveTalkOn) onStartTalk?.();
   };
 
   // Tap: start / stop hands-free talk (like the app's mic). Long-press or
@@ -477,13 +497,6 @@ const ChatInput = ({
         hint: bn ? "এক মুহূর্ত" : "One moment",
         icon: "fa-magic",
       }
-    : isSpeaking
-    ? {
-        key: "speaking",
-        label: bn ? "বলছি…" : "Speaking…",
-        hint: bn ? "থামাতে Stop চাপুন" : "Tap Stop to interrupt",
-        icon: "fa-volume-up",
-      }
     : isListening
     ? {
         key: "listening",
@@ -497,18 +510,42 @@ const ChatInput = ({
         hint: bn ? "আবার বলতে মাইক চাপুন" : "Tap the mic to talk again",
         icon: "fa-microphone-slash",
       };
+  // While the agent talks the label says so; the hint stays the phase's.
+  const phaseBusy = ["doing", "understanding", "thinking"].includes(voicePhase.key);
+  const phaseLabel =
+    isSpeaking && !phaseBusy ? (bn ? "বলছি…" : "Speaking…") : voicePhase.label;
   const showVoicePanel = liveTalkOn || isListening || refining;
+
+  useEffect(() => {
+    onListeningChange?.(Boolean(isListening));
+  }, [isListening, onListeningChange]);
+  useEffect(() => {
+    onRefiningChange?.(Boolean(refining));
+  }, [refining, onRefiningChange]);
+  useEffect(() => {
+    onVoiceModeChange?.(voiceMode);
+  }, [voiceMode, onVoiceModeChange]);
+  // Lets the minimized pill drive the mic and the language menu.
+  if (controlRef) {
+    controlRef.current = {
+      toggleMic: handleMicClick,
+      chooseVoiceMode,
+    };
+  }
   const transcript = String(value || "").trim();
 
   return (
     <div className="xa-composer-area">
       {showVoicePanel ? (
-        <div className={`xa-voice-panel phase-${voicePhase.key}`} aria-live="polite">
+        <div
+          className={`xa-voice-panel phase-${isSpeaking && !phaseBusy ? "speaking" : voicePhase.key}`}
+          aria-live="polite"
+        >
           <button
             type="button"
             className="xa-pulse"
             onClick={handleMicClick}
-            aria-label={voicePhase.label}
+            aria-label={phaseLabel}
           >
             <span className="xa-pulse-ring" />
             <span className="xa-pulse-core">
@@ -516,7 +553,7 @@ const ChatInput = ({
             </span>
           </button>
           <div className="xa-voice-text">
-            <span className="xa-voice-phase">{voicePhase.label}</span>
+            <span className="xa-voice-phase">{phaseLabel}</span>
             <span className={`xa-voice-transcript${transcript ? "" : " is-hint"}`}>
               {transcript || voicePhase.hint}
             </span>

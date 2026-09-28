@@ -174,3 +174,81 @@ export const matchSpokenChoice = (text, choices = []) => {
   );
   return hits.length === 1 ? hits[0] : null;
 };
+
+/** Relationship tags a connection can carry (same list as the Connect app). */
+export const RELATIONSHIP_OPTIONS = [
+  "Friend", "Best Friend", "Family", "Parent", "Child", "Sibling", "Relative",
+  "Partner", "Spouse", "Fiance", "Dating", "Ex-Partner", "Neighbor",
+  "Colleague", "Manager", "Mentor", "Mentee", "Classmate", "Teacher", "Student",
+  "Business Partner", "Client", "Customer", "Professional Contact",
+  "Teammate", "Club Member", "Community Member", "Roommate", "Healthcare Provider",
+  "Caregiver", "Emergency Contact",
+];
+
+/** Spoken words that mean one of the relationship tags above. */
+const RELATIONSHIP_SYNONYMS = {
+  Friend: ["friend", "friends", "bondhu", "বন্ধু", "dost"],
+  "Best Friend": ["best friend", "bestfriend", "bff", "বেস্ট ফ্রেন্ড", "প্রিয় বন্ধু"],
+  Family: ["family", "poribar", "পরিবার"],
+  Parent: ["parent", "parents", "mom", "mother", "mum", "ma", "ammu", "amma", "dad", "father", "papa", "abbu", "abba", "baba", "মা", "আম্মু", "বাবা", "আব্বু"],
+  Child: ["child", "children", "kid", "son", "daughter", "chele", "meye", "ছেলে", "মেয়ে", "সন্তান"],
+  Sibling: ["sibling", "siblings", "brother", "sister", "bhai", "bhaiya", "bon", "apu", "ভাই", "ভাইয়া", "বোন", "আপু"],
+  Relative: ["relative", "relatives", "cousin", "uncle", "aunt", "aunty", "mama", "chacha", "khala", "fufu", "nana", "nani", "dada", "dadi", "আত্মীয়"],
+  Partner: ["partner", "girlfriend", "boyfriend", "gf", "bf"],
+  Spouse: ["spouse", "wife", "husband", "bou", "biwi", "swami", "বউ", "স্ত্রী", "স্বামী"],
+  Fiance: ["fiance", "fiancee", "fiancé", "fiancée", "engaged", "বাগদত্তা"],
+  "Ex-Partner": ["ex", "ex partner", "ex-partner", "ex girlfriend", "ex boyfriend"],
+  Neighbor: ["neighbor", "neighbour", "protibeshi", "প্রতিবেশী"],
+  Colleague: ["colleague", "coworker", "co-worker", "office friend", "সহকর্মী"],
+  Manager: ["manager", "boss", "বস"],
+  Teacher: ["teacher", "sir", "madam", "shikkhok", "শিক্ষক"],
+  Student: ["student", "chatro", "ছাত্র", "ছাত্রী"],
+  Classmate: ["classmate", "class mate", "সহপাঠী"],
+  Roommate: ["roommate", "room mate", "flatmate"],
+  "Emergency Contact": ["emergency contact", "emergency"],
+};
+
+const normalizeTag = (value) =>
+  String(value || "").normalize("NFC").toLowerCase().replace(/[_\s]+/g, " ").trim();
+
+/**
+ * Maps spoken relationship words to the app's relationship tags, keeping any
+ * custom tag in Title Case. Duplicates removed.
+ */
+export const normalizeRelationshipTypes = (values) => {
+  const list = Array.isArray(values)
+    ? values
+    : String(values ?? "")
+        .split(/,|\band\b|\/|&|\s(?:এবং|ও)\s/)
+        .map((item) => item.trim());
+  const result = [];
+  for (const item of list) {
+    const text = normalizeTag(String(item ?? "")).replace(/^(my|a|an|as|amar|আমার)\s+/, "");
+    if (!text) continue;
+    const option =
+      RELATIONSHIP_OPTIONS.find((candidate) => normalizeTag(candidate) === text) ||
+      Object.entries(RELATIONSHIP_SYNONYMS).find(([, words]) =>
+        words.some((word) => normalizeTag(word) === text),
+      )?.[0] ||
+      text.replace(/(^|\s)\S/g, (letter) => letter.toUpperCase());
+    if (!result.some((existing) => normalizeTag(existing) === normalizeTag(option))) {
+      result.push(option);
+    }
+  }
+  return result;
+};
+
+/**
+ * Applies a relationship change. `mode` "add" keeps existing tags, "remove"
+ * drops the named ones and "set" (default) replaces them.
+ */
+export const applyRelationshipChange = (current = [], requested = [], mode = "set") => {
+  const same = (a, b) => normalizeTag(a) === normalizeTag(b);
+  if (mode === "remove") {
+    return current.filter((tag) => !requested.some((item) => same(item, tag)));
+  }
+  if (mode === "add") {
+    return [...current, ...requested.filter((item) => !current.some((tag) => same(item, tag)))];
+  }
+  return requested;
+};

@@ -18,6 +18,12 @@ import {
 } from "../components/modal/AIAgentModal/banglish";
 import { normalizeBanglaCommand } from "../components/modal/AIAgentModal/agentFastPath";
 import {
+  describeAgentActionsForPrompt,
+  nativeActionToWebIntent,
+} from "../components/modal/AIAgentModal/nativeAgentActions";
+import { describeAgentSettingsForPrompt } from "../components/modal/AIAgentModal/agentAppSettings";
+import { RELATIONSHIP_OPTIONS } from "../components/modal/AIAgentModal/agentRelations";
+import {
   completeChat,
   streamChat,
   extractGeminiText,
@@ -121,6 +127,188 @@ export const PLANNER_CONFIRM_ACTIONS = new Set([
   "UNFRIEND",
 ]);
 
+
+// ── Connect app agent prompt ────────────────────────────────────────────
+// The same system prompt, action catalog, settings list and output contract
+// the Connect mobile app sends (src/services/aiAgentService.ts), so the model
+// plans identical actions on web and mobile.
+export const NATIVE_AGENT_SYSTEM_PROMPT = `
+You are Connect AI: a capable, warm, and practical mobile assistant inside the Connect app.
+Your goal is to turn natural requests into safe, useful outcomes with as little friction as possible.
+
+PRIORITIES
+1. Understand intent before acting. Use the user's language and mirror their tone; support Bangla,
+   Banglish, English, and mixed language.
+2. Be concise but personable. Use fresh, natural wording instead of repetitive canned phrases.
+   For a normal answer, give the most useful next step and avoid unnecessary explanation.
+3. Never invent app data, IDs, permissions, settings, connect details, or completed actions.
+   Treat the authenticated profile, active context, and known connect profiles as the only sources
+   of truth. If information is missing, say so or ask one focused clarification.
+4. Prefer one clear action plan. If a request contains independent tasks, return the smallest
+   ordered set of actions that completes them. Do not duplicate actions.
+5. Protect user control: set requires_confirmation to true for sensitive or irreversible actions
+   when confirmation is appropriate, and never bypass ambiguity or authorization.
+
+REAL-LIFE COMMUNICATION
+- Sound like a thoughtful, emotionally intelligent professional, not a chatbot.
+- For messages the user may send to another person, be warm, clear, tactful, and appropriately
+  brief. Preserve the user's meaning while avoiding pressure, blame, slang, or overpromising.
+- Match the relationship and situation: use a respectful tone for new contacts or work matters,
+  and a warmer tone only when the context supports it. Never claim to be the user.
+- If the user asks for a reply, provide a ready-to-send message. If the intent or recipient is
+  unclear, ask one focused question instead of guessing.
+
+ACTION RULES
+- Whenever the user asks you to DO something in the app (open, call, message, create, post,
+  search, download, play, invite, change, look up, etc.), return the matching action(s) instead of
+  describing how to do it. Only chat without actions for pure questions or conversation.
+- Use ONLY action names from the AVAILABLE ACTIONS list below, spelled exactly, in the "action"
+  field (not "type"). Put arguments in "parameters". Give every action a unique id and
+  status "pending".
+- For questions about the user's own tasks, notes, notifications, connects, requests, events,
+  habits, or profile, use QUERY_APP_DATA instead of guessing.
+- Dates must be absolute (YYYY-MM-DD) resolved from TODAY below; times are 24h HH:mm.
+- Fitness: when the user says what they ate, use LOG_MEAL and, if they did not give numbers,
+  estimate realistic calories/protein/carbs/fat for a normal Bangladeshi portion (set estimated true);
+  mention the estimate briefly in the message. Water -> LOG_WATER, weight -> LOG_WEIGHT,
+  exercise -> LOG_WORKOUT, "how am I doing today" -> FITNESS_SUMMARY, what to eat -> FOOD_RECOMMENDATIONS,
+  diet/exercise questions -> ASK_FITNESS_COACH.
+- Recovery (quitting smoking, alcohol or drugs): be warm, never judgemental. A strong urge right now ->
+  RECOVERY_SOS; a slip/relapse -> LOG_LAPSE (it only opens the slip screen for the user to record it
+  themselves, so never say it was recorded); daily "how I feel" updates -> RECOVERY_CHECKIN;
+  a craving that passed -> LOG_CRAVING; wanting to talk -> ASK_RECOVERY_COACH; progress -> RECOVERY_SUMMARY.
+- SAFETY FIRST: if the user mentions suicide, self-harm, overdose, wanting to die or being in danger,
+  immediately use RECOVERY_HELP and reply with care, telling them they are not alone.
+- For person-dependent actions pass parameters.userName (or userId when it is known from context);
+  the app resolves and disambiguates people itself. Never guess an id.
+- Write userName the way it appears on the person's profile: prefer the exact matching name from
+  the known connects list; otherwise transliterate Bangla to English letters (রহিম -> Rahim).
+  Drop honorifics/relations such as ভাই, ভাইয়া, আপা, আপু, দা, দিদি, সাহেব, bhai, vai, apu.
+- For relationship words (my mom/মা/আম্মু, dad/বাবা/আব্বু, brother, sister, wife, husband, son,
+  daughter, best friend): if exactly one known connect's relationshipTypes (and gender) fits, pass
+  its userId and its real name as userName. Otherwise pass the word itself (e.g. userName "mom") and
+  the app will find the right person. Never invent a name.
+- For social actions, include targetName or userId and include messageText or parameters.message
+  when a message is required.
+- To change any app setting (theme, language, privacy, notifications, sounds, volume, message
+  options) return CHANGE_SETTING with parameters.setting set to an exact key from SETTINGS below and
+  parameters.value set to one of its values; for several settings at once use
+  parameters.settings {"key": value}. The app applies it immediately, so never just open Settings.
+- To label how a connect is related to the user ("set Rahim as my brother", "make her my best
+  friend", "remove colleague from Karim") return SET_RELATIONSHIP with userName, relationTypes (an
+  array of RELATIONSHIP TYPES) and mode: "set" replaces, "add" keeps existing, "remove" drops.
+- Use SEARCH_YOUTUBE with parameters.query. Use DOWNLOAD_YOUTUBE with parameters.query,
+  parameters.url, or parameters.videoId; optional title, thumbnail, quality, and audioOnly
+  parameters are supported.
+- Resolve pronouns such as him, her, ওকে, তাকে, and তাকে নিয়ে from the active context only.
+- For emotional or personal conversations, respond empathetically and without judgment. Do not
+  diagnose or invent personal facts; suggest trusted professional or emergency help when there
+  is a credible risk of harm.
+
+OUTPUT CONTRACT
+Return ONLY valid JSON. No markdown, commentary, code fences, or unknown fields.
+Use exactly this shape:
+{"type":"action|question|response|mixed","message":"user-facing text","speak":true,"requires_confirmation":false,"actions":[{"id":"unique_id","action":"REGISTERED_ACTION","status":"pending","parameters":{}}]}
+Use an empty actions array for questions and normal responses. Put the response in message.
+Set speak to true when the wording is natural for voice playback. Keep message short enough
+for a mobile screen. If clarification is needed, ask exactly one specific question and return
+type "question" with no actions.
+`.trim();
+
+// Local models get a short prompt: the server truncates Ollama system prompts
+// to 5000 characters and the action list must survive that.
+const NATIVE_COMPACT_SYSTEM_PROMPT = `
+You are Connect AI inside the Connect mobile app. Reply in the user's language (Bangla, Banglish or
+English), briefly and warmly. When the user asks you to do something in the app, return the matching
+action(s) from AVAILABLE ACTIONS with arguments in "parameters"; never invent data, ids or results.
+For people pass parameters.userName in English letters without honorifics (রহিম ভাই -> Rahim).
+For "my mom", "আম্মু", "my wife" etc. pass the word itself as userName (e.g. "mom").
+Settings: CHANGE_SETTING {"setting":"themeMode","value":"dark"} changes it at once.
+Relationships: SET_RELATIONSHIP {"userName":"Rahim","relationTypes":["Sibling"],"mode":"set"}.
+Ask one short question if something is missing.
+Return ONLY JSON: {"type":"action|question|response","message":"text","actions":[{"id":"a1","action":"NAME","status":"pending","parameters":{}}]}
+`.trim();
+
+const PRIVATE_PROFILE_KEYS = new Set([
+  "password",
+  "passwordhash",
+  "accesstoken",
+  "refreshtoken",
+  "token",
+  "authtoken",
+  "secret",
+]);
+
+const sanitizeProfile = (value) => {
+  if (Array.isArray(value)) return value.map(sanitizeProfile);
+  if (!value || typeof value !== "object") return value;
+  return Object.entries(value).reduce((result, [key, entry]) => {
+    if (!PRIVATE_PROFILE_KEYS.has(key.toLowerCase())) {
+      result[key] = sanitizeProfile(entry);
+    }
+    return result;
+  }, {});
+};
+
+export const buildNativeAgentSystemPrompt = (compact = false) => {
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, "0");
+  const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
+    now.getDate(),
+  )} (${now.toLocaleDateString("en-US", { weekday: "long" })}) ${pad(
+    now.getHours(),
+  )}:${pad(now.getMinutes())}`;
+  const settingsAndRelations = compact
+    ? ""
+    : `\n\nSETTINGS (key=values): ${describeAgentSettingsForPrompt()}\n\nRELATIONSHIP TYPES: ${RELATIONSHIP_OPTIONS.join(", ")}`;
+  return `${compact ? NATIVE_COMPACT_SYSTEM_PROMPT : NATIVE_AGENT_SYSTEM_PROMPT}\n\nTODAY: ${today}\n\nAVAILABLE ACTIONS (name(parameters): purpose):\n${describeAgentActionsForPrompt()}${settingsAndRelations}`;
+};
+
+/**
+ * The full system text for one request, built exactly like the app: prompt,
+ * preferred language, the user's own profile, the active conversation
+ * context and the known connects.
+ */
+export const buildNativeAgentRequestSystem = ({
+  provider = "gemini",
+  preferredLanguage = "eng",
+  profile = null,
+  memory = null,
+} = {}) => {
+  const languageLine = `\nPreferred response language: ${
+    preferredLanguage === "bn" ? "Bangla" : "English"
+  }.`;
+  if (provider === "ollama") {
+    const ollamaMemory = memory
+      ? {
+          activeUser: memory.activeUser,
+          activeProfile: memory.activeProfile,
+          activeConversation: memory.activeConversation,
+        }
+      : undefined;
+    const ollamaMemoryContext = ollamaMemory
+      ? `\n\nActive conversation context:\n${JSON.stringify(ollamaMemory)}`
+      : "";
+    return `${buildNativeAgentSystemPrompt(true)}${languageLine}${ollamaMemoryContext}`.slice(0, 5000);
+  }
+  const profileContext = profile
+    ? `\n\nThe following is the authenticated user's own Connect profile. Treat it as the source of truth for questions about the user. Never reveal private credentials or claim fields that are not present:\n${JSON.stringify(
+        sanitizeProfile(profile),
+      )}`
+    : "";
+  const memoryContext = memory
+    ? `\n\nActive conversation context (use only when relevant; do not invent missing values):\n${JSON.stringify(
+        memory,
+      )}`
+    : "";
+  const connectsContext = memory?.knownConnects?.length
+    ? `\n\nKnown connect profiles (use only for matching and basic details; IDs are authoritative):\n${JSON.stringify(
+        memory.knownConnects.slice(0, 60),
+      )}`
+    : "";
+  return `${buildNativeAgentSystemPrompt()}${languageLine}${profileContext}${memoryContext}${connectsContext}`;
+};
+
 let cachedActionPrompt = "";
 export const buildAgentActionPrompt = () => {
   if (cachedActionPrompt) return cachedActionPrompt;
@@ -189,6 +377,9 @@ export const parseAgentPlan = (text = "", userMessage = "") => {
     userMessage,
   })
     .map((item) => {
+      // The app's action names (the prompt's catalog) come first.
+      const nativeIntent = nativeActionToWebIntent(item || {});
+      if (nativeIntent) return nativeIntent;
       const intent = toAgentIntent(item || {});
       if (!intent) return null;
       // Forward the few extra fields toAgentIntent() does not carry.
@@ -214,8 +405,15 @@ export const parseAgentPlan = (text = "", userMessage = "") => {
       return intent;
     })
     .filter(Boolean)
-    .slice(0, 3);
-  return { reply, intents, isPlan: true };
+    .slice(0, 5);
+  const ask = parsed.ask && typeof parsed.ask === "object" ? parsed.ask : null;
+  return {
+    reply: reply || String(ask?.question || "").trim(),
+    intents,
+    isPlan: true,
+    type: parsed.type || null,
+    requiresConfirmation: parsed.requires_confirmation === true,
+  };
 };
 
 const toChatMessages = (conversationHistory = [], message, limit = 3, clip = 140) => {
@@ -526,12 +724,56 @@ export const sendToGeminiStream = async (
     memory = null,
     preferredLanguage = "eng",
     allowActions = false,
+    profile = null,
+    agentMemory = null,
   } = {},
 ) => {
   if (!hasConfiguredApiKey()) {
     const missing = missingKeyResult();
     onDelta?.(missing.response);
     return missing;
+  }
+
+  // Agent requests use the Connect app's prompt, catalog and JSON contract.
+  if (allowActions) {
+    const settings = getResolvedAgentSettings();
+    const isOllama = settings.provider === "ollama";
+    try {
+      const history = conversationHistory
+        .filter((item) => typeof item?.content === "string" && item.content.trim())
+        .slice(isOllama ? -4 : -8)
+        .map((item) => ({
+          role: item.role === "assistant" ? "assistant" : "user",
+          content: isOllama ? item.content.slice(-1200) : item.content,
+        }));
+      const responseText = await streamChat({
+        system: buildNativeAgentRequestSystem({
+          provider: settings.provider,
+          preferredLanguage,
+          profile,
+          memory: agentMemory,
+        }),
+        messages: [...history, { role: "user", content: String(message) }],
+        json: true,
+        temperature: 0.25,
+        maxTokens: isOllama ? 220 : 400,
+        timeoutMs: 30000,
+        operationLabel: "Agent request",
+        onDelta,
+        signal,
+      });
+      if (!responseText) {
+        throw new Error("The AI Agent returned an empty response.");
+      }
+      return { response: responseText, suggestedAction: null, success: true };
+    } catch (error) {
+      if (error?.name === "AbortError") throw error;
+      return {
+        response: error?.message || "Sorry, the AI Agent is unavailable.",
+        suggestedAction: null,
+        success: false,
+      };
+    }
   }
 
   const detectedLanguage = detectAgentLanguage(message);
@@ -551,7 +793,6 @@ export const sendToGeminiStream = async (
     if (compact) extra.push(`Ctx:${JSON.stringify(compact)}`);
   }
   if (voice) extra.push("Live voice. 1–2 short sentences.");
-  if (allowActions) extra.push(`\n${buildAgentActionPrompt()}`);
 
   try {
     const responseText = await streamChat({
@@ -563,8 +804,7 @@ export const sendToGeminiStream = async (
         voice ? 110 : 140,
       ),
       temperature: voice ? 0.15 : 0.25,
-      // Action plans are JSON and need more room than a one-line reply.
-      maxTokens: allowActions ? 220 : voice ? 80 : 120,
+      maxTokens: voice ? 80 : 120,
       timeoutMs: voice ? 10000 : 12000,
       operationLabel: "Chat request",
       onDelta,
@@ -587,6 +827,45 @@ export const sendToGeminiStream = async (
       success: false,
     };
   }
+};
+
+/**
+ * Turns raw action results into a short, natural report in the user's
+ * language, with the same wording the Connect app asks for.
+ */
+export const narrateAgentResults = async ({
+  request,
+  results = [],
+  language = "en",
+  signal,
+} = {}) => {
+  const lines = results
+    .map(
+      (result) =>
+        `${result.label || result.action}: ${result.ok ? "done" : result.cancelled ? "cancelled" : "failed"} — ${result.message}`,
+    )
+    .join("\n");
+  const raw = await streamChat({
+    system: buildNativeAgentRequestSystem({
+      provider: getResolvedAgentSettings().provider,
+      preferredLanguage: language === "en" ? "eng" : "bn",
+    }),
+    messages: [
+      {
+        role: "user",
+        content: `I asked: "${request}"\nThe app ran these actions:\n${lines}\nReport back to me naturally in ${language === "en" ? "English" : "Bangla"} in one or two short spoken sentences, mentioning the important items. Do not plan any new actions.`,
+      },
+    ],
+    json: true,
+    temperature: 0.25,
+    maxTokens: 400,
+    timeoutMs: 30000,
+    operationLabel: "Agent report",
+    signal,
+  });
+  const parsed = extractJsonObject(raw);
+  if (parsed) return String(parsed.message || parsed.reply || "").trim();
+  return looksLikeAgentPlan(raw) ? "" : String(raw || "").trim();
 };
 
 export const sendToGemini = async (message, conversationHistory = []) =>

@@ -33,6 +33,11 @@ import {
 import { generateGameId, emitSocket } from "../../../pages/ludo/utils/socketHelpers";
 import { getRecoverySupportMessage } from "../../../utils/rehabApi";
 import { isHealthAction, planHealthAction } from "./agentHealth";
+import { findAgentSetting, resolveAgentSetting } from "./agentAppSettings";
+import {
+  applyRelationshipChange,
+  normalizeRelationshipTypes,
+} from "./agentRelations";
 import {
   extractYouTubeUrl,
   extractMediaUrl,
@@ -1499,7 +1504,7 @@ export const executeAction = async ({
           go("/notes");
           return { success: true, message: "📝 Opening Notes…" };
         }
-        const title = noteContent.substring(0, 80);
+        const title = String(params?.title || "").trim() || noteContent.substring(0, 80);
         const created = await api.post("/notes", { title, content: noteContent });
         emitConnectEvent("connect:notes-changed");
         const note = created.data?.note || created.data;
@@ -1578,6 +1583,32 @@ export const executeAction = async ({
       case "EDIT_TASK": {
         const matchQuery = (searchQuery || label || "").trim();
         const newTaskContent = (messageText || matchQuery).trim();
+        const completedValue = params?.completed;
+        const setCompleted =
+          completedValue === true || completedValue === "true"
+            ? true
+            : completedValue === false || completedValue === "false"
+              ? false
+              : null;
+        if (setCompleted !== null && !messageText) {
+          const listRes = await api.get("/tasks");
+          const list = unwrapList(listRes.data, ["tasks"]);
+          if (!list.length) {
+            return { success: false, message: "You don't have any tasks yet." };
+          }
+          const found =
+            list.find((task) => String(task._id) === String(params?.taskId || "")) ||
+            matchByText(list, matchQuery, (task) => task.text || "") ||
+            list[0];
+          await api.put(`/tasks/${found._id}`, { completed: setCompleted });
+          emitConnectEvent("connect:tasks-changed");
+          return {
+            success: true,
+            message: setCompleted
+              ? `✓ Marked done: "${clipText(found.text, 60)}"`
+              : `Reopened task: "${clipText(found.text, 60)}"`,
+          };
+        }
         if (!newTaskContent) {
           return { success: false, message: "What should the task be?" };
         }
@@ -1619,6 +1650,18 @@ export const executeAction = async ({
           .filter(Boolean)
           .join(" ");
         const when = parseCalendarWhen(rawText);
+        // The app's planner sends an exact date (YYYY-MM-DD) and time (HH:mm).
+        if (/^\d{4}-\d{2}-\d{2}$/.test(String(params?.date || ""))) {
+          const exact = new Date(`${params.date}T00:00:00`);
+          if (!Number.isNaN(exact.getTime())) {
+            when.dateKey = params.date;
+            when.iso = exact.toISOString();
+            when.foundDate = true;
+          }
+        }
+        if (/^\d{1,2}:\d{2}$/.test(String(params?.time || ""))) {
+          when.time = String(params.time).padStart(5, "0");
+        }
         const title = stripDatePhrases(searchQuery || label || messageText || "").trim();
         if (!title) {
           go("/calendar");
@@ -1874,6 +1917,90 @@ export const executeAction = async ({
             ? "🎬 Opening the video player with that file."
             : "🎬 Opening the video player.",
           memory: url ? { lastVideoUrl: url } : {},
+        };
+      }
+
+      case "CHANGE_SETTING": {
+        // One action may carry several settings: {"settings": {"key": value}}.
+        const batch =
+          params?.settings && typeof params.settings === "object"
+            ? Object.entries(params.settings)
+            : params?.setting != null && String(params.setting).trim()
+              ? [[String(params.setting).trim(), params.value ?? params.enabled ?? params.state]]
+              : [];
+        if (!batch.length) {
+          // No exact key: fall back to reading the request ("dark mode").
+          return executeAction({
+            action: "UPDATE_SETTINGS",
+            searchQuery,
+            label,
+            messageText,
+            sourceText,
+            myProfile,
+            preferredLanguage,
+            navigate,
+            onClose,
+          });
+        }
+        const current = store.getState()?.setting || {};
+        const updates = {};
+        const messages = [];
+        const failures = [];
+        batch.forEach(([setting, value]) => {
+          try {
+            const key = findAgentSetting(setting)?.key || setting;
+            const resolved = resolveAgentSetting(setting, value, current[key]);
+            Object.assign(updates, resolved.updates);
+            messages.push(`${resolved.label} set to ${resolved.display}.`);
+          } catch (error) {
+            failures.push(error?.message || String(error));
+          }
+        });
+        if (!messages.length) {
+          return { success: false, message: failures[0] || "Tell me which setting to change." };
+        }
+        const res = await api.post("/setting/update", updates);
+        if (res.data) store.dispatch(loadSettings(res.data));
+        if (updates.themeMode) applyThemeMode(updates.themeMode);
+        emitConnectEvent("connect:settings-updated", updates);
+        return { success: true, message: [...messages, ...failures].join(" ") };
+      }
+
+      case "SET_RELATIONSHIP": {
+        if (!connect?._id) {
+          return { success: false, message: "Who should I update?" };
+        }
+        const rawMode = String(params?.mode || "").trim().toLowerCase();
+        const mode = rawMode === "add" || rawMode === "remove" ? rawMode : "set";
+        const requested = normalizeRelationshipTypes(params?.relationTypes);
+        if (!requested.length && mode !== "set") {
+          return {
+            success: false,
+            message: "Tell me which relationship to use, for example Friend or Parent.",
+          };
+        }
+        let current = [];
+        if (mode !== "set") {
+          const res = await api.get("/connects/relationships", {
+            params: { profileId: connect._id },
+          });
+          current = Array.isArray(res.data?.relationTypes)
+            ? res.data.relationTypes.map(String)
+            : [];
+        }
+        const next = applyRelationshipChange(current, requested, mode);
+        await api.put("/connects/relationships", {
+          profileId: connect._id,
+          relationTypes: next,
+        });
+        const who = connectName || "This connection";
+        return {
+          success: true,
+          relationTypes: next,
+          profileId: connect._id,
+          message: next.length
+            ? `${who} is now saved as: ${next.join(", ")}.`
+            : `Cleared the relationship for ${who}.`,
         };
       }
 
@@ -2371,6 +2498,8 @@ const runHealthAction = async ({ action, params = {}, messageText, searchQuery, 
  */
 export const getActionMeta = (action) => {
   const map = {
+    CHANGE_SETTING: { label: "Change setting", icon: "fa-sliders-h", color: "#00d4ff" },
+    SET_RELATIONSHIP: { label: "Set connection relationship", icon: "fa-user-tag", color: "#00d4ff" },
     VIDEO_CALL: { label: "Video Call", icon: "fa-video", color: "#00d4ff" },
     AUDIO_CALL: { label: "Audio Call", icon: "fa-phone-alt", color: "#00c851" },
     SEND_MESSAGE: {

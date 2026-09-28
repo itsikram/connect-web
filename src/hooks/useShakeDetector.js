@@ -2,13 +2,31 @@ import { useEffect, useRef } from "react";
 
 // Shake detection over DeviceMotion: a shake is several sharp acceleration
 // spikes inside a short window. iOS 13+ gates motion events behind a
-// permission prompt that must come from a user gesture, so the request is
-// made on the first tap/keypress after mount.
+// permission prompt that must come from a user gesture. The prompt is shown
+// at most once per device (on the first tap after the very first launch);
+// the answer is remembered so opening the app never asks again. Later
+// launches just listen: if iOS still honours the earlier grant, shaking works.
 // Same thresholds as the Expo app (1.6 g jolt, 3 hits within 700 ms).
 const SPIKE_THRESHOLD = 1.6 * 9.81; // m/s² change between samples
 const SPIKES_REQUIRED = 3;
 const SPIKE_WINDOW_MS = 700;
 const COOLDOWN_MS = 1500;
+
+const MOTION_PERMISSION_KEY = "connect.motionPermission";
+
+const readMotionDecision = () => {
+  try {
+    return window.localStorage.getItem(MOTION_PERMISSION_KEY) || "";
+  } catch (_) {
+    return "";
+  }
+};
+
+const saveMotionDecision = (value) => {
+  try {
+    window.localStorage.setItem(MOTION_PERMISSION_KEY, value);
+  } catch (_) {}
+};
 
 const hasMotionPermissionApi = () =>
   typeof window !== "undefined" &&
@@ -69,18 +87,22 @@ export default function useShakeDetector(onShake, { enabled = true } = {}) {
 
     function requestOnGesture() {
       removeGestureListeners();
+      // Remember that we asked before the prompt even resolves, so a reload
+      // mid-prompt never leads to asking again.
+      saveMotionDecision("asked");
       window.DeviceMotionEvent.requestPermission()
         .then((state) => {
-          if (state === "granted") startListening();
+          saveMotionDecision(state === "granted" ? "granted" : "denied");
         })
-        .catch(() => {});
+        .catch(() => saveMotionDecision("denied"));
     }
 
-    if (hasMotionPermissionApi()) {
+    // Listening is harmless without permission (no events arrive), so always
+    // listen; only the one-time prompt depends on the stored decision.
+    startListening();
+    if (hasMotionPermissionApi() && !readMotionDecision()) {
       window.addEventListener("touchend", requestOnGesture);
       window.addEventListener("click", requestOnGesture);
-    } else {
-      startListening();
     }
 
     return () => {

@@ -90,6 +90,8 @@ const ChatArea = ({
   isFreshChat = false,
   runningLabel = "",
   bn = false,
+  actionTray = null,
+  voiceProps = {},
 }) => {
   const lastStreaming = Boolean(messages[messages.length - 1]?.streaming);
 
@@ -149,7 +151,10 @@ const ChatArea = ({
         <div ref={messagesEndRef} />
       </div>
 
+      {actionTray}
+
       <ChatInput
+        {...voiceProps}
         value={inputValue}
         onChange={onInputChange}
         onSend={onSendMessage}

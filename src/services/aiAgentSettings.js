@@ -171,6 +171,23 @@ export const applyPlatformAiDefaults = (payload = {}) => {
 };
 
 export const getAgentSettings = () => readStored();
+export const getPlatformAiDefaults = () => platformDefaults;
+
+/**
+ * Providers the agent can use right now (enabled by the admin and
+ * configured on the server or with a personal key), like the app's
+ * provider menu.
+ */
+export const getAvailableProviders = () => {
+  const stored = readStored();
+  return Object.keys(AI_PROVIDERS).filter((id) => {
+    if (platformDefaults.enabled?.[id] === false) return false;
+    if (id === "cursor") return cursorServerConfigured === true || platformDefaults.configured?.cursor === true;
+    if (platformDefaults.configured?.[id]) return true;
+    if (id === "ollama") return false;
+    return Boolean(String(stored.keys?.[id] || "").trim() || envKeysFor(id));
+  });
+};
 export const subscribeAgentSettings = (listener) => { listeners.add(listener); return () => listeners.delete(listener); };
 
 export const saveAgentSettings = (patch = {}) => {

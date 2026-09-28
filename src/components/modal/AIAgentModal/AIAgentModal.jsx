@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useContext } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
@@ -69,6 +69,17 @@ import {
 import { detectAgentLanguage } from "./banglish";
 import { pickBestYoutubeMatch } from "./agentActionHelpers";
 import useAgentSpeech from "../../../hooks/useAgentSpeech";
+import { AuthContext } from "../../../contexts/AuthContext";
+import {
+  AI_PROVIDERS,
+  getAvailableProviders,
+  saveAgentSettings,
+} from "../../../services/aiAgentSettings";
+import {
+  getNativeActionDefinition,
+  getNativeActionLabel,
+} from "./nativeAgentActions";
+import { preloadListenCue } from "./listenCue";
 
 const createId = () => Date.now() + Math.random();
 
@@ -87,21 +98,89 @@ const startsMedia = (intent) =>
 const STOP_CONVERSATION =
   /^(stop|stop listening|bye|goodbye|that'?s all|nothing else|থামো|থামুন|থাক|বিদায়|আর কিছু না|আর কিছু লাগবে না|আপাতত এটুকুই|bas|ar kichu na)[.!।\s]*$/i;
 
+// Same welcome line as the Connect app.
 const INITIAL_MESSAGE = {
   id: 1,
   type: "agent",
   meta: "welcome",
   content:
-    'Hi! I\'m your AI Agent 🤖 Just tell me what you want done in Connect — call or message someone, post, add tasks, notes and events, find videos, change settings, or look up your data. Tap the headset to talk hands-free. Try: "message Atik I\'m running late", "add a meeting tomorrow at 10", or "what are my open tasks?"',
+    "Hi! I am Connect AI Agent. Ask me to search, navigate, or help with Connect.",
   timestamp: new Date(),
 };
 
 const isWelcomeMessage = (message) =>
   message?.meta === "welcome" ||
   (message?.type === "agent" &&
-    String(message.content || "").startsWith("Hi! I'm your AI Agent"));
+    /^Hi! I(?:'m your| am Connect) AI Agent/.test(String(message.content || "")));
 
-const toLlmHistory = (messages = [], limit = 4) =>
+// Provider names as the app's provider menu shows them.
+const PROVIDER_LABELS = {
+  gemini: "Gemini",
+  openai: "OpenAI",
+  cursor: "Cursor",
+  grok: "Grok",
+  groq: "Groq Cloud",
+  ollama: "Ollama (Local)",
+};
+
+const VOICE_OPTIONS = [
+  { mode: "auto", label: "Auto" },
+  { mode: "bn", label: "বাংলা" },
+  { mode: "en", label: "English" },
+];
+
+// Profile fields sent to the model, like the app (large lists as counts).
+const toProfileContext = (profile) => {
+  if (!profile || typeof profile !== "object") return null;
+  return Object.entries(profile).reduce((result, [key, value]) => {
+    if (Array.isArray(value) && value.length > 20) {
+      result[`${key}Count`] = value.length;
+    } else {
+      result[key] = value;
+    }
+    return result;
+  }, {});
+};
+
+const toKnownConnect = (connect) => {
+  const nested = connect?.user && typeof connect.user === "object" ? connect.user : {};
+  return {
+    id: String(connect?._id || connect?.userId || nested._id || ""),
+    name: getConnectDisplayName(connect),
+    username: String(connect?.username || nested.username || "") || undefined,
+    bio: String(connect?.bio || nested.bio || "") || undefined,
+    profilePic: String(connect?.profilePic || nested.profilePic || "") || undefined,
+    relationshipTypes: Array.isArray(connect?.relationshipTypes)
+      ? connect.relationshipTypes
+      : [],
+    gender: String(connect?.gender || nested.gender || "") || undefined,
+  };
+};
+
+/** Name shown for an intent: the app's action label when it came from there. */
+const intentLabel = (intent) =>
+  intent?.nativeAction
+    ? getNativeActionLabel(intent.nativeAction)
+    : getActionMeta(intent?.action)?.label || "";
+
+/** One-line summary under a suggested action, like the app's action tray. */
+const describePendingIntent = (intent) => {
+  const params = intent?.params || {};
+  return (
+    [
+      intent?.targetName,
+      intent?.messageText || params.caption || params.title || params.name,
+      intent?.searchQuery,
+      params.date,
+    ]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .filter((value, index, list) => list.indexOf(value) === index)
+      .join(" · ") || "Tap Run to continue"
+  );
+};
+
+const toLlmHistory = (messages = [], limit = 4, clip = 140) =>
   messages
     .filter((item) => {
       if (isWelcomeMessage(item)) return false;
@@ -112,7 +191,7 @@ const toLlmHistory = (messages = [], limit = 4) =>
     .map((item) => ({
       role: item.type === "user" ? "user" : "assistant",
       content:
-        item.content.length > 140 ? `${item.content.slice(0, 139)}…` : item.content,
+        item.content.length > clip ? `${item.content.slice(0, clip - 1)}…` : item.content,
     }));
 
 const hydrateIntent = (intent) => {
@@ -134,9 +213,10 @@ const AUTO_RUN_ACTIONS_STORAGE_KEY = "ai_agent_auto_run_actions";
 const getInitialAutoRunActions = () => {
   if (typeof window === "undefined") return false;
   try {
-    return window.localStorage.getItem(AUTO_RUN_ACTIONS_STORAGE_KEY) === "true";
+    // Auto (run actions right away) by default, like the app.
+    return window.localStorage.getItem(AUTO_RUN_ACTIONS_STORAGE_KEY) !== "false";
   } catch (_) {
-    return false;
+    return true;
   }
 };
 
@@ -223,6 +303,24 @@ const AIAgentModal = ({
   const [speakReplies, setSpeakReplies] = useState(false);
   // Label of the action currently running ("Create note"), for the status.
   const [runningLabel, setRunningLabel] = useState("");
+  // Ask mode: actions wait here until the user taps Run (the app's tray).
+  const [pendingActions, setPendingActions] = useState([]);
+  const [providerMenuOpen, setProviderMenuOpen] = useState(false);
+  const [availableProviders, setAvailableProviders] = useState(() =>
+    getAvailableProviders(),
+  );
+  // Mic state reported by the composer (drives header, mini pill, status).
+  const [isListening, setIsListening] = useState(false);
+  const [voiceRefining, setVoiceRefining] = useState(false);
+  const [voiceMode, setVoiceMode] = useState("auto");
+  const [miniLanguageMenuOpen, setMiniLanguageMenuOpen] = useState(false);
+  const voiceControlRef = useRef(null);
+  const handleSendMessageRef = useRef(null);
+  const clearChatNowRef = useRef(null);
+  // Read directly: the agent must also render outside the auth provider.
+  const { logout } = useContext(AuthContext) || {};
+  const logoutRef = useRef(logout);
+  logoutRef.current = logout;
   const {
     supported: speechSupported,
     speaking: isAgentSpeaking,
@@ -347,6 +445,9 @@ const AIAgentModal = ({
   useEffect(() => {
     if (!isOpen) {
       pendingIntentRef.current = null;
+      setPendingActions([]);
+      setProviderMenuOpen(false);
+      setMiniLanguageMenuOpen(false);
       setSettingsOpen(false);
       setIsMinimized(false);
       streamAbortRef.current?.abort();
@@ -368,14 +469,21 @@ const AIAgentModal = ({
     });
     return subscribeAgentSettings(() => {
       setLlmInfo(getResolvedAgentSettings());
+      setAvailableProviders(getAvailableProviders());
     });
   }, []);
 
   useEffect(() => {
     if (!isOpen) return undefined;
     warmupCursorProvider();
+    preloadListenCue();
     return undefined;
   }, [isOpen]);
+
+  const chooseProvider = useCallback((provider) => {
+    setProviderMenuOpen(false);
+    saveAgentSettings({ provider });
+  }, []);
 
 
 
@@ -418,10 +526,12 @@ const AIAgentModal = ({
 
   const handleMinimize = useCallback(() => {
     setSettingsOpen(false);
+    setProviderMenuOpen(false);
     setIsMinimized(true);
   }, []);
 
   const handleExpand = useCallback(() => {
+    setMiniLanguageMenuOpen(false);
     setIsMinimized(false);
   }, []);
 
@@ -564,6 +674,7 @@ const AIAgentModal = ({
       });
       addMessage({
         type: "action-result",
+        label: intentLabel(intent?.action ? intent : { action }),
         content: result.message,
         success: result.success,
         location: result.location || null,
@@ -580,8 +691,15 @@ const AIAgentModal = ({
 
   // ── Core send handler ───────────────────────────────────────────────────────
   const handleSendMessage = useCallback(
-    async (rawMessage) => {
-      const text = typeof rawMessage === "string" ? rawMessage : inputValue;
+    async (rawMessage, options = {}) => {
+      // A suggested action (Run button / confirmation) runs without a new
+      // user message and without asking the model again.
+      const presetIntent = options?.presetIntent || null;
+      const text = presetIntent
+        ? String(presetIntent.sourceText || intentLabel(presetIntent) || presetIntent.action)
+        : typeof rawMessage === "string"
+          ? rawMessage
+          : inputValue;
       if (!text || !text.trim()) return;
 
       streamAbortRef.current?.abort();
@@ -597,24 +715,26 @@ const AIAgentModal = ({
           .map((msg) =>
             msg.streaming ? { ...msg, streaming: false } : msg,
           ),
-        {
-          id: createId(),
-          timestamp: new Date(),
-          type: "user",
-          content: text,
-        },
+        ...(presetIntent
+          ? []
+          : [
+              {
+                id: createId(),
+                timestamp: new Date(),
+                type: "user",
+                content: text,
+              },
+            ]),
       ]);
-      setInputValue("");
+      if (!presetIntent) setInputValue("");
       setIsLoading(true);
       const generation = ++sendGenerationRef.current;
       const originalText = text.trim();
-      rememberUserText(myProfile?._id, originalText);
+      if (!presetIntent) rememberUserText(myProfile?._id, originalText);
       const stillCurrent = () => generation === sendGenerationRef.current;
 
-      const history = toLlmHistory(
-        messagesRef.current,
-        liveTalkOnRef.current ? 3 : 4,
-      );
+      // The app sends the last eight turns in full.
+      const history = toLlmHistory(messagesRef.current, 8, 2000);
 
       let streamPrimed = 0;
       const flushStreamMessage = (id, content, streaming) => {
@@ -711,8 +831,24 @@ const AIAgentModal = ({
             voice: liveTalkOnRef.current,
             userName: getConnectDisplayName(myProfile),
             memory: getMemoryPromptBlock(myProfile?._id),
-            preferredLanguage,
+            // In Auto voice, answer in the language the user just used.
+            preferredLanguage:
+              detectAgentLanguage(userText) !== "en" ? "bn" : preferredLanguage,
             allowActions: true,
+            profile: toProfileContext(myProfile),
+            agentMemory: (() => {
+              const remembered = getMemoryPromptBlock(myProfile?._id) || {};
+              const active = remembered.connect
+                ? { name: String(remembered.connect) }
+                : undefined;
+              return {
+                activeUser: active,
+                activeProfile: active,
+                knownConnects: (connectsCacheRef.current || [])
+                  .map(toKnownConnect)
+                  .filter((item) => item.id && item.name),
+              };
+            })(),
           });
           if (!stillCurrent()) return;
           const rawFinal = String(chat?.response || "").trim();
@@ -720,13 +856,28 @@ const AIAgentModal = ({
             ? parseAgentPlan(rawFinal, userText)
             : { reply: rawFinal, intents: [], isPlan: false };
           if (plan.intents.length) {
-            const keepReply = inserted && Boolean(plan.reply);
-            if (keepReply) flushStreamMessage(streamId, plan.reply, false);
-            else if (inserted) {
-              setMessages((prev) => prev.filter((msg) => msg.id !== streamId));
+            const bangla = detectAgentLanguage(userText) !== "en";
+            // The reply stays as the lead line, like the app.
+            const lead =
+              plan.reply ||
+              (bangla ? "ঠিক আছে, কাজটি করছি।" : "Got it. I’m taking care of that now.");
+            if (!autoRunActionsRef.current && !liveTalkOnRef.current) {
+              // Ask mode: show the actions with Run buttons instead.
+              const content = `${lead}\nReview the suggested actions below.`;
+              if (inserted) flushStreamMessage(streamId, content, false);
+              else pushDelta(content, false);
+              setPendingActions(
+                plan.intents.map((intent) => ({
+                  ...intent,
+                  sourceText: intent.sourceText || userText,
+                })),
+              );
+              return;
             }
-            // The streamed reply already told the user what is happening.
-            skipAnnounceRef.current = keepReply;
+            if (inserted) flushStreamMessage(streamId, lead, false);
+            else pushDelta(lead, false);
+            // The lead line already told the user what is happening.
+            skipAnnounceRef.current = true;
             try {
               await runPlannedIntents(plan);
             } finally {
@@ -780,7 +931,11 @@ const AIAgentModal = ({
       };
 
       // "Stop / bye / থামো" ends a hands-free conversation politely.
-      if (liveTalkOnRef.current && STOP_CONVERSATION.test(originalText)) {
+      if (
+        !presetIntent &&
+        liveTalkOnRef.current &&
+        STOP_CONVERSATION.test(originalText)
+      ) {
         const bangla = detectAgentLanguage(originalText) !== "en";
         const goodbye = bangla
           ? "ঠিক আছে। দরকার হলে আবার ডাকবেন।"
@@ -796,6 +951,7 @@ const AIAgentModal = ({
       // or a name) picks from the latest person list.
       const lastPicker = messagesRef.current[messagesRef.current.length - 1];
       if (
+        !presetIntent &&
         lastPicker?.type === "connect-picker" &&
         Array.isArray(lastPicker.connects) &&
         lastPicker.connects.length > 1 &&
@@ -824,6 +980,7 @@ const AIAgentModal = ({
       // Voice transcripts often end with "।" (Bangla full stop).
       const shortAnswer = originalText.replace(/[।.!?\s]+$/u, "");
       if (
+        !presetIntent &&
         latestMessage?.confirmPrompt &&
         Array.isArray(latestMessage.actions) &&
         (isAffirmativeFollowUp(shortAnswer) || isCancelFollowUp(shortAnswer))
@@ -844,7 +1001,7 @@ const AIAgentModal = ({
         return;
       }
 
-      if (pendingIntentRef.current && isCancelFollowUp(originalText)) {
+      if (!presetIntent && pendingIntentRef.current && isCancelFollowUp(originalText)) {
         pendingIntentRef.current = null;
         addMessage({
           type: "agent",
@@ -854,7 +1011,7 @@ const AIAgentModal = ({
         return;
       }
 
-      if (!pendingIntentRef.current) {
+      if (!presetIntent && !pendingIntentRef.current) {
         const instantReply = getInstantAgentReply(originalText);
         if (instantReply) {
           addMessage({ type: "agent", content: instantReply });
@@ -986,6 +1143,7 @@ const AIAgentModal = ({
         if (!stillCurrent()) return;
         addMessage({
           type: "action-result",
+          label: intent ? intentLabel(intent) : undefined,
           content,
           success: result.success,
           location: result.location || null,
@@ -1000,6 +1158,14 @@ const AIAgentModal = ({
           ? connectsCacheRef.current
           : [];
         const connects = cached.length >= localConnects.length ? cached : localConnects;
+        // The planner may name the person by id (from the known connects).
+        if (intent.targetId) {
+          const byId = connects.find(
+            (connect) => String(connect?._id || "") === String(intent.targetId),
+          );
+          if (byId) return { matched: [byId], searchableConnects: connects };
+          if (!intent.targetName) return { matched: [], searchableConnects: connects };
+        }
         // "my mom", "আম্মু", "baba": match the relationship tags on connects
         // (never a name search, which could find a stranger called "Momin").
         const related = matchRelationConnects(
@@ -1019,7 +1185,7 @@ const AIAgentModal = ({
             relation: related.relation,
           };
         }
-        const wantedName = stripHonorifics(intent.targetName);
+        const wantedName = stripHonorifics(intent.targetName || "");
         let matched = searchConnectsByName(connects, wantedName);
         if (matched.length === 0) {
           const names = splitConnectNames(wantedName);
@@ -1080,6 +1246,37 @@ const AIAgentModal = ({
             ? replyOverride
             : getSlotQuestion(nextIntent, missingSlots);
           pauseForInput(nextIntent, missingSlots, question);
+          return true;
+        }
+
+        // Ask mode: wait for the user's Run tap, like the app's action tray.
+        if (!autoRun) {
+          pendingIntentRef.current = null;
+          setPendingActions((previous) => [...previous, nextIntent]);
+          addMessage({
+            type: "agent",
+            content: replyOverride
+              ? `${replyOverride}\nReview the suggested actions below.`
+              : "Review the suggested actions below.",
+          });
+          return true;
+        }
+
+        if (nextIntent.action === "SPEAK_TEXT") {
+          const line = String(nextIntent.messageText || replyOverride || "").trim();
+          if (line) {
+            addMessage({ type: "agent", content: line, skipSpeech: true });
+            speakText(line, { lang: detectAgentLanguage(line) });
+          }
+          return true;
+        }
+        if (nextIntent.action === "CLEAR_AGENT_CHAT") {
+          await clearChatNowRef.current?.();
+          return true;
+        }
+        if (nextIntent.action === "LOGOUT") {
+          onClose?.();
+          logoutRef.current?.();
           return true;
         }
 
@@ -1279,38 +1476,40 @@ const AIAgentModal = ({
         let handledAny = false;
         for (const intent of intents) {
           if (!stillCurrent()) return;
-          if (PLANNER_CONFIRM_ACTIONS.has(intent.action)) {
-            const meta = getActionMeta(intent.action);
-            const target = intent.searchQuery || intent.label || "";
+          // Irreversible actions always ask first, even in Auto (the app's
+          // destructive actions plus deletes).
+          if (
+            PLANNER_CONFIRM_ACTIONS.has(intent.action) ||
+            getNativeActionDefinition(intent.nativeAction)?.destructive
+          ) {
+            const label = intentLabel(intent);
+            const detail = [intent.targetName, intent.messageText || intent.searchQuery]
+              .map((value) => String(value || "").trim())
+              .filter(Boolean)
+              .join(" · ");
+            const bangla = detectAgentLanguage(originalText) !== "en";
             addMessage({
               type: "agent",
               confirmPrompt: true,
-              content: `${meta.label}${target ? `: "${target}"` : ""}? This can't be undone. Say "yes" or tap below.`,
+              content: bangla
+                ? `${detail ? `${detail} — ` : ""}এই কাজটি করব? করতে চাইলে হ্যাঁ চাপুন।`
+                : `${label}${detail ? ` for ${detail}` : ""}. Should I do it? Tap Yes to confirm.`,
               // Two buttons on purpose: single-button messages auto-run.
               actions: [
                 {
-                  label: `Yes, ${meta.label.toLowerCase()}`,
-                  onClick: async () => {
-                    const result = await runAction({
-                      ...intent,
-                      connect: null,
-                      sourceText: originalText,
-                      myProfile,
-                      preferredLanguage,
-                      navigate,
-                      onClose: handleMinimize,
-                    });
-                    addMessage({
-                      type: "action-result",
-                      content: result.message,
-                      success: result.success,
-                    });
-                  },
+                  label: bangla ? "হ্যাঁ, করুন" : "Yes",
+                  onClick: () =>
+                    handleSendMessageRef.current?.(null, {
+                      presetIntent: { ...intent, sourceText: originalText },
+                    }),
                 },
                 {
-                  label: "Cancel",
+                  label: bangla ? "না" : "Cancel",
                   onClick: () =>
-                    addMessage({ type: "agent", content: "Okay, I left it as is." }),
+                    addMessage({
+                      type: "agent",
+                      content: bangla ? "ঠিক আছে, যেমন ছিল তেমনই রাখলাম।" : "Okay, I left it as is.",
+                    }),
                 },
               ],
             });
@@ -1334,6 +1533,25 @@ const AIAgentModal = ({
           });
         }
       };
+
+      if (presetIntent) {
+        try {
+          await runIntent(presetIntent, "", { forceExecute: true });
+        } catch (err) {
+          console.error("[AIAgentModal]", err);
+          if (stillCurrent()) {
+            addMessage({
+              type: "action-result",
+              label: intentLabel(presetIntent),
+              content: err?.message || "Action failed.",
+              success: false,
+            });
+          }
+        } finally {
+          if (stillCurrent()) setIsLoading(false);
+        }
+        return;
+      }
 
       try {
         const pendingSnapshot = pendingIntentRef.current;
@@ -1425,8 +1643,25 @@ const AIAgentModal = ({
       announceUpcomingAction,
       preferredLanguage,
       speakText,
+      onClose,
     ],
   );
+  handleSendMessageRef.current = handleSendMessage;
+
+  /** Runs one suggested action from the Ask-mode tray. */
+  const runPendingAction = useCallback(async (intent) => {
+    setPendingActions((previous) => previous.filter((item) => item !== intent));
+    await handleSendMessageRef.current?.(null, { presetIntent: intent });
+  }, []);
+
+  const runAllPendingActions = useCallback(async () => {
+    const queue = [...pendingActions];
+    // Sequential on purpose: later actions may depend on earlier ones.
+    for (const intent of queue) {
+      // eslint-disable-next-line no-await-in-loop
+      await runPendingAction(intent);
+    }
+  }, [pendingActions, runPendingAction]);
 
   useEffect(() => {
     if (!isOpen || (!autoRunActions && !liveTalkOn) || messages.length === 0) {
@@ -1604,18 +1839,9 @@ const AIAgentModal = ({
     return () => clearTimeout(timer);
   }, [isOpen, liveTalkOn, isLoading, isAgentSpeaking, inputValue, messages, addMessage, speakText]);
 
-  const handleClearChat = useCallback(async () => {
-    if (isLoading) return;
-    const hasChat = messages.some(
-      (item) => item?.type === "user" || (item?.type === "agent" && !isWelcomeMessage(item)),
-    );
-    if (!hasChat) return;
-    const confirmed =
-      typeof window === "undefined" ||
-      window.confirm("Clear this AI chat? Saved history on this account will be deleted.");
-    if (!confirmed) return;
-
+  const clearChatNow = useCallback(async () => {
     skipSaveRef.current = true;
+    setPendingActions([]);
     pendingIntentRef.current = null;
     setSettingsOpen(false);
     setLiveTalkOn(false);
@@ -1631,41 +1857,64 @@ const AIAgentModal = ({
     } finally {
       skipSaveRef.current = false;
     }
-  }, [isLoading, messages, myProfile?._id, cancelSpeech]);
+  }, [myProfile?._id, cancelSpeech]);
+  clearChatNowRef.current = clearChatNow;
+
+  const handleClearChat = useCallback(async () => {
+    if (isLoading) return;
+    const hasChat = messages.some(
+      (item) => item?.type === "user" || (item?.type === "agent" && !isWelcomeMessage(item)),
+    );
+    if (!hasChat) return;
+    // Same question as the app's "Clear AI chat?" dialog.
+    const confirmed =
+      typeof window === "undefined" ||
+      window.confirm("Clear AI chat?\n\nSaved AI chat history will be deleted.");
+    if (!confirmed) return;
+    await clearChatNow();
+  }, [isLoading, messages, clearChatNow]);
 
   const lastStreaming = Boolean(messages[messages.length - 1]?.streaming);
-  const agentBusy = Boolean(
-    isLoading || lastStreaming || isAgentSpeaking || runningLabel,
-  );
+  const thinking = Boolean(isLoading || lastStreaming);
+  const agentBusy = Boolean(thinking || isAgentSpeaking || runningLabel);
   const bn = preferredLanguage === "bn";
   // Only the welcome message so far: show the start screen instead.
   const isFreshChat = messages.every((item) => isWelcomeMessage(item));
+  // Header status line, worded like the app.
   const statusLabel = runningLabel
     ? `Running · ${runningLabel}`
-    : lastStreaming || isLoading
-      ? "Thinking…"
-      : isAgentSpeaking
-        ? "Speaking…"
-        : liveTalkOn
-          ? "Hands-free voice mode"
-          : autoRunActions
-            ? "Auto-runs actions"
-            : "Asks before acting";
-  const statusTone =
-    runningLabel || lastStreaming || isLoading
-      ? "busy"
-      : liveTalkOn || isAgentSpeaking
-        ? "live"
-        : "ok";
+    : voiceRefining
+      ? "Understanding your voice…"
+      : thinking
+        ? "Thinking…"
+        : isListening
+          ? "Listening…"
+          : liveTalkOn
+            ? "Hands-free voice mode"
+            : autoRunActions
+              ? "Auto-runs actions"
+              : "Asks before acting";
+  const statusTone = thinking || runningLabel ? "busy" : isListening ? "live" : "ok";
   const miniStatus = runningLabel
-    ? `${runningLabel}…`
-    : lastStreaming || isLoading
+    ? runningLabel || "Running…"
+    : thinking
       ? "Thinking…"
-      : isAgentSpeaking
-        ? "Speaking…"
-        : liveTalkOn
-          ? inputValue.trim() || "Listening…"
+      : isListening
+        ? inputValue.trim() || "Listening…"
+        : isAgentSpeaking
+          ? "Speaking…"
           : "Tap to open";
+  const selectedProvider = llmInfo.provider;
+  const providerChoices = availableProviders.length
+    ? availableProviders
+    : [selectedProvider];
+
+  // Tapping the pill restores the agent and starts listening, like the app.
+  const restoreAndListen = useCallback(() => {
+    handleExpand();
+    setSpeakReplies(true);
+    if (!liveTalkOnRef.current) startHandsFreeTalk();
+  }, [handleExpand, startHandsFreeTalk]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
@@ -1679,16 +1928,29 @@ const AIAgentModal = ({
           onClick={isMinimized ? undefined : handleMinimize}
         >
           {isMinimized ? (
-            <MiniBubble
+            <MiniPill
               status={miniStatus}
-              busy={agentBusy}
-              listening={liveTalkOn}
+              working={Boolean(runningLabel || thinking)}
+              canStop={agentBusy}
+              listening={isListening}
               speakReplies={speakReplies || liveTalkOn}
-              onOpen={handleExpand}
+              languageMenuOpen={miniLanguageMenuOpen}
+              voiceMode={voiceMode}
+              onOpen={restoreAndListen}
               onStop={handleStopAgent}
-              onMic={handleMiniMicToggle}
-              onSpeaker={() => setSpeakReplies((value) => !value)}
-              onClose={handleClose}
+              onMic={() => {
+                setMiniLanguageMenuOpen(false);
+                handleMiniMicToggle();
+              }}
+              onMicLongPress={() => setMiniLanguageMenuOpen((open) => !open)}
+              onChooseLanguage={(mode) => {
+                setMiniLanguageMenuOpen(false);
+                voiceControlRef.current?.chooseVoiceMode(mode);
+              }}
+              onSpeaker={() => {
+                if (speakReplies || liveTalkOn) cancelSpeech();
+                setSpeakReplies((value) => !(value || liveTalkOn));
+              }}
             />
           ) : null}
           <motion.div
@@ -1712,15 +1974,65 @@ const AIAgentModal = ({
                 if (speakReplies || liveTalkOn) cancelSpeech();
                 setSpeakReplies((value) => !(value || liveTalkOn));
               }}
-              onOpenSettings={() => setSettingsOpen((value) => !value)}
+              onToggleProviderMenu={() => {
+                setSettingsOpen(false);
+                setProviderMenuOpen((value) => !value);
+              }}
+              providerMenuOpen={providerMenuOpen}
+              showProviderCaret={providerChoices.length > 1}
               onClearChat={handleClearChat}
               canClearChat={!isLoading && !isFreshChat}
-              settingsOpen={settingsOpen}
-              providerLabel={llmInfo.meta?.shortLabel || "AI"}
+              providerLabel={
+                PROVIDER_LABELS[selectedProvider] || llmInfo.meta?.shortLabel || "AI"
+              }
               modelLabel={String(llmInfo.model || "").split("/").pop()}
               statusLabel={statusLabel}
               statusTone={statusTone}
             />
+
+            {providerMenuOpen ? (
+              <div className="xa-provider-menu" role="menu">
+                {providerChoices.map((provider) => {
+                  const selected = provider === selectedProvider;
+                  const model =
+                    selected
+                      ? llmInfo.model
+                      : llmInfo.stored?.models?.[provider] ||
+                        AI_PROVIDERS[provider]?.defaultModel;
+                  return (
+                    <button
+                      key={provider}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={selected}
+                      className={`xa-provider-option${selected ? " is-selected" : ""}`}
+                      onClick={() => chooseProvider(provider)}
+                    >
+                      <i className={`far ${selected ? "fa-dot-circle" : "fa-circle"}`} />
+                      <span className="xa-provider-name">
+                        {PROVIDER_LABELS[provider] || AI_PROVIDERS[provider]?.label || provider}
+                      </span>
+                      {model ? (
+                        <span className="xa-provider-model">
+                          {String(model).split("/").pop()}
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  className="xa-provider-option is-more"
+                  onClick={() => {
+                    setProviderMenuOpen(false);
+                    setSettingsOpen(true);
+                  }}
+                >
+                  <i className="fas fa-sliders-h" />
+                  <span className="xa-provider-name">AI settings…</span>
+                </button>
+              </div>
+            ) : null}
 
             <div className="ai-agent-modal-body">
               {settingsOpen && (
@@ -1754,6 +2066,23 @@ const AIAgentModal = ({
                   isFreshChat={isFreshChat}
                   runningLabel={runningLabel}
                   bn={bn}
+                  actionTray={
+                    pendingActions.length > 0 ? (
+                      <ActionTray
+                        actions={pendingActions}
+                        running={Boolean(runningLabel || isLoading)}
+                        onRun={runPendingAction}
+                        onRunAll={runAllPendingActions}
+                        onDismiss={() => setPendingActions([])}
+                      />
+                    ) : null
+                  }
+                  voiceProps={{
+                    onListeningChange: setIsListening,
+                    onRefiningChange: setVoiceRefining,
+                    onVoiceModeChange: setVoiceMode,
+                    controlRef: voiceControlRef,
+                  }}
                 />
               </div>
             </div>
@@ -1764,23 +2093,84 @@ const AIAgentModal = ({
   );
 };
 
+/** Ask mode: the suggested actions with Run / Run all / Dismiss, like the app. */
+const ActionTray = ({ actions, running, onRun, onRunAll, onDismiss }) => (
+  <div className="xa-action-tray">
+    <div className="xa-action-tray-header">
+      <span className="xa-action-tray-title">
+        {actions.length === 1 ? "Ready to run" : `${actions.length} actions ready`}
+      </span>
+      <span className="xa-action-tray-buttons">
+        <button
+          type="button"
+          className="xa-action-tray-link"
+          onClick={onDismiss}
+          aria-label="Dismiss suggested actions"
+        >
+          Dismiss
+        </button>
+        {actions.length > 1 ? (
+          <button
+            type="button"
+            className="xa-action-tray-link is-primary"
+            onClick={onRunAll}
+            disabled={running}
+            aria-label="Run all suggested actions"
+          >
+            Run all
+          </button>
+        ) : null}
+      </span>
+    </div>
+    {actions.map((intent, index) => (
+      <div className="xa-action-card" key={`${intent.action}-${index}`}>
+        <span className="xa-action-card-icon" aria-hidden="true">
+          <i className="fas fa-bolt" />
+        </span>
+        <span className="xa-action-card-body">
+          <span className="xa-action-card-title">{intentLabel(intent)}</span>
+          <span className="xa-action-card-subtitle">{describePendingIntent(intent)}</span>
+        </span>
+        <button
+          type="button"
+          className="xa-run-button"
+          onClick={() => onRun(intent)}
+          disabled={running}
+          aria-label={`Run ${intentLabel(intent)}`}
+        >
+          <i className="fas fa-play" />
+          <span>Run</span>
+        </button>
+      </div>
+    ))}
+  </div>
+);
+
 /**
- * Minimized agent: a floating, draggable card like the app's mini bubble,
- * with Stop (while busy), mic and speaker controls.
+ * Minimized agent: the app's compact pill — orb, "AI Agent" and a live
+ * status on the left, then Stop (while busy), mic and speaker. Drag it
+ * anywhere; tap it to open and talk; long-press the mic for the language.
  */
-const MiniBubble = ({
+const MiniPill = ({
   status,
-  busy,
+  working,
+  canStop,
   listening,
   speakReplies,
+  languageMenuOpen,
+  voiceMode,
   onOpen,
   onStop,
   onMic,
+  onMicLongPress,
+  onChooseLanguage,
   onSpeaker,
-  onClose,
 }) => {
   const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const pillRef = useRef(null);
   const dragRef = useRef(null);
+  const longPressRef = useRef({ timer: 0, fired: false });
+
   const onPointerDown = (event) => {
     if (event.target.closest("button")) return;
     dragRef.current = {
@@ -1797,49 +2187,87 @@ const MiniBubble = ({
     const dx = event.clientX - drag.startX;
     const dy = event.clientY - drag.startY;
     if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
-    setOffset({ x: drag.base.x + dx, y: drag.base.y + dy });
+    if (drag.moved) setOffset({ x: drag.base.x + dx, y: drag.base.y + dy });
   };
   const onPointerUp = () => {
     const drag = dragRef.current;
     dragRef.current = null;
-    if (drag && !drag.moved) onOpen();
+    if (!drag) return;
+    if (!drag.moved) {
+      onOpen();
+      return;
+    }
+    // Keep the pill fully on screen after a drag.
+    const rect = pillRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const viewW = window.innerWidth;
+    const viewH = window.innerHeight;
+    let shiftX = 0;
+    let shiftY = 0;
+    if (rect.left < 8) shiftX = 8 - rect.left;
+    else if (rect.right > viewW - 8) shiftX = viewW - 8 - rect.right;
+    if (rect.top < 56) shiftY = 56 - rect.top;
+    else if (rect.bottom > viewH - 96) shiftY = viewH - 96 - rect.bottom;
+    if (shiftX || shiftY) {
+      setOffset((current) => ({ x: current.x + shiftX, y: current.y + shiftY }));
+    }
   };
+
+  const startMicPress = () => {
+    clearTimeout(longPressRef.current.timer);
+    longPressRef.current.fired = false;
+    longPressRef.current.timer = window.setTimeout(() => {
+      longPressRef.current.fired = true;
+      onMicLongPress();
+    }, 500);
+  };
+  const cancelMicPress = () => clearTimeout(longPressRef.current.timer);
+  useEffect(() => () => clearTimeout(longPressRef.current.timer), []);
+
   return (
     <div
+      ref={pillRef}
       className="xa-mini"
       style={{ transform: `translate(${offset.x}px, ${offset.y}px)` }}
       onClick={(event) => event.stopPropagation()}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      role="button"
-      tabIndex={0}
-      aria-label={`AI Agent. ${status}. Tap to open.`}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onOpen();
-        }
+      onPointerCancel={() => {
+        dragRef.current = null;
       }}
     >
-      <button
-        type="button"
-        className="xa-mini-close"
-        onClick={onClose}
-        aria-label="Close AI Agent"
+      <div
+        className="xa-mini-content"
+        role="button"
+        tabIndex={0}
+        aria-label="Restore AI Agent"
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onOpen();
+          }
+        }}
       >
-        <i className="fas fa-times" />
-      </button>
-      <span className="xa-orb xa-mini-orb" aria-hidden="true">
-        {busy ? (
-          <i className="fas fa-circle-notch fa-spin" />
-        ) : (
-          <i className="fas fa-magic" />
-        )}
-      </span>
-      <span className="xa-mini-status">{status}</span>
+        <span className="xa-orb xa-mini-orb" aria-hidden="true">
+          {working ? (
+            <i className="fas fa-circle-notch fa-spin" />
+          ) : (
+            <i className="fas fa-magic" />
+          )}
+        </span>
+        <span className="xa-mini-text">
+          <span className="xa-mini-title">AI Agent</span>
+          <span
+            className={`xa-mini-status${listening ? " is-live" : working ? " is-working" : ""}`}
+          >
+            {status}
+          </span>
+        </span>
+      </div>
+      <span className="xa-mini-divider" aria-hidden="true" />
       <span className="xa-mini-controls">
-        {busy ? (
+        {canStop ? (
           <button
             type="button"
             className="xa-mini-btn is-stop"
@@ -1851,9 +2279,23 @@ const MiniBubble = ({
         ) : null}
         <button
           type="button"
-          className={`xa-mini-btn${listening ? " is-live" : ""}`}
-          onClick={onMic}
-          aria-label={listening ? "Stop listening" : "Voice input"}
+          className={`xa-mini-btn is-mic${listening ? " is-live" : ""}`}
+          onPointerDown={startMicPress}
+          onPointerUp={cancelMicPress}
+          onPointerLeave={cancelMicPress}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            cancelMicPress();
+            onMicLongPress();
+          }}
+          onClick={() => {
+            if (longPressRef.current.fired) {
+              longPressRef.current.fired = false;
+              return;
+            }
+            onMic();
+          }}
+          aria-label="Voice input"
         >
           <i className={`fas ${listening ? "fa-microphone" : "fa-microphone-alt"}`} />
         </button>
@@ -1866,6 +2308,22 @@ const MiniBubble = ({
           <i className={`fas ${speakReplies ? "fa-volume-up" : "fa-volume-mute"}`} />
         </button>
       </span>
+      {languageMenuOpen ? (
+        <div className="xa-mini-language-menu" role="menu">
+          {VOICE_OPTIONS.map((option) => (
+            <button
+              key={option.mode}
+              type="button"
+              role="menuitemradio"
+              aria-checked={voiceMode === option.mode}
+              className={`xa-mini-menu-option${voiceMode === option.mode ? " is-on" : ""}`}
+              onClick={() => onChooseLanguage(option.mode)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 };

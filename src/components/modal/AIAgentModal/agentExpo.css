@@ -675,7 +675,149 @@
 .xa-shell .xa-input::placeholder { color: var(--xa-text-3); }
 .xa-shell .xa-composer.is-focused .xa-input { border-color: rgba(0, 212, 255, 0.55); }
 
-/* ── Minimized floating bubble ────────────────────────────────────────── */
+/* ── Provider menu (the app's radio list under the toolbar) ─────────── */
+.xa-shell .xa-provider-menu {
+  position: absolute;
+  top: 102px;
+  left: 12px;
+  min-width: 220px;
+  max-width: calc(100% - 24px);
+  padding: 6px 0;
+  border-radius: 14px;
+  border: var(--xa-hairline) solid var(--xa-border);
+  background: var(--xa-surface);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+}
+.xa-shell .xa-provider-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border: none;
+  background: transparent;
+  color: var(--xa-text);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.xa-shell .xa-provider-option:hover,
+.xa-shell .xa-provider-option:active { background: var(--xa-surface-2); }
+.xa-shell .xa-provider-option i { font-size: 17px; color: var(--xa-text-3); width: 18px; }
+.xa-shell .xa-provider-option.is-selected i { color: var(--xa-primary); }
+.xa-shell .xa-provider-option.is-more {
+  border-top: var(--xa-hairline) solid var(--xa-border);
+  color: var(--xa-text-2);
+  font-weight: 500;
+}
+.xa-shell .xa-provider-name { flex-shrink: 0; }
+.xa-shell .xa-provider-model {
+  margin-left: auto;
+  max-width: 110px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--xa-text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Ask mode action tray ─────────────────────────────────────────────── */
+.xa-shell .xa-action-tray {
+  flex-shrink: 0;
+  padding: 10px 12px 4px;
+  border-top: var(--xa-hairline) solid var(--xa-border);
+  background: var(--xa-surface);
+  max-height: 40%;
+  overflow-y: auto;
+}
+.xa-shell .xa-action-tray-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.xa-shell .xa-action-tray-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--xa-text-2);
+}
+.xa-shell .xa-action-tray-buttons { display: flex; gap: 16px; }
+.xa-shell .xa-action-tray-link {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--xa-text-2);
+  cursor: pointer;
+}
+.xa-shell .xa-action-tray-link.is-primary { color: var(--xa-primary); }
+.xa-shell .xa-action-tray-link:disabled { opacity: 0.5; cursor: default; }
+.xa-shell .xa-action-card {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border-radius: 14px;
+  border: var(--xa-hairline) solid var(--xa-border);
+  background: var(--xa-surface-2);
+}
+.xa-shell .xa-action-card-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: rgba(0, 212, 255, 0.1);
+  color: var(--xa-primary);
+  font-size: 15px;
+}
+.xa-shell .xa-action-card-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.xa-shell .xa-action-card-title { font-size: 14px; font-weight: 700; color: var(--xa-text); }
+.xa-shell .xa-action-card-subtitle {
+  font-size: 12px;
+  margin-top: 2px;
+  color: var(--xa-text-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.xa-shell .xa-run-button {
+  height: 32px;
+  border-radius: 16px;
+  padding: 0 12px;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--xa-primary);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.xa-shell .xa-run-button i { font-size: 11px; }
+.xa-shell .xa-run-button:active { opacity: 0.8; }
+.xa-shell .xa-run-button:disabled { opacity: 0.5; cursor: default; }
+
+/* ── Minimized: the app's compact pill ────────────────────────────────── */
 .xa-shell.is-minimized {
   background: transparent !important;
   pointer-events: none;
@@ -685,18 +827,17 @@
   position: fixed;
   left: 16px;
   top: 50%;
-  margin-top: -68px;
-  width: 100px;
-  min-height: 136px;
-  padding: 12px 8px;
-  border-radius: 22px;
+  margin-top: -28px;
+  max-width: min(320px, calc(100vw - 32px));
+  min-height: 56px;
+  padding: 8px;
+  border-radius: 28px;
   border: var(--xa-hairline) solid var(--xa-border);
   background: var(--xa-surface);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  justify-content: center;
   gap: 8px;
   cursor: grab;
   touch-action: none;
@@ -704,33 +845,59 @@
   z-index: 10000;
 }
 .xa-shell .xa-mini:active { cursor: grabbing; }
+.xa-shell .xa-mini-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-shrink: 1;
+  cursor: pointer;
+  outline: none;
+}
 .xa-shell .xa-mini-orb {
-  width: 36px;
-  height: 36px;
-  border-radius: 18px;
-  font-size: 16px;
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  font-size: 17px;
+}
+.xa-shell .xa-mini-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 64px;
+  max-width: 120px;
+}
+.xa-shell .xa-mini-title {
+  font-size: 13px;
+  line-height: 17px;
+  font-weight: 700;
+  color: var(--xa-text);
+  white-space: nowrap;
 }
 .xa-shell .xa-mini-status {
   font-size: 11px;
   line-height: 14px;
-  text-align: center;
   color: var(--xa-text-2);
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
+}
+.xa-shell .xa-mini-status.is-live { color: var(--xa-error); }
+.xa-shell .xa-mini-status.is-working { color: var(--xa-primary); }
+.xa-shell .xa-mini-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 0;
+  background: var(--xa-border);
 }
 .xa-shell .xa-mini-controls {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
-  justify-content: center;
 }
 .xa-shell .xa-mini-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: 18px;
+  width: 34px;
+  height: 34px;
+  border-radius: 17px;
   border: none;
   display: inline-flex;
   align-items: center;
@@ -739,31 +906,52 @@
   font-size: 15px;
   background: var(--xa-surface-2);
   color: var(--xa-text-2);
+  -webkit-touch-callout: none;
 }
-.xa-shell .xa-mini-btn.is-live {
+.xa-shell .xa-mini-btn.is-mic {
+  background: rgba(0, 212, 255, 0.13);
+  color: var(--xa-primary);
+}
+.xa-shell .xa-mini-btn.is-mic.is-live {
   background: rgba(255, 68, 68, 0.14);
   color: var(--xa-error);
 }
 .xa-shell .xa-mini-btn.is-on {
-  background: rgba(0, 212, 255, 0.19);
+  background: rgba(0, 212, 255, 0.13);
   color: var(--xa-primary);
 }
 .xa-shell .xa-mini-btn.is-stop {
   background: var(--xa-error);
   color: #fff;
 }
-.xa-shell .xa-mini-close {
+.xa-shell .xa-mini-language-menu {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 22px;
-  height: 22px;
-  border-radius: 11px;
+  right: 8px;
+  top: 62px;
+  min-width: 118px;
+  padding: 6px;
+  border-radius: 12px;
+  border: var(--xa-hairline) solid var(--xa-border);
+  background: var(--xa-surface);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.xa-shell .xa-mini-menu-option {
   border: none;
-  background: transparent;
-  color: var(--xa-text-3);
-  font-size: 11px;
+  border-radius: 8px;
+  padding: 7px 10px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--xa-surface-2);
+  color: var(--xa-text-2);
   cursor: pointer;
+}
+.xa-shell .xa-mini-menu-option.is-on {
+  background: rgba(0, 212, 255, 0.13);
+  color: var(--xa-primary);
 }
 
 @media (prefers-reduced-motion: reduce) {
