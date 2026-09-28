@@ -15,6 +15,10 @@ export const GameHeader = ({
   onTriggerDebugCelebration,
   onToggleControlMode,
   onPlaySound,
+  gameEnded,
+  gamePaused,
+  pauseDisabled,
+  onPauseGame,
 }) => {
   const showExit = Boolean(gameId);
 
@@ -60,8 +64,8 @@ export const GameHeader = ({
                 type="button"
                 className="ludo-btn ludo-btn--ghost"
                 onClick={onExitGame}
-                title="Leave the board and resume later"
-                aria-label="Leave the board and resume later"
+                title="Leave this game"
+                aria-label="Leave this game"
               >
                 <LudoIcon name="leave" className="ludo-btn__icon" />
                 <span className="ludo-btn__label">Leave</span>
@@ -70,6 +74,20 @@ export const GameHeader = ({
           </>
         ) : (
           <>
+            {onPauseGame && !gameEnded && !gamePaused && (
+              <button
+                type="button"
+                className="ludo-btn ludo-btn--accent"
+                onClick={onPauseGame}
+                disabled={pauseDisabled}
+                title="Pause and save this game to finish later"
+                aria-label="Pause and save this game"
+                data-testid="ludo-pause"
+              >
+                <LudoIcon name="pause" className="ludo-btn__icon" />
+                <span className="ludo-btn__label">Pause</span>
+              </button>
+            )}
             <button
               type="button"
               className="ludo-btn ludo-btn--danger"
@@ -84,8 +102,8 @@ export const GameHeader = ({
               type="button"
               className="ludo-btn ludo-btn--ghost"
               onClick={onExitGame}
-              title="Leave the board and resume later"
-              aria-label="Leave the board and resume later"
+              title="Leave this game"
+              aria-label="Leave this game"
             >
               <LudoIcon name="leave" className="ludo-btn__icon" />
               <span className="ludo-btn__label">Leave</span>

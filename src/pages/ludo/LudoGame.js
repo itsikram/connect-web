@@ -62,6 +62,14 @@ import { PlayerSelectionModal } from "./components/PlayerSelectionModal";
 import { useAudio } from "./hooks/useAudio";
 import { playFunSound } from "./utils/funSounds";
 import FunFxLayer, { createBurst } from "./components/FunFxLayer";
+import { PausedOverlay } from "./components/PausedOverlay";
+import {
+  createLocalSaveId,
+  getSaveProgress,
+  listLocalSaves,
+  removeLocalSave,
+  upsertLocalSave,
+} from "./utils/savedGames";
 import { useLudoVoice } from "./hooks/useLudoVoice";
 import { useConnectionHealth } from "./hooks/useConnectionHealth";
 import { showLudoInviteToast } from "../../utils/toastUtils";
@@ -73,6 +81,48 @@ import {
   clearHandledLudoInvites,
   resolveLudoInviteNotifications,
 } from "../../utils/ludoInviteUtils";
+
+// Every client keeps a landed dice face on screen at least this long, and in
+// online play nobody can roll again until it has passed, so all players get
+// to see the value.
+const DICE_MIN_VISIBLE_MS = 2000;
+
+// The dice sits in the 3x3 centre. It is kept a little smaller than the centre
+// so each colour's triangle keeps an outer band where finished tokens are
+// shown (in cells, measured from the board centre).
+const CENTER_DICE_CELLS = 2.1;
+const FINISHED_TOKEN_BAND_CELLS = 1.28;
+const FINISHED_TOKEN_SIZE_CELLS = 0.4;
+const FINISHED_TOKEN_GAP_CELLS = 0.5;
+const REMOTE_DICE_TUMBLE_MS = 450;
+
+// Cube rotation that shows `value` on the front face. With `spin`, adds whole
+// turns so the cube visibly tumbles; without, takes the shortest way there.
+const rotationForDiceFace = (prev, value, spin = false) => {
+  const land = DICE_LAND_ROTATION[value] || DICE_LAND_ROTATION[1];
+  const dirX = Math.random() > 0.5 ? 1 : -1;
+  const dirY = Math.random() > 0.5 ? 1 : -1;
+  const baseX = prev.x + (spin ? 360 * (2 + Math.floor(Math.random() * 2)) * dirX : 0);
+  const baseY = prev.y + (spin ? 360 * (2 + Math.floor(Math.random() * 2)) * dirY : 0);
+  let alignX = (((land.x - baseX) % 360) + 360) % 360;
+  let alignY = (((land.y - baseY) % 360) + 360) % 360;
+  if (!spin) {
+    if (alignX > 180) alignX -= 360;
+    if (alignY > 180) alignY -= 360;
+  }
+  return { x: baseX + alignX, y: baseY + alignY, z: 0 };
+};
+
+const isDiceShowingFace = (rotation, value) => {
+  const land = DICE_LAND_ROTATION[value];
+  if (!land) return true;
+  const norm = (deg) => ((deg % 360) + 360) % 360;
+  return (
+    norm(rotation.x - land.x) === 0 &&
+    norm(rotation.y - land.y) === 0 &&
+    norm(rotation.z || 0) === 0
+  );
+};
 
 const getBoardSeatIndex = (playerIndex, playerCount) =>
   Number(playerCount) === 2 && Number(playerIndex) === 1
@@ -895,6 +945,95 @@ const LudoGame = () => {
   const [rollingFace, setRollingFace] = useState(1);
   const [diceRotation, setDiceRotation] = useState({ x: 0, y: 0, z: 0 });
   const diceRotationRef = useRef({ x: 0, y: 0, z: 0 });
+
+  // Display-only copy of the last landed roll. Game logic clears diceValue as
+  // soon as a piece moves or the turn passes; this keeps the face visible for
+  // DICE_MIN_VISIBLE_MS so every player sees the same number.
+  const [heldRoll, setHeldRoll] = useState(null); // { value, player }
+  const heldRollRef = useRef(null);
+  const diceHoldUntilRef = useRef(0);
+  const heldRollTimerRef = useRef(null);
+  const lastShownRollRef = useRef({ value: 0, at: 0 });
+  const [localRollAnimating, setLocalRollAnimating] = useState(false);
+  const [remoteDiceTumbling, setRemoteDiceTumbling] = useState(false);
+  const remoteTumbleTimerRef = useRef(null);
+
+  // source "roll" = a real roll event (always wins); "sync" = a value that
+  // arrived through a snapshot, which must not replace a roll being shown.
+  const showRolledValue = useCallback((value, player, source = "roll", tumble = false) => {
+    if (!Number.isInteger(value) || value < 1 || value > 6) return;
+    const now = Date.now();
+    const holdActive = heldRollRef.current && now < diceHoldUntilRef.current;
+    if (source === "sync") {
+      if (holdActive) return;
+      // Snapshots repeat the current roll until a piece moves; that same roll
+      // was already shown, so don't restart the hold (and the roll lock).
+      const last = lastShownRollRef.current;
+      if (last.value === value && now - last.at < 10000) return;
+    }
+    lastShownRollRef.current = { value, at: now };
+
+    const revealDelay = tumble ? REMOTE_DICE_TUMBLE_MS : 0;
+    const held = { value, player };
+    heldRollRef.current = held;
+    setHeldRoll(held);
+    diceHoldUntilRef.current = now + revealDelay + DICE_MIN_VISIBLE_MS;
+    clearTimeout(heldRollTimerRef.current);
+    heldRollTimerRef.current = setTimeout(() => {
+      heldRollRef.current = null;
+      setHeldRoll(null);
+    }, revealDelay + DICE_MIN_VISIBLE_MS);
+
+    if (tumble) {
+      setRollingFace(value);
+      const next = rotationForDiceFace(diceRotationRef.current, value, true);
+      diceRotationRef.current = next;
+      setDiceRotation(next);
+      setRemoteDiceTumbling(true);
+      clearTimeout(remoteTumbleTimerRef.current);
+      remoteTumbleTimerRef.current = setTimeout(
+        () => setRemoteDiceTumbling(false),
+        REMOTE_DICE_TUMBLE_MS,
+      );
+    }
+  }, []);
+
+  useEffect(
+    () => () => {
+      clearTimeout(heldRollTimerRef.current);
+      clearTimeout(remoteTumbleTimerRef.current);
+    },
+    [],
+  );
+
+  // Pause & save. Online, the server owns the pause (any player can pause,
+  // the host resumes). Offline games are saved on this device.
+  const [gamePaused, setGamePaused] = useState(null); // { profileId, name, at, local?, pending? }
+  const gamePausedRef = useRef(null);
+  const applyPauseState = useCallback((pause) => {
+    gamePausedRef.current = pause;
+    setGamePaused(pause);
+  }, []);
+  const [resumeDenied, setResumeDenied] = useState(false);
+  const [localSaves, setLocalSaves] = useState([]);
+  const localSaveIdRef = useRef(null);
+  // Set when a saved online game is opened from the list: its first started
+  // snapshot must be applied in full (the host otherwise keeps its own board).
+  const restoreFromSnapshotRef = useRef(null);
+
+  const diceVisuallyRolling = localRollAnimating || remoteDiceTumbling;
+  const diceForDisplay = heldRoll?.value || diceValue || 0;
+
+  // The cube shows whatever face its rotation points at, so keep the rotation
+  // in step with the displayed value (remote rolls and snapshots never ran the
+  // local roll animation that used to be the only thing rotating it).
+  useEffect(() => {
+    if (diceVisuallyRolling || !(diceForDisplay >= 1)) return;
+    if (isDiceShowingFace(diceRotationRef.current, diceForDisplay)) return;
+    const next = rotationForDiceFace(diceRotationRef.current, diceForDisplay, false);
+    diceRotationRef.current = next;
+    setDiceRotation(next);
+  }, [diceForDisplay, diceVisuallyRolling]);
   const soundRefs = useRef({
     diceRoll: null,
     pieceMove: null,
@@ -1512,7 +1651,8 @@ const LudoGame = () => {
     setDiceValue(value);
     diceValueRef.current = value;
     lastDiceValueRef.current = value;
-  }, []);
+    if (value > 0) showRolledValue(value, currentPlayerRef.current, "sync");
+  }, [showRolledValue]);
 
   const setCurrentPlayerImmediate = useCallback((value) => {
     setCurrentPlayer(value);
@@ -4751,6 +4891,10 @@ const LudoGame = () => {
   const rollDice = (controlledValue = null, bypassControlModal = false) => {
     resumeAudioFromGesture();
     if (!connectionReadyRef.current) return;
+    if (gamePausedRef.current) return;
+    // Let everyone see the previous roll before the next one starts. Bots
+    // retry through scheduleBotTurn; the dice button stays disabled meanwhile.
+    if (onlineMode && Date.now() < diceHoldUntilRef.current) return;
     const chosenDiceValue =
       Number.isInteger(controlledValue) &&
       controlledValue >= 1 &&
@@ -4950,6 +5094,7 @@ const LudoGame = () => {
     }
     isRollingRef.current = true;
     setCanRollDice(false);
+    setLocalRollAnimating(true);
     lastRollTimeRef.current = Date.now();
 
     console.log("[ROLL_DICE] ✅ Starting dice roll", {
@@ -5005,6 +5150,8 @@ const LudoGame = () => {
 
     setTimeout(() => {
       setRollingFace(value);
+      showRolledValue(value, currentRollPlayer);
+      setLocalRollAnimating(false);
 
       // CRITICAL: Track consecutive 6s and limit them
       const currentSixCount =
@@ -5395,6 +5542,11 @@ const LudoGame = () => {
 
   const movePiece = (pieceId) => {
     resumeAudioFromGesture();
+    if (gamePausedRef.current) {
+      // Keep the roll; the piece can be moved once the game resumes.
+      isAutoMovingRef.current = false;
+      return;
+    }
     if (!connectionReadyRef.current) {
       // Keep the roll; the piece can be moved once the connection is back.
       isAutoMovingRef.current = false;
@@ -6380,6 +6532,8 @@ const LudoGame = () => {
       }
 
       playSound("diceRoll");
+      // Short tumble that lands on the sender's value, then hold it on screen.
+      showRolledValue(value, rollingPlayer, "roll", true);
 
       // CRITICAL: Track consecutive 6s for remote players and handle limit
       const currentSixCount = consecutiveSixesRef.current[rollingPlayer] || 0;
@@ -6617,6 +6771,24 @@ const LudoGame = () => {
           gameIdRef.current || savedGameStateRef.current?.gameId;
         if (String(payload.gameId) !== String(currentGid)) return;
 
+        // The server stamps every snapshot with the pause state.
+        if (typeof payload.paused === "boolean") {
+          const incomingPause = payload.paused
+            ? {
+                profileId: payload.pausedBy?.profileId,
+                name: payload.pausedBy?.name,
+                at: payload.pausedAt,
+              }
+            : null;
+          if (
+            Boolean(incomingPause) !== Boolean(gamePausedRef.current) ||
+            (incomingPause && gamePausedRef.current?.pending)
+          ) {
+            applyPauseState(incomingPause);
+            if (!incomingPause) setResumeDenied(false);
+          }
+        }
+
         // The host is the authority for turn, dice and match start. Once it has
         // started (or is starting) the match, every snapshot it receives is its
         // own echo or a server re-broadcast of an older snapshot with a seat
@@ -6624,7 +6796,13 @@ const LudoGame = () => {
         // a lobby snapshot arriving during auto-start flipped gameStarted back
         // to false and the host broadcast a match that never began. Take only
         // the seat details and keep the host's own game state.
+        const forceRestoreSnapshot =
+          Boolean(restoreFromSnapshotRef.current) &&
+          String(restoreFromSnapshotRef.current) === String(payload.gameId) &&
+          Boolean(payload.gameStarted);
+        if (forceRestoreSnapshot) restoreFromSnapshotRef.current = null;
         const hostOwnsLiveMatch =
+          !forceRestoreSnapshot &&
           myPlayerIndexRef.current === 0 &&
           !isReconnectingRef.current &&
           (gameStartedRef.current || autoStartTriggeredRef.current) &&
@@ -8039,7 +8217,37 @@ const LudoGame = () => {
     };
     s.off("ludo:joined", onJoined);
     s.on("ludo:joined", onJoined);
+    const onPaused = (payload) => {
+      if (!payload || String(payload.gameId) !== String(gameIdRef.current)) return;
+      const wasPaused = Boolean(gamePausedRef.current) && !gamePausedRef.current.pending;
+      applyPauseState({
+        profileId: payload.pausedBy?.profileId,
+        name: payload.pausedBy?.name,
+        at: payload.pausedAt,
+      });
+      if (!wasPaused) playSound("turnChange");
+    };
+    const onResumed = (payload) => {
+      if (!payload || String(payload.gameId) !== String(gameIdRef.current)) return;
+      if (!gamePausedRef.current) return;
+      applyPauseState(null);
+      setResumeDenied(false);
+      playSound("pieceOut");
+    };
+    const onResumeDenied = (payload) => {
+      if (!payload || String(payload.gameId) !== String(gameIdRef.current)) return;
+      setResumeDenied(true);
+    };
+    s.off("ludo:paused", onPaused);
+    s.off("ludo:resumed", onResumed);
+    s.off("ludo:resume:denied", onResumeDenied);
+    s.on("ludo:paused", onPaused);
+    s.on("ludo:resumed", onResumed);
+    s.on("ludo:resume:denied", onResumeDenied);
     return () => {
+      s.off("ludo:paused", onPaused);
+      s.off("ludo:resumed", onResumed);
+      s.off("ludo:resume:denied", onResumeDenied);
       s.off("ludo:roll", onRoll);
       s.off("ludo:accepted", onAccepted);
       s.off("ludo:players", onPlayers);
@@ -8309,6 +8517,7 @@ const LudoGame = () => {
       !canControlBots ||
       !gameStarted ||
       gameEnded ||
+      gamePaused ||
       waitingForPlayers ||
       !connectionReady
     )
@@ -8339,6 +8548,7 @@ const LudoGame = () => {
           !stillControlsBots ||
           !gameStartedRef.current ||
           gameEndedRef.current ||
+          gamePausedRef.current ||
           !playersRef.current[playerIndex]?.isBot
         ) {
           return;
@@ -8416,6 +8626,7 @@ const LudoGame = () => {
     diceValue,
     canRollDice,
     connectionReady,
+    gamePaused,
   ]);
 
   // DEBUG: Track canRollDice changes (reduced logging to prevent spam)
@@ -8921,6 +9132,16 @@ const LudoGame = () => {
       setShowReconnectModal(false);
       gameIdRef.current = game.gameId;
       setGameId(game.gameId);
+      restoreFromSnapshotRef.current = game.gameId;
+      applyPauseState(
+        game?.paused || game?.lastPlayers?.paused
+          ? {
+              profileId: game.lastPlayers?.pausedBy?.profileId,
+              name: game.lastPlayers?.pausedBy?.name,
+              at: game.lastPlayers?.pausedAt,
+            }
+          : null,
+      );
 
       // Clear transient local action locks before restoring/joining a live game.
       // Otherwise stale mid-roll or mid-move refs from a previous session can
@@ -9043,9 +9264,231 @@ const LudoGame = () => {
     ],
   );
 
+  // ------------------------------------------------------------------
+  // Pause & save for later
+  // ------------------------------------------------------------------
+  const refreshLocalSaves = useCallback(() => {
+    setLocalSaves(listLocalSaves(myProfile?._id));
+  }, [myProfile?._id]);
+
+  useEffect(() => {
+    refreshLocalSaves();
+  }, [refreshLocalSaves]);
+
+  const buildLocalSave = useCallback(
+    (paused) => ({
+      id: localSaveIdRef.current,
+      paused: Boolean(paused),
+      players: JSON.parse(JSON.stringify(playersRef.current || [])),
+      currentPlayer: currentPlayerRef.current || 0,
+      // A roll that is still animating is not kept; the turn re-rolls.
+      diceValue: isRollingRef.current ? 0 : diceValueRef.current || 0,
+      selectedPlayerCount: selectedPlayerCountRef.current,
+      playWithComputer: Boolean(playWithComputerRef.current),
+      consecutiveSixes: { ...(consecutiveSixesRef.current || {}) },
+      winners: JSON.parse(JSON.stringify(winnersRef.current || [])),
+    }),
+    [],
+  );
+
+  // Offline games save themselves as they are played, so closing the tab
+  // mid-game loses nothing; a finished game drops out of the list.
+  useEffect(() => {
+    if (onlineMode || !gameStarted) return;
+    if (gameEnded) {
+      if (localSaveIdRef.current) {
+        removeLocalSave(localSaveIdRef.current);
+        localSaveIdRef.current = null;
+        refreshLocalSaves();
+      }
+      return;
+    }
+    if (!Array.isArray(players) || players.length === 0) return;
+    if (!localSaveIdRef.current) localSaveIdRef.current = createLocalSaveId();
+    upsertLocalSave(myProfile?._id, buildLocalSave(Boolean(gamePausedRef.current)));
+  }, [
+    onlineMode,
+    gameStarted,
+    gameEnded,
+    players,
+    currentPlayer,
+    diceValue,
+    winners,
+    gamePaused,
+    myProfile?._id,
+    buildLocalSave,
+    refreshLocalSaves,
+  ]);
+
+  const pauseDisabled =
+    localRollAnimating ||
+    remoteDiceTumbling ||
+    isMovingRef.current ||
+    isAutoMovingRef.current;
+
+  const pauseGame = () => {
+    if (!gameStartedRef.current || gameEndedRef.current || gamePausedRef.current) return;
+    playSound("buttonClick");
+    const myName =
+      myProfile?.fullName || playersRef.current?.[myPlayerIndexRef.current]?.name;
+    if (onlineMode && gameIdRef.current) {
+      applyPauseState({
+        profileId: myProfile?._id,
+        name: myName,
+        at: Date.now(),
+        pending: true,
+      });
+      socketRef.current?.emit("ludo:pause", {
+        gameId: gameIdRef.current,
+        name: myName,
+      });
+      return;
+    }
+    applyPauseState({ profileId: myProfile?._id, name: myName, at: Date.now(), local: true });
+  };
+
+  const resumeGame = () => {
+    playSound("buttonClick");
+    if (onlineMode && gameIdRef.current) {
+      setResumeDenied(false);
+      socketRef.current?.emit("ludo:resume", { gameId: gameIdRef.current });
+      return;
+    }
+    applyPauseState(null);
+  };
+
+  // Close the board but keep the game: online the seat is kept (and the
+  // match stays paused), offline the game stays in this device's saves.
+  const saveAndExitGame = () => {
+    playSound("buttonClick");
+    const gid = gameIdRef.current || gameId;
+    gameSessionVersionRef.current += 1;
+
+    if (onlineMode && gid) {
+      if (!gamePausedRef.current) {
+        socketRef.current?.emit("ludo:pause", {
+          gameId: gid,
+          name: myProfile?.fullName,
+        });
+      }
+      socketRef.current?.emit("ludo:board:closed", { gameId: gid });
+      setHiddenBoardGameId(gid);
+      clearGameState();
+      clearActiveLudoGameId();
+    } else if (localSaveIdRef.current) {
+      upsertLocalSave(myProfile?._id, buildLocalSave(true));
+    }
+
+    if (botTurnTimerRef.current) {
+      clearTimeout(botTurnTimerRef.current);
+      botTurnTimerRef.current = null;
+    }
+    moveTimersRef.current.forEach((t) => clearTimeout(t));
+    moveTimersRef.current = [];
+    isRollingRef.current = false;
+    isMovingRef.current = false;
+    isAutoMovingRef.current = false;
+    botActingRef.current = false;
+    botActingPlayerIndexRef.current = null;
+    awaitingAuthoritativeSnapshotRef.current = false;
+    localSaveIdRef.current = null;
+    applyPauseState(null);
+    setResumeDenied(false);
+    setShowWinnerModal(false);
+    setWinner(null);
+    setGameId(null);
+    gameIdRef.current = null;
+    setOnlineMode(false);
+    setWaitingForPlayers(false);
+    setIsReconnecting(false);
+    setShowReconnectModal(false);
+    setCanRollDice(false);
+    setGameStarted(false);
+    gameStartedRef.current = false;
+    setGameEnded(false);
+    gameEndedRef.current = false;
+    setCurrentPlayer(0);
+    currentPlayerRef.current = 0;
+    setDiceValueImmediate(0);
+    setWinners([]);
+    winnersRef.current = [];
+    latestSentPlayersSeqRef.current = 0;
+    latestAppliedPlayersSeqRef.current = 0;
+    initializeGame(selectedPlayerCountRef.current || selectedPlayerCount, []);
+    refreshLocalSaves();
+    requestJoinedGames();
+  };
+
+  const resumeLocalGame = (save) => {
+    if (!save?.players?.length) return;
+    playSound("buttonClick");
+    resumeAudioFromGesture();
+    gameSessionVersionRef.current += 1;
+    clearHiddenBoardGameId();
+    setShowPlayerSelection(false);
+    setShowWinnerModal(false);
+    setWinner(null);
+    setOnlineMode(false);
+    setGameId(null);
+    gameIdRef.current = null;
+    setWaitingForPlayers(false);
+
+    if (botTurnTimerRef.current) {
+      clearTimeout(botTurnTimerRef.current);
+      botTurnTimerRef.current = null;
+    }
+    moveTimersRef.current.forEach((t) => clearTimeout(t));
+    moveTimersRef.current = [];
+    isRollingRef.current = false;
+    isMovingRef.current = false;
+    isAutoMovingRef.current = false;
+    botActingRef.current = false;
+    botActingPlayerIndexRef.current = null;
+
+    const count = [2, 3, 4].includes(save.selectedPlayerCount)
+      ? save.selectedPlayerCount
+      : save.players.length;
+    setSelectedPlayerCount(count);
+    selectedPlayerCountRef.current = count;
+    setPlayWithComputer(Boolean(save.playWithComputer));
+    playWithComputerRef.current = Boolean(save.playWithComputer);
+    const restoredPlayers = JSON.parse(JSON.stringify(save.players));
+    setPlayers(restoredPlayers);
+    playersRef.current = restoredPlayers;
+    const turn = Number.isInteger(save.currentPlayer) ? save.currentPlayer : 0;
+    setCurrentPlayer(turn);
+    currentPlayerRef.current = turn;
+    setConsecutiveSixes(save.consecutiveSixes || {});
+    consecutiveSixesRef.current = { ...(save.consecutiveSixes || {}) };
+    setWinners(save.winners || []);
+    winnersRef.current = save.winners || [];
+    setGameEnded(false);
+    gameEndedRef.current = false;
+    const dice = Number(save.diceValue) || 0;
+    setDiceValueImmediate(dice);
+    localSaveIdRef.current = save.id;
+    applyPauseState(null);
+    setGameStarted(true);
+    gameStartedRef.current = true;
+    setCanRollDice(dice === 0);
+  };
+
+  const deleteLocalSave = (save) => {
+    if (!save?.id) return;
+    const confirmed = window.confirm("Delete this saved game? It can't be recovered.");
+    if (!confirmed) return;
+    playSound("buttonClick");
+    removeLocalSave(save.id);
+    if (localSaveIdRef.current === save.id) localSaveIdRef.current = null;
+    refreshLocalSaves();
+  };
+
   const startNewGame = () => {
     resumeAudioFromGesture();
     const previousGameId = gameIdRef.current || gameId;
+    // The previous offline game (if any) stays in the saved list.
+    localSaveIdRef.current = null;
+    applyPauseState(null);
 
     // Invalidate every delayed restore/invite action before clearing the room
     // identity. This applies equally to hosts and remote players.
@@ -9143,6 +9586,11 @@ const LudoGame = () => {
   const confirmExitGame = () => {
     setShowLeaveConfirm(false);
     const isOnlineGame = Boolean(onlineMode && gameId && myProfile?._id);
+    if (!onlineMode && localSaveIdRef.current) {
+      removeLocalSave(localSaveIdRef.current);
+      localSaveIdRef.current = null;
+    }
+    applyPauseState(null);
 
     console.log("[EXIT_GAME] Starting complete cleanup of all game state");
 
@@ -10144,6 +10592,14 @@ const LudoGame = () => {
     // Reset moving flag
     isMovingRef.current = false;
 
+    // Restarting throws away the saved progress of an offline game.
+    if (!onlineMode && localSaveIdRef.current) {
+      removeLocalSave(localSaveIdRef.current);
+      localSaveIdRef.current = null;
+      refreshLocalSaves();
+    }
+    applyPauseState(null);
+
     // Clear all move timers
     moveTimersRef.current.forEach((t) => clearTimeout(t));
     moveTimersRef.current = [];
@@ -10942,6 +11398,7 @@ const LudoGame = () => {
   // Calculate token size - round to whole pixels for precise rendering
   // Ensure minimum token size of 10px for very small screens to maintain visibility
   const tokenSize = Math.max(12, Math.round(CELL_SIZE * 0.88));
+  const finishedTokenSize = Math.max(9, Math.round(CELL_SIZE * FINISHED_TOKEN_SIZE_CELLS));
   const boardStyle = {
     "--ludo-board-size": `${BOARD_SIZE}px`,
     width: `${BOARD_SIZE}px`,
@@ -10956,9 +11413,8 @@ const LudoGame = () => {
       if (!player) return;
       player.pieces.forEach((piece, pieceIndex) => {
         const steps = getPieceSteps(piece);
-        if (steps <= 0) return;
-        const stepsToUse = steps >= maxSteps ? maxSteps : steps;
-        const pos = getPositionOnPath(playerIndex, stepsToUse);
+        if (steps <= 0 || steps >= maxSteps) return;
+        const pos = getPositionOnPath(playerIndex, steps);
         const key = `${pos.x},${pos.y}`;
         if (!occupancy.has(key)) {
           occupancy.set(key, []);
@@ -10973,6 +11429,8 @@ const LudoGame = () => {
     let x = 0;
     let y = 0;
     const pieceSteps = getPieceSteps(piece);
+    const isFinishedPiece = pieceSteps >= maxSteps;
+    const visualSize = isFinishedPiece ? finishedTokenSize : tokenSize;
     if (pieceSteps <= 0) {
       const boardSeatIndex = getBoardSeatIndex(
         playerIndex,
@@ -10990,9 +11448,30 @@ const LudoGame = () => {
       // Token left = cell center - half token width
       x = cellCenterX - tokenSize / 2;
       y = cellCenterY - tokenSize / 2;
+    } else if (pieceSteps >= maxSteps) {
+      // Finished tokens: the last path cell is inside the 3x3 centre where
+      // the dice sits, so line them up as small tokens along the outer edge
+      // of their colour's triangle instead of drawing them on the dice.
+      const finalPos = getPositionOnPath(playerIndex, maxSteps);
+      const dirX = Math.sign(finalPos.x - 7);
+      const dirY = Math.sign(finalPos.y - 7);
+      const finishedIndexes = (players[playerIndex]?.pieces || [])
+        .map((pc, idx) => (getPieceSteps(pc) >= maxSteps ? idx : -1))
+        .filter((idx) => idx >= 0);
+      const slot = Math.max(0, finishedIndexes.indexOf(pieceIndex));
+      const spread =
+        (slot - (finishedIndexes.length - 1) / 2) * FINISHED_TOKEN_GAP_CELLS;
+      const centerX =
+        (7.5 + dirX * FINISHED_TOKEN_BAND_CELLS + (dirX === 0 ? spread : 0)) *
+        CELL_SIZE;
+      const centerY =
+        (7.5 + dirY * FINISHED_TOKEN_BAND_CELLS + (dirY === 0 ? spread : 0)) *
+        CELL_SIZE;
+      x = centerX - visualSize / 2;
+      y = centerY - visualSize / 2;
     } else {
-      // Position piece on board - in play, home column, or finished
-      const stepsToUse = pieceSteps >= maxSteps ? maxSteps : pieceSteps;
+      // Position piece on board - in play or in the home column
+      const stepsToUse = pieceSteps;
       const pos = getPositionOnPath(playerIndex, stepsToUse);
       // Calculate cell center position precisely
       const cellLeft = pos.x * CELL_SIZE;
@@ -11028,7 +11507,7 @@ const LudoGame = () => {
       );
 
     // Calculate touchable area padding for mobile
-    const touchPadding = isMobile ? 12 : 4; // Larger padding for mobile
+    const touchPadding = isFinishedPiece ? 0 : isMobile ? 12 : 4; // Larger padding for mobile
 
     const isCurrentPlayer =
       playerIndex ===
@@ -11054,6 +11533,7 @@ const LudoGame = () => {
     const canMove =
       isCurrentPlayer &&
       connectionReady &&
+      !gamePaused &&
       effectiveDiceValue > 0 &&
       !isMovingRef.current &&
       !isAutoMovingRef.current &&
@@ -11075,10 +11555,12 @@ const LudoGame = () => {
           position: "absolute",
           left: `${x - touchPadding}px`,
           top: `${y - touchPadding}px`,
-          width: `${tokenSize + touchPadding * 2}px`,
-          height: `${tokenSize + touchPadding * 2}px`,
-          zIndex:
-            effectiveDiceValue > 0 &&
+          width: `${visualSize + touchPadding * 2}px`,
+          height: `${visualSize + touchPadding * 2}px`,
+          // Finished tokens sit beside the dice (never under it), above it.
+          zIndex: isFinishedPiece
+            ? 60
+            : effectiveDiceValue > 0 &&
             isCurrentPlayer &&
             !isMovingRef.current &&
             !isAutoMovingRef.current
@@ -11172,8 +11654,8 @@ const LudoGame = () => {
                 position: "absolute",
                 left: `${touchPadding}px`,
                 top: `${touchPadding}px`,
-                width: `${tokenSize}px`,
-                height: `${tokenSize}px`,
+                width: `${visualSize}px`,
+                height: `${visualSize}px`,
                 borderRadius: "50%",
                 background: `radial-gradient(circle at 35% 30%, ${adjustHexColor(piece.color, 35)}, ${piece.color} 55%, ${adjustHexColor(piece.color, -25)})`,
                 border: `2.5px solid ${adjustHexColor(piece.color, -40)}`,
@@ -11198,7 +11680,7 @@ const LudoGame = () => {
                   right: 3,
                   bottom: 3,
                   border: `2px solid rgba(255,255,255,0.55)`,
-                  borderRadius: tokenSize / 2 - 3,
+                  borderRadius: visualSize / 2 - 3,
                   pointerEvents: "none",
                 }}
               />
@@ -11211,9 +11693,9 @@ const LudoGame = () => {
                     left: "50%",
                     top: "50%",
                     transform: "translate(-50%, -50%)",
-                    width: tokenSize * 0.68,
-                    height: tokenSize * 0.68,
-                    borderRadius: (tokenSize * 0.68) / 2,
+                    width: visualSize * 0.68,
+                    height: visualSize * 0.68,
+                    borderRadius: (visualSize * 0.68) / 2,
                     objectFit: "cover",
                     pointerEvents: "none",
                     border: "1.5px solid rgba(255,255,255,0.7)",
@@ -11375,8 +11857,20 @@ const LudoGame = () => {
       ? currentPlayerRef.current
       : currentPlayer;
   const effectiveDiceForUi = diceValueRef.current || diceValue || 0;
+  const diceHoldActive = Boolean(heldRoll);
   const canTapDice =
-    canRollDice && effectiveDiceForUi === 0 && isMyTurn && connectionReady;
+    canRollDice &&
+    effectiveDiceForUi === 0 &&
+    isMyTurn &&
+    connectionReady &&
+    !gamePaused &&
+    !(onlineMode && diceHoldActive);
+  // While a landed roll is held, draw it in the colour of whoever rolled it,
+  // even if the turn has already moved on.
+  const diceOwnerIndex =
+    diceHoldActive && typeof heldRoll.player === "number"
+      ? heldRoll.player
+      : effectiveCurrentPlayer;
   const turnHint = !gameStarted
     ? "Waiting…"
     : !isMyTurn
@@ -11396,6 +11890,7 @@ const LudoGame = () => {
     if (game?.lastPlayers?.gameEnded || game?.lastPlayers?.winner) {
       return "Finished";
     }
+    if (game?.paused || game?.lastPlayers?.paused) return "Paused";
     return game?.lastPlayers?.gameStarted ? "In Progress" : "Waiting";
   };
 
@@ -11442,6 +11937,10 @@ const LudoGame = () => {
         onTriggerDebugCelebration={triggerDebugCelebration}
         onToggleControlMode={() => setControlMode(!controlMode)}
         onPlaySound={playSound}
+        gameEnded={gameEnded}
+        gamePaused={Boolean(gamePaused)}
+        pauseDisabled={pauseDisabled}
+        onPauseGame={pauseGame}
       />
 
       {showDiceValueModal && (
@@ -11588,6 +12087,20 @@ const LudoGame = () => {
             style={boardStyle}
           >
             <FunFxLayer bursts={fxBursts} onDone={removeFxBurst} />
+            <PausedOverlay
+              pause={gamePaused}
+              isMine={Boolean(
+                gamePaused &&
+                  (gamePaused.local ||
+                    (gamePaused.profileId &&
+                      String(gamePaused.profileId) === String(myProfile?._id))),
+              )}
+              canResume={!onlineMode || myPlayerIndex === 0}
+              onlineMode={Boolean(onlineMode && gameId)}
+              resumeDenied={resumeDenied}
+              onResume={resumeGame}
+              onSaveAndExit={saveAndExitGame}
+            />
             <svg
               width={BOARD_SIZE}
               height={BOARD_SIZE}
@@ -11746,14 +12259,15 @@ const LudoGame = () => {
                     /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
                       navigator.userAgent,
                     );
-                  const diceSize = isMobile
-                    ? Math.min(72, BOARD_SIZE * 0.18)
-                    : Math.min(108, BOARD_SIZE * 0.2);
+                  // Smaller than the 3x3 centre so finished tokens fit beside it.
+                  const diceSize = Math.round(CELL_SIZE * CENTER_DICE_CELLS);
                   const avatarSize = isMobile
                     ? Math.min(56, BOARD_SIZE * 0.14)
                     : Math.min(80, BOARD_SIZE * 0.15);
                   const showDice =
-                    isRollingRef.current || effectiveDiceForUi > 0;
+                    diceVisuallyRolling ||
+                    isRollingRef.current ||
+                    diceForDisplay > 0;
                   return (
                     <div
                       style={{
@@ -11791,19 +12305,23 @@ const LudoGame = () => {
                         ) : (
                           <Dice3D
                             value={
-                              isRollingRef.current
+                              diceVisuallyRolling
                                 ? rollingFace
-                                : effectiveDiceForUi || 1
+                                : diceForDisplay || rollingFace || 1
                             }
                             size={diceSize}
                             strokeColor={
-                              players[effectiveCurrentPlayer]?.color ||
+                              players[diceOwnerIndex]?.color ||
                               "#2ec4b6"
                             }
-                            rolling={isRollingRef.current}
+                            rolling={diceVisuallyRolling}
                             rotation={diceRotation}
                             durationMs={
-                              onlineMode ? 700 : DICE_ROLL_ANIMATION_MS
+                              remoteDiceTumbling
+                                ? REMOTE_DICE_TUMBLE_MS
+                                : onlineMode
+                                  ? 700
+                                  : DICE_ROLL_ANIMATION_MS
                             }
                           />
                         )}
@@ -12072,13 +12590,79 @@ const LudoGame = () => {
             )}
           </div>
 
+          {localSaves.length > 0 && (
+            <div className="ludo-live-games" data-testid="ludo-saved-games">
+              <div className="ludo-live-games__header">
+                <div>
+                  <div className="ludo-live-games__title">Saved Games</div>
+                  <div className="ludo-live-games__copy">
+                    Pick up an offline match where you left off.
+                  </div>
+                </div>
+              </div>
+              <div className="ludo-live-games__list">
+                {localSaves.map((save) => {
+                  const progress = getSaveProgress(save, maxSteps);
+                  const turnName =
+                    save.players?.[save.currentPlayer]?.name || "Player";
+                  const savedAt = new Date(save.savedAt || Date.now());
+                  return (
+                    <div key={save.id} className="ludo-saved-game">
+                      <button
+                        type="button"
+                        className="ludo-live-game"
+                        onClick={() => resumeLocalGame(save)}
+                      >
+                        <div className="ludo-live-game__badge-wrap">
+                          <div className="ludo-live-game__icon">
+                            {save.playWithComputer ? "🤖" : "🎲"}
+                          </div>
+                          <div className="ludo-seat__badge ludo-seat__badge--waiting">
+                            {save.paused ? "Paused" : "Saved"}
+                          </div>
+                        </div>
+                        <div className="ludo-live-game__meta">
+                          <div className="ludo-live-game__title-row">
+                            <div className="ludo-live-game__name">
+                              {save.playWithComputer ? "Vs computer" : "Local match"}
+                              {" · "}
+                              {save.selectedPlayerCount || save.players.length} players
+                            </div>
+                          </div>
+                          <div className="ludo-live-game__sub">
+                            {progress}% done · {turnName}'s turn ·{" "}
+                            {savedAt.toLocaleDateString()}{" "}
+                            {savedAt.toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </div>
+                        </div>
+                        <span className="ludo-live-game__cta">Resume</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="ludo-saved-game__delete"
+                        onClick={() => deleteLocalSave(save)}
+                        aria-label="Delete saved game"
+                        title="Delete saved game"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {liveJoinedGames.length > 0 && (
             <div className="ludo-live-games">
               <div className="ludo-live-games__header">
                 <div>
                   <div className="ludo-live-games__title">Your Live Games</div>
                   <div className="ludo-live-games__copy">
-                    Rejoin any waiting or in-progress online match.
+                    Rejoin any waiting, paused or in-progress online match.
                   </div>
                 </div>
               </div>
@@ -12102,7 +12686,7 @@ const LudoGame = () => {
                         <div
                           className={`ludo-seat__badge ${gameStatus === "In Progress" ? "ludo-seat__badge--joined" : "ludo-seat__badge--waiting"}`}
                         >
-                          {gameStatus}
+                          {gameStatus === "Paused" ? "⏸ Paused" : gameStatus}
                         </div>
                       </div>
                       <div className="ludo-live-game__meta">

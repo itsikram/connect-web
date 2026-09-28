@@ -114,6 +114,15 @@ const VideoPlayer = () => {
   const [youtubeResults, setYoutubeResults] = useState([]);
   const [youtubeSearching, setYoutubeSearching] = useState(false);
   const [youtubeSearchError, setYoutubeSearchError] = useState("");
+  const [serverWatchResults, setServerWatchResults] = useState([]);
+  const [watchAuthors, setWatchAuthors] = useState({});
+  const [watchSearching, setWatchSearching] = useState(false);
+  const [watchSearchError, setWatchSearchError] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchScope, setSearchScope] = useState("all");
+  const [libraryQuery, setLibraryQuery] = useState("");
+  const [activeTab, setActiveTab] = useState("queue");
+  const searchBoxRef = useRef(null);
   const [youtubeDownload, setYoutubeDownload] = useState(null);
   const [playlistOrder, setPlaylistOrder] = useState(() => loadPlaylistOrder());
   const [playQueue, setPlayQueue] = useState(() => loadPlayQueue());
@@ -144,37 +153,95 @@ const VideoPlayer = () => {
   const [mediaElement, setMediaElement] = useState(null);
   useSmoothAudio(mediaElement);
 
+  // Search runs against two sources in parallel: Watches stored on our server
+  // (all of them, not just the recent feed cached in the library) and YouTube.
   useEffect(() => {
     const query = searchQuery.trim();
     if (!query) {
       setYoutubeResults([]);
       setYoutubeSearchError("");
+      setServerWatchResults([]);
+      setWatchSearchError("");
+      setYoutubeSearching(false);
+      setWatchSearching(false);
       return undefined;
     }
     const controller = new AbortController();
-    const timer = setTimeout(async () => {
-      setYoutubeSearching(true);
+    const isAbort = (error) =>
+      error?.name === "CanceledError" || error?.name === "AbortError";
+    setYoutubeSearching(true);
+    setWatchSearching(true);
+    const timer = setTimeout(() => {
       setYoutubeSearchError("");
-      try {
-        const response = await api.get(
-          `${normalizeServerUrl(getYtDownloadApiUrl())}/youtube/search`,
-          { params: { q: query, maxResults: 8, _ts: Date.now() }, signal: controller.signal },
-        );
-        setYoutubeResults(response.data?.items || []);
-      } catch (error) {
-        if (error?.name !== "CanceledError" && error?.name !== "AbortError") {
+      setWatchSearchError("");
+      api
+        .get("watch/search", {
+          params: { q: query, limit: 12 },
+          signal: controller.signal,
+        })
+        .then((response) => {
+          const list = Array.isArray(response.data) ? response.data : [];
+          const authors = {};
+          list.forEach((w) => {
+            const author = w?.author;
+            const name =
+              author?.displayName ||
+              author?.fullName ||
+              [author?.user?.firstName, author?.user?.surname].filter(Boolean).join(" ");
+            if (w?._id && name) authors[String(w._id)] = name;
+          });
+          setWatchAuthors((prev) => ({ ...prev, ...authors }));
+          setServerWatchResults(watchesToPlaylistItems(list));
+        })
+        .catch((error) => {
+          if (isAbort(error)) return;
+          setServerWatchResults([]);
+          setWatchSearchError("Could not search Watches on the server.");
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setWatchSearching(false);
+        });
+      api
+        .get(`${normalizeServerUrl(getYtDownloadApiUrl())}/youtube/search`, {
+          params: { q: query, maxResults: 8, _ts: Date.now() },
+          signal: controller.signal,
+        })
+        .then((response) => setYoutubeResults(response.data?.items || []))
+        .catch((error) => {
+          if (isAbort(error)) return;
           setYoutubeSearchError(error?.response?.data?.error || "YouTube search failed.");
           setYoutubeResults([]);
-        }
-      } finally {
-        if (!controller.signal.aborted) setYoutubeSearching(false);
-      }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setYoutubeSearching(false);
+        });
     }, 350);
     return () => {
       controller.abort();
       clearTimeout(timer);
     };
   }, [searchQuery]);
+
+  // Close the results dropdown on outside click or Escape.
+  useEffect(() => {
+    if (!searchOpen) return undefined;
+    const onPointerDown = (event) => {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(event.target)) {
+        setSearchOpen(false);
+      }
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") setSearchOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [searchOpen]);
 
   const setVideoElementRef = useCallback((node) => {
     videoRef.current = node;
@@ -188,12 +255,38 @@ const VideoPlayer = () => {
 
   const filteredVideos = useMemo(() => {
     let list = filterPlaylist(allVideos, filter);
-    const q = searchQuery.trim().toLowerCase();
+    const q = libraryQuery.trim().toLowerCase();
     if (q) {
       list = list.filter((v) => v.title.toLowerCase().includes(q));
     }
     return sortPlaylist(list, sortMode, playlistOrder);
-  }, [allVideos, filter, searchQuery, sortMode, playlistOrder]);
+  }, [allVideos, filter, libraryQuery, sortMode, playlistOrder]);
+
+  // Watch results = library Watches/saved copies matching the query (instant)
+  // followed by server matches, de-duplicated by Watch id.
+  const watchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    const seen = new Set();
+    const out = [];
+    const push = (video) => {
+      const key = String(video.sourceId || video.id);
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(video);
+    };
+    allVideos
+      .filter(
+        (v) =>
+          (v.type === "watch" || v.type === "saved") &&
+          v.title.toLowerCase().includes(q),
+      )
+      .forEach(push);
+    serverWatchResults.forEach(push);
+    return out.slice(0, 15);
+  }, [searchQuery, allVideos, serverWatchResults]);
+
+  const showSearchPanel = searchOpen && !!searchQuery.trim();
 
   const usingQueue = playQueue.length > 0;
   const playbackList = useMemo(() => {
@@ -935,7 +1028,7 @@ const VideoPlayer = () => {
   const focusVideoInList = (videoId, nextCustomVideos = customVideos) => {
     const merged = mergePlaylist(watchVideos, savedVideos, nextCustomVideos);
     let list = filterPlaylist(merged, filter);
-    const q = searchQuery.trim().toLowerCase();
+    const q = libraryQuery.trim().toLowerCase();
     if (q) list = list.filter((v) => v.title.toLowerCase().includes(q));
     list = sortPlaylist(list, sortMode, playlistOrder);
     const idx = list.findIndex((v) => v.id === videoId);
@@ -974,6 +1067,45 @@ const VideoPlayer = () => {
     setVideoTitle("");
   };
 
+  const playVideoNow = (video) => {
+    const existingIndex = playQueue.findIndex((item) => item.videoId === video.id);
+    let target = existingIndex >= 0 ? playQueue[existingIndex] : null;
+    if (!target) {
+      target = videoToQueueItem(video);
+      if (!target) return;
+      const appended = target;
+      setPlayQueue((prev) => [...prev, appended]);
+      setQueueIndex(playQueue.length);
+    } else {
+      setQueueIndex(existingIndex);
+    }
+    setPlayPass(1);
+    if (isThisPip && watchPip?.updatePip) {
+      watchPip.updatePip({
+        libraryVideoId: target.queueId,
+        videoId: target.videoId,
+        videoUrl: target.url,
+        title: target.title,
+        thumbnail: target.thumbnail || "",
+        currentTime: 0,
+        playing: true,
+        playPass: 1,
+      });
+    }
+  };
+
+  const handlePlayWatchResult = (video) => {
+    playVideoNow(video);
+    setSearchQuery("");
+    setSearchOpen(false);
+    setActiveTab("queue");
+  };
+
+  const handleQueueWatchResult = (video) => {
+    addToPlayQueue(video);
+    showSuccessToast("Added to Up next");
+  };
+
   const handleSelectYoutubeResult = async (result) => {
     if (!result?.url) return;
     const youtubeId = result.videoId;
@@ -991,8 +1123,10 @@ const VideoPlayer = () => {
         })) ||
       watchVideos.find((video) => video.youtubeId === youtubeId);
     if (existingWatch) {
-      addToPlayQueue(existingWatch);
+      playVideoNow(existingWatch);
       setSearchQuery("");
+      setSearchOpen(false);
+      setActiveTab("queue");
       return;
     }
     const existing = allVideos.find((video) => video.url === result.url);
@@ -1020,6 +1154,8 @@ const VideoPlayer = () => {
     }
     setFilter("all");
     setSearchQuery("");
+    setSearchOpen(false);
+    setActiveTab("queue");
     const downloadQueueId = addToPlayQueue(selectedVideo);
     focusVideoInList(selectedVideo.id, existing ? customVideos : [...customVideos, newVideo]);
     try {

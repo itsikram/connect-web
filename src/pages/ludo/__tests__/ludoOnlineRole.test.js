@@ -9,7 +9,7 @@
  */
 import React from "react";
 import { render, act, fireEvent } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Routes, Route } from "react-router-dom";
 
 const url = process.env.LUDO_E2E_URL;
 const role = process.env.LUDO_E2E_ROLE;
@@ -51,7 +51,8 @@ jest.mock("../../../api/api", () => {
 jest.mock("../../../utils/audioUnlock", () => ({
   unlockAudio: () => Promise.resolve(),
   playTone: () => Promise.resolve(),
-  resumeAudioFromGesture: () => {},
+  resumeAudioFromGesture: () => null,
+  getAudioContext: () => null,
 }));
 
 jest.mock("../hooks/useLudoVoice", () => ({
@@ -306,4 +307,39 @@ run(`web ${role} plays a full online match`, async () => {
     dropAfter: process.env.LUDO_E2E_DROP === role ? 6 : 0,
   });
   process.stdout.write(`[web ${role}] game ended after ${result.actions} actions in ${result.ms}ms\n`);
+});
+
+it("Leave asks in-app, then exits the Ludo page instead of restarting", async () => {
+  process.env.REACT_APP_SOCKET_URL = url || "http://localhost:1";
+  jest.spyOn(console, "error").mockImplementation(() => {});
+  jest.spyOn(console, "log").mockImplementation(() => {});
+  jest.spyOn(console, "warn").mockImplementation(() => {});
+  localStorage.clear();
+  const view = render(
+    <MemoryRouter initialEntries={["/ludo-game"]}>
+      <Routes>
+        <Route path="/ludo-game" element={<LudoGame />} />
+        <Route path="/" element={<div data-testid="home">HOME</div>} />
+      </Routes>
+    </MemoryRouter>,
+  );
+  await pause(300);
+  const start = Array.from(document.querySelectorAll("button")).find((b) =>
+    /Start( Game)?$/.test(b.textContent.trim()),
+  );
+  await click(start);
+  await waitFor(() => byTestId("lobby-confirm"), { label: "lobby" });
+  await click(byTestId("lobby-confirm"));
+  const leave = await waitFor(
+    () => Array.from(document.querySelectorAll("button")).find((b) => b.textContent.trim() === "Leave"),
+    { label: "Leave button" },
+  );
+  window.confirm = jest.fn(() => true);
+  await click(leave);
+  expect(window.confirm).not.toHaveBeenCalled();
+  expect(byTestId("leave-confirm")).toBeTruthy();
+  await click(byTestId("leave-confirm-yes"));
+  await waitFor(() => byTestId("home"), { timeout: 3000, label: "left the Ludo page" });
+  expect(q(".ludo-root")).toBeNull();
+  view.unmount();
 });

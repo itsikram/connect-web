@@ -83,14 +83,30 @@ const ACTION_PARAM_HINTS = {
   LOG_RECOVERY: "searchQuery=mood/craving details",
   RECOVERY_SUPPORT: "searchQuery",
   QUERY_CONTENT: `queryType (${QUERY_TYPES.join("|")}), searchQuery`,
+  LOG_MEAL: "name, mealType? breakfast|lunch|dinner|snack, calories, proteinG, carbsG, fatG, estimated?",
+  LOG_WEIGHT: "weightKg | weightLb",
+  LOG_WATER: "amountMl | glasses (1 glass = 250 ml)",
+  LOG_STEPS: "steps",
+  LOG_SLEEP: "hours",
+  LOG_WORKOUT: "name, type walking|running|cycling|strength|hiit|yoga|swimming|sports|cardio|other, durationMin, intensity?",
+  FITNESS_REMINDER: "title, time HH:mm, type? meal|water|workout|weight|custom",
+  ASK_FITNESS_COACH: "question",
+  RECOVERY_CHECKIN: "mood 1-5, craving 0-10, stress? 1-5, sleepHours?, triggers?, note?",
+  LOG_CRAVING: "intensity 1-10, outcome resisted|used|unsure, trigger?",
+  ASK_RECOVERY_COACH: "message",
 };
 
 // Actions that need structured params the planner can't provide reliably.
 const PLANNER_HIDDEN_ACTIONS = new Set([
+  // Superseded by the fitness/recovery actions shared with the Connect app.
   "LOG_FITNESS_MEAL",
   "LOG_FITNESS_WEIGHT",
   "CREATE_FITNESS_REMINDER",
-  "ASK_FITNESS_COACH",
+  "FITNESS_DASHBOARD",
+  "FITNESS_RECOMMENDATIONS",
+  "LOG_HEALTH",
+  "LOG_RECOVERY",
+  "RECOVERY_SUPPORT",
   "ADD_RECOVERY_DATA",
 ]);
 
@@ -119,7 +135,7 @@ export const buildAgentActionPrompt = () => {
   )
     .map((entry) => `${entry.route}=${entry.label}`)
     .join(", ");
-  cachedActionPrompt = `You can operate the Connect app. If the user asks you to DO something in the app, output ONLY JSON (no prose, no fences): {"reply":"short confirmation in the user's language","actions":[{"action":"NAME",...fields}]}. Use at most 3 actions, exact names from ACTIONS, and only the listed fields. Write targetName as it appears on a profile: transliterate Bangla names to English letters (রহিম -> Rahim) and drop honorifics like ভাই/আপা/আপু/bhai/apu; resolve "him/her/that" from Ctx. For questions about the user's own data use QUERY_CONTENT. If anything required is missing, ask one short question in plain text instead. For normal conversation reply in plain text.\nACTIONS: ${actions}\nROUTES: ${routes}`;
+  cachedActionPrompt = `You can operate the Connect app. If the user asks you to DO something in the app, output ONLY JSON (no prose, no fences): {"reply":"short confirmation in the user's language","actions":[{"action":"NAME",...fields}]}. Use at most 3 actions, exact names from ACTIONS, and only the listed fields. Write targetName as it appears on a profile: transliterate Bangla names to English letters (রহিম -> Rahim) and drop honorifics like ভাই/আপা/আপু/bhai/apu; resolve "him/her/that" from Ctx. For questions about the user's own data use QUERY_CONTENT. If anything required is missing, ask one short question in plain text instead. For normal conversation reply in plain text.\nFitness: meals -> LOG_MEAL (estimate realistic calories/protein/carbs/fat for a normal Bangladeshi portion when not given, estimated true), water -> LOG_WATER, weight -> LOG_WEIGHT, exercise -> LOG_WORKOUT, "how am I doing today" -> FITNESS_SUMMARY, what to eat -> FOOD_RECOMMENDATIONS, diet questions -> ASK_FITNESS_COACH. Recovery (quitting smoking/alcohol/drugs), warm and never judgemental: urge right now -> RECOVERY_SOS; a slip -> LOG_LAPSE (only opens the slip page, never say it was recorded); daily feelings -> RECOVERY_CHECKIN; a craving that passed -> LOG_CRAVING; wanting to talk -> ASK_RECOVERY_COACH; progress -> RECOVERY_SUMMARY. SAFETY FIRST: suicide, self-harm, overdose, wanting to die or danger -> RECOVERY_HELP immediately, with a caring reply.\nACTIONS: ${actions}\nROUTES: ${routes}`;
   return cachedActionPrompt;
 };
 
@@ -177,6 +193,24 @@ export const parseAgentPlan = (text = "", userMessage = "") => {
       if (!intent) return null;
       // Forward the few extra fields toAgentIntent() does not carry.
       if (item?.subPath && !intent.subPath) intent.subPath = item.subPath;
+      // Everything else (calories, time, mood, ...) goes to the action as
+      // params; health actions need them.
+      const {
+        action: _action,
+        targetName: _targetName,
+        messageText: _messageText,
+        searchQuery: _searchQuery,
+        targetRoute: _targetRoute,
+        subPath: _subPath,
+        label: _label,
+        queryType: _queryType,
+        parameters,
+        ...rest
+      } = item || {};
+      intent.params = {
+        ...rest,
+        ...(parameters && typeof parameters === "object" ? parameters : {}),
+      };
       return intent;
     })
     .filter(Boolean)

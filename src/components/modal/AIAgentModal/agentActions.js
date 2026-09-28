@@ -32,6 +32,7 @@ import {
 } from "../../../utils/offlineUtils";
 import { generateGameId, emitSocket } from "../../../pages/ludo/utils/socketHelpers";
 import { getRecoverySupportMessage } from "../../../utils/rehabApi";
+import { isHealthAction, planHealthAction } from "./agentHealth";
 import {
   extractYouTubeUrl,
   extractMediaUrl,
@@ -833,6 +834,11 @@ export const executeAction = async ({
       : `/${nestedPath}`;
     return `/${profileIdentifier}${normalizedNestedPath}`;
   };
+
+  // Fitness + Recovery actions shared with the Connect app.
+  if (isHealthAction(action)) {
+    return runHealthAction({ action, params, messageText, searchQuery, sourceText, go });
+  }
 
   try {
     switch (action) {
@@ -2309,6 +2315,61 @@ export const executeAction = async ({
   }
 };
 
+/** Runs one fitness / recovery action against the shared server API. */
+const runHealthAction = async ({ action, params = {}, messageText, searchQuery, sourceText, go }) => {
+  let plan;
+  try {
+    plan = planHealthAction(action, {
+      ...params,
+      ...(messageText && !params.message ? { message: messageText } : {}),
+      ...(!params.message && !params.question && !params.name && (searchQuery || sourceText)
+        ? { message: searchQuery || sourceText, question: searchQuery || sourceText }
+        : {}),
+    });
+  } catch (error) {
+    return { success: false, message: error.message };
+  }
+  if (plan.kind === "navigate") {
+    go(plan.route);
+    return { success: true, message: plan.message };
+  }
+  try {
+    const response =
+      plan.method === "get"
+        ? await api.get(plan.url, { params: plan.params })
+        : plan.method === "put"
+          ? await api.put(plan.url, plan.body)
+          : await api.post(plan.url, plan.body);
+    if (plan.url.startsWith("/fitness") && plan.method !== "get") {
+      invalidateGetCache("/fitness/dashboard");
+    }
+    const data = response.data;
+    const next = plan.thenOpen?.(data);
+    if (next) go(next);
+    return {
+      success: true,
+      type: ["FITNESS_SUMMARY", "FOOD_RECOMMENDATIONS", "RECOVERY_SUMMARY"].includes(action)
+        ? "health-report"
+        : undefined,
+      message: plan.format(data),
+    };
+  } catch (error) {
+    const body = error?.response?.data || {};
+    if (plan.url.startsWith("/recovery") && (body.code === "NOT_SET_UP" || error?.response?.status === 404)) {
+      go("/rehab");
+      return {
+        success: false,
+        message: "Recovery isn't set up yet. Set it up in the Connect app (Menu → Recovery), then I can track it here too.",
+      };
+    }
+    if (plan.url.startsWith("/fitness") && /profile first/i.test(String(body.message || ""))) {
+      go("/health/setup");
+      return { success: false, message: "Your fitness profile isn't set up yet, so I opened the setup." };
+    }
+    return { success: false, message: body.message || error?.message || "That did not work. Please try again." };
+  }
+};
+
 /**
  * Returns display metadata for an action type.
  */
@@ -2368,6 +2429,22 @@ export const getActionMeta = (action) => {
     LOG_FITNESS_MEAL: { label: "Log Fitness Meal", icon: "fa-apple-alt", color: "#00c851" },
     LOG_FITNESS_WEIGHT: { label: "Log Fitness Weight", icon: "fa-weight", color: "#00d4ff" },
     CREATE_FITNESS_REMINDER: { label: "Fitness Reminder", icon: "fa-bell", color: "#f59e0b" },
+    FITNESS_SUMMARY: { label: "Today's Fitness", icon: "fa-heartbeat", color: "#00c851" },
+    LOG_MEAL: { label: "Log Meal", icon: "fa-utensils", color: "#00c851" },
+    LOG_WEIGHT: { label: "Log Weight", icon: "fa-weight", color: "#00d4ff" },
+    LOG_WATER: { label: "Log Water", icon: "fa-tint", color: "#00d4ff" },
+    LOG_STEPS: { label: "Log Steps", icon: "fa-shoe-prints", color: "#00c851" },
+    LOG_SLEEP: { label: "Log Sleep", icon: "fa-bed", color: "#8b5cf6" },
+    LOG_WORKOUT: { label: "Log Workout", icon: "fa-dumbbell", color: "#00c851" },
+    FITNESS_REMINDER: { label: "Fitness Reminder", icon: "fa-bell", color: "#f59e0b" },
+    FOOD_RECOMMENDATIONS: { label: "Food Suggestions", icon: "fa-apple-alt", color: "#00c851" },
+    RECOVERY_SUMMARY: { label: "Recovery Progress", icon: "fa-seedling", color: "#00c851" },
+    RECOVERY_CHECKIN: { label: "Recovery Check-in", icon: "fa-clipboard-check", color: "#00d4ff" },
+    LOG_CRAVING: { label: "Log Craving", icon: "fa-fire-alt", color: "#f59e0b" },
+    LOG_LAPSE: { label: "Record a Slip", icon: "fa-undo", color: "#f59e0b" },
+    ASK_RECOVERY_COACH: { label: "Recovery Coach", icon: "fa-hands-helping", color: "#00c851" },
+    RECOVERY_SOS: { label: "SOS", icon: "fa-life-ring", color: "#ff4444" },
+    RECOVERY_HELP: { label: "Get Help Now", icon: "fa-phone-alt", color: "#ff4444" },
     ASK_FITNESS_COACH: { label: "Fitness Coach", icon: "fa-user-md", color: "#00c851" },
     ACCEPT_CONNECT: {
       label: "Accept Request",

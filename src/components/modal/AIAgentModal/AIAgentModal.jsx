@@ -960,15 +960,20 @@ const AIAgentModal = ({
           : result.message || replyOverride;
         // Explain failures kindly in Bangla when the user spoke Bangla, like
         // a person reporting back (the technical message stays in English).
-        if (!result.success && detectAgentLanguage(originalText) !== "en") {
+        // Fitness/recovery summaries are also read back in Bangla.
+        const healthReport = result.success && result.type === "health-report";
+        if ((!result.success || healthReport) && detectAgentLanguage(originalText) !== "en") {
           try {
             const explained = await completeChat({
-              system:
-                "Explain briefly and kindly, in Bangla (Bengali script), what went wrong and what the user can do next. One or two short spoken sentences. No markdown.",
+              system: healthReport
+                ? "Report these fitness/recovery numbers back to the user in Bangla (Bengali script), warmly, in two or three short spoken sentences with the key numbers. No markdown."
+                : "Explain briefly and kindly, in Bangla (Bengali script), what went wrong and what the user can do next. One or two short spoken sentences. No markdown.",
               messages: [
                 {
                   role: "user",
-                  content: `Request: ${originalText}\nProblem: ${result.message}`,
+                  content: healthReport
+                    ? `Request: ${originalText}\nData:\n${result.message}`
+                    : `Request: ${originalText}\nProblem: ${result.message}`,
                 },
               ],
               temperature: 0.3,

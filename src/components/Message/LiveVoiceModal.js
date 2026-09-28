@@ -18,6 +18,9 @@ const LiveVoiceModal = ({
   // Voice is actually flowing to/from the friend's device.
   isStreaming = false,
   peerJoined = false,
+  // Receiver only: remember to turn the mic on automatically for this friend.
+  autoMicrophone = false,
+  onToggleAutoMicrophone,
 }) => {
   // Joined but voice not flowing yet: the friend's device has not connected
   // (or, for the listener, has not started sending).
@@ -153,6 +156,20 @@ const LiveVoiceModal = ({
                 {microphonePending ? "Turning on microphone..." : "Turn on microphone"}
               </span>
             </button>
+          )}
+
+          {role === "receiver" && typeof onToggleAutoMicrophone === "function" && (
+            <label className="live-voice-auto-mic">
+              <input
+                type="checkbox"
+                checked={!!autoMicrophone}
+                onChange={(e) => onToggleAutoMicrophone(e.target.checked)}
+              />
+              <span>
+                Auto turn on my microphone for{" "}
+                <strong>{connectName || "this friend"}</strong>
+              </span>
+            </label>
           )}
 
           {isActive && (

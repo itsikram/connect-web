@@ -2,6 +2,12 @@ import React from "react";
 
 const iconPaths = {
   play: <path d="M8 5.5v13l10-6.5-10-6.5Z" fill="currentColor" stroke="none" />,
+  pause: (
+    <>
+      <path d="M8 5.5v13" />
+      <path d="M16 5.5v13" />
+    </>
+  ),
   leave: (
     <>
       <path d="M14 8V5.5A1.5 1.5 0 0 0 12.5 4h-6A1.5 1.5 0 0 0 5 5.5v13A1.5 1.5 0 0 0 6.5 20h6a1.5 1.5 0 0 0 1.5-1.5V16" />

@@ -234,6 +234,32 @@
   background: #ff4d4f;
 }
 
+.live-voice-auto-mic {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  padding: 12px 15px;
+  font-size: 14px;
+  color: #ccc;
+  cursor: pointer;
+  user-select: none;
+}
+
+.live-voice-auto-mic input {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin: 0;
+  accent-color: #1db954;
+  cursor: pointer;
+}
+
+.live-voice-auto-mic strong {
+  color: #fff;
+}
+
 .live-voice-connection-quality {
   background: rgba(255, 255, 255, 0.04);
   border-radius: 8px;

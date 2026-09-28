@@ -38,6 +38,34 @@ const mapAgoraQuality = (uplink = 0, downlink = 0) => {
   return 1;
 };
 
+// Per-account list of friends whose live voice should auto turn on our mic.
+const autoMicStorageKey = (myId) => `liveVoiceAutoMic:${myId || ""}`;
+
+const readAutoMicPeers = (myId) => {
+  try {
+    const raw = window.localStorage.getItem(autoMicStorageKey(myId));
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list.map(String) : [];
+  } catch (_e) {
+    return [];
+  }
+};
+
+const isAutoMicPeer = (myId, peerId) =>
+  !!peerId && readAutoMicPeers(myId).includes(String(peerId));
+
+const saveAutoMicPeer = (myId, peerId, enabled) => {
+  if (!peerId) return;
+  try {
+    const id = String(peerId);
+    const others = readAutoMicPeers(myId).filter((p) => p !== id);
+    window.localStorage.setItem(
+      autoMicStorageKey(myId),
+      JSON.stringify(enabled ? [...others, id] : others),
+    );
+  } catch (_e) {}
+};
+
 const LiveVoice = ({ myId }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isActive, setIsActive] = useState(false);
@@ -51,6 +79,9 @@ const LiveVoice = ({ myId }) => {
   // The friend's device is in the channel / their voice is arriving.
   const [peerJoined, setPeerJoined] = useState(false);
   const [remoteAudio, setRemoteAudio] = useState(false);
+  // Receiver: turn the mic on automatically for this friend.
+  const [autoMicrophone, setAutoMicrophone] = useState(false);
+  const autoMicAttemptedRef = useRef(false);
   // Streaming = voice is actually flowing to (or from) the friend's device,
   // not just that this browser joined the channel.
   const isStreaming =
@@ -168,6 +199,8 @@ const LiveVoice = ({ myId }) => {
       setMicrophonePending(false);
       setPeerJoined(false);
       setRemoteAudio(false);
+      setAutoMicrophone(false);
+      autoMicAttemptedRef.current = false;
 
       broadcastStatus({
         active: false,
@@ -288,6 +321,10 @@ const LiveVoice = ({ myId }) => {
       setDuration(0);
       setPeerJoined(false);
       setRemoteAudio(false);
+      autoMicAttemptedRef.current = false;
+      setAutoMicrophone(
+        sessionRole === "receiver" && isAutoMicPeer(myId, to),
+      );
       broadcastStatus({
         active: false,
         connecting: true,
@@ -410,22 +447,67 @@ const LiveVoice = ({ myId }) => {
 
   const enableMicrophone = useCallback(async () => {
     if (roleRef.current !== "receiver" || microphoneEnabled || microphonePending) return;
+    const sessionId = sessionIdRef.current;
     setMicrophonePending(true);
     let mic = null;
     try {
       mic = await AgoraRTC.createMicrophoneAudioTrack();
+      // The session ended while the mic was starting: drop it quietly.
+      if (sessionId !== sessionIdRef.current) {
+        mic.close();
+        return;
+      }
       const client = clientRef.current;
       if (!client) throw new Error("Live voice is not connected");
       await client.publish([mic]);
+      if (sessionId !== sessionIdRef.current) {
+        mic.close();
+        return;
+      }
       localTrackRef.current = mic;
       setMicrophoneEnabled(true);
     } catch (error) {
-      console.error("Live voice microphone enable failed:", error);
       mic?.close?.();
+      if (sessionId !== sessionIdRef.current) return;
+      console.error("Live voice microphone enable failed:", error);
       setMicrophonePending(false);
       window.alert(error?.message || "Unable to turn on microphone");
     }
   }, [microphoneEnabled, microphonePending]);
+
+  const toggleAutoMicrophone = useCallback(
+    (enabled) => {
+      saveAutoMicPeer(myId, peerIdRef.current, enabled);
+      // Checking the box also turns the mic on now (via the effect below).
+      autoMicAttemptedRef.current = false;
+      setAutoMicrophone(!!enabled);
+    },
+    [myId],
+  );
+
+  // Receiver with auto-mic on: turn the mic on once the session is live.
+  // Attempted once per session so a denied permission does not loop.
+  useEffect(() => {
+    if (
+      role !== "receiver" ||
+      !isActive ||
+      !autoMicrophone ||
+      microphoneEnabled ||
+      microphonePending ||
+      autoMicAttemptedRef.current
+    ) {
+      return;
+    }
+    autoMicAttemptedRef.current = true;
+    enableMicrophone();
+  }, [
+    role,
+    isActive,
+    autoMicrophone,
+    microphoneEnabled,
+    microphonePending,
+    enableMicrophone,
+  ]);
 
   startSessionRef.current = startSession;
   stopSessionRef.current = stopSession;
@@ -527,6 +609,8 @@ const LiveVoice = ({ myId }) => {
       microphonePending={microphonePending}
       isStreaming={isStreaming}
       peerJoined={peerJoined}
+      autoMicrophone={autoMicrophone}
+      onToggleAutoMicrophone={toggleAutoMicrophone}
     />
   ) : null;
 };
