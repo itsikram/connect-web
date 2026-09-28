@@ -693,7 +693,7 @@ const SingleMessage = ({
           <div className="chat-message-profilePic">
             <UserPP
               profilePic={`${connectProfile.profilePic}`}
-              profile={connectProfile._id}
+              profile={connectProfile._id} username={connectProfile?.username}
               active={connectProfile.isActive}
             ></UserPP>
           </div>

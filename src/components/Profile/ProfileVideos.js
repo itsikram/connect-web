@@ -1,5 +1,6 @@
 import React, {Fragment, useCallback, useEffect,useState} from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import useProfileRouteId from "../../hooks/useProfileRouteId";
 import { useSelector } from "react-redux";
 import CreatePost from "../post/CreatePost";
 import Watch from "../watch/Watch";
@@ -12,7 +13,7 @@ import { fetchProfileCached } from "../../utils/requestCache";
 
 
 let ProfileVideos = () => {
-    let {profile} = useParams()
+    let profile = useProfileRouteId()
     let myProfileData = useSelector(state => state.profile) || {}
     let isAuth = myProfileData._id === profile || myProfileData.username === profile
     let [profileData, setProfileData] = useState(false)

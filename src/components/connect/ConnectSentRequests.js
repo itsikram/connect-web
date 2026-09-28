@@ -57,6 +57,7 @@ const ConnectSentRequests = () => {
                     <CGI
                         key={request._id}
                         id={request._id}
+                        username={request.username}
                         profilePic={request.profilePic}
                         isVerified={request.isVerified}
                         fullName={`${request.user?.firstName || ""} ${request.user?.surname || ""}`.trim() || "User"}

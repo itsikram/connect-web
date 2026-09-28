@@ -9,6 +9,7 @@ import RelationshipPickerModal from '../RelationshipPickerModal';
 import config from "../../config/config.json";
 import VerifiedName from "../feed/VerifiedName";
 import { getProfileSuccess } from '../../services/actions/profileActions';
+import { getProfilePath } from "../../utils/profilePath";
 
 let CGI = (props) => {
 
@@ -130,12 +131,12 @@ let CGI = (props) => {
                     (isPpLoaded == true) ? (
                         <>
                             <div className="connect-grid-item request">
-                                <Link to={`/${profile}/`}>
+                                <Link to={getProfilePath(profile, "", props.username)}>
                                     <div className="profile-picture" alt="profile pic" style={{ backgroundImage: `url(${profilePic})` }}></div>
                                 </Link>
 
                                 <div className="grid-body">
-                                    <Link to={`/${profile}/`}>
+                                    <Link to={getProfilePath(profile, "", props.username)}>
                                         <h5 className="profile-name"><VerifiedName profile={props}>{fullName}</VerifiedName></h5>
                                     </Link>
 
@@ -159,12 +160,12 @@ let CGI = (props) => {
                         </>
                     ) : (<>
                         <div className="connect-grid-item request">
-                            <Link to={`/${profile}/`}>
+                            <Link to={getProfilePath(profile, "", props.username)}>
                                 <div className="profile-picture fgi-skeleton-photo" aria-hidden="true"></div>
                             </Link>
 
                             <div className="grid-body">
-                                <Link to={`/${profile}/`}>
+                                <Link to={getProfilePath(profile, "", props.username)}>
                                     <h5 className="profile-name"><VerifiedName profile={props}>{fullName}</VerifiedName></h5>
                                 </Link>
 
@@ -208,12 +209,12 @@ let CGI = (props) => {
                 isPpLoaded ? (
                     <>
                         <div className="connect-grid-item suggest">
-                            <Link to={`/${profile}/`}>
+                            <Link to={getProfilePath(profile, "", props.username)}>
                                 <div className="profile-picture" alt="profile pic" style={{ backgroundImage: `url(${profilePic})` }}></div>
                             </Link>
 
                             <div className="grid-body">
-                                <Link to={`/${profile}/`}>
+                                <Link to={getProfilePath(profile, "", props.username)}>
                                     <h5 className="profile-name"><VerifiedName profile={props}>{fullName}</VerifiedName></h5>
                                 </Link>
 
@@ -241,12 +242,12 @@ let CGI = (props) => {
                     (
                         <>
                             <div className="connect-grid-item suggest">
-                                <Link to={`/${profile}/`}>
+                                <Link to={getProfilePath(profile, "", props.username)}>
                                     <div className="profile-picture fgi-skeleton-photo" aria-hidden="true"></div>
                                 </Link>
 
                                 <div className="grid-body">
-                                    <Link to={`/${profile}/`}>
+                                    <Link to={getProfilePath(profile, "", props.username)}>
                                         <h5 className="profile-name"><VerifiedName profile={props}>{fullName}</VerifiedName></h5>
                                     </Link>
 

@@ -247,7 +247,7 @@ const CreateWatch = ({ setWatches = null }) => {
             <div className="nf-create-post">
                 <div className="top">
                     <div className="profile-pic">
-                        <UserPP profilePic={profileData.profilePic} hasStory={hasStory} profile={profileData._id} />
+                        <UserPP profilePic={profileData.profilePic} hasStory={hasStory} profile={profileData._id} username={profileData?.username} />
                     </div>
                     <div onClick={handleWatchFieldClick} className="cp-field">
                         <input readOnly placeholder={textInputPlaceHoder} className="cp-input" />
@@ -283,7 +283,7 @@ const CreateWatch = ({ setWatches = null }) => {
                         <div className="cp-modal-container">
                             <div className="cpm-header">
                                 <div className="cpm-profilePic">
-                                    <UserPP profilePic={profileData.profilePic} hasStory={hasStory} profile={profileData._id} />
+                                    <UserPP profilePic={profileData.profilePic} hasStory={hasStory} profile={profileData._id} username={profileData?.username} />
                                 </div>
                                 <div className="cpm-username">
                                     <h3>{profileName}</h3>

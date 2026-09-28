@@ -34,6 +34,7 @@ import WatchComment from "./WatchComment";
 import ModalContainer from "../modal/ModalContainer";
 import { addPost } from "../../services/actions/postActions";
 import "../post/SharePostModal.css";
+import { getProfilePath } from "../../utils/profilePath";
 const default_pp_src = config?.defaultProfile;
 
 
@@ -493,10 +494,10 @@ const SinglePost = (watch) => {
                                             <div className="author-info">
                                                 <div className="left">
                                                     <div className="author-pp">
-                                                        <UserPP profilePic={postAuthorPP} profile={watchData.author._id} active={watchData.author.isActive}></UserPP>
+                                                        <UserPP profilePic={postAuthorPP} profile={watchData.author._id} username={watchData.author?.username} active={watchData.author.isActive}></UserPP>
                                                     </div>
                                                     <div className="post-nd-container">
-                                                        <Link to={'/' + watchData.author._id}>
+                                                        <Link to={getProfilePath(watchData.author)}>
                                                             <h4 className="author-name">
                                                                 {watchData.author.user.firstName + ' ' + watchData.author.user.surname}
                                                             </h4>
@@ -661,7 +662,7 @@ const SinglePost = (watch) => {
                                                                             <div className="share-post-avatar">
                                                                                 <UserPP
                                                                                     profilePic={myProfile.profilePic}
-                                                                                    profile={myProfile._id}
+                                                                                    profile={myProfile._id} username={myProfile?.username}
                                                                                 />
                                                                             </div>
                                                                             <div className="share-post-user-meta">

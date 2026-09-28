@@ -32,7 +32,7 @@ const StoryLists = (props) => {
                         <div className={`story-list-item mb-2 ${storyId == singleStory._id ? 'active' : ''}`}>
                             <div className='d-flex justify-content-center align-items-center'>
                                 <div className='story-pp-container text-end'>
-                                    <UserPP profilePic={singleStory?.author?.profilePic} hasStory={true} profile={singleStory?.author._id}></UserPP>
+                                    <UserPP profilePic={singleStory?.author?.profilePic} hasStory={true} profile={singleStory?.author._id} username={singleStory?.author?.username}></UserPP>
                                 </div>
                                 <div className='story-info-container px-2'>
                                     <h2 className='author-name fs-5 mb-0'>{singleStory.author.user.firstName + ' ' + singleStory.author.user.surname} </h2>

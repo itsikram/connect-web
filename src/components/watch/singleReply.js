@@ -97,7 +97,7 @@ const SingleReply = ({item,myProfile,setReplies,comment}) => {
     return (
         <div className="reply-container">
             <div className="author-pp">
-                <UserPP profilePic={item.author.profilePic} profile={item.author._id}></UserPP>
+                <UserPP profilePic={item.author.profilePic} profile={item.author._id} username={item.author?.username}></UserPP>
 
             </div>
             <div className="comment-info">

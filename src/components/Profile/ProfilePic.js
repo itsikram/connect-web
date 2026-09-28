@@ -15,7 +15,9 @@ import { PROFILE_IMG_REFERRER_POLICY, isGoogleHostedImage, sanitizeProfileImageU
 const defaultPpSrc = config?.defaultProfile;
 
 let ProfilePic = ({ profileData }) => {
-    let { profile } = useParams()
+    let { profile: routeProfile } = useParams()
+    // URL may hold a username; the story lookup needs the profile id.
+    let profile = profileData?._id || routeProfile
 
     let myProfileData = useSelector(state => state.profile)
     const dispatch = useDispatch();

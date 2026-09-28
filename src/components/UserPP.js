@@ -2,19 +2,20 @@ import React, { Fragment, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import config from "../config/config.json";
 import { PROFILE_IMG_REFERRER_POLICY, sanitizeProfileImageUrl } from "../utils/profileImage";
+import { getProfilePath } from "../utils/profilePath";
 
 const default_pp_src = config.defaultProfile;
 
 
-let UserPP = ({profilePic, profile, active, hasStory,size = 40}) => {
+let UserPP = ({profilePic, profile, username, active, hasStory,size = 40}) => {
     const displaySrc = sanitizeProfileImageUrl(profilePic) || default_pp_src;
     let navigate = useNavigate();
 
     var profileId = profile;
 
     let goToProfile = useCallback(e => {
-        navigate(`/${e.currentTarget.dataset.id}`)
-    },[])
+        navigate(getProfilePath(e.currentTarget.dataset.id, "", username))
+    },[navigate, username])
 
     const handleImgError = (e) => {
         if (e?.currentTarget && !String(e.currentTarget.src || '').includes('default-profile-pic')) {

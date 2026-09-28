@@ -52,6 +52,7 @@ import {
   emitConnectEvent,
   todayKey,
 } from "./agentActionHelpers";
+import { getProfilePath } from "../../../utils/profilePath";
 
 const CALENDAR_STORAGE_KEY = "calendarApp";
 const HABITS_STORAGE_KEY = "habitsApp";
@@ -826,13 +827,8 @@ export const executeAction = async ({
   };
 
   const buildProfilePath = (profile, nestedPath = "") => {
-    const profileIdentifier = profile?._id;
-    if (!profileIdentifier) return null;
-    if (!nestedPath) return `/${profileIdentifier}/`;
-    const normalizedNestedPath = nestedPath.startsWith("/")
-      ? nestedPath
-      : `/${nestedPath}`;
-    return `/${profileIdentifier}${normalizedNestedPath}`;
+    if (!profile?._id) return null;
+    return getProfilePath(profile, nestedPath);
   };
 
   // Fitness + Recovery actions shared with the Connect app.
@@ -963,24 +959,24 @@ export const executeAction = async ({
 
         // Special tokens resolved at execution time (need myProfile._id)
         if (targetRoute === "MY_PROFILE") {
-          go(`/${myProfile._id}`);
+          go(getProfilePath(myProfile));
           return { success: true, message: `👤 Opening your profile…` };
         }
 
         if (targetRoute === "MY_PROFILE_CONNECTS") {
-          go(`/${myProfile._id}/connects`);
+          go(getProfilePath(myProfile, "connects"));
           return { success: true, message: `👥 Opening your connects list…` };
         }
         if (targetRoute === "MY_PROFILE_IMAGES") {
-          go(`/${myProfile._id}/images`);
+          go(getProfilePath(myProfile, "images"));
           return { success: true, message: `🖼️ Opening your photos…` };
         }
         if (targetRoute === "MY_PROFILE_VIDEOS") {
-          go(`/${myProfile._id}/videos`);
+          go(getProfilePath(myProfile, "videos"));
           return { success: true, message: `🎬 Opening your videos…` };
         }
         if (targetRoute === "MY_PROFILE_ABOUT") {
-          go(`/${myProfile._id}/about`);
+          go(getProfilePath(myProfile, "about"));
           return { success: true, message: `📋 Opening your about page…` };
         }
 

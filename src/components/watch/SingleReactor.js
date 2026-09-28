@@ -27,7 +27,7 @@ const SingleReactor = ({ reactor }) => {
             {profileData && (
                 <li className='sp-reacts-item'>
                     <div className='reactor-pp'>
-                        <UserPP profilePic={profileData.profilePic} profile={profileData._id}></UserPP>
+                        <UserPP profilePic={profileData.profilePic} profile={profileData._id} username={profileData?.username}></UserPP>
                     </div>
                     <div className='react-details'>
                         <Link to={`/${profileData._id}`}>

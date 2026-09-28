@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../api/api';
-import { useParams, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
+import useProfileRouteId from "../../hooks/useProfileRouteId";
 import SingleImage from './SingleImage';
 import Masonry, { ResponsiveMasonry } from "react-responsive-masonry"
 import Lightbox from '../Message/Lightbox';
 const ProfileImages = () => {
 
     let [profileImages, setProfileImages] = useState([])
-    let { profile } = useParams()
+    let profile = useProfileRouteId()
     let location = useLocation()
     let [images, setImages] = useState([])
     let [isLightBox, setIsLightbox] = useState(false);
@@ -24,7 +25,7 @@ const ProfileImages = () => {
             setImages([...res.data.map((imagedata) => imagedata.photos)])
 
         })
-    }, [location])
+    }, [location, profile])
 
     // columnsCountBreakPoints={{350: 1, 750: 2, 900: 3}}
     //                 gutterBreakpoints={{350: "12px", 750: "16px", 900: "24px"}}

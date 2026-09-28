@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useSelector } from "react-redux";
 import "./Connects.css";
+import { getProfilePath } from "../utils/profilePath";
 
 const CONNECTS_NAV = [
     { to: "/connects/", end: true, label: "Home", icon: "fa-user-connects", short: "Home" },
@@ -16,7 +17,7 @@ const Connects = () => {
     const location = useLocation();
     const [navOpen, setNavOpen] = useState(false);
 
-    const allConnectsTo = profile?._id ? `/${profile._id}/connects` : "/connects/";
+    const allConnectsTo = profile?._id ? getProfilePath(profile, "connects") : "/connects/";
 
     const activeLabel = useMemo(() => {
         if (location.pathname.includes("/connects/places")) return "Places Near You";

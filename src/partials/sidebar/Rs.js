@@ -321,7 +321,7 @@ let RightSidebar = () => {
                                 <div className='rs-nav-menu-item' data-profile={data._id} onClick={redirectToMessage}>
                                     <div className='rs-profile-img-container'>
                                         <div className='rs-profile-img'>
-                                            <UserPP profilePic={`${data.profilePic}`} profile={data._id} size="full" active={isFrndActive}></UserPP>
+                                            <UserPP profilePic={`${data.profilePic}`} profile={data._id} username={data?.username} size="full" active={isFrndActive}></UserPP>
                                         </div>
                                     </div>
 

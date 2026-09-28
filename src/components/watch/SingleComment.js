@@ -129,7 +129,7 @@ const SingleComment = (props) => {
         <>
             <div className={`comment-container comment-id-${comment._id}`}>
                 <div className="author-pp">
-                    <UserPP profilePic={comment.author.profilePic} profile={comment.author._id}></UserPP>
+                    <UserPP profilePic={comment.author.profilePic} profile={comment.author._id} username={comment.author?.username}></UserPP>
                 </div>
                 <div className="comment-info">
                     <div className="comment-box">

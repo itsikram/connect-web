@@ -40,6 +40,7 @@ import "./CommentStyles.css";
 import "./SinglePost.css";
 import OptionsDropdown from "./OptionsDropdown";
 import ReportModal from "../modal/ReportModal";
+import { getProfilePath } from "../../utils/profilePath";
 const default_pp_src = config?.defaultProfile;
 
 const SinglePost = () => {
@@ -364,12 +365,12 @@ const SinglePost = () => {
                   <div className="author-pp">
                     <UserPP
                       profilePic={postData.author.profilePic}
-                      profile={postData.author._id}
+                      profile={postData.author._id} username={postData.author?.username}
                       active={postData.author.isActive}
                     ></UserPP>
                   </div>
                   <div className="post-nd-container">
-                    <Link to={"/" + postData.author._id}>
+                    <Link to={getProfilePath(postData.author)}>
                       <h4 className="author-name">
                         <AuthorDisplayName author={postData.author} />
                       </h4>
@@ -458,11 +459,11 @@ const SinglePost = () => {
                     <div className="author-pp">
                       <UserPP
                         profilePic={postData.parentPost?.author?.profilePic}
-                        profile={postData.parentPost?.author?._id}
+                        profile={postData.parentPost?.author?._id} username={postData.parentPost?.author?.username}
                       ></UserPP>
                     </div>
                     <div className="post-nd-container">
-                      <Link to={"/" + postData.author._id}>
+                      <Link to={getProfilePath(postData.author)}>
                         <h4 className="author-name">
                           {postData.parentPost?.author?.fullName}
                         </h4>
@@ -600,7 +601,7 @@ const SinglePost = () => {
                             <div className="share-post-avatar">
                               <UserPP
                                 profilePic={myProfile.profilePic}
-                                profile={myProfile._id}
+                                profile={myProfile._id} username={myProfile?.username}
                               />
                             </div>
                             <div className="share-post-user-meta">
@@ -668,13 +669,13 @@ const SinglePost = () => {
                   <div className="author-pp">
                     <UserPP
                       profilePic={postAuthorPP}
-                      profile={postData.author._id}
+                      profile={postData.author._id} username={postData.author?.username}
                       active={postData.author.isActive}
                     ></UserPP>
                   </div>
                   <div className="post-nd-container">
                     <h4 className="author-name">
-                      <Link to={"/" + postData.author._id}>
+                      <Link to={getProfilePath(postData.author)}>
                         <AuthorDisplayName author={postData.author} />
                       </Link>
 
@@ -905,7 +906,7 @@ const SinglePost = () => {
                               <div className="share-post-avatar">
                                 <UserPP
                                   profilePic={myProfile.profilePic}
-                                  profile={myProfile._id}
+                                  profile={myProfile._id} username={myProfile?.username}
                                 />
                               </div>
                               <div className="share-post-user-meta">

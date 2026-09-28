@@ -8,6 +8,7 @@ import { SIDEBAR_MENU_ITEMS } from "../sidebar/sidebarMenuItems";
 import api from "../../api/api";
 import { getProfileSuccess } from "../../services/actions/profileActions";
 import "./AppMenuModal.css";
+import { getProfilePath } from "../../utils/profilePath";
 
 const APP_MENU_ORDER_KEY = "appMenuOrder";
 
@@ -98,7 +99,9 @@ const AppMenuModal = ({ isOpen, onRequestClose, onAIAgentOpen }) => {
     }
   })();
 
-  const profilePath = userInfo.profile ? `/${userInfo.profile}/` : "/";
+  const profilePath = getProfilePath(
+    profileData?._id ? profileData : userInfo.profile,
+  );
   const profileName = getProfileDisplayName(profileData);
 
   const handleItemClick = useCallback(() => {
@@ -161,7 +164,7 @@ const AppMenuModal = ({ isOpen, onRequestClose, onAIAgentOpen }) => {
               <UserPP
                 profilePic={profileData?.profilePic}
                 size="full"
-                profile={profileData?._id}
+                profile={profileData?._id} username={profileData?.username}
               />
             </div>
             <div className="app-menu-profile-meta">

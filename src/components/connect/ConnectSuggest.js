@@ -103,6 +103,7 @@ let ConnectsSuggest = () => {
                                     profileReqs={connect.connectReqs}
                                     type={isIncomingReq ? "req" : "sug"}
                                     id={connect._id}
+                                    username={connect.username}
                                     profilePic={connect.profilePic}
                                     isVerified={connect.isVerified}
                                     fullName={fullName}

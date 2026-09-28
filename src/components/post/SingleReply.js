@@ -199,7 +199,7 @@ const SingleReply = ({ item, myProfile, setReplies, comment, isEditMode, isPostA
     return (
         <div className={`reply-container reply-id-${item._id}`}>
             <div className="author-pp">
-                <UserPP profilePic={item.author.profilePic} profile={item.author._id} />
+                <UserPP profilePic={item.author.profilePic} profile={item.author._id} username={item.author?.username} />
             </div>
             <div className="comment-info">
                 <div className="comment-box">

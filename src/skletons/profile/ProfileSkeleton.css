@@ -1,0 +1,243 @@
+.profile-skeleton {
+  width: 100%;
+}
+
+.profile-skeleton .ps-block {
+  position: relative;
+  overflow: hidden;
+  background-color: #3a3b3c;
+}
+
+.profile-skeleton .ps-block::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    transparent 100%
+  );
+  animation: profileSkeletonShimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes profileSkeletonShimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.profile-skeleton-header {
+  background-color: #242526;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+}
+
+.profile-skeleton .ps-cover {
+  width: 75%;
+  height: 300px;
+  margin: auto;
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+}
+
+.profile-skeleton .ps-info {
+  width: 70%;
+  margin: -40px auto 0;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #3b3c3c;
+}
+
+.profile-skeleton .ps-avatar {
+  flex: none;
+  width: 170px;
+  height: 170px;
+  border-radius: 50%;
+  border: 4px solid #242526;
+  background-color: #4a4b4c;
+}
+
+.profile-skeleton .ps-details {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 40px;
+}
+
+.profile-skeleton .ps-name-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.profile-skeleton .ps-line {
+  height: 12px;
+  width: 100%;
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+
+.profile-skeleton .ps-line.short {
+  width: 45%;
+}
+
+.profile-skeleton .ps-name {
+  height: 22px;
+  width: 220px;
+  max-width: 100%;
+}
+
+.profile-skeleton .ps-meta {
+  width: 160px;
+  max-width: 100%;
+}
+
+.profile-skeleton .ps-meta.short {
+  width: 120px;
+}
+
+.profile-skeleton .ps-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.profile-skeleton .ps-button {
+  width: 110px;
+  height: 36px;
+  border-radius: 8px;
+}
+
+.profile-skeleton .ps-tabs {
+  width: 70%;
+  margin: 10px auto 0;
+  display: flex;
+  gap: 12px;
+}
+
+.profile-skeleton .ps-tab {
+  width: 80px;
+  height: 30px;
+  border-radius: 6px;
+}
+
+.profile-skeleton .ps-content {
+  width: 70%;
+  margin: auto;
+  display: flex;
+  gap: 15px;
+  align-items: flex-start;
+}
+
+.profile-skeleton .ps-card {
+  background-color: #242526;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 15px;
+}
+
+.profile-skeleton .ps-intro {
+  width: 38%;
+  flex: none;
+}
+
+.profile-skeleton .ps-title {
+  height: 18px;
+  width: 40%;
+  margin-bottom: 16px;
+}
+
+.profile-skeleton .ps-posts {
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-skeleton .ps-post-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.profile-skeleton .ps-post-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.profile-skeleton .ps-post-lines {
+  flex: 1;
+}
+
+.profile-skeleton .ps-post-lines .ps-line {
+  margin-bottom: 8px;
+}
+
+.profile-skeleton .ps-post-name {
+  width: 35%;
+}
+
+.profile-skeleton .ps-post-media {
+  height: 260px;
+  border-radius: 8px;
+}
+
+@media only screen and (max-width: 768px) {
+  .profile-skeleton .ps-cover {
+    width: 100%;
+    height: 180px;
+    border-radius: 0;
+  }
+
+  .profile-skeleton .ps-info {
+    width: 95%;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .profile-skeleton .ps-avatar {
+    width: 130px;
+    height: 130px;
+  }
+
+  .profile-skeleton .ps-details {
+    width: 100%;
+    flex-direction: column;
+    margin-top: 12px;
+  }
+
+  .profile-skeleton .ps-tabs {
+    width: 95%;
+    overflow: hidden;
+  }
+
+  .profile-skeleton .ps-tab {
+    flex: none;
+  }
+
+  .profile-skeleton .ps-content {
+    width: 95%;
+    flex-direction: column;
+  }
+
+  .profile-skeleton .ps-intro {
+    width: 100%;
+  }
+
+  .profile-skeleton .ps-post-media {
+    height: 200px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .profile-skeleton .ps-block::after {
+    animation: none;
+  }
+}

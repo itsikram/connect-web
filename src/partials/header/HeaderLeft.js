@@ -12,6 +12,7 @@ import UserPP from "../../components/UserPP";
 import useIsMobile from "../../utils/useIsMobile";
 import AppMenuModal from "./AppMenuModal";
 import config from "../../config/config.json";
+import { getProfilePath } from "../../utils/profilePath";
 
 const RECENT_SEARCH_KEY = "headerRecentSearches";
 const MAX_RECENT_SEARCHES = 8;
@@ -109,7 +110,7 @@ const buildFlatResults = (data) => {
     sublabel: item.username
       ? `@${item.username}`
       : item.nickname || "Profile",
-    url: `/${item._id}`,
+    url: getProfilePath(item),
     profilePic: item.profilePic,
     profileId: item._id,
   }));

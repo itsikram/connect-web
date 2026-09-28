@@ -10,6 +10,7 @@ import "leaflet/dist/leaflet.css";
 import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import api from "../../api/api";
+import { getProfilePath } from "../../utils/profilePath";
 
 const DEFAULT_CENTER = { lat: 40.7128, lng: -74.006 };
 const NEARBY_RADIUS_M = 2000;
@@ -286,6 +287,7 @@ const PlacesNearYou = () => {
                         type="button"
                         class="js-map-view-profile"
                         data-profile-id="${escapeHtml(person._id)}"
+                        data-profile-username="${escapeHtml(person.username || "")}"
                         style="display:inline-block;margin-top:8px;color:#0284c7;font-size:12px;text-decoration:none;background:none;border:0;padding:0;cursor:pointer"
                     >
                         View profile
@@ -302,7 +304,9 @@ const PlacesNearYou = () => {
             event.preventDefault();
             const profileId = trigger.getAttribute("data-profile-id");
             if (!profileId) return;
-            navigate(`/${profileId}`);
+            navigate(
+              getProfilePath(profileId, "", trigger.getAttribute("data-profile-username")),
+            );
             mapInstance.closePopup();
           };
         });

@@ -19,6 +19,7 @@ import config from "../../config/config.json";
 import { sanitizeProfileImageUrl } from "../../utils/profileImage";
 import HeaderMessageMenu from "./HeaderMessageMenu";
 import useIsMobile from "../../utils/useIsMobile";
+import { getProfilePath } from "../../utils/profilePath";
 
 const EMPTY_LIST = [];
 
@@ -65,6 +66,7 @@ const selectProfileHeader = (state) => {
   if (!profile) return null;
   return {
     _id: profile._id,
+    username: profile.username,
     profilePic: profile.profilePic,
     fullName: profile.fullName,
     firstName: profile.user?.firstName,
@@ -118,7 +120,9 @@ let HeaderRight = ({ pendingLudoInvites = [], pendingChessInvites = [] }) => {
   const location = useLocation();
   const [ppUrl, setPpUrl] = useState(config?.defaultProfile);
   const navigate = useNavigate();
-  const profilePath = user?.profile ? `/${user.profile}/` : "/";
+  const profilePath = getProfilePath(
+    profileData?._id ? profileData : user?.profile,
+  );
 
   const [messageOption, setMessageOption] = useState(false);
   const messageOptionMenuRef = useRef(null);

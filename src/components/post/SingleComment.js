@@ -250,7 +250,7 @@ const SingleComment = ({ comment, postData, myProfile, isEditMode, parentType = 
         <>
         <div className={`comment-container comment-id-${comment._id}${attachmentUrl ? ' has-media' : ''}`}>
             <div className="author-pp">
-                <UserPP profilePic={comment.author.profilePic} profile={comment.author._id} />
+                <UserPP profilePic={comment.author.profilePic} profile={comment.author._id} username={comment.author?.username} />
             </div>
             <div className="comment-info">
                 <div className="comment-box">

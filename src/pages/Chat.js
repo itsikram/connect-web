@@ -1389,7 +1389,7 @@ const Chat = () => {
                 <div className="chat-empty-avatar">
                   <UserPP
                     profilePic={connectProfile.profilePic}
-                    profile={connectProfile._id}
+                    profile={connectProfile._id} username={connectProfile?.username}
                     active={isActive}
                     size="full"
                   />
@@ -1412,7 +1412,7 @@ const Chat = () => {
                 <div className="chat-message-profilePic">
                   <UserPP
                     profilePic={`${connectProfile.profilePic}`}
-                    profile={connectProfile._id}
+                    profile={connectProfile._id} username={connectProfile?.username}
                     active={connectProfile.isActive}
                   ></UserPP>
                 </div>

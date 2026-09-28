@@ -11,6 +11,7 @@ import {
   isoWeekKey,
 } from "../../utils/feedPrompts";
 import "./FeedBoostCards.css";
+import { getProfilePath } from "../../utils/profilePath";
 
 const WELCOME_KEY = "feedBoost:welcomeDismissed";
 const icebreakerKey = () => `feedBoost:icebreaker:${isoDateKey()}`;
@@ -222,7 +223,7 @@ const FeedBoostCards = ({ postCount = 0, feedLoaded = false }) => {
               return (
                 <Link
                   key={person._id}
-                  to={`/${person._id}/`}
+                  to={getProfilePath(person)}
                   className="feed-boost-person"
                 >
                   <span

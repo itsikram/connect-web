@@ -381,20 +381,36 @@ function OfflinePanel({ connection, mode, remote, onRetry }) {
 
 function AccessKeyPanel({ rejected, onSubmit }) {
   const [value, setValue] = useState("");
-  const submit = (event) => {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const submit = async (event) => {
     event.preventDefault();
-    if (value.trim()) onSubmit(value.trim());
+    if (!value.trim() || saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      await onSubmit(value.trim());
+    } catch (err) {
+      setError(err.message);
+      setSaving(false);
+    }
   };
   return (
     <form className="ec-offline" onSubmit={submit}>
       <div className="ec-offline-icon">
         <FiLock />
       </div>
-      <h2>{rejected ? "That access key didn't work" : "Enter your Expo control access key"}</h2>
+      <h2>{rejected ? "The saved access key no longer works" : "Enter your Expo control access key"}</h2>
       <p>
         Your PC is online. For safety, controlling it from the live site needs the key from{" "}
-        <code>home-cobalt\live.env</code> (<code>EXPO_CONTROL_ACCESS_KEY</code>). It's saved in this browser, so you only enter it once.
+        <code>home-cobalt\live.env</code> (<code>EXPO_CONTROL_ACCESS_KEY</code>). It's saved to your Connect account, so every browser
+        and device where you're signed in connects automatically.
       </p>
+      {error && (
+        <p className="ec-key-error" role="alert">
+          {error}
+        </p>
+      )}
       <div className="ec-key-row">
         <input
           type="password"
@@ -406,8 +422,8 @@ function AccessKeyPanel({ rejected, onSubmit }) {
           aria-label="Access key"
           autoFocus
         />
-        <button type="submit" className="ec-btn ec-btn-primary" disabled={!value.trim()}>
-          Connect
+        <button type="submit" className="ec-btn ec-btn-primary" disabled={!value.trim() || saving}>
+          {saving ? "Checking…" : "Save & connect"}
         </button>
       </div>
     </form>
@@ -874,7 +890,7 @@ function TopBar({ connection, mode, onBack, onForgetKey }) {
         <p>Start, restart and share your dev server with Expo Go on iOS</p>
       </div>
       {onForgetKey && connection === "online" && (
-        <button type="button" className="ec-icon-btn" onClick={onForgetKey} aria-label="Forget access key" title="Forget access key on this browser">
+        <button type="button" className="ec-icon-btn" onClick={onForgetKey} aria-label="Remove saved access key" title="Remove the saved access key from your account">
           <FiLock />
         </button>
       )}

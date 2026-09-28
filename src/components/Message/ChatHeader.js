@@ -38,6 +38,7 @@ import LocationMap from "../modal/LocationMap";
 import ReportModal from "../modal/ReportModal";
 import ChatSettingsModal from "./ChatSettingsModal";
 import "./UserInfoModal.css";
+import { getProfilePath } from "../../utils/profilePath";
 // Using Agora RTC SDK instead of simple-peer
 
 const ChatHeader = ({
@@ -2436,8 +2437,8 @@ const ChatHeader = ({
   }, [currentConnectId, isBlocking, patchMyBlockedUsers]);
 
   const handleViewProfile = useCallback(
-    () => navigate(`/${connectId}`),
-    [navigate, connectId],
+    () => navigate(getProfilePath(connectId, "", connectProfile?.username)),
+    [navigate, connectId, connectProfile?.username],
   );
 
   // Removed Google Maps initialization - using Leaflet map component instead

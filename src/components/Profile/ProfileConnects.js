@@ -1,5 +1,5 @@
 import React, { Fragment, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import useProfileRouteId from "../../hooks/useProfileRouteId";
 import api from '../../api/api';
 import { useSelector } from 'react-redux'
 import PFI from './PFI';
@@ -11,14 +11,14 @@ const ProfileConnects = () => {
     let [hasConnectsData, setHasConnectsData] = useState(true)
     let [isAuth, setIsAuth] = useState(false)
 
-    let params = useParams()
+    let profileId = useProfileRouteId()
 
     useEffect(() => {
-        let isAuth = params.profile === myProfile._id ? true : false
+        let isAuth = profileId === myProfile._id ? true : false
         setIsAuth(isAuth)
         api.get('/connects/getConnects', {
             params: {
-                profile: params.profile,
+                profile: profileId,
                 _t: Date.now()
             }
 
@@ -32,7 +32,7 @@ const ProfileConnects = () => {
             }))
         }).catch(e => console.log(e))
 
-    }, [params, myProfile])
+    }, [profileId, myProfile])
 
 
     return (

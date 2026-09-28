@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import api from "../api/api";
+import { getProfilePath } from "../utils/profilePath";
 
 const SearchResults = () => {
   const [searchParams] = useSearchParams();
@@ -65,7 +66,7 @@ const SearchResults = () => {
           <h3>People</h3>
           <div className="list-group">
             {data.users.map((user) => (
-              <Link key={user._id} to={`/${user._id}`} className="list-group-item list-group-item-action">
+              <Link key={user._id} to={getProfilePath(user)} className="list-group-item list-group-item-action">
                 {user.fullName || user.displayName || user.username || "Profile"}
               </Link>
             ))}

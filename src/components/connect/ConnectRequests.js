@@ -97,6 +97,7 @@ let ConnectRequests = () => {
                             <CGI
                                 key={req._id}
                                 id={req._id}
+                                username={req.username}
                                 profilePic={req.profilePic}
                                 isVerified={req.isVerified}
                                 fullName={`${req.user?.firstName || ""} ${req.user?.surname || ""}`.trim() || "User"}

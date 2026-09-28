@@ -1,7 +1,16 @@
-import React, { Fragment, useEffect, useState } from "react";
-import { NavLink, Outlet, useParams, Link } from "react-router-dom";
+import React, { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import {
+  NavLink,
+  Outlet,
+  useParams,
+  Link,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import $ from "jquery";
-import { fetchProfileCached } from "../utils/requestCache";
+import { fetchProfileCached, primeCachedResource } from "../utils/requestCache";
+import { getProfilePath, getProfileSlug } from "../utils/profilePath";
+import ProfileSkeleton from "../skletons/profile/ProfileSkeleton";
 import api from "../api/api";
 import { useSelector } from "react-redux";
 import ProfileButtons from "../components/Profile/ProfileButtons";
@@ -13,6 +22,8 @@ import VerifiedName from "../components/feed/VerifiedName";
 
 let Profile = (props) => {
   let params = useParams();
+  let location = useLocation();
+  let navigate = useNavigate();
   let myProfileData = useSelector((state) => state.profile) || {};
   let myProfileId = myProfileData._id;
   let [profileData, setProfileData] = useState(null);
@@ -23,6 +34,8 @@ let Profile = (props) => {
   let [isReportOpen, setIsReportOpen] = useState(false);
 
   const profileIdentifier = params.profile;
+  const profileDataRef = useRef(profileData);
+  profileDataRef.current = profileData;
   const isAuth =
     profileData?._id === myProfileId ||
     profileData?.username === myProfileData.username;
@@ -35,6 +48,19 @@ let Profile = (props) => {
   useEffect(() => {
     let active = true;
     const fetchProfile = async () => {
+      // Same profile under a different identifier (e.g. id -> username
+      // redirect): keep what we have instead of flashing the skeleton.
+      const current = profileDataRef.current;
+      if (
+        current &&
+        (String(current._id) === String(profileIdentifier) ||
+          (current.username && current.username === profileIdentifier))
+      ) {
+        setLoadedProfileIdentifier(profileIdentifier);
+        setProfileLoading(false);
+        return;
+      }
+
       setProfileData(null);
       setProfileLoading(true);
       setLoadedProfileIdentifier(null);
@@ -108,19 +134,47 @@ let Profile = (props) => {
     return () => { active = false; };
   }, [profileData?._id, isAuth, isConnect]);
 
-  let profilePath =
-    profileData && profileData._id ? "/" + profileData._id + "/" : "/";
-
-  const SkeletonLoader = () => (
-    <div className="animate-pulse flex flex-col items-center space-y-4">
-      <div className="w-24 h-24 rounded-full bg-gray-300"></div>
-      <div className="w-40 h-6 bg-gray-300 rounded"></div>
-      <div className="w-60 h-4 bg-gray-300 rounded"></div>
-    </div>
-  );
+  let profilePath = profileData ? getProfilePath(profileData) : "/";
 
   const isRequestedProfileLoaded =
     loadedProfileIdentifier === profileIdentifier;
+
+  // Show the username in the URL (e.g. /programmerikram) instead of the id.
+  useEffect(() => {
+    if (!profileData || !isRequestedProfileLoaded) return;
+    const slug = getProfileSlug(profileData);
+    if (!slug || slug === profileIdentifier) return;
+
+    const segments = location.pathname.split("/");
+    // Only rewrite the top-level /:profile route (not e.g. /message/:profile).
+    if (decodeURIComponent(segments[1] || "") !== profileIdentifier) return;
+
+    primeCachedResource(`profile:${slug}`, profileData);
+    segments[1] = encodeURIComponent(slug);
+    navigate(
+      {
+        pathname: segments.join("/"),
+        search: location.search,
+        hash: location.hash,
+      },
+      { replace: true, state: location.state },
+    );
+  }, [
+    profileData,
+    isRequestedProfileLoaded,
+    profileIdentifier,
+    location.pathname,
+    location.search,
+    location.hash,
+    location.state,
+    navigate,
+  ]);
+
+  // Child tabs need the real profile id even when the URL holds a username.
+  const outletContext = useMemo(
+    () => ({ profileId: profileData?._id || null, profileData }),
+    [profileData],
+  );
 
   // handle Active classes of profile Tab  menu
   let profileTabItemClick = (e) => {
@@ -133,9 +187,7 @@ let Profile = (props) => {
     <Fragment>
       <div id="profile">
         {profileLoading || !isRequestedProfileLoaded ? (
-          <div className="profile-loading-placeholder">
-            <SkeletonLoader />
-          </div>
+          <ProfileSkeleton />
         ) : !profileData ? (
           <div className="profile-loading-placeholder">
             <p className="text-center">Profile not found.</p>
@@ -162,7 +214,7 @@ let Profile = (props) => {
                     <div className="connects-count">
                       <Link
                         className="text-decoration-none"
-                        to={`/${profileData._id}/connects`}
+                        to={getProfilePath(profileData, "connects")}
                       >
                         {profileData.connects && profileData.connects.length}{" "}
                         Connects
@@ -264,7 +316,7 @@ let Profile = (props) => {
               </div>
             </div>
             <div className="profile-content-container">
-              <Outlet />
+              <Outlet context={outletContext} />
             </div>
           </>
         )}

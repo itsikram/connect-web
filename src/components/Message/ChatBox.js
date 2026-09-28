@@ -135,7 +135,7 @@ const ChatBox = (props) => {
                 <div className='chat-header'>
                     <div className='chat-header-user'>
                         <div className='chat-header-profilePic'>
-                            <UserPP profilePic={`${connectProfile.profilePic}`} profile={connectProfile._id} active={connectProfile.isActive}></UserPP>
+                            <UserPP profilePic={`${connectProfile.profilePic}`} profile={connectProfile._id} username={connectProfile?.username} active={connectProfile.isActive}></UserPP>
                         </div>
                         <div className='chat-header-user-info'>
                             <h4 className='chat-header-username'> {`${connectProfile.user && connectProfile.user.firstName} ${connectProfile.user && connectProfile.user.surname}`}</h4>
@@ -165,7 +165,7 @@ const ChatBox = (props) => {
                         <div className='chat-message-container message-sent'>
 
                             <div className='chat-message-profilePic'>
-                                <UserPP profile={connectProfile._id} active={connectProfile.isActive}></UserPP>
+                                <UserPP profile={connectProfile._id} username={connectProfile?.username} active={connectProfile.isActive}></UserPP>
                             </div>
                         <div className='chat-message'> Message Receive </div>
                             <div className='chat-message-options'>
@@ -202,7 +202,7 @@ const ChatBox = (props) => {
                         <div className='chat-message-container message-sent'>
 
                         <div className='chat-message-profilePic'>
-                            <UserPP profile={connectProfile._id} active={connectProfile.isActive}></UserPP>
+                            <UserPP profile={connectProfile._id} username={connectProfile?.username} active={connectProfile.isActive}></UserPP>
                         </div>
                         <div className='chat-message'> Message Receive </div>
                         <div className='chat-message-options'>

@@ -9,7 +9,8 @@ import api from "../api/api";
  *   daemon directly on this machine.
  * - Live site: the Connect server hands out the daemon's Cloudflare tunnel URL
  *   (published by home-cobalt, like face login) and every request carries the
- *   access key stored in this browser.
+ *   access key. The key is saved to the signed-in Connect account, so it is
+ *   entered once per account, not once per browser.
  */
 
 const pageHost = window.location.hostname;
@@ -86,12 +87,15 @@ async function resolveTarget(accessKey) {
   if (!remote.url || (await probe(remote.url)) !== "online") {
     return { status: "remote-offline", mode: "remote", remote };
   }
-  if (!accessKey) return { status: "needs-key", mode: "remote", remote };
+  // Prefer the key saved to this account; fall back to one this browser saved
+  // before account storage existed.
+  const key = config.accessKey || accessKey;
+  if (!key) return { status: "needs-key", mode: "remote", remote };
 
   // Validate the key before opening the stream so we can show a clear error.
   try {
     const res = await fetch(`${remote.url}/api/status`, {
-      headers: { "X-Expo-Control-Key": accessKey },
+      headers: { "X-Expo-Control-Key": key },
       cache: "no-store",
     });
     if (res.status === 401) return { status: "needs-key", mode: "remote", remote, keyRejected: true };
@@ -100,7 +104,13 @@ async function resolveTarget(accessKey) {
   } catch (_) {
     return { status: "remote-offline", mode: "remote", remote };
   }
-  return { status: "online", mode: "remote", base: remote.url, key: accessKey, remote };
+  if (!config.authorized) {
+    // A key that works but lives only in this browser: attach it to the
+    // account so other browsers and devices stop asking.
+    api.post("expo-control-access", { key }).catch(() => {});
+  }
+  if (config.accessKey) storeKey(config.accessKey);
+  return { status: "online", mode: "remote", base: remote.url, key, remote };
 }
 
 /** Minimal Server-Sent Events reader over fetch (EventSource cannot send headers). */
@@ -316,17 +326,41 @@ export default function useExpoControl() {
     };
   }, [connect]);
 
+  /**
+   * Save a pasted key. On the live site it is checked against the PC and saved
+   * to the signed-in account; rejects with a readable message if it fails.
+   */
   const setAccessKey = useCallback(
-    (key) => {
-      keyRef.current = String(key || "").trim();
-      storeKey(keyRef.current);
+    async (key) => {
+      const clean = String(key || "").trim();
+      if (!isLocalPage && clean) {
+        try {
+          await api.post("expo-control-access", { key: clean }, { timeout: 30000 });
+        } catch (error) {
+          const message =
+            (error && error.response && error.response.data && error.response.data.error) ||
+            "Could not save the access key. Try again.";
+          throw new Error(message);
+        }
+      }
+      keyRef.current = clean;
+      storeKey(clean);
       setConnection("connecting");
       connect();
     },
     [connect]
   );
 
-  const forgetAccessKey = useCallback(() => setAccessKey(""), [setAccessKey]);
+  /** Stop this account (and browser) from using the saved key. */
+  const forgetAccessKey = useCallback(async () => {
+    if (!isLocalPage) await api.delete("expo-control-access").catch(() => {});
+    keyRef.current = "";
+    storeKey("");
+    targetRef.current = null;
+    stopStream();
+    setKeyRejected(false);
+    setConnection("needs-key");
+  }, []);
 
   const request = useCallback(async (method, path, body) => {
     const target = targetRef.current;

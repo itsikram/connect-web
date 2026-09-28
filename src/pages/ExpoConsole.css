@@ -790,6 +790,11 @@
   font: inherit;
 }
 
+.ec-offline .ec-key-error {
+  color: var(--ec-danger);
+  font-weight: 600;
+}
+
 .ec-key-input:focus {
   outline: 2px solid var(--ec-accent);
   outline-offset: 1px;

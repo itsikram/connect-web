@@ -47,6 +47,7 @@ import {
   PlacedReactIcons,
   CurrentReactIcon,
 } from "./ReactPicker";
+import { getProfilePath } from "../../utils/profilePath";
 
 const default_pp_src = config?.defaultProfile;
 const REACT_LONG_PRESS_MS = 450;
@@ -639,12 +640,12 @@ const Post = React.memo(
                     <div className="author-pp">
                       <UserPP
                         profilePic={post.author.profilePic}
-                        profile={post.author._id}
+                        profile={post.author._id} username={post.author?.username}
                         active={post.author.isActive}
                       ></UserPP>
                     </div>
                     <div className="post-nd-container">
-                      <Link to={"/" + post.author._id}>
+                      <Link to={getProfilePath(post.author)}>
                         <h4 className="author-name"><AuthorDisplayName author={post.author} /></h4>
                       </Link>
                       <span className="post-time">
@@ -703,12 +704,12 @@ const Post = React.memo(
                         <div className="author-pp">
                           <UserPP
                             profilePic={post?.parentPost?.author?.profilePic}
-                            profile={post?.parentPost?.author?._id}
+                            profile={post?.parentPost?.author?._id} username={post?.parentPost?.author?.username}
                             active={post?.parentPost?.author?.isActive}
                           ></UserPP>
                         </div>
                         <div className="post-nd-container">
-                          <Link to={"/" + post.author._id}>
+                          <Link to={getProfilePath(post.author)}>
                             <h4 className="author-name">
                               {post?.parentPost?.author?.fullName}
                             </h4>
@@ -887,7 +888,7 @@ const Post = React.memo(
                                   <div className="share-post-avatar">
                                     <UserPP
                                       profilePic={myProfile.profilePic}
-                                      profile={myProfile._id}
+                                      profile={myProfile._id} username={myProfile?.username}
                                     />
                                   </div>
                                   <div className="share-post-user-meta">
@@ -983,13 +984,13 @@ const Post = React.memo(
                     <div className="author-pp">
                       <UserPP
                         profilePic={postAuthorPP}
-                        profile={post.author._id}
+                        profile={post.author._id} username={post.author?.username}
                         active={post.author.isActive}
                       ></UserPP>
                     </div>
                     <div className="post-nd-container">
                       <h4 className="author-name" onClick={postHeaderClick}>
-                        <Link to={"/" + post.author._id}>
+                        <Link to={getProfilePath(post.author)}>
                           <AuthorDisplayName author={post.author} />
                         </Link>
                         {post.feelings && (
@@ -1184,7 +1185,7 @@ const Post = React.memo(
                             <div className="share-post-avatar">
                               <UserPP
                                 profilePic={myProfile.profilePic}
-                                profile={myProfile._id}
+                                profile={myProfile._id} username={myProfile?.username}
                               />
                             </div>
                             <div className="share-post-user-meta">

@@ -46,6 +46,7 @@ import { initIncomingCallPushBridge } from "../utils/incomingCallFromPush";
 import socket from "../common/socket";
 import Header from "../partials/header/Header";
 import ProtectedRoute from "../components/ProtectedRoute.js";
+import ProfileSkeleton from "../skletons/profile/ProfileSkeleton";
 import { useAuth } from "../hooks/useAuth";
 import Home from "./Home";
 import Login from "./Login.js";
@@ -2692,7 +2693,9 @@ const Main = () => {
               path="/:profile/"
               element={
                 <ProtectedRoute>
-                  <Profile />
+                  <Suspense fallback={<ProfileSkeleton />}>
+                    <Profile />
+                  </Suspense>
                 </ProtectedRoute>
               }
             >

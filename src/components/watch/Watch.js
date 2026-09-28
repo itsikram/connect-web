@@ -35,6 +35,7 @@ import WatchCacheManager from "../../utils/watchCacheManager";
 import OptionsDropdown from "../post/OptionsDropdown";
 import { addPost } from "../../services/actions/postActions";
 import "../post/SharePostModal.css";
+import { getProfilePath } from "../../utils/profilePath";
 const default_pp_src = config?.defaultProfile;
 const APP_PRIMARY_COLOR = "#29B1A9";
 const APP_PRIMARY_TINT = "rgba(41, 177, 169, 0.12)";
@@ -467,12 +468,12 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
               <div className="author-pp">
                 <UserPP
                   profilePic={watchAuthorPP}
-                  profile={watch.author._id}
+                  profile={watch.author._id} username={watch.author?.username}
                   active={watch.author.isActive}
                 ></UserPP>
               </div>
               <div className="watch-nd-container">
-                <Link to={"/" + watch.author._id}>
+                <Link to={getProfilePath(watch.author)}>
                   <h4 className="author-name">
                     {watch.author.user.firstName +
                       " " +
@@ -663,7 +664,7 @@ const Watch = ({ watch, onDelete = null, onUpdate = null, pipPlaylist = [] }) =>
                           <div className="share-post-avatar">
                             <UserPP
                               profilePic={myProfile.profilePic}
-                              profile={myProfile._id}
+                              profile={myProfile._id} username={myProfile?.username}
                             />
                           </div>
                           <div className="share-post-user-meta">

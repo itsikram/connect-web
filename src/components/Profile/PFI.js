@@ -1,6 +1,7 @@
 import React, { Fragment, useState,useEffect } from 'react';
 import $ from 'jquery'
 import { Link,useParams } from 'react-router-dom';
+import { getProfilePath } from '../../utils/profilePath';
 import api from '../../api/api';
 import { useDispatch, useSelector } from 'react-redux';
 import checkImgLoading from '../../utils/checkImgLoading';
@@ -96,7 +97,7 @@ const PFI = (props) => {
             <div className='connect-item'>
 
                 <div className='connect-info'>
-                    <Link to={'/' + connect._id}>
+                    <Link to={getProfilePath(connect)}>
                         <div className='connect-profilePic'>
                             {
                                 isPpLoaded ? <img src={profilePic} alt={connectFullName} referrerPolicy="no-referrer" ></img> : <ImageSkleton />

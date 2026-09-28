@@ -1,7 +1,7 @@
 import React, { Fragment, useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import Moment from "react-moment";
-import { useParams } from "react-router-dom";
+import useProfileRouteId from "../../hooks/useProfileRouteId";
 import { fetchProfileCached } from "../../utils/requestCache";
 
 let ProfileDetails = (props) => {
@@ -13,8 +13,7 @@ let ProfileDetails = (props) => {
     let [schools, setSchools] = useState([])
     let [presentAddress, setPresentAddress] = useState('')
     let [permanentAddress, setPermanentAddress] = useState('')
-    let params = useParams(); 
-    let connectId = params.profile
+    let connectId = useProfileRouteId()
 
 
     useEffect(() => {

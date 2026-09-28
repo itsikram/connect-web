@@ -182,7 +182,7 @@ const SingleStory = () => {
                                     {story.author && (
                                         <UserPP
                                             profilePic={story.author.profilePic}
-                                            profile={story.author._id}
+                                            profile={story.author._id} username={story.author?.username}
                                             hasStory={false}
                                         />
                                     )}

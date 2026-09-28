@@ -650,7 +650,7 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
                         <div className="avatar-container">
                           <UserPP
                             profilePic={contactPerson.profilePic}
-                            profile={contactPerson._id}
+                            profile={contactPerson._id} username={contactPerson?.username}
                             active={isOnline}
                           />
                         </div>
@@ -937,7 +937,7 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
                           <div className="avatar-container">
                             <UserPP
                               profilePic={contactPerson.profilePic}
-                              profile={contactPerson._id}
+                              profile={contactPerson._id} username={contactPerson?.username}
                               active={isOnline}
                             />
                           </div>
