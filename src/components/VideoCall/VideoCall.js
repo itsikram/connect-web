@@ -33,6 +33,8 @@ import {
   unlockAudio,
   playAudioWithWebAudio,
   initializeAudioUnlock,
+  isAudioContextRunning,
+  onNextUserGesture,
 } from "../../utils/audioUnlock";
 import {
   showCallNotification,
@@ -184,6 +186,8 @@ const VideoCall = ({ myId }) => {
   const ringtoneStartedAt = useRef(null);
   const ringtoneObjectUrlRef = useRef(null);
   const ringtoneObjectUrlSourceRef = useRef("");
+  // Cancels a pending "start ringtone on next interaction" listener.
+  const ringtoneGestureRetryRef = useRef(null);
   const originalTitleRef = useRef(document?.title || "");
   const titleFlashIntervalRef = useRef(null);
   const pendingAutoAcceptRef = useRef(false);
@@ -386,6 +390,10 @@ const VideoCall = ({ myId }) => {
   const stopRingtone = () => {
     ringtonePlaybackToken.current += 1;
     ringtoneAllowedRef.current = false;
+    if (ringtoneGestureRetryRef.current) {
+      ringtoneGestureRetryRef.current();
+      ringtoneGestureRetryRef.current = null;
+    }
     if (ringtoneStopTimer.current) {
       clearTimeout(ringtoneStopTimer.current);
       ringtoneStopTimer.current = null;
@@ -435,6 +443,33 @@ const VideoCall = ({ myId }) => {
     receivingCallRef.current &&
     !callAcceptedRef.current;
 
+  // The browser blocked autoplay (page never interacted with since load).
+  // Start the ringtone synchronously inside the user's next interaction.
+  const armRingtoneGestureRetry = () => {
+    if (ringtoneGestureRetryRef.current) return;
+    ringtoneGestureRetryRef.current = onNextUserGesture(() => {
+      ringtoneGestureRetryRef.current = null;
+      const audio = ringtoneAudio?.current;
+      if (
+        !audio ||
+        !audio.paused ||
+        ringtoneBufferSource.current ||
+        !isRingtoneCurrent(ringtonePlaybackToken.current)
+      ) {
+        return;
+      }
+      audio.muted = false;
+      audio.volume = 1.0;
+      audio.loop = true;
+      const playPromise = audio.play();
+      if (playPromise && typeof playPromise.catch === "function") {
+        playPromise.catch((err) =>
+          console.warn("Ringtone play on user gesture failed:", err),
+        );
+      }
+    });
+  };
+
   // Resume the element ringtone after the tab was hidden. Never restarts a
   // ringtone that was stopped, and never doubles one playing via AudioBuffer.
   const resumeRingtoneIfNeeded = async (reason) => {
@@ -457,6 +492,7 @@ const VideoCall = ({ myId }) => {
         await audio.play();
       } catch (e) {
         console.warn(`Failed to resume ringtone on ${reason}:`, e);
+        armRingtoneGestureRetry();
       }
     }
     if (!isRingtoneCurrent(token)) audio.pause();
@@ -577,7 +613,9 @@ const VideoCall = ({ myId }) => {
     const toneSrc = audio.src;
 
     try {
-      if (audioPreloader.hasBuffer(toneSrc)) {
+      // A suspended context would "play" the buffer silently, so only use it
+      // when it is actually running; otherwise use the <audio> element.
+      if (isAudioContextRunning() && audioPreloader.hasBuffer(toneSrc)) {
         // Never stack a second looping buffer on top of an earlier one.
         audioPreloader.stopBuffer(toneSrc);
         const srcNode = audioPreloader.playBuffer(toneSrc, { loop: true });
@@ -619,6 +657,7 @@ const VideoCall = ({ myId }) => {
         audio.pause();
         return false;
       }
+      if (!played) armRingtoneGestureRetry();
       return played;
     };
 

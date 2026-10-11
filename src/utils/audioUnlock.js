@@ -330,6 +330,22 @@ const playHtmlUnlock = () => {
   return playPromise.catch(() => {});
 };
 
+// Without a user gesture Chrome keeps AudioContext.resume() pending until the
+// first interaction, so never let ringtone playback wait on it indefinitely.
+const RESUME_WAIT_MS = 400;
+const resumeContextBounded = (context) => {
+  if (
+    !context ||
+    (context.state !== "suspended" && context.state !== "interrupted")
+  ) {
+    return Promise.resolve();
+  }
+  return Promise.race([
+    context.resume().catch(() => {}),
+    new Promise((resolve) => setTimeout(resolve, RESUME_WAIT_MS)),
+  ]);
+};
+
 export const unlockAudio = () => {
   resumeAudioFromGesture();
   const context = getAudioContext();
@@ -341,9 +357,7 @@ export const unlockAudio = () => {
   unlockInFlight = (async () => {
     try {
       const ctx = resumeAudioFromGesture();
-      if (ctx && (ctx.state === "suspended" || ctx.state === "interrupted")) {
-        await ctx.resume();
-      }
+      await resumeContextBounded(ctx);
       primeSilentBuffer(ctx);
       await playHtmlUnlock();
       primeBumpKnockPlayers();
@@ -472,6 +486,33 @@ export const initializeAudioUnlock = () => {
 
 export const isAudioUnlocked = () => audioUnlocked;
 
+export const isAudioContextRunning = () =>
+  !!audioContext && audioContext.state === "running";
+
+/**
+ * Run `callback` once on the next user interaction (inside the gesture, so
+ * media play() is allowed). Returns a function that cancels the listener.
+ */
+export const onNextUserGesture = (callback) => {
+  if (typeof document === "undefined") return () => {};
+  const cleanup = () => {
+    GESTURE_EVENTS.forEach((eventName) => {
+      document.removeEventListener(eventName, handler, true);
+    });
+  };
+  const handler = () => {
+    cleanup();
+    callback();
+  };
+  GESTURE_EVENTS.forEach((eventName) => {
+    document.addEventListener(eventName, handler, {
+      capture: true,
+      passive: true,
+    });
+  });
+  return cleanup;
+};
+
 export const playAudioWithWebAudio = async (audioElement) => {
   const context = getAudioContext();
   if (!context) {
@@ -480,9 +521,7 @@ export const playAudioWithWebAudio = async (audioElement) => {
 
   try {
     resumeAudioFromGesture();
-    if (context.state === "suspended" || context.state === "interrupted") {
-      await context.resume();
-    }
+    await resumeContextBounded(context);
     return audioElement.play();
   } catch (error) {
     console.warn(
