@@ -54,7 +54,9 @@ const WatchVideoPlayer = ({
     const anyPip = !!pipCtx?.isPipActive;
     const backgroundAudio = useBackgroundAudioHandoff(videoRef, {
         src: videoUrl,
-        enabled: isPlaying && !!videoUrl && !isPipActive && !anyPip,
+        // Not gated on isPlaying: iOS pauses the video right before the lock
+        // screen, and disabling here would stop the background audio with it.
+        enabled: isAttached && !!videoUrl && !isPipActive && !anyPip,
     });
     useSmoothAudio(mediaElement);
 

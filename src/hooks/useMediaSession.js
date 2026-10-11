@@ -142,11 +142,26 @@ const useMediaSession = ({
   const metadataArtist = metadata?.artist || "";
   const artworkSrc = metadata?.artwork?.[0]?.src || "";
 
-  const applySession = () => {
+  const metadataKey = (value) =>
+    value
+      ? [value.title || "", value.artist || "", value.album || ""].join("\u0001")
+      : "";
+
+  // `full` re-sends metadata and action handlers. The periodic tick only
+  // refreshes state/position (and restores metadata if iOS dropped it):
+  // re-creating MediaMetadata every tick makes Now Playing reload artwork.
+  const applySession = (full = true) => {
     if (!mediaSessionAvailable || !enabled) return;
     const mediaSession = navigator.mediaSession;
     try {
-      mediaSession.metadata = resolveMediaMetadata(metadataRef.current);
+      const current = mediaSession.metadata;
+      if (
+        full ||
+        !current ||
+        metadataKey(current) !== metadataKey(metadataRef.current)
+      ) {
+        mediaSession.metadata = resolveMediaMetadata(metadataRef.current);
+      }
     } catch (_) {}
     try {
       let nextState = playbackStateRef.current || "none";
@@ -156,7 +171,7 @@ const useMediaSession = ({
       }
       mediaSession.playbackState = nextState;
     } catch (_) {}
-    bindActionHandlers(mediaSession, handlersRef);
+    if (full) bindActionHandlers(mediaSession, handlersRef);
     if (typeof mediaSession.setPositionState !== "function") return;
     const live =
       typeof getPositionStateRef.current === "function"
@@ -192,7 +207,7 @@ const useMediaSession = ({
 
     const timer = window.setInterval(() => {
       if (activeSessionOwner !== ownerId) return;
-      applySession();
+      applySession(false);
     }, 500);
 
     return () => {

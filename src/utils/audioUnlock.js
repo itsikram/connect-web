@@ -456,11 +456,26 @@ export const playTone = ({
   return htmlPromise;
 };
 
+// iOS can crackle/distort media-element audio while an idle Web Audio
+// context keeps running next to it, so the SFX context is suspended during
+// long-form playback (videos, background tracks). Tones still resume it on
+// demand.
+let longFormMediaActive = false;
+
+export const setLongFormMediaActive = (active) => {
+  longFormMediaActive = !!active;
+  if (!longFormMediaActive || !audioContext) return;
+  if (audioContext.state === "running") {
+    audioContext.suspend().catch(() => {});
+  }
+};
+
 export const initializeAudioUnlock = () => {
   if (typeof document === "undefined" || gestureListenersBound) return;
   gestureListenersBound = true;
 
   const unlockOnInteraction = () => {
+    if (longFormMediaActive && audioUnlocked) return;
     resumeAudioFromGesture();
     unlockAudio();
   };
@@ -476,6 +491,7 @@ export const initializeAudioUnlock = () => {
     if (typeof document !== "undefined" && document.visibilityState === "hidden") {
       return;
     }
+    if (longFormMediaActive) return;
     resumeAudioFromGesture();
   };
 
