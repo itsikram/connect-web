@@ -9,9 +9,31 @@ import {
 } from "./watchDownloadProgress";
 import { apiCall } from "./apiCall";
 
+// Saved (downloaded) videos live here. Kept when the user clears the cache.
+export const SAVED_VIDEO_DB_NAME = 'savedVideoDb';
+
+// Best playable URL for a saved video known to the backend (Saved Videos
+// "previous downloads" and the video player's Saved list).
+export const getSavedVideoSourceUrl = (video) => {
+  const meta = video?.metadata || {};
+  const candidates = [
+    video?.sourceUrl,
+    meta.videoURL,
+    meta.videoUrl,
+    meta.url,
+    meta.downloadUrl,
+    meta.downloadURL,
+    meta.mediaUrl,
+    meta.mediaURL,
+    meta?.video?.url,
+  ];
+
+  return String(candidates.find((v) => typeof v === 'string' && v.trim()) || '').trim();
+};
+
 // ✅ Central DB open function
 const openVideoDB = (callback) => {
-  const dbRequest = indexedDB.open('savedVideoDb', 2);
+  const dbRequest = indexedDB.open(SAVED_VIDEO_DB_NAME, 2);
 
   dbRequest.onupgradeneeded = () => {
     const db = dbRequest.result;
@@ -188,12 +210,21 @@ export const getAllSavedVideos = (callback) => {
     const getAllRequest = store.getAll();
 
     getAllRequest.onsuccess = () => {
-      const videos = getAllRequest.result.map((video) => ({
-        id: video.id,
-        metadata: video.metadata,
-        mimeType: video.blob?.type || '',
-        videoURL: URL.createObjectURL(video.blob),
-      }));
+      // One record without a usable blob must not hide every other video.
+      const videos = [];
+      (getAllRequest.result || []).forEach((video) => {
+        if (!video || !(video.blob instanceof Blob)) return;
+        try {
+          videos.push({
+            id: video.id,
+            metadata: video.metadata,
+            mimeType: video.blob.type || '',
+            videoURL: URL.createObjectURL(video.blob),
+          });
+        } catch (error) {
+          console.warn('Skipping unreadable saved video:', video.id, error);
+        }
+      });
       callback(videos);
     };
 

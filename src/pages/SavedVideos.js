@@ -1,28 +1,13 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { getAllSavedVideos, getSavedVideosHistory, saveVideoFromUrl, deleteSavedVideoHistoryById } from '../utils/useSavedVideos';
+import { getAllSavedVideos, getSavedVideosHistory, saveVideoFromUrl, deleteSavedVideoHistoryById, getSavedVideoSourceUrl } from '../utils/useSavedVideos';
 import VideoCard from '../components/downloads/VideoCard';
 import { subscribeWatchDownloads } from '../utils/watchDownloadProgress';
 import { formatBytes } from '../utils/downloadFileWithProgress';
 import useOnlineStatus from '../hooks/useOnlineStatus';
 import './SavedVideos.css';
 
-const getRestorableUrl = (video) => {
-    const meta = video?.metadata || {};
-    const candidates = [
-        video?.sourceUrl,
-        meta.videoURL,
-        meta.videoUrl,
-        meta.url,
-        meta.downloadUrl,
-        meta.downloadURL,
-        meta.mediaUrl,
-        meta.mediaURL,
-        meta?.video?.url,
-    ];
-
-    return String(candidates.find((v) => typeof v === 'string' && v.trim()) || '').trim();
-};
+const getRestorableUrl = getSavedVideoSourceUrl;
 
 const SavedVideos = () => {
     const [videos, setVideos] = useState([]);

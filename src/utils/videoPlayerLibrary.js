@@ -1,4 +1,4 @@
-import { getAllSavedVideos } from './useSavedVideos';
+import { getAllSavedVideos, getSavedVideosHistory, getSavedVideoSourceUrl } from './useSavedVideos';
 import WatchCacheManager from './watchCacheManager';
 import api from '../api/api';
 
@@ -191,26 +191,69 @@ export const loadWatchPlaylistItems = async (profileId, { forceRefresh = false }
     }
 };
 
-export const loadSavedPlaylistItems = () =>
+const SAVED_HISTORY_TIMEOUT_MS = 8000;
+
+const loadLocalSavedItems = () =>
     new Promise((resolve) => {
         getAllSavedVideos((data) => {
-            const items = (data || [])
-                .map((v) =>
-                    normalizePlaylistItem({
-                        id: `saved-${v.id}`,
-                        url: v.videoURL,
-                        title: v.metadata?.caption || 'Saved video',
-                        type: 'saved',
-                        thumbnail: v.metadata?.thumbnail || '',
-                        sourceId: v.id,
-                        online: false,
-                    })
-                )
-                .filter(Boolean);
-            setCachedSavedPlaylist(items);
-            resolve(items);
+            resolve(
+                (data || [])
+                    .map((v) =>
+                        normalizePlaylistItem({
+                            id: `saved-${v.id}`,
+                            url: v.videoURL,
+                            title: v.metadata?.caption || 'Saved video',
+                            type: 'saved',
+                            thumbnail: v.metadata?.thumbnail || '',
+                            sourceId: v.id,
+                            online: false,
+                        })
+                    )
+                    .filter(Boolean)
+            );
         });
     });
+
+// Saved videos recorded on the account but not stored on this device (e.g.
+// saved on another device or before the browser data was cleared). They
+// stream from their source URL.
+const loadAccountSavedItems = async () => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return [];
+    const history = await Promise.race([
+        getSavedVideosHistory(),
+        new Promise((resolve) => setTimeout(() => resolve([]), SAVED_HISTORY_TIMEOUT_MS)),
+    ]);
+    if (!Array.isArray(history)) return [];
+    return history
+        .map((v) => {
+            const videoId = String(v?.videoId || v?._id || '');
+            if (!videoId) return null;
+            return normalizePlaylistItem({
+                id: `saved-${videoId}`,
+                url: getSavedVideoSourceUrl(v),
+                title: v.metadata?.caption || 'Saved video',
+                type: 'saved',
+                thumbnail: v.metadata?.thumbnail || '',
+                sourceId: videoId,
+                online: true,
+            });
+        })
+        .filter(Boolean);
+};
+
+export const loadSavedPlaylistItems = async () => {
+    const [local, account] = await Promise.all([
+        loadLocalSavedItems(),
+        loadAccountSavedItems().catch(() => []),
+    ]);
+    const localIds = new Set(local.map((item) => String(item.sourceId)));
+    const items = [
+        ...local,
+        ...account.filter((item) => !localIds.has(String(item.sourceId))),
+    ];
+    setCachedSavedPlaylist(items);
+    return items;
+};
 
 export const mergePlaylist = (...groups) => {
     const seen = new Set();
@@ -230,20 +273,28 @@ export const mergePlaylist = (...groups) => {
 export const filterPlaylist = (items, filter) => {
     if (!filter || filter === 'all') return items;
     if (filter === 'server') {
-        return items.filter((v) => v.type === 'watch' || (v.type === 'url' && v.online !== false));
+        return items.filter(
+            (v) =>
+                v.type === 'watch' ||
+                ((v.type === 'url' || v.type === 'saved') && v.online !== false)
+        );
     }
     if (filter === 'local') {
-        return items.filter((v) => v.type === 'saved' || v.type === 'file' || v.online === false);
+        return items.filter((v) => v.type === 'file' || v.online === false);
     }
-    if (filter === 'online') return items.filter((v) => v.type === 'watch' || v.type === 'url');
-    if (filter === 'offline') return items.filter((v) => v.type === 'saved' || v.type === 'file');
+    if (filter === 'online') {
+        return items.filter((v) => v.type === 'watch' || v.type === 'url' || (v.type === 'saved' && v.online !== false));
+    }
+    if (filter === 'offline') {
+        return items.filter((v) => v.type === 'file' || (v.type === 'saved' && v.online === false));
+    }
     return items.filter((v) => v.type === filter);
 };
 
 export const getSourceLabel = (video) => {
     if (!video) return '';
     if (video.type === 'watch') return 'Server · Watch';
-    if (video.type === 'saved') return 'Local · Saved';
+    if (video.type === 'saved') return video.online === false ? 'Local · Saved' : 'Server · Saved';
     if (video.type === 'file') return 'Local · File';
     return video.online === false ? 'Local · URL' : 'Server · URL';
 };

@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
 import { showSuccessToast, showErrorToast } from '../../utils/toastUtils';
+import { SAVED_VIDEO_DB_NAME } from '../../utils/useSavedVideos';
+
+// Databases holding the user's own content, not cache. Never cleared here.
+const PRESERVED_DATABASES = new Set([SAVED_VIDEO_DB_NAME]);
 
 const CacheSetting = () => {
     const [isClearing, setIsClearing] = useState(false);
@@ -21,15 +25,23 @@ const CacheSetting = () => {
             // Clear sessionStorage
             sessionStorage.clear();
 
-            // Clear IndexedDB (if used)
-            if ('indexedDB' in window) {
-                indexedDB.databases().then(databases => {
-                    databases.forEach(db => {
-                        if (db.name) {
-                            indexedDB.deleteDatabase(db.name);
-                        }
-                    });
-                });
+            // Clear IndexedDB caches, keeping saved (downloaded) videos.
+            if ('indexedDB' in window && typeof indexedDB.databases === 'function') {
+                try {
+                    const databases = await indexedDB.databases();
+                    await Promise.all(
+                        databases
+                            .filter((db) => db?.name && !PRESERVED_DATABASES.has(db.name))
+                            .map((db) => new Promise((resolve) => {
+                                const request = indexedDB.deleteDatabase(db.name);
+                                request.onsuccess = resolve;
+                                request.onerror = resolve;
+                                request.onblocked = resolve;
+                            })),
+                    );
+                } catch (error) {
+                    console.warn('Failed to clear IndexedDB:', error);
+                }
             }
 
             showSuccessToast('Browser cache cleared successfully!');
@@ -56,6 +68,7 @@ const CacheSetting = () => {
                         <p className="mb-3">
                             Clear your browser cache to free up space and potentially resolve loading issues. 
                             This will clear cached files, session storage, and other browser data.
+                            Your saved videos are kept.
                         </p>
                         <p className="text-muted small mb-3">
                             Note: After clearing the cache, the page will reload automatically.

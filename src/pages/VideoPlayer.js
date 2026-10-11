@@ -49,6 +49,7 @@ import useSmoothAudio from "../hooks/useSmoothAudio";
 import api from "../api/api";
 import { getYtDownloadApiUrl, normalizeServerUrl } from "../utils/offlineUtils";
 import { showErrorToast, showSuccessToast } from "../utils/toastUtils";
+import { subscribeWatchDownloads } from "../utils/watchDownloadProgress";
 
 const VideoPlayer = () => {
   const myProfileId = useSelector((state) => state.profile?._id);
@@ -402,6 +403,21 @@ const VideoPlayer = () => {
   useEffect(() => {
     refreshLibrary();
   }, [refreshLibrary]);
+
+  // A video saved while this page is open shows up in the Saved list.
+  useEffect(() => {
+    const completed = new Set();
+    return subscribeWatchDownloads((list) => {
+      const fresh = list.filter(
+        (d) => d.status === "completed" && !completed.has(d.id),
+      );
+      if (fresh.length === 0) return;
+      fresh.forEach((d) => completed.add(d.id));
+      loadSavedPlaylistItems()
+        .then(setSavedVideos)
+        .catch(() => {});
+    });
+  }, []);
 
   useEffect(() => {
     if (!myProfileId) {
