@@ -1506,6 +1506,17 @@ const ChatHeader = ({
           handleEmotionServerResponseRef.current(data);
         }
       });
+      // Without these the next frame is never sent: the server dropped the
+      // frame (still busy with the previous one) or could not process it.
+      emotionServerSocketRef.current.off("expression_skipped");
+      emotionServerSocketRef.current.on("expression_skipped", () => {
+        serverRequestInFlightRef.current = false;
+      });
+      emotionServerSocketRef.current.off("expression_error");
+      emotionServerSocketRef.current.on("expression_error", (data) => {
+        console.warn("[ChatHeader] ❌ Python expression_error:", data);
+        serverRequestInFlightRef.current = false;
+      });
     } catch (error) {
       console.error(
         "[ChatHeader] Error initializing emotion server socket:",
