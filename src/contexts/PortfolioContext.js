@@ -7,7 +7,7 @@ const CACHE_KEY = 'connect_portfolio_content_v1';
 
 function getServerBase() {
   const raw = process.env.REACT_APP_SERVER_ADDR || '';
-  return String(raw).trim().replace(/\/+$/, '') || 'https://connect-server-hq4q.onrender.com';
+  return String(raw).trim().replace(/\/+$/, '') || 'https://oeazgm4zwn.c35.airoapp.ai';
 }
 
 function readCache() {

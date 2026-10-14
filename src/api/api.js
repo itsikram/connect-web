@@ -12,18 +12,18 @@ import { normalizeCloudinaryUrl } from "../utils/profileImage";
 // Production server URLs for load balancing
 // Add all your Render server URLs here
 const prodServerUrls = [
-  "https://connect-server-hq4q.onrender.com",
+  "https://oeazgm4zwn.c35.airoapp.ai",
   // Add more Render server URLs here, for example:
-  // "https://connect-server-hq4q.onrender.com",
-  // "https://connect-server-hq4q.onrender.com",
+  // "https://oeazgm4zwn.c35.airoapp.ai",
+  // "https://oeazgm4zwn.c35.airoapp.ai",
 ];
 
 // const prodServerUrls = [
-//     "https://connect-server-hq4q.onrender.com",
+//     "https://oeazgm4zwn.c35.airoapp.ai",
 //     // Add more Render server URLs here, for example:
-//     "https://connect-server-hq4q.onrender.com",
-//     // "https://connect-server-hq4q.onrender.com",
-//     // "https://connect-server-hq4q.onrender.com",
+//     "https://oeazgm4zwn.c35.airoapp.ai",
+//     // "https://oeazgm4zwn.c35.airoapp.ai",
+//     // "https://oeazgm4zwn.c35.airoapp.ai",
 //   ];
 
 // Get server address with offline fallback - computed once at module load
