@@ -4,7 +4,8 @@ node_modules
 build/
 certs/ios-profile-signer.*
 .env
-.env.production
+# .env.production is committed (public build settings only); secrets live
+# in .env.production.local.
 .env.local
 .env.development
 .env.test.local
