@@ -1,87 +1,99 @@
 import React from 'react';
-import SEO from './SEO';
+import { Link } from 'react-router-dom';
 import './LandingPage.css';
 
+// Public page at / for logged-out visitors. Title/description/canonical for
+// this route come from seoPages in pages/Main.js and PUBLIC_PAGES in server.js.
 const LandingPage = () => {
   return (
     <div className="landing-page">
-      <SEO
-        title="Connect BD - Social Media App in Bangladesh | Connect with Connects"
-        description="Connect BD by Ikramul is a modern social media platform for Bangladesh users to connect, chat, share moments, make video calls, and build communities online."
-        keywords="Connect BD, connect bd, connect app, connect by ikramul, social media app Bangladesh, social networking platform, chat app, video calls, community app"
-      />
+      <div className="landing-inner">
+        <nav className="landing-nav" aria-label="Main">
+          <Link to="/" className="landing-brand">
+            <img src="/logo192.png" alt="" width="36" height="36" />
+            Connect BD
+          </Link>
+          <div className="landing-nav-links">
+            <Link to="/login">Log In</Link>
+            <Link to="/signup" className="landing-nav-cta">Sign Up</Link>
+          </div>
+        </nav>
 
-      {/* Hero Section */}
-      <header className="hero-section">
-        <div className="hero-content">
-          <h1>Connect App - Connect with Connects Worldwide</h1>
-          <p className="hero-subtitle">
-            <strong>Connect by Ikramul</strong> is a modern social media platform designed to help you
-            connect with connects, share precious moments, and build meaningful communities.
-          </p>
-          <div className="hero-buttons">
-            <button className="btn-primary">Get Started</button>
-            <button className="btn-secondary">Download App</button>
-          </div>
-        </div>
-      </header>
+        <main>
+          {/* Hero Section */}
+          <header className="hero-section">
+            <div className="hero-content">
+              <h1>Connect BD — Social Media App to Connect with Connects</h1>
+              <p className="hero-subtitle">
+                <strong>Connect by Ikramul</strong> is a modern social media platform designed to help you
+                connect with connects, share precious moments, and build meaningful communities.
+              </p>
+              <div className="hero-buttons">
+                <Link to="/signup" className="landing-btn landing-btn--primary">Get Started</Link>
+                <Link to="/download-app" className="landing-btn landing-btn--secondary">Download App</Link>
+              </div>
+            </div>
+          </header>
 
-      {/* Features Section */}
-      <section className="features-section">
-        <h2>Why Choose Connect App?</h2>
-        <div className="features-grid">
-          <div className="feature-card">
-            <h3>Video Calls</h3>
-            <p>High-quality video calls with connects and family. Connect app provides crystal-clear video communication.</p>
-          </div>
-          <div className="feature-card">
-            <h3>Messaging</h3>
-            <p>Instant messaging with rich media support. Share photos, videos, and more on Connect.</p>
-          </div>
-          <div className="feature-card">
-            <h3>Community Building</h3>
-            <p>Create and join communities based on your interests. Connect by Ikramul brings like-minded people together.</p>
-          </div>
-          <div className="feature-card">
-            <h3>Photo Sharing</h3>
-            <p>Share your moments with beautiful photo galleries. The Connect app makes memories last forever.</p>
-          </div>
-        </div>
-      </section>
+          {/* Features Section */}
+          <section className="features-section">
+            <h2>Why Choose Connect App?</h2>
+            <div className="features-grid">
+              <div className="feature-card">
+                <h3>Video Calls</h3>
+                <p>High-quality video calls with connects and family. Connect app provides crystal-clear video communication.</p>
+              </div>
+              <div className="feature-card">
+                <h3>Messaging</h3>
+                <p>Instant messaging with rich media support. Share photos, videos, and more on Connect.</p>
+              </div>
+              <div className="feature-card">
+                <h3>Community Building</h3>
+                <p>Create and join communities based on your interests. Connect by Ikramul brings like-minded people together.</p>
+              </div>
+              <div className="feature-card">
+                <h3>Photo Sharing</h3>
+                <p>Share your moments with beautiful photo galleries. The Connect app makes memories last forever.</p>
+              </div>
+            </div>
+          </section>
 
-      {/* About Section */}
-      <section className="about-section">
-        <h2>About Connect by Ikramul</h2>
-        <p>
-          <strong>Connect</strong> is more than just a social media platform - it's a way to stay connected
-          with the people who matter most. Built by <strong>Ikramul</strong>, the Connect app combines
-          cutting-edge technology with intuitive design to create the perfect social networking experience.
-        </p>
-        <p>
-          Whether you want to <strong>connect</strong> with old connects, make new ones, or build a community
-          around your passions, the Connect app provides all the tools you need. Our platform supports
-          real-time messaging, high-quality video calls, and seamless photo sharing.
-        </p>
-      </section>
+          {/* About Section */}
+          <section className="about-section">
+            <h2>About Connect by Ikramul</h2>
+            <p>
+              <strong>Connect</strong> is more than just a social media platform - it's a way to stay connected
+              with the people who matter most. Built by <Link to="/portfolio"><strong>Ikramul</strong></Link>, the
+              Connect app combines cutting-edge technology with intuitive design to create the perfect social
+              networking experience.
+            </p>
+            <p>
+              Whether you want to <strong>connect</strong> with old connects, make new ones, or build a community
+              around your passions, the Connect app provides all the tools you need. Our platform supports
+              real-time messaging, high-quality video calls, and seamless photo sharing.
+            </p>
+          </section>
 
-      {/* Download Section */}
-      <section className="download-section">
-        <h2>Download Connect App Today</h2>
-        <p>
-          Ready to <strong>connect</strong> with the world? Download the <strong>Connect app</strong> now
-          and join thousands of users who are already building communities and sharing moments.
-        </p>
-        <div className="download-buttons">
-          <button className="download-btn">
-            <span className="platform">iOS</span>
-            <span className="store">Download on App Store</span>
-          </button>
-          <button className="download-btn">
-            <span className="platform">Android</span>
-            <span className="store">Get it on Google Play</span>
-          </button>
-        </div>
-      </section>
+          {/* Download Section */}
+          <section className="download-section">
+            <h2>Download Connect App Today</h2>
+            <p>
+              Ready to <strong>connect</strong> with the world? Download the <strong>Connect app</strong> now
+              and start building communities and sharing moments.
+            </p>
+            <div className="download-buttons">
+              <Link to="/download-app" className="download-btn">
+                <span className="platform">Android</span>
+                <span className="store">Download for Android</span>
+              </Link>
+              <Link to="/download-app" className="download-btn">
+                <span className="platform">iPhone</span>
+                <span className="store">Download for iPhone</span>
+              </Link>
+            </div>
+          </section>
+        </main>
+      </div>
 
       {/* Footer */}
       <footer className="landing-footer">
@@ -91,26 +103,24 @@ const LandingPage = () => {
             <p>A modern social media platform by Ikramul for connecting with connects and building communities.</p>
           </div>
           <div className="footer-section">
-            <h4>Features</h4>
+            <h4>Get Started</h4>
             <ul>
-              <li>Video Calls</li>
-              <li>Messaging</li>
-              <li>Photo Sharing</li>
-              <li>Communities</li>
+              <li><Link to="/signup">Create an account</Link></li>
+              <li><Link to="/login">Log in</Link></li>
+              <li><Link to="/download-app">Download the app</Link></li>
             </ul>
           </div>
           <div className="footer-section">
-            <h4>Connect</h4>
+            <h4>About</h4>
             <ul>
-              <li>About Us</li>
-              <li>Contact</li>
-              <li>Privacy Policy</li>
-              <li>Terms of Service</li>
+              <li><Link to="/portfolio">About the developer</Link></li>
+              <li><Link to="/portfolio/blogs">Blog</Link></li>
+              <li><Link to="/portfolio/contact">Contact</Link></li>
             </ul>
           </div>
         </div>
         <div className="footer-bottom">
-          <p>&copy; 2024 Connect App by Ikramul. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} Connect App by Ikramul. All rights reserved.</p>
         </div>
       </footer>
     </div>

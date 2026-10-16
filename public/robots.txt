@@ -1,7 +1,6 @@
 User-agent: *
 Allow: /
-Allow: /portfolio
-Allow: /portfolio/
+Disallow: /reset-password/
+Disallow: /api/
 
-Host: connect-bd.online
 Sitemap: https://connect-bd.online/sitemap.xml

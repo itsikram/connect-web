@@ -119,6 +119,7 @@ const NotificationTest = lazy(() => import("../components/NotificationTest.js"))
 const PostComments = lazy(() => import("../components/post/PostComments.js"));
 const PostReacts = lazy(() => import("../components/post/PostReacts.js"));
 const PortfolioContainer = lazy(() => import("./portfolio/PortfolioContainer.js"));
+const LandingPage = lazy(() => import("../components/LandingPage"));
 const PortfolioContact = lazy(() => import("./portfolio/PortfolioContact.js"));
 const PortfolioHome = lazy(() => import("./portfolio/PortfolioHome.js"));
 const PortfolioAbout = lazy(() => import("./portfolio/PortfolioAbout.js"));
@@ -354,7 +355,7 @@ let lastNotificationFetchTime = getLastNotificationFetchTime(); // Timestamp of 
 
 const Main = () => {
   const dispatch = useDispatch();
-  const { token, user, isAuthenticated, logout } = useAuth();
+  const { token, user, isAuthenticated, logout, loading: authLoading } = useAuth();
   const isLoading = useSelector((state) => state.option.isLoading);
   const myProfile = useSelector((state) => state.profile);
   // const settings = useSelector(state => state.setting)
@@ -396,6 +397,14 @@ const Main = () => {
       description:
         "Reset your Connect BD password and get back to messaging, sharing, and calling your connects on the Connect social media app.",
     },
+    {
+      match: /^\/download-app\/?$/,
+      title: "Download Connect BD App for Android & iPhone | Connect",
+      description:
+        "Download the Connect BD social media app for Android and iPhone. Chat, share moments, make video calls, and join communities on the go.",
+    },
+    // Keep in sync with PUBLIC_PAGES in server.js, which serves these per
+    // route to crawlers and marks every other route noindex.
     // /portfolio/* SEO is owned by PortfolioSEO (name-focused Person schema)
   ];
 
@@ -405,8 +414,19 @@ const Main = () => {
     if (pathname.startsWith("/portfolio")) return;
 
     const baseUrl = "https://connect-bd.online";
-    const pageMeta =
-      seoPages.find((page) => page.match.test(pathname)) || seoPages[0];
+    const publicPage = seoPages.find((page) => page.match.test(pathname));
+    const pageMeta = publicPage || seoPages[0];
+
+    // Pages behind login stay out of the index (server.js sends the same).
+    const robots = document.querySelector('meta[name="robots"]');
+    if (robots) {
+      robots.setAttribute(
+        "content",
+        publicPage
+          ? "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
+          : "noindex, follow"
+      );
+    }
 
     document.title = pageMeta.title;
     document.documentElement.lang = "en";
@@ -2677,9 +2697,18 @@ const Main = () => {
             <Route
               index
               element={
-                <ProtectedRoute>
-                  <Home />
-                </ProtectedRoute>
+                // Logged-out visitors (and search crawlers) get the public
+                // landing page; offline visitors still fall through to
+                // ProtectedRoute's redirect to saved downloads.
+                !authLoading &&
+                !isAuthenticated &&
+                !(typeof navigator !== "undefined" && navigator.onLine === false) ? (
+                  <LandingPage />
+                ) : (
+                  <ProtectedRoute>
+                    <Home />
+                  </ProtectedRoute>
+                )
               }
             ></Route>
 

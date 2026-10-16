@@ -77,7 +77,6 @@ const DownloadApp = () => {
   const platform = detectPlatform();
 
   useEffect(() => {
-    document.title = "Download App · Connect";
     let cancelled = false;
     // APK / IPA links are set in the admin panel (Settings → General).
     axios

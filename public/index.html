@@ -29,11 +29,11 @@
       name="robots"
       content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"
     />
-    <link rel="canonical" href="https://connect-bd.online" />
+    <link rel="canonical" href="https://connect-bd.online/" />
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://connect-bd.online" />
+    <meta property="og:url" content="https://connect-bd.online/" />
     <meta
       property="og:title"
       content="Connect Social Media | Connect BD App by Ikramul"
@@ -237,24 +237,17 @@
       }
     </script>
 
-    <!-- SoftwareApplication Schema -->
+    <!-- WebSite Schema: tells Google the site name shown in results.
+         No aggregateRating here: Google penalises ratings that aren't backed
+         by real, visible user reviews. -->
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
-        "@type": "SoftwareApplication",
-        "name": "Connect Social Media",
-        "alternateName": ["Connect BD", "Connect App", "Connect by Ikramul"],
-        "applicationCategory": "SocialNetworkingApplication",
-        "operatingSystem": "Multi-platform",
-        "offers": {
-          "@type": "Offer",
-          "price": "0.00"
-        },
-        "aggregateRating": {
-          "@type": "AggregateRating",
-          "ratingValue": "4.8",
-          "ratingCount": "1000"
-        }
+        "@type": "WebSite",
+        "name": "Connect BD",
+        "alternateName": ["Connect Social Media", "Connect App", "Connect by Ikramul"],
+        "url": "https://connect-bd.online/",
+        "inLanguage": "en"
       }
     </script>
 
