@@ -96,6 +96,19 @@ const PUBLIC_PAGES = {
     description:
       "Download the Connect BD social media app for Android and iPhone. Chat, share moments, make video calls, and join communities on the go.",
   },
+  "/privacy-policy": {
+    title: "Privacy Policy | Connect BD",
+    description:
+      "How Connect BD collects, uses, shares and protects your information when you use the Connect website and mobile apps.",
+  },
+  "/terms-of-service": {
+    title: "Terms of Service | Connect BD",
+    description:
+      "The terms and rules for using Connect BD, the social media app for messaging, video calls, sharing moments and communities.",
+  },
+  // Aliases render the same pages; canonical points Google at one URL.
+  "/privacy": { alias: "/privacy-policy" },
+  "/terms": { alias: "/terms-of-service" },
   "/portfolio": {
     title: "Md Ikram | Senior Software Developer | Portfolio",
     description:
@@ -159,7 +172,8 @@ const readIndexHtml = () => {
 };
 
 const renderIndexHtml = (pathname) => {
-  const route = pathname.replace(/\/+$/, "") || "/";
+  const requested = pathname.replace(/\/+$/, "") || "/";
+  const route = PUBLIC_PAGES[requested]?.alias || requested;
   const page = PUBLIC_PAGES[route];
   let html = readIndexHtml();
   if (!page) {

@@ -116,6 +116,8 @@ const LandingPage = () => {
               <li><Link to="/portfolio">About the developer</Link></li>
               <li><Link to="/portfolio/blogs">Blog</Link></li>
               <li><Link to="/portfolio/contact">Contact</Link></li>
+              <li><Link to="/privacy-policy">Privacy Policy</Link></li>
+              <li><Link to="/terms-of-service">Terms of Service</Link></li>
             </ul>
           </div>
         </div>

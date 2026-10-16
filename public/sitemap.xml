@@ -69,4 +69,18 @@
     <priority>0.8</priority>
   </url>
 
+  <url>
+    <loc>https://connect-bd.online/privacy-policy</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+  <url>
+    <loc>https://connect-bd.online/terms-of-service</loc>
+    <lastmod>2026-10-16</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
 </urlset>

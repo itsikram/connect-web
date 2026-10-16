@@ -407,6 +407,20 @@ const Main = () => {
       description:
         "Download the Connect BD social media app for Android and iPhone. Chat, share moments, make video calls, and join communities on the go.",
     },
+    {
+      match: /^\/privacy(-policy)?\/?$/,
+      path: "/privacy-policy",
+      title: "Privacy Policy | Connect BD",
+      description:
+        "How Connect BD collects, uses, shares and protects your information when you use the Connect website and mobile apps.",
+    },
+    {
+      match: /^\/terms(-of-service)?\/?$/,
+      path: "/terms-of-service",
+      title: "Terms of Service | Connect BD",
+      description:
+        "The terms and rules for using Connect BD, the social media app for messaging, video calls, sharing moments and communities.",
+    },
     // Keep in sync with PUBLIC_PAGES in server.js, which serves these per
     // route to crawlers and marks every other route noindex.
     // /portfolio/* SEO is owned by PortfolioSEO (name-focused Person schema)
@@ -452,11 +466,13 @@ const Main = () => {
     updateMeta('meta[property="og:description"]', pageMeta.description);
     updateMeta('meta[name="twitter:title"]', pageMeta.title);
     updateMeta('meta[name="twitter:description"]', pageMeta.description);
-    updateMeta('meta[property="og:url"]', `${baseUrl}${pathname}`);
+    // Alias URLs (e.g. /privacy) point at their main page.
+    const canonicalUrl = `${baseUrl}${publicPage?.path || pathname}`;
+    updateMeta('meta[property="og:url"]', canonicalUrl);
 
     const canonical = document.querySelector('link[rel="canonical"]');
     if (canonical) {
-      canonical.setAttribute("href", `${baseUrl}${pathname}`);
+      canonical.setAttribute("href", canonicalUrl);
     }
   }, [location.pathname]);
 
