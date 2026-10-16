@@ -55,7 +55,12 @@ export const normalizeServerUrl = (url) => {
  * Priority: Environment variable > Online detection > Localhost fallback
  */
 const PREFERRED_SERVER_KEY = 'connect.server';
+export const SERVER_CHANGED_EVENT = 'connect:server-changed';
+// A server that just failed is skipped by every caller for this long, so API
+// requests and the socket stop trying it instead of each timing out on it.
+const SERVER_DOWN_COOLDOWN_MS = 60 * 1000;
 let preferredServer = null;
+const downUntil = new Map();
 
 /**
  * All configured API servers. REACT_APP_SERVER_ADDR may be a single URL or a
@@ -72,22 +77,53 @@ export const getServerList = () =>
  * caller of getServerAddress() moves together).
  */
 export const setPreferredServer = (url) => {
+  if (!url) return;
+  const changed = preferredServer !== url;
   preferredServer = url;
   try {
     localStorage.setItem(PREFERRED_SERVER_KEY, url);
   } catch (_) { /* ignore */ }
+  if (changed && typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new CustomEvent(SERVER_CHANGED_EVENT, { detail: { url } }));
+    } catch (_) { /* ignore */ }
+  }
 };
 
-/** The server after `url` in the list (wraps around). */
-export const getNextServer = (url) => {
-  const list = getServerList();
+/** Remember that `url` just failed so other callers skip it for a while. */
+export const markServerDown = (url) => {
+  if (url) downUntil.set(url, Date.now() + SERVER_DOWN_COOLDOWN_MS);
+};
+
+export const isServerDown = (url) => {
+  const until = downUntil.get(url);
+  if (!until) return false;
+  if (until > Date.now()) return true;
+  downUntil.delete(url);
+  return false;
+};
+
+/**
+ * The server after `url` in `list` (wraps around), skipping servers that
+ * recently failed. Falls back to the plain next server if all look down.
+ */
+export const getNextServer = (url, list = getServerList()) => {
   if (list.length < 2) return list[0] || url;
-  const index = list.indexOf(url);
-  return list[(index + 1) % list.length];
+  const start = list.indexOf(url);
+  for (let step = 1; step < list.length; step += 1) {
+    const candidate = list[(start + step) % list.length];
+    if (!isServerDown(candidate)) return candidate;
+  }
+  return list[(start + 1) % list.length];
 };
 
 const pickPreferredServer = (list) => {
-  if (preferredServer && list.includes(preferredServer)) return preferredServer;
+  if (preferredServer && list.includes(preferredServer)) {
+    if (!isServerDown(preferredServer)) return preferredServer;
+    const next = getNextServer(preferredServer, list);
+    setPreferredServer(next);
+    return next;
+  }
   let saved = null;
   try {
     saved = localStorage.getItem(PREFERRED_SERVER_KEY);

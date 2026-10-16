@@ -3,13 +3,14 @@
  * Must open as a normal Safari navigation (no download= attribute),
  * with Content-Type application/x-apple-aspen-config.
  */
-const IOS_PROFILE_URL =
-  "https://oeazgm4zwn.c35.airoapp.ai/api/connect/ios-profile";
+import { getServerAddress } from "./offlineUtils";
 
 export const getIosProfileUrl = () => {
   if (process.env.NODE_ENV === "production") {
     // The API endpoint sets Apple's required profile MIME type.
-    return IOS_PROFILE_URL;
+    // Use the same server the app talks to (REACT_APP_SERVER_ADDR).
+    const serverAddr = String(getServerAddress() || "").replace(/\/+$/, "");
+    return `${serverAddr}/api/connect/ios-profile`;
   }
 
   if (typeof window !== "undefined" && window.location.origin) {

@@ -4,6 +4,7 @@ import {
   getServerList,
   getNextServer,
   setPreferredServer,
+  markServerDown,
 } from "../utils/offlineUtils";
 import {
   getUserFromStorage,
@@ -21,6 +22,8 @@ const baseURL = `${serverAddr}/api/`;
 // Multiple servers (REACT_APP_SERVER_ADDR="https://a,https://b"): each browser
 // sticks to one home server and only moves to the next one when it fails.
 const useFailover = getServerList().length > 1;
+const DEFAULT_TIMEOUT_MS = 30000;
+const FAILOVER_GET_TIMEOUT_MS = 12000;
 
 // Helper function to check if token is expired
 const isTokenExpired = (token) => {
@@ -39,7 +42,7 @@ const isTokenExpired = (token) => {
 // Token will be added dynamically via interceptor for each request
 const api = axios.create({
   baseURL: baseURL,
-  timeout: 30000, // 30 second timeout
+  timeout: DEFAULT_TIMEOUT_MS,
   headers: {
     "Access-Control-Allow-Origin": "*",
   },
@@ -237,6 +240,15 @@ api.interceptors.request.use(
         requestConfig.baseURL = `${serverUrl}/api/`;
         // Store the server URL for error handling
         requestConfig._serverUrl = serverUrl;
+
+        // A hung server should not stall reads for the full 30s when another
+        // server can answer; timed-out GETs fail over (see below).
+        if (
+          String(requestConfig.method || "get").toLowerCase() === "get" &&
+          requestConfig.timeout === DEFAULT_TIMEOUT_MS
+        ) {
+          requestConfig.timeout = FAILOVER_GET_TIMEOUT_MS;
+        }
       }
 
       const userData = getUserFromStorage();
@@ -316,29 +328,35 @@ api.interceptors.response.use(
     return response;
   },
   async (error) => {
-    // Don't process aborted requests
-    if (error.code === "ECONNABORTED" || error.name === "CanceledError") {
+    // Requests cancelled by the app are never retried
+    if (error.name === "CanceledError" || axios.isCancel(error)) {
       return Promise.reject(error);
     }
 
     const originalRequest = error.config;
+    const isGet =
+      String(originalRequest?.method || "get").toLowerCase() === "get";
+    const isTimeout =
+      error.code === "ECONNABORTED" || error.code === "ETIMEDOUT";
 
     // Failover: move to the next server when the home server is down.
     // Unreachable (no response) is safe to retry for any request; other 5xx
-    // errors are only retried for GET so a POST that ran is never sent twice.
+    // errors and timeouts are only retried for GET so a POST that may have
+    // run is never sent twice.
     if (useFailover && originalRequest?._serverUrl) {
       const status = error.response?.status;
-      const isNetworkError = !error.response;
+      const isNetworkError = !error.response && !isTimeout;
       const isServerDown =
         [502, 503, 504].includes(status) ||
-        (status >= 500 &&
-          String(originalRequest.method || "get").toLowerCase() === "get");
+        (status >= 500 && isGet) ||
+        (isTimeout && isGet);
       const triedCount = originalRequest._failoverCount || 0;
 
       if (
         (isNetworkError || isServerDown) &&
         triedCount < getServerList().length - 1
       ) {
+        markServerDown(originalRequest._serverUrl);
         const nextServerUrl = getNextServer(originalRequest._serverUrl);
         originalRequest._failoverCount = triedCount + 1;
         originalRequest._serverUrl = nextServerUrl;

@@ -1,6 +1,6 @@
 // Service Worker for Web Push Notifications and Offline Support
-const CACHE_NAME = "connect-app-v6";
-const STATIC_CACHE_NAME = "connect-static-v6";
+const CACHE_NAME = "connect-app-v7";
+const STATIC_CACHE_NAME = "connect-static-v7";
 const ASSET_MANIFEST_URL = "/asset-manifest.json";
 
 const CALL_ACTIONS = [
@@ -68,6 +68,20 @@ async function focusExistingCallClient() {
   return null;
 }
 
+// Safari (including the iOS home-screen app) refuses to show a navigation
+// response that was produced by a redirect, e.g. a host that rewrites
+// /index.html to /. Serving such a cached copy offline fails with "Safari
+// can't open the page", so store and serve a plain copy instead.
+async function cleanResponse(response) {
+  if (!response || !response.redirected) return response;
+  const body = await response.blob();
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
 // The first page load is not controlled by a newly installed worker, so the
 // app bundles must be precached here rather than relying on runtime caching.
 const urlsToCache = ["/", "/index.html", "/manifest.json", ASSET_MANIFEST_URL];
@@ -122,7 +136,7 @@ self.addEventListener("install", (event) => {
           try {
             const response = await fetch(url);
             if (response && response.ok) {
-              await cache.put(url, response);
+              await cache.put(url, await cleanResponse(response));
               console.log("Service Worker: Cached", url);
               return { url, success: true };
             } else {
@@ -251,8 +265,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   // Cache-first strategy for static assets (HTML, CSS, JS, images, fonts)
-  event.respondWith(
-    (async () => {
+  const responsePromise = (async () => {
       try {
         // Try cache first
         const cachedResponse = await caches.match(request);
@@ -354,7 +367,12 @@ self.addEventListener("fetch", (event) => {
           }),
         });
       }
-    })(),
+    })();
+
+  event.respondWith(
+    request.mode === "navigate"
+      ? responsePromise.then(cleanResponse)
+      : responsePromise,
   );
 });
 

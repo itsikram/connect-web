@@ -1,5 +1,14 @@
 import { io } from 'socket.io-client';
-import { getSocketUrl, getServerList, getServerAddress } from '../utils/offlineUtils';
+import {
+    getSocketUrl,
+    getServerList,
+    getServerAddress,
+    getNextServer,
+    markServerDown,
+    isServerDown,
+    setPreferredServer,
+    SERVER_CHANGED_EVENT,
+} from '../utils/offlineUtils';
 
 let socketInstance = null;
 let socketProxy = null;
@@ -20,10 +29,13 @@ const SOCKET_OPTIONS = {
 };
 
 // Multiple servers: REACT_APP_SOCKET_URLS="https://connect-1.onrender.com,https://connect-2.onrender.com"
-// Each client sticks to one server; if it keeps failing we move to the next.
-// The servers share rooms through Redis, so any server can deliver to anyone.
+// Each client sticks to one server; the first failed connect moves it to the
+// next one. The servers share rooms through Redis, so any server can deliver
+// to anyone.
 const SERVER_STORAGE_KEY = 'connect.socketServer';
-const FAILOVER_AFTER_ERRORS = 3;
+const FAILOVER_AFTER_ERRORS = 1;
+// With a backup server available, give up on an unresponsive one quickly.
+const FAILOVER_CONNECT_TIMEOUT_MS = 8000;
 
 const getSocketServers = () => {
     const list = String(process.env.REACT_APP_SOCKET_URLS || '')
@@ -45,6 +57,7 @@ const pickInitialServer = () => {
     let saved = null;
     try { saved = localStorage.getItem(SERVER_STORAGE_KEY); } catch (_e) { /* ignore */ }
     if (!saved || !socketServers.includes(saved)) saved = getServerAddress(); // same home as the API
+    if (saved && isServerDown(saved)) saved = getNextServer(saved, socketServers);
     const savedIndex = saved ? socketServers.indexOf(saved) : -1;
     serverIndex = savedIndex >= 0
         ? savedIndex
@@ -58,15 +71,26 @@ const rememberServer = (url) => {
 
 // Point the existing socket at the next server. Keeping the same instance
 // means every listener registered through the exported proxy stays attached.
-const failoverToNextServer = () => {
-    if (!socketInstance || !socketServers || socketServers.length < 2) return;
-    serverIndex = (serverIndex + 1) % socketServers.length;
-    const nextUrl = socketServers[serverIndex];
+const switchToServer = (nextUrl) => {
+    if (!socketInstance || !socketServers) return;
+    const nextIndex = socketServers.indexOf(nextUrl);
+    if (nextIndex < 0 || nextIndex === serverIndex) return;
+    serverIndex = nextIndex;
     consecutiveErrors = 0;
     console.warn('[socket] switching to server', nextUrl);
     const manager = socketInstance.io;
     manager.uri = nextUrl;
     manager.engine && manager.engine.close();
+};
+
+const failoverToNextServer = () => {
+    if (!socketInstance || !socketServers || socketServers.length < 2) return;
+    const currentUrl = socketServers[serverIndex];
+    markServerDown(currentUrl);
+    const nextUrl = getNextServer(currentUrl, socketServers);
+    switchToServer(nextUrl);
+    // Move API traffic off the failed server too.
+    if (getServerList().includes(nextUrl)) setPreferredServer(nextUrl);
 };
 
 const attachFailover = (instance) => {
@@ -78,6 +102,13 @@ const attachFailover = (instance) => {
         consecutiveErrors += 1;
         if (consecutiveErrors >= FAILOVER_AFTER_ERRORS) failoverToNextServer();
     });
+    // The API found its server down: follow it if we are not connected.
+    if (typeof window !== 'undefined') {
+        window.addEventListener(SERVER_CHANGED_EVENT, (event) => {
+            const url = event?.detail?.url;
+            if (url && !instance.connected) switchToServer(url);
+        });
+    }
 };
 
 const readStoredProfileId = () => {
@@ -129,6 +160,7 @@ const getSocket = () => {
             socketProfileId = profileId;
             socketInstance = io.connect(socketUrl, {
                 ...SOCKET_OPTIONS,
+                ...(socketServers.length > 1 ? { timeout: FAILOVER_CONNECT_TIMEOUT_MS } : {}),
                 query: {
                     profile: profileId
                 },
