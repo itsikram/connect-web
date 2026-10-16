@@ -88,11 +88,20 @@ html {
 
 html.standalone-ios,
 html.standalone-pwa {
+  // The safe-area inset replaces the mobile 8-10px top padding, so drop the
+  // matching bottom padding too; the row's 7px gap is then equal above and
+  // below the header content.
+  // The header also runs up behind the status bar, where backdrop-filter
+  // smears page content into a blurry band. Paint it opaque instead.
   #header,
   .sticky-header,
   #header.sticky-header {
     padding-top: var(--sat) !important;
+    padding-bottom: 0 !important;
     box-sizing: border-box;
+    background: $card-bg !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
   }
 
   #header.sticky-header {
