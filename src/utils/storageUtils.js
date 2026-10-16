@@ -4,7 +4,23 @@
  */
 
 // Storage keys that should be prioritized (keep these even if quota is low)
-const PRIORITY_KEYS = ['user', 'connect_browser_id'];
+// Per-device answers (e.g. the iOS motion permission prompt) that must survive
+// quota cleanup and logout, otherwise the user gets asked again.
+export const DEVICE_PREFERENCE_KEYS = ['connect.motionPermission'];
+const PRIORITY_KEYS = ['user', 'connect_browser_id', ...DEVICE_PREFERENCE_KEYS];
+
+/**
+ * Clear localStorage but keep per-device preferences.
+ */
+export const clearLocalStoragePreservingDevicePrefs = () => {
+  const kept = {};
+  DEVICE_PREFERENCE_KEYS.forEach((key) => {
+    const value = localStorage.getItem(key);
+    if (value !== null) kept[key] = value;
+  });
+  localStorage.clear();
+  Object.keys(kept).forEach((key) => localStorage.setItem(key, kept[key]));
+};
 
 // Cache to avoid repeated quota checks
 let storageCache = null;
@@ -277,7 +293,7 @@ export const clearAllStorage = () => {
   lastQuotaWarning = 0;
   
   try {
-    localStorage.clear();
+    clearLocalStoragePreservingDevicePrefs();
   } catch (error) {
     console.warn('Error clearing localStorage:', error);
   }

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { DEVICE_PREFERENCE_KEYS } from "../utils/storageUtils";
 
 // Shake detection over DeviceMotion: a shake is several sharp acceleration
 // spikes inside a short window. iOS 13+ gates motion events behind a
@@ -12,7 +13,8 @@ const SPIKES_REQUIRED = 3;
 const SPIKE_WINDOW_MS = 700;
 const COOLDOWN_MS = 1500;
 
-const MOTION_PERMISSION_KEY = "connect.motionPermission";
+// Listed in DEVICE_PREFERENCE_KEYS so quota cleanup and logout keep it.
+const [MOTION_PERMISSION_KEY] = DEVICE_PREFERENCE_KEYS;
 
 const readMotionDecision = () => {
   try {
