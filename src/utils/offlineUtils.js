@@ -62,15 +62,66 @@ const SERVER_DOWN_COOLDOWN_MS = 60 * 1000;
 let preferredServer = null;
 const downUntil = new Map();
 
-/**
- * All configured API servers. REACT_APP_SERVER_ADDR may be a single URL or a
- * comma-separated list, e.g. "https://a.onrender.com,https://b.onrender.com".
- */
-export const getServerList = () =>
+// Server list set in the admin panel (Settings → Servers), served by every
+// live server at /api/connect/server-config and remembered in this browser.
+// It replaces REACT_APP_SERVER_ADDR, except in builds that point at a local
+// server, which keep using their own.
+const SERVER_CONFIG_KEY = 'connect.serverConfig';
+const SERVER_CONFIG_REFRESH_MS = 10 * 60 * 1000;
+const SERVER_CONFIG_FETCH_TIMEOUT_MS = 6000;
+const LIVE_SERVER_URL_PATTERN = /^https:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?(?:\/[A-Za-z0-9._~/-]*)?$/;
+
+const getEnvServerList = () =>
   String(process.env.REACT_APP_SERVER_ADDR || '')
     .split(',')
     .map((url) => normalizeServerUrl(url))
     .filter(Boolean);
+
+const isLocalUrl = (url) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(url);
+const acceptsRuntimeConfig = () => {
+  const envList = getEnvServerList();
+  return envList.length > 0 && !envList.some(isLocalUrl);
+};
+
+const parseServerConfig = (value) => {
+  if (!value || typeof value !== 'object') return null;
+  const serverUrls = Array.from(
+    new Set(
+      (Array.isArray(value.serverUrls) ? value.serverUrls : [])
+        .map((url) => String(url || '').trim().replace(/\/+$/, ''))
+        .filter((url) => LIVE_SERVER_URL_PATTERN.test(url)),
+    ),
+  );
+  if (!serverUrls.length) return null;
+  const seconds = Number(value.downCooldownSeconds);
+  return {
+    mode: value.mode === 'single' ? 'single' : 'multi',
+    serverUrls: value.mode === 'single' ? serverUrls.slice(0, 1) : serverUrls,
+    strategy: value.strategy === 'priority' ? 'priority' : 'random',
+    downCooldownMs: Number.isFinite(seconds) && seconds >= 5 ? seconds * 1000 : SERVER_DOWN_COOLDOWN_MS,
+    updatedAt: value.updatedAt || null,
+  };
+};
+
+let runtimeConfig = null;
+try {
+  if (acceptsRuntimeConfig()) {
+    runtimeConfig = parseServerConfig(JSON.parse(localStorage.getItem(SERVER_CONFIG_KEY) || 'null'));
+  }
+} catch (_) { /* ignore */ }
+
+/**
+ * All configured API servers: the admin panel's list when one was received,
+ * otherwise REACT_APP_SERVER_ADDR (a single URL or a comma-separated list,
+ * e.g. "https://a.onrender.com,https://b.onrender.com").
+ */
+export const getServerList = () =>
+  runtimeConfig ? runtimeConfig.serverUrls : getEnvServerList();
+
+/** True when the admin panel's list is in use (it overrides socket env lists too). */
+export const usesRuntimeServerConfig = () => Boolean(runtimeConfig);
+
+const getDownCooldownMs = () => runtimeConfig?.downCooldownMs || SERVER_DOWN_COOLDOWN_MS;
 
 /**
  * Make `url` this browser's home server (used after a failover so every
@@ -92,7 +143,7 @@ export const setPreferredServer = (url) => {
 
 /** Remember that `url` just failed so other callers skip it for a while. */
 export const markServerDown = (url) => {
-  if (url) downUntil.set(url, Date.now() + SERVER_DOWN_COOLDOWN_MS);
+  if (url) downUntil.set(url, Date.now() + getDownCooldownMs());
 };
 
 export const isServerDown = (url) => {
@@ -118,6 +169,12 @@ export const getNextServer = (url, list = getServerList()) => {
 };
 
 const pickPreferredServer = (list) => {
+  // Priority: always the first server in admin order that is not down.
+  if (runtimeConfig?.strategy === 'priority') {
+    const chosen = list.find((url) => !isServerDown(url)) || list[0];
+    if (chosen !== preferredServer) setPreferredServer(chosen);
+    return chosen;
+  }
   if (preferredServer && list.includes(preferredServer)) {
     if (!isServerDown(preferredServer)) return preferredServer;
     const next = getNextServer(preferredServer, list);
@@ -159,6 +216,60 @@ export const getServerAddress = () => {
   
   // PRIORITY 4: Last resort: use current origin
   return window.location.origin;
+};
+
+/**
+ * Use the server list from the admin panel. Moves this browser to a listed
+ * server when its current one was removed (or, with "priority", when a
+ * higher-priority server is listed first).
+ */
+export const applyServerConfig = (value) => {
+  if (!acceptsRuntimeConfig()) return false;
+  const next = parseServerConfig(value);
+  if (!next) return false;
+  runtimeConfig = next;
+  try {
+    localStorage.setItem(SERVER_CONFIG_KEY, JSON.stringify(value));
+  } catch (_) { /* ignore */ }
+  getServerAddress();
+  if (preferredServer && !next.serverUrls.includes(preferredServer)) {
+    setPreferredServer(next.serverUrls.find((url) => !isServerDown(url)) || next.serverUrls[0]);
+  }
+  return true;
+};
+
+/** Fetch the admin panel's server list from the first live server that answers. */
+export const refreshServerConfig = async () => {
+  if (!acceptsRuntimeConfig()) return false;
+  const current = getServerAddress();
+  const candidates = [current, ...getServerList(), ...getEnvServerList()]
+    .filter((url, i, all) => url && all.indexOf(url) === i && !isServerDown(url));
+  for (const url of candidates) {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = controller && setTimeout(() => controller.abort(), SERVER_CONFIG_FETCH_TIMEOUT_MS);
+    try {
+      const response = await fetch(`${url}/api/connect/server-config`, {
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+        signal: controller?.signal,
+      });
+      // 404: that server runs an older build; try the next one.
+      if (response.ok && applyServerConfig(await response.json())) return true;
+    } catch (_) {
+      // Unreachable: try the next server.
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+  return false;
+};
+
+let serverConfigTimer = null;
+/** Load the admin server list now and keep it fresh. */
+export const startServerConfigSync = () => {
+  if (serverConfigTimer || !acceptsRuntimeConfig()) return;
+  refreshServerConfig();
+  serverConfigTimer = setInterval(refreshServerConfig, SERVER_CONFIG_REFRESH_MS);
 };
 
 /**

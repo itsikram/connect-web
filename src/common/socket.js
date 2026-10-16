@@ -8,6 +8,8 @@ import {
     isServerDown,
     setPreferredServer,
     SERVER_CHANGED_EVENT,
+    usesRuntimeServerConfig,
+    applyServerConfig,
 } from '../utils/offlineUtils';
 
 let socketInstance = null;
@@ -38,6 +40,8 @@ const FAILOVER_AFTER_ERRORS = 1;
 const FAILOVER_CONNECT_TIMEOUT_MS = 8000;
 
 const getSocketServers = () => {
+    // The admin panel's server list wins over build-time socket lists.
+    if (usesRuntimeServerConfig()) return getServerList();
     const list = String(process.env.REACT_APP_SOCKET_URLS || '')
         .split(',')
         .map((url) => url.trim().replace(/\/+$/, ''))
@@ -102,11 +106,25 @@ const attachFailover = (instance) => {
         consecutiveErrors += 1;
         if (consecutiveErrors >= FAILOVER_AFTER_ERRORS) failoverToNextServer();
     });
-    // The API found its server down: follow it if we are not connected.
+    // An admin saved a new server list: use it (applying it fires
+    // SERVER_CHANGED_EVENT below when this browser has to move).
+    instance.on('server-config-changed', (config) => {
+        applyServerConfig(config);
+    });
+    // The API moved servers (it found its server down, or the admin list
+    // changed): follow it if we are not connected, or if our server is no
+    // longer in the list.
     if (typeof window !== 'undefined') {
         window.addEventListener(SERVER_CHANGED_EVENT, (event) => {
             const url = event?.detail?.url;
-            if (url && !instance.connected) switchToServer(url);
+            if (!url) return;
+            const currentUrl = socketServers ? socketServers[serverIndex] : null;
+            socketServers = getSocketServers();
+            serverIndex = currentUrl ? socketServers.indexOf(currentUrl) : -1;
+            const currentRemoved = serverIndex < 0;
+            if (!instance.connected || currentRemoved) switchToServer(url);
+            // Neither server is in this socket's list: start over at its first.
+            if (serverIndex < 0) switchToServer(socketServers[0]);
         });
     }
 };

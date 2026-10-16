@@ -19,9 +19,10 @@ import { normalizeCloudinaryUrl } from "../utils/profileImage";
 const serverAddr = getServerAddress();
 const baseURL = `${serverAddr}/api/`;
 
-// Multiple servers (REACT_APP_SERVER_ADDR="https://a,https://b"): each browser
-// sticks to one home server and only moves to the next one when it fails.
-const useFailover = getServerList().length > 1;
+// Multiple servers (admin panel list or REACT_APP_SERVER_ADDR="https://a,https://b"):
+// each browser sticks to one home server and only moves to the next one when
+// it fails. The list can change at runtime, so this is checked per request.
+const useFailover = () => getServerList().length > 1;
 const DEFAULT_TIMEOUT_MS = 30000;
 const FAILOVER_GET_TIMEOUT_MS = 12000;
 
@@ -230,9 +231,9 @@ export const invalidateGetCache = (pathFragment = "") => {
 api.interceptors.request.use(
   (requestConfig) => {
     try {
-      // With several servers, send each request to the current home server
+      // Send each request to the current home server (see offlineUtils.js)
       if (
-        useFailover &&
+        getServerList().length > 0 &&
         requestConfig.url &&
         !requestConfig.url.startsWith("http")
       ) {
@@ -244,6 +245,7 @@ api.interceptors.request.use(
         // A hung server should not stall reads for the full 30s when another
         // server can answer; timed-out GETs fail over (see below).
         if (
+          useFailover() &&
           String(requestConfig.method || "get").toLowerCase() === "get" &&
           requestConfig.timeout === DEFAULT_TIMEOUT_MS
         ) {
@@ -343,7 +345,7 @@ api.interceptors.response.use(
     // Unreachable (no response) is safe to retry for any request; other 5xx
     // errors and timeouts are only retried for GET so a POST that may have
     // run is never sent twice.
-    if (useFailover && originalRequest?._serverUrl) {
+    if (useFailover() && originalRequest?._serverUrl) {
       const status = error.response?.status;
       const isNetworkError = !error.response && !isTimeout;
       const isServerDown =

@@ -7,6 +7,10 @@ import {Provider} from 'react-redux'
 import store from './store';
 import { BrowserRouter as BR } from 'react-router-dom';
 import { register as registerServiceWorker } from './serviceWorkerRegistration';
+import { startServerConfigSync } from './utils/offlineUtils';
+
+// Follow the server list set in the admin panel (Settings → Servers).
+startServerConfigSync();
 
 // Mark installed / fullscreen web app so CSS can apply iOS safe-area insets
 (() => {
