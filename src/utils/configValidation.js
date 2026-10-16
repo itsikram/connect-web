@@ -11,11 +11,13 @@ export const validateConfig = () => {
 
     // Check for common configuration issues
     if (process.env.REACT_APP_SERVER_ADDR) {
-        try {
-            new URL(process.env.REACT_APP_SERVER_ADDR);
-        } catch (error) {
-            warnings.push('REACT_APP_SERVER_ADDR appears to be an invalid URL');
-        }
+        process.env.REACT_APP_SERVER_ADDR.split(',').forEach((url) => {
+            try {
+                new URL(url.trim());
+            } catch (error) {
+                warnings.push(`REACT_APP_SERVER_ADDR has an invalid URL: ${url.trim()}`);
+            }
+        });
     }
 
     // Warn if REACT_APP_SERVER_ADDR is missing, but don't fail (fallback will be used)

@@ -1,5 +1,5 @@
 import { io } from 'socket.io-client';
-import { getSocketUrl } from '../utils/offlineUtils';
+import { getSocketUrl, getServerList, getServerAddress } from '../utils/offlineUtils';
 
 let socketInstance = null;
 let socketProxy = null;
@@ -17,6 +17,67 @@ const SOCKET_OPTIONS = {
     reconnectionAttempts: Infinity,
     reconnectionDelayMax: 5000,
     transports: ['websocket', 'polling']
+};
+
+// Multiple servers: REACT_APP_SOCKET_URLS="https://connect-1.onrender.com,https://connect-2.onrender.com"
+// Each client sticks to one server; if it keeps failing we move to the next.
+// The servers share rooms through Redis, so any server can deliver to anyone.
+const SERVER_STORAGE_KEY = 'connect.socketServer';
+const FAILOVER_AFTER_ERRORS = 3;
+
+const getSocketServers = () => {
+    const list = String(process.env.REACT_APP_SOCKET_URLS || '')
+        .split(',')
+        .map((url) => url.trim().replace(/\/+$/, ''))
+        .filter(Boolean);
+    if (list.length) return list;
+    // No socket list: use the API servers (unless a single socket URL is set).
+    if (!process.env.REACT_APP_SOCKET_URL && getServerList().length > 1) return getServerList();
+    return [getSocketUrl()];
+};
+
+let socketServers = null;
+let serverIndex = 0;
+let consecutiveErrors = 0;
+
+const pickInitialServer = () => {
+    socketServers = getSocketServers();
+    let saved = null;
+    try { saved = localStorage.getItem(SERVER_STORAGE_KEY); } catch (_e) { /* ignore */ }
+    if (!saved || !socketServers.includes(saved)) saved = getServerAddress(); // same home as the API
+    const savedIndex = saved ? socketServers.indexOf(saved) : -1;
+    serverIndex = savedIndex >= 0
+        ? savedIndex
+        : Math.floor(Math.random() * socketServers.length); // spread users out
+    return socketServers[serverIndex];
+};
+
+const rememberServer = (url) => {
+    try { localStorage.setItem(SERVER_STORAGE_KEY, url); } catch (_e) { /* ignore */ }
+};
+
+// Point the existing socket at the next server. Keeping the same instance
+// means every listener registered through the exported proxy stays attached.
+const failoverToNextServer = () => {
+    if (!socketInstance || !socketServers || socketServers.length < 2) return;
+    serverIndex = (serverIndex + 1) % socketServers.length;
+    const nextUrl = socketServers[serverIndex];
+    consecutiveErrors = 0;
+    console.warn('[socket] switching to server', nextUrl);
+    const manager = socketInstance.io;
+    manager.uri = nextUrl;
+    manager.engine && manager.engine.close();
+};
+
+const attachFailover = (instance) => {
+    instance.on('connect', () => {
+        consecutiveErrors = 0;
+        if (socketServers) rememberServer(socketServers[serverIndex]);
+    });
+    instance.on('connect_error', () => {
+        consecutiveErrors += 1;
+        if (consecutiveErrors >= FAILOVER_AFTER_ERRORS) failoverToNextServer();
+    });
 };
 
 const readStoredProfileId = () => {
@@ -63,7 +124,7 @@ const syncSocketIdentity = () => {
 const getSocket = () => {
     if (!socketInstance) {
         try {
-            const socketUrl = getSocketUrl();
+            const socketUrl = pickInitialServer();
             const profileId = readStoredProfileId();
             socketProfileId = profileId;
             socketInstance = io.connect(socketUrl, {
@@ -75,6 +136,7 @@ const getSocket = () => {
                     profile: profileId
                 },
             });
+            attachFailover(socketInstance);
         } catch (error) {
             console.error('Error initializing socket:', error);
             // Create socket without profile query if localStorage fails

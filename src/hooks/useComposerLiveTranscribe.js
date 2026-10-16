@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { mergeTranscriptChunk } from "./transcriptText";
 import store from "../store";
+import { getServerAddress } from "../utils/offlineUtils";
 
 const TARGET_SAMPLE_RATE = 16000;
 // Smaller buffers reduce the delay before Deepgram receives each audio frame.
@@ -98,7 +99,7 @@ const pickRecorderMime = () => {
 
 const resolveSpeechServerBase = () => {
   const fromEnv = String(
-    process.env.REACT_APP_SOCKET_URL || process.env.REACT_APP_SERVER_ADDR || "",
+    process.env.REACT_APP_SOCKET_URL || getServerAddress() || "",
   )
     .trim()
     .replace(/\/+$/, "");

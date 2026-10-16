@@ -54,11 +54,57 @@ export const normalizeServerUrl = (url) => {
  * Get the server address with fallback for offline/local development
  * Priority: Environment variable > Online detection > Localhost fallback
  */
+const PREFERRED_SERVER_KEY = 'connect.server';
+let preferredServer = null;
+
+/**
+ * All configured API servers. REACT_APP_SERVER_ADDR may be a single URL or a
+ * comma-separated list, e.g. "https://a.onrender.com,https://b.onrender.com".
+ */
+export const getServerList = () =>
+  String(process.env.REACT_APP_SERVER_ADDR || '')
+    .split(',')
+    .map((url) => normalizeServerUrl(url))
+    .filter(Boolean);
+
+/**
+ * Make `url` this browser's home server (used after a failover so every
+ * caller of getServerAddress() moves together).
+ */
+export const setPreferredServer = (url) => {
+  preferredServer = url;
+  try {
+    localStorage.setItem(PREFERRED_SERVER_KEY, url);
+  } catch (_) { /* ignore */ }
+};
+
+/** The server after `url` in the list (wraps around). */
+export const getNextServer = (url) => {
+  const list = getServerList();
+  if (list.length < 2) return list[0] || url;
+  const index = list.indexOf(url);
+  return list[(index + 1) % list.length];
+};
+
+const pickPreferredServer = (list) => {
+  if (preferredServer && list.includes(preferredServer)) return preferredServer;
+  let saved = null;
+  try {
+    saved = localStorage.getItem(PREFERRED_SERVER_KEY);
+  } catch (_) { /* ignore */ }
+  // Each browser sticks to one server; new visitors are spread at random.
+  const chosen = saved && list.includes(saved)
+    ? saved
+    : list[Math.floor(Math.random() * list.length)];
+  setPreferredServer(chosen);
+  return chosen;
+};
+
 export const getServerAddress = () => {
   // PRIORITY 1: Always use environment variable if available (even when offline)
-  if (process.env.REACT_APP_SERVER_ADDR) {
-    return normalizeServerUrl(process.env.REACT_APP_SERVER_ADDR);
-  }
+  const serverList = getServerList();
+  if (serverList.length === 1) return serverList[0];
+  if (serverList.length > 1) return pickPreferredServer(serverList);
   
   // PRIORITY 2: If offline and no env var, use localhost
   if (isOffline()) {

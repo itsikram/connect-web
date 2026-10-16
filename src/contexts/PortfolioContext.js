@@ -1,13 +1,13 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import portfolioDefaults from '../pages/portfolio/portfolioDefaults';
+import { getServerAddress } from '../utils/offlineUtils';
 
 const PortfolioContext = createContext(null);
 const CACHE_KEY = 'connect_portfolio_content_v1';
 
 function getServerBase() {
-  const raw = process.env.REACT_APP_SERVER_ADDR || '';
-  return String(raw).trim().replace(/\/+$/, '') || 'https://oeazgm4zwn.c35.airoapp.ai';
+  return getServerAddress() || 'https://oeazgm4zwn.c35.airoapp.ai';
 }
 
 function readCache() {

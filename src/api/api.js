@@ -1,52 +1,26 @@
 import axios from "axios";
-import { getServerAddress } from "../utils/offlineUtils";
+import {
+  getServerAddress,
+  getServerList,
+  getNextServer,
+  setPreferredServer,
+} from "../utils/offlineUtils";
 import {
   getUserFromStorage,
   setUserInStorage,
   removeStorageItem,
 } from "../utils/storageUtils";
 import { jwtDecode } from "jwt-decode";
-import { LoadBalancer } from "../utils/loadBalancer";
 import { normalizeCloudinaryUrl } from "../utils/profileImage";
-
-// Production server URLs for load balancing
-// Add all your Render server URLs here
-const prodServerUrls = [
-  "https://oeazgm4zwn.c35.airoapp.ai",
-  // Add more Render server URLs here, for example:
-  // "https://oeazgm4zwn.c35.airoapp.ai",
-  // "https://oeazgm4zwn.c35.airoapp.ai",
-];
-
-// const prodServerUrls = [
-//     "https://oeazgm4zwn.c35.airoapp.ai",
-//     // Add more Render server URLs here, for example:
-//     "https://oeazgm4zwn.c35.airoapp.ai",
-//     // "https://oeazgm4zwn.c35.airoapp.ai",
-//     // "https://oeazgm4zwn.c35.airoapp.ai",
-//   ];
 
 // Get server address with offline fallback - computed once at module load
 // This respects REACT_APP_SERVER_ADDR if set, otherwise uses fallback logic
 const serverAddr = getServerAddress();
 const baseURL = `${serverAddr}/api/`;
 
-// Client-side round-robin is disabled. Point REACT_APP_SERVER_ADDR at the
-// Connect load balancer (default :4000). That process routes /api by CPU
-// and keeps Socket.IO sticky. Splitting hosts in the browser breaks sockets.
-let loadBalancer = null;
-const useLoadBalancer = false;
-
-if (useLoadBalancer) {
-  try {
-    loadBalancer = new LoadBalancer(prodServerUrls);
-    if (process.env.NODE_ENV === "development") {
-      console.log("✅ Load balancer enabled with servers:", prodServerUrls);
-    }
-  } catch (error) {
-    console.error("❌ Failed to initialize load balancer:", error);
-  }
-}
+// Multiple servers (REACT_APP_SERVER_ADDR="https://a,https://b"): each browser
+// sticks to one home server and only moves to the next one when it fails.
+const useFailover = getServerList().length > 1;
 
 // Helper function to check if token is expired
 const isTokenExpired = (token) => {
@@ -251,13 +225,13 @@ export const invalidateGetCache = (pathFragment = "") => {
 api.interceptors.request.use(
   (requestConfig) => {
     try {
-      // If load balancer is enabled, set baseURL dynamically
+      // With several servers, send each request to the current home server
       if (
-        loadBalancer &&
+        useFailover &&
         requestConfig.url &&
         !requestConfig.url.startsWith("http")
       ) {
-        const serverUrl = loadBalancer.getNextServer();
+        const serverUrl = requestConfig._serverUrl || getServerAddress();
         requestConfig.baseURL = `${serverUrl}/api/`;
         // Store the server URL for error handling
         requestConfig._serverUrl = serverUrl;
@@ -337,10 +311,6 @@ const processQueue = (error, token = null) => {
 api.interceptors.response.use(
   (response) => {
     response.data = normalizeMediaUrls(response.data);
-    // Mark server as healthy on successful response
-    if (loadBalancer && response.config?._serverUrl) {
-      loadBalancer.markServerHealthy(response.config._serverUrl);
-    }
     return response;
   },
   async (error) => {
@@ -351,44 +321,29 @@ api.interceptors.response.use(
 
     const originalRequest = error.config;
 
-    // Handle load balancer retry logic
-    if (loadBalancer && originalRequest?._serverUrl) {
-      const isNetworkError =
-        !error.response ||
-        error.code === "ECONNABORTED" ||
-        error.code === "ENOTFOUND" ||
-        error.code === "ECONNREFUSED" ||
-        error.message?.includes("timeout") ||
-        error.message?.includes("Network Error");
+    // Failover: move to the next server when the home server is down.
+    // Unreachable (no response) is safe to retry for any request; other 5xx
+    // errors are only retried for GET so a POST that ran is never sent twice.
+    if (useFailover && originalRequest?._serverUrl) {
+      const status = error.response?.status;
+      const isNetworkError = !error.response;
+      const isServerDown =
+        [502, 503, 504].includes(status) ||
+        (status >= 500 &&
+          String(originalRequest.method || "get").toLowerCase() === "get");
+      const triedCount = originalRequest._failoverCount || 0;
 
-      const isServerError =
-        error.response?.status && error.response.status >= 500;
-
-      // Retry with different server on network errors or 5xx errors
       if (
-        (isNetworkError || isServerError) &&
-        (!originalRequest._retryCount || originalRequest._retryCount < 2)
+        (isNetworkError || isServerDown) &&
+        triedCount < getServerList().length - 1
       ) {
-        originalRequest._retryCount = (originalRequest._retryCount || 0) + 1;
-
-        // Mark current server as unhealthy
-        loadBalancer.markServerUnhealthy(originalRequest._serverUrl, error);
-
-        // Try next server
-        const nextServerUrl = loadBalancer.getNextServer();
-        originalRequest.baseURL = `${nextServerUrl}/api/`;
+        const nextServerUrl = getNextServer(originalRequest._serverUrl);
+        originalRequest._failoverCount = triedCount + 1;
         originalRequest._serverUrl = nextServerUrl;
-
-        if (process.env.NODE_ENV === "development") {
-          console.log(
-            `🔄 Retrying request on server ${nextServerUrl} (attempt ${originalRequest._retryCount})`,
-          );
-        }
-
+        originalRequest.baseURL = `${nextServerUrl}/api/`;
+        setPreferredServer(nextServerUrl);
+        console.warn(`🔄 Server unavailable, switching to ${nextServerUrl}`);
         return api(originalRequest);
-      } else if (isNetworkError || isServerError) {
-        // All retries exhausted, mark server as unhealthy
-        loadBalancer.markServerUnhealthy(originalRequest._serverUrl, error);
       }
     }
 

@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import { usePortfolio } from '../../contexts/PortfolioContext';
+import { getServerAddress } from '../../utils/offlineUtils';
 
 function getServerBase() {
-  const raw = process.env.REACT_APP_SERVER_ADDR || '';
-  return String(raw).trim().replace(/\/+$/, '') || 'https://oeazgm4zwn.c35.airoapp.ai';
+  return getServerAddress() || 'https://oeazgm4zwn.c35.airoapp.ai';
 }
 
 const PortfolioContact = () => {
