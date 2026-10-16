@@ -10,7 +10,7 @@ const LandingPage = () => {
       <div className="landing-inner">
         <nav className="landing-nav" aria-label="Main">
           <Link to="/" className="landing-brand">
-            <img src="/logo192.png" alt="" width="36" height="36" />
+            <img src="/logo-72.webp" alt="" width="36" height="36" />
             Connect BD
           </Link>
           <div className="landing-nav-links">
@@ -101,11 +101,11 @@ const LandingPage = () => {
       <footer className="landing-footer">
         <div className="footer-content">
           <div className="footer-section">
-            <h4>Connect App</h4>
+            <h2 className="footer-title">Connect App</h2>
             <p>A modern social media platform by Ikramul for connecting with connects and building communities.</p>
           </div>
           <div className="footer-section">
-            <h4>Get Started</h4>
+            <h2 className="footer-title">Get Started</h2>
             <ul>
               <li><Link to="/signup">Create an account</Link></li>
               <li><Link to="/login">Log in</Link></li>
@@ -113,7 +113,7 @@ const LandingPage = () => {
             </ul>
           </div>
           <div className="footer-section">
-            <h4>About</h4>
+            <h2 className="footer-title">About</h2>
             <ul>
               <li><Link to="/portfolio">About the developer</Link></li>
               <li><Link to="/portfolio/blogs">Blog</Link></li>

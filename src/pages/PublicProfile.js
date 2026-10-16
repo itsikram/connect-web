@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import axios from 'axios';
 import { getServerAddress } from '../utils/offlineUtils';
 import config from '../config/config.json';
 import '../components/LandingPage.css';
@@ -76,13 +75,15 @@ const PublicProfile = () => {
   useEffect(() => {
     let active = true;
     setState({ loading: true, profile: null });
-    axios
-      .get(`${getServerAddress()}/api/profile/public/${encodeURIComponent(username)}`, {
-        timeout: 15000,
-      })
-      .then((res) => {
+    // fetch rather than axios: this page is part of the small public bundle.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    fetch(`${getServerAddress()}/api/profile/public/${encodeURIComponent(username)}`, {
+      signal: controller.signal,
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((p) => {
         if (!active) return;
-        const p = res.data;
         if (p?.indexable) {
           applyProfileSeo(p);
           setState({ loading: false, profile: p });
@@ -98,6 +99,8 @@ const PublicProfile = () => {
       });
     return () => {
       active = false;
+      clearTimeout(timer);
+      controller.abort();
       document.getElementById(JSON_LD_ID)?.remove();
     };
   }, [username]);
@@ -109,7 +112,7 @@ const PublicProfile = () => {
       <div className="landing-inner">
         <nav className="landing-nav" aria-label="Main">
           <Link to="/" className="landing-brand">
-            <img src="/logo192.png" alt="" width="36" height="36" />
+            <img src="/logo-72.webp" alt="" width="36" height="36" />
             Connect BD
           </Link>
           <div className="landing-nav-links">

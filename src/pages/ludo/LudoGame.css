@@ -2339,3 +2339,27 @@
 .ludo-saved-game__delete:hover {
     background: rgba(232, 93, 93, 0.12);
 }
+
+/* Short-lived message (an action the server refused, a re-invite sent, ...) */
+.ludo-notice {
+    position: relative;
+    z-index: 30;
+    width: 100%;
+    max-width: 600px;
+    margin: 0 auto 10px;
+    padding: 10px 14px;
+    border-radius: var(--ludo-radius-sm);
+    border: 1px solid rgba(62, 198, 255, 0.45);
+    background: rgba(62, 198, 255, 0.14);
+    color: var(--ludo-text);
+    font-size: 0.85rem;
+    line-height: 1.35;
+    text-align: center;
+    animation: ludo-fade-up 0.25s ease;
+}
+
+/* A player who left the board for now (their turns are skipped). */
+.ludo-player-chip--away {
+    opacity: 0.55;
+    filter: grayscale(0.6);
+}

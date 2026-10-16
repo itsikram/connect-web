@@ -45,11 +45,45 @@ const COMPRESSIBLE = /^(text\/|application\/(javascript|json|xml|wasm)|image\/sv
 
 const acceptsGzip = (req) => /\bgzip\b/.test(req.headers["accept-encoding"] || "");
 
-const sendFile = (req, res, filePath, cacheControl) => {
+const acceptsBrotli = (req) => /\bbr\b/.test(req.headers["accept-encoding"] || "");
+
+// Hashed bundles under /static never change, so compress each one once with
+// Brotli (smaller than gzip) and keep it in memory. Until it is ready, the
+// file streams gzipped as before.
+const brotliCache = new Map(); // filePath -> { mtimeMs, buf } (buf null = pending)
+const cachedBrotli = (filePath, mtimeMs) => {
+  const hit = brotliCache.get(filePath);
+  if (hit && hit.mtimeMs === mtimeMs) return hit.buf;
+  brotliCache.set(filePath, { mtimeMs, buf: null });
+  fs.readFile(filePath, (err, raw) => {
+    if (err) return brotliCache.delete(filePath);
+    zlib.brotliCompress(
+      raw,
+      { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 10 } },
+      (e, buf) => {
+        if (e) brotliCache.delete(filePath);
+        else brotliCache.set(filePath, { mtimeMs, buf });
+      }
+    );
+  });
+  return null;
+};
+
+const sendFile = (req, res, filePath, cacheControl, stat) => {
   const type =
     MIME_TYPES[path.extname(filePath).toLowerCase()] ||
     "application/octet-stream";
   const headers = { "Content-Type": type, "Cache-Control": cacheControl };
+  if (stat && COMPRESSIBLE.test(type) && acceptsBrotli(req)) {
+    const br = cachedBrotli(filePath, stat.mtimeMs);
+    if (br) {
+      headers["Content-Encoding"] = "br";
+      headers["Content-Length"] = br.length;
+      headers.Vary = "Accept-Encoding";
+      res.writeHead(200, headers);
+      return res.end(req.method === "HEAD" ? undefined : br);
+    }
+  }
   const gzip = COMPRESSIBLE.test(type) && acceptsGzip(req);
   if (gzip) {
     headers["Content-Encoding"] = "gzip";
@@ -176,6 +210,64 @@ const readIndexHtml = () => {
   return indexCache.html;
 };
 
+// --- Speed: instant first paint for public pages ---------------------------
+// `npm run build` pre-renders / and /about (scripts/prerender-public.js). We
+// serve that markup inside #root with its CSS inlined, so the page paints
+// from the HTML alone; the small PublicApp bundle then takes over. Visitors
+// who are logged in never see it: the inline script hides it before paint
+// and the full app replaces it.
+const PRERENDER_DIR = path.join(BUILD_DIR, "prerender");
+const textCache = new Map(); // file -> { mtimeMs, text }
+const readBuildText = (file) => {
+  try {
+    const { mtimeMs } = fs.statSync(file);
+    const hit = textCache.get(file);
+    if (hit && hit.mtimeMs === mtimeMs) return hit.text;
+    const text = fs.readFileSync(file, "utf8");
+    textCache.set(file, { mtimeMs, text });
+    return text;
+  } catch (_) {
+    return null;
+  }
+};
+
+const PRERENDERED = { "/": "home.html", "/about": "about.html" };
+
+const SESSION_CHECK =
+  '<script>try{var u=JSON.parse(localStorage.getItem("user")||sessionStorage.getItem("user")||"null");' +
+  'if(u&&(u.accessToken||u.refreshToken))document.documentElement.classList.add("has-session")}catch(e){}</script>';
+
+// Start downloading the PublicApp chunk with the HTML instead of after main.js.
+const publicChunkPreloads = () => {
+  try {
+    const { files } = JSON.parse(readBuildText(path.join(BUILD_DIR, "asset-manifest.json")));
+    return Object.keys(files)
+      .filter((k) => /^public-app\.js$/.test(k))
+      .map((k) => `<link rel="preload" as="script" href="${files[k]}">`)
+      .join("");
+  } catch (_) {
+    return "";
+  }
+};
+
+const withPublicShell = (html, markup) => {
+  const css = readBuildText(path.join(PRERENDER_DIR, "public.css"));
+  if (!css || !markup) return html;
+  return html
+    .replace(
+      /<meta name="viewport" content="[^"]*"\s*\/?>/,
+      '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
+    )
+    .replace(
+      "</head>",
+      `${SESSION_CHECK}<style>${css}.has-session [data-prerender]{display:none}</style>${publicChunkPreloads()}</head>`
+    )
+    .replace(
+      '<div id="root"></div>',
+      `<div id="root"><div data-prerender>${markup}</div></div>`
+    );
+};
+
 const renderIndexHtml = (pathname) => {
   const requested = pathname.replace(/\/+$/, "") || "/";
   const route = PUBLIC_PAGES[requested]?.alias || requested;
@@ -205,6 +297,12 @@ const renderIndexHtml = (pathname) => {
   if (page.image) {
     html = setMeta(html, "property", "og:image", page.image);
     html = setMeta(html, "name", "twitter:image", page.image);
+  }
+  if (PRERENDERED[route]) {
+    html = withPublicShell(
+      html,
+      readBuildText(path.join(PRERENDER_DIR, PRERENDERED[route]))
+    );
   }
   if (route.startsWith("/portfolio")) {
     const body = renderPortfolioBody(route, getPortfolioData());
@@ -380,10 +478,11 @@ const APP_ROUTES = new Set(
     "forgot-password reset-password story post connects watch message ludo-game chess-game " +
     "video-player marketplace groups yt-download camera notes tasks timer flashcards calendar " +
     "habits health rehab settings test-notifications privacy terms about portfolio api static " +
-    "assets privacy-policy terms-of-service"
+    "assets privacy-policy terms-of-service call face images"
   ).split(" ")
 );
 const USERNAME_RE = /^[A-Za-z0-9._-]{1,64}$/;
+const DEFAULT_PROFILE_PIC = "/assets/images/default-profile-pic.png"; // config.json defaultProfile;
 const PROFILE_TTL_MS = 5 * 60 * 1000;
 const PROFILE_CACHE_MAX = 5000;
 const profileCache = new Map(); // username -> { at, data } (data null = not public)
@@ -468,14 +567,27 @@ const renderProfileHtml = (p) => {
     `<script type="application/ld+json">${jsonLd}</script></head>`
   );
 
-  const body = `<div style="max-width:720px;margin:0 auto;padding:24px 16px;font-family:Inter,system-ui,sans-serif;line-height:1.6;color:#e5e7eb;background:#111112;text-align:center"><nav><a href="/">Connect BD</a> · <a href="/about">About Connect</a> · <a href="/signup">Sign up</a></nav><main>${
-    p.profilePic
-      ? `<img src="${esc(p.profilePic)}" alt="${esc(p.name)} profile picture" width="128" height="128" style="border-radius:50%;object-fit:cover">`
-      : ""
-  }<h1>${esc(p.name)}</h1><p>@${esc(p.username)}</p>${
-    p.bio ? `<p>${esc(p.bio)}</p>` : ""
-  }<p><a href="/signup">Join Connect</a> to chat, call and share moments with ${esc(p.name)}.</p></main></div>`;
-  return html.replace('<div id="root"></div>', `<div id="root">${body}</div>`);
+  // Same markup as src/pages/PublicProfile.js, styled by the inlined CSS.
+  const firstName = String(p.name).split(" ")[0];
+  const body =
+    `<div class="landing-page"><div class="landing-inner">` +
+    `<nav class="landing-nav" aria-label="Main"><a class="landing-brand" href="/"><img src="/logo-72.webp" alt="" width="36" height="36">Connect BD</a>` +
+    `<div class="landing-nav-links"><a href="/login">Log In</a><a class="landing-nav-cta" href="/signup">Sign Up</a></div></nav>` +
+    `<main><article class="public-profile-card">` +
+    `<div class="public-profile-cover"${
+      p.coverPic ? ` style="background-image:url(&quot;${esc(p.coverPic)}&quot;)"` : ""
+    }></div>` +
+    `<img class="public-profile-avatar" src="${esc(p.profilePic || DEFAULT_PROFILE_PIC)}" alt="${esc(p.name)} profile picture" width="128" height="128">` +
+    `<h1>${esc(p.name)}${p.isVerified ? '<span class="public-profile-badge" title="Verified"> ✓</span>' : ""}</h1>` +
+    `<p class="public-profile-username">@${esc(p.username)}</p>` +
+    (p.bio ? `<p class="public-profile-bio">${esc(p.bio)}</p>` : "") +
+    `<div class="hero-buttons"><a class="landing-btn landing-btn--primary" href="/login">Log in to connect with ${esc(firstName)}</a>` +
+    `<a class="landing-btn landing-btn--secondary" href="/signup">Join Connect</a></div>` +
+    `</article></main></div></div>`;
+  const shell = withPublicShell(html, body);
+  return shell !== html
+    ? shell
+    : html.replace('<div id="root"></div>', `<div id="root">${body}</div>`);
 };
 
 const renderAny = async (pathname) => {
@@ -543,7 +655,13 @@ const server = http.createServer((req, res) => {
       const cacheControl = pathname.startsWith("/static/")
         ? "public, max-age=31536000, immutable"
         : "no-cache";
-      return sendFile(req, res, filePath, cacheControl);
+      return sendFile(
+        req,
+        res,
+        filePath,
+        cacheControl,
+        pathname.startsWith("/static/") ? stat : null
+      );
     }
     // Missing file with an extension: real 404, not the app shell.
     if (path.extname(pathname)) {

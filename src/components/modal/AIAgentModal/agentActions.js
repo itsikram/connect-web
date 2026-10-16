@@ -344,8 +344,6 @@ const startYoutubeDownloadJob = async ({
   return json;
 };
 
-const LUDO_AGENT_CREATE_KEY = "ludo_agent_create";
-
 const collectLudoInvitees = ({
   connect,
   extraConnects,
@@ -376,44 +374,57 @@ const collectLudoInvitees = ({
   return list;
 };
 
+// The server hosts Ludo games: create one with the invitees' seats and open it.
+const createLudoOnServer = (payload) =>
+  new Promise((resolve) => {
+    if (!socket?.emit) {
+      resolve({ ok: false, message: "Not connected to the game server." });
+      return;
+    }
+    const timer = setTimeout(
+      () => resolve({ ok: false, message: "The game server didn't answer." }),
+      10000,
+    );
+    socket.emit("ludo:create", payload, (result) => {
+      clearTimeout(timer);
+      resolve(result || { ok: false });
+    });
+  });
+
 const startOnlineLudo = async ({ invitees = [], myProfile, go }) => {
-  const gid = generateGameId();
-  const playerCount = Math.min(4, Math.max(2, (invitees.length || 0) + 1));
-  const connectsPayload = invitees.map((item, index) => ({
-    connectId: item._id,
-    connectName: getConnectDisplayName(item),
-    friendAvatar: item.profilePic,
-    slotIndex: index + 1,
-  }));
-
-  try {
-    localStorage.setItem(
-      LUDO_AGENT_CREATE_KEY,
-      JSON.stringify({
-        gameId: gid,
-        autoStart: true,
-        playerCount,
-        connects: connectsPayload,
-      }),
-    );
-  } catch (_) {}
-
-  go(`/ludo-game?gameId=${encodeURIComponent(gid)}`);
-  try {
-    window.dispatchEvent(
-      new CustomEvent("ludo:agent-create", { detail: { gameId: gid } }),
-    );
-  } catch (_) {}
-
-  const names = connectsPayload.map((item) => item.connectName).filter(Boolean);
-  if (names.length === 0) {
+  const seated = invitees.slice(0, 3);
+  if (seated.length === 0) {
+    go("/ludo-game", { state: { newGame: true } });
     return {
       success: true,
       message:
-        "🎮 Ludo lobby started. Tell me who to invite and I’ll send the invitations.",
+        "🎮 Ludo is open. Tell me who to invite and I’ll send the invitations.",
     };
   }
 
+  const result = await createLudoOnServer({
+    playerCount: seated.length + 1,
+    seats: seated.map((item) => ({
+      kind: "invite",
+      profileId: item._id,
+      name: getConnectDisplayName(item),
+      avatar: item.profilePic,
+    })),
+    host: {
+      name: myProfile?.fullName,
+      avatar: myProfile?.profilePic,
+      cover: myProfile?.coverPic,
+    },
+  });
+  if (!result?.ok) {
+    return {
+      success: false,
+      message: `Couldn't start Ludo: ${result?.message || "try again in a moment."}`,
+    };
+  }
+  go(`/ludo-game/${encodeURIComponent(result.gameId)}`);
+
+  const names = seated.map((item) => getConnectDisplayName(item)).filter(Boolean);
   return {
     success: true,
     message:

@@ -9,9 +9,10 @@ const OFFLINE_GRACE_MS = 800;
  * been down for a moment, "slow" when a ludo:ping round trip takes longer
  * than SLOW_AFTER_MS, otherwise "ok". Latency is only judged once the server
  * has answered a ping, so an older server without the handler never reads as
- * slow.
+ * slow. With a gameId the ping is also the heartbeat that keeps this player's
+ * seat marked as present on the server.
  */
-export const useConnectionHealth = (active, connected, socketRef) => {
+export const useConnectionHealth = (active, connected, socketRef, gameId = null) => {
   const [health, setHealth] = useState("ok");
   const pendingSinceRef = useRef(null);
   const serverAnswersPingRef = useRef(false);
@@ -33,7 +34,7 @@ export const useConnectionHealth = (active, connected, socketRef) => {
       if (!socket || !socket.connected || pendingSinceRef.current != null) return;
       const sentAt = Date.now();
       pendingSinceRef.current = sentAt;
-      socket.emit("ludo:ping", {}, () => {
+      socket.emit("ludo:ping", gameId ? { gameId } : {}, () => {
         serverAnswersPingRef.current = true;
         if (disposed || pendingSinceRef.current !== sentAt) return;
         pendingSinceRef.current = null;
@@ -54,7 +55,7 @@ export const useConnectionHealth = (active, connected, socketRef) => {
       clearInterval(watch);
       clearInterval(pinger);
     };
-  }, [active, connected, socketRef]);
+  }, [active, connected, socketRef, gameId]);
 
   return health;
 };

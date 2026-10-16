@@ -536,6 +536,7 @@ export const PlayerSelectionModal = ({
             </div>
           </section>
 
+          {onCopyInviteLink && (
           <section className="ludo-modal__section ludo-modal__section--last">
             <div className="ludo-invite-card">
               <div className="ludo-invite-card__icon" aria-hidden="true">
@@ -564,6 +565,7 @@ export const PlayerSelectionModal = ({
               </div>
             )}
           </section>
+          )}
         </div>
 
         <div className="ludo-modal-actions ludo-modal-actions--sticky">

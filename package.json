@@ -75,7 +75,7 @@
   "scripts": {
     "start": "node server.js",
     "start:normal": "react-scripts start",
-    "build": "react-scripts build",
+    "build": "react-scripts build && node scripts/prerender-public.js",
     "build:check": "tsc --noEmit && react-scripts build",
     "type-check": "tsc --noEmit",
     "test": "react-scripts test",
@@ -92,7 +92,8 @@
     "production": [
       ">0.2%",
       "not dead",
-      "not op_mini all"
+      "not op_mini all",
+      "supports es6-module"
     ],
     "development": [
       "last 1 chrome version",

@@ -7,7 +7,7 @@ const routeLoaders = [
   { matches: (path) => path === "/portfolio" || path.startsWith("/portfolio/"), load: () => import("../pages/portfolio/PortfolioContainer.js") },
   { matches: (path) => path === "/downloads" || path.startsWith("/downloads/"), load: () => import("../pages/SavedVideos.js") },
   { matches: (path) => path === "/camera", load: () => import("../pages/Camera.js") },
-  { matches: (path) => path === "/ludo-game", load: () => import("../pages/ludo") },
+  { matches: (path) => path === "/ludo-game" || path.startsWith("/ludo-game/"), load: () => import("../pages/ludo") },
   { matches: (path) => path === "/chess-game", load: () => import("../pages/ChessGame") },
   { matches: (path) => path === "/notes", load: () => import("../pages/Notes.js") },
   { matches: (path) => path === "/tasks", load: () => import("../pages/Tasks.js") },

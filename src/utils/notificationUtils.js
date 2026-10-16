@@ -123,7 +123,10 @@ export function getNotificationLink(notification) {
     }
 
     if (notification?.type === 'ludo_invite') {
-        return '/ludo-game';
+        const gameId = data.gameId || notification?.gameId;
+        return gameId
+            ? `/ludo-game/${encodeURIComponent(String(gameId))}`
+            : '/ludo-game';
     }
 
     return link || '/';

@@ -1,13 +1,9 @@
-import "./rtc/agoraInit";
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
 import reportWebVitals from './reportWebVitals';
-import {Provider} from 'react-redux'
-import store from './store';
-import { BrowserRouter as BR } from 'react-router-dom';
 import { register as registerServiceWorker } from './serviceWorkerRegistration';
 import { startServerConfigSync } from './utils/offlineUtils';
+import { hasStoredSession, isPublicPath } from './publicRoutes';
 
 // Follow the server list set in the admin panel (Settings → Servers).
 startServerConfigSync();
@@ -27,14 +23,18 @@ startServerConfigSync();
   }
 })();
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <Provider store={store}>
-    <BR future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
-      <App />
-    </BR>
-  </Provider>
-);
+// Logged-out visitors on /, /about and /:username get the small public
+// bundle (PublicApp); everyone else loads the full app (FullApp). Both are
+// separate chunks so neither pays for the other.
+const usePublicApp =
+  navigator.onLine !== false && !hasStoredSession() && isPublicPath(window.location.pathname);
+const loadRoot = usePublicApp
+  ? import(/* webpackChunkName: "public-app" */ './PublicApp')
+  : import(/* webpackChunkName: "full-app" */ './FullApp');
+
+loadRoot.then(({ default: Root }) => {
+  ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
+});
 
 
 // If you want to start measuring performance in your app, pass a function

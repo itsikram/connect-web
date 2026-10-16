@@ -1,49 +1,33 @@
-# Ludo Game - Refactored Structure
+# Ludo (web)
 
-This directory contains the refactored Ludo game code, organized into a clean, modular structure.
+Every Ludo game is hosted by the server (`server/sockets/ludo/`): it rolls the
+dice, checks and applies moves, plays the computer seats, skips players who
+are away, keeps pauses, and saves every change to MySQL. This page only sends
+intents (roll, move a piece, pause, invite, ...) and draws the state it
+receives, so a game can be paused, closed, reloaded or reopened on another
+device and continues where it was.
 
-## Directory Structure
+## Routes
+
+- `/ludo-game` — menu: start a game, your games (resume / delete), invites
+- `/ludo-game/:gameId` — one game. Reloading the page rejoins it; a player
+  opening an invite link takes their seat (`location.state.acceptInvite`).
+
+## Structure
 
 ```
-ludo/
-├── constants/
-│   └── gameConstants.js      # Game constants (colors, paths, safe cells, etc.)
-├── utils/
-│   ├── colorUtils.js         # Color manipulation utilities
-│   ├── gameLogic.js          # Game logic (captures, moves, path calculations)
-│   ├── gameState.js          # Game state persistence (localStorage, database)
-│   └── socketHelpers.js      # Socket.io helper functions
-├── components/
-│   ├── AnimatedBackground.js # Animated background component
-│   ├── ConnectionStatus.js   # Connection status indicator
-│   ├── DiceSVG.js            # Dice SVG component
-│   ├── GameBoard.js          # Main game board component
-│   └── WinnerConfetti.js     # Winner celebration confetti
-├── hooks/
-│   └── useAudio.js           # Audio/sound effects hook
-├── index.js                  # Main export
-└── LudoGame.js               # Main game component (refactored)
+LudoGame.js              menu + board screens
+hooks/useLudoSocket.js   the page's socket and request(event) -> ack
+hooks/useServerGame.js   joins a game (again after every reconnect), actions
+utils/stateFeed.js       paces server states: token hops, dice tumble, sounds
+utils/boardGeometry.js   board cells for the server's path length
+components/GameBoard.js  the board, with each player's photo in their yard
 ```
 
-## Key Improvements
+`utils/stateFeed.js` has an Expo twin in
+`expo-connect-app/src/lib/ludo/stateFeed.ts`; keep them in step.
 
-1. **Separation of Concerns**: Logic, UI, and utilities are separated into different files
-2. **Reusability**: Components and utilities can be easily reused or tested
-3. **Maintainability**: Easier to find and modify specific functionality
-4. **Readability**: Main component is cleaner and easier to understand
+## Tests
 
-## Usage
-
-Import the game component:
-
-```javascript
-import LudoGame from './pages/ludo';
-// or
-import LudoGame from './pages/ludo/LudoGame';
-```
-
-## Notes
-
-- The original `LudoGame.js` file has been refactored to use these modules
-- All game logic, constants, and utilities are now in separate files
-- Components are self-contained and can be easily modified or replaced
+- Server rules and game flows: `cd server && npm run test:ludo`
+- Full matches between real web/Expo clients: see `tests/ludo-e2e/README.md`

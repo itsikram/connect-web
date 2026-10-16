@@ -58,7 +58,7 @@ const AboutConnect = () => {
       <div className="landing-inner">
         <nav className="landing-nav" aria-label="Main">
           <Link to="/" className="landing-brand">
-            <img src="/logo192.png" alt="" width="36" height="36" />
+            <img src="/logo-72.webp" alt="" width="36" height="36" />
             Connect BD
           </Link>
           <div className="landing-nav-links">

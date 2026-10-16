@@ -19,6 +19,7 @@ export const GameHeader = ({
   gamePaused,
   pauseDisabled,
   onPauseGame,
+  subtitle,
 }) => {
   const showExit = Boolean(gameId);
 
@@ -36,13 +37,14 @@ export const GameHeader = ({
         <div>
           <div className="ludo-header__title">Ludo Classic</div>
           <div className="ludo-header__subtitle">
-            {gameStarted
-              ? gameId
-                ? "Online match"
-                : playWithComputer
-                  ? "Vs computer"
-                  : "Local match"
-              : "Ready to play"}
+            {subtitle ||
+              (gameStarted
+                ? gameId
+                  ? "Online match"
+                  : playWithComputer
+                    ? "Vs computer"
+                    : "Local match"
+                : "Ready to play")}
           </div>
         </div>
       </div>
@@ -88,16 +90,18 @@ export const GameHeader = ({
                 <span className="ludo-btn__label">Pause</span>
               </button>
             )}
-            <button
-              type="button"
-              className="ludo-btn ludo-btn--danger"
-              onClick={onResetGame}
-              title="Restart from the beginning"
-              aria-label="Restart from the beginning"
-            >
-              <LudoIcon name="restart" className="ludo-btn__icon" />
-              <span className="ludo-btn__label">Restart</span>
-            </button>
+            {onResetGame && (
+              <button
+                type="button"
+                className="ludo-btn ludo-btn--danger"
+                onClick={onResetGame}
+                title="Restart from the beginning"
+                aria-label="Restart from the beginning"
+              >
+                <LudoIcon name="restart" className="ludo-btn__icon" />
+                <span className="ludo-btn__label">Restart</span>
+              </button>
+            )}
             <button
               type="button"
               className="ludo-btn ludo-btn--ghost"

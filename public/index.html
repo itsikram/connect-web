@@ -69,6 +69,7 @@
       name="twitter:image:alt"
       content="Connect BD social media app by Ikramul"
     />
+    <meta name="google-adsense-account" content="ca-pub-4087828229547158" />
     <meta name="twitter:creator" content="@ikramul" />
 
     <!-- Additional SEO Meta Tags -->
@@ -111,7 +112,6 @@
     <!-- Preconnect for performance -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="preconnect" href="https://www.google-analytics.com" />
 
     <!-- Modern Typography (non-blocking so iOS PWA first paint is not delayed) -->
     <link
@@ -245,18 +245,23 @@
         "@context": "https://schema.org",
         "@type": "WebSite",
         "name": "Connect BD",
-        "alternateName": ["Connect Social Media", "Connect App", "Connect by Ikramul", "Connect", "Connect Online"],
+        "alternateName": [
+          "Connect Social Media",
+          "Connect App",
+          "Connect by Ikramul",
+          "Connect",
+          "Connect Online"
+        ],
         "url": "https://connect-bd.online/",
         "inLanguage": "en"
       }
     </script>
 
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script>
       // Optionally override MediaPipe base to serve from same origin to satisfy strict CSP
       window.__MP_MEDIAPIPE_BASE = window.location.origin + "/mediapipe";
     </script>
-    <script src="%PUBLIC_URL%/security-headers.js"></script>
+    <script src="%PUBLIC_URL%/security-headers.js" defer></script>
   </head>
 
   <body>

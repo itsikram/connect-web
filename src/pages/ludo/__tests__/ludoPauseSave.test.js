@@ -1,14 +1,30 @@
 /**
- * Pause & save for an offline game against the computer, with the real
- * LudoGame component: pausing freezes the board (the computer included),
- * "Save & exit" lists the game under Saved Games, and after a reload the
- * game resumes on the same board and keeps playing.
+ * Games against the computer are hosted by the server too: the computer
+ * plays on the server, the game is saved on every move and can be paused,
+ * closed and resumed later from "Your Games". Uses the real LudoGame page and
+ * the production game server in-process.
  */
 import React from "react";
-import { render, act, fireEvent, cleanup } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { render, act } from "@testing-library/react";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import {
+  startLudoServer,
+  pause,
+  click,
+  waitFor,
+  q,
+  byTestId,
+  buttonByText,
+  readyDice,
+  tokens,
+  playStep,
+  silenceConsole,
+} from "../testUtils/ludoWebHarness";
 
-const mockProfile = { _id: "pause-tester", fullName: "Pause Tester", profilePic: "", coverPic: "" };
+const PORT = 4880 + Number(process.env.JEST_WORKER_ID || 0);
+const URL = `http://localhost:${PORT}`;
+
+const mockProfile = { _id: "3".repeat(24), fullName: "Solo Player", profilePic: "", coverPic: "" };
 
 jest.mock("react-redux", () => ({
   useSelector: (selector) => selector({ profile: mockProfile }),
@@ -47,10 +63,7 @@ jest.mock("../components/PlayerSelectionModal", () => ({
     props.show ? (
       <div>
         <button data-testid="lobby-count" onClick={() => props.onPlayerCountChange(2)} />
-        <button
-          data-testid="lobby-computer"
-          onClick={() => !props.playWithComputer && props.onPlayWithComputerToggle()}
-        />
+        <button data-testid="lobby-computer" onClick={() => props.onPlayWithComputerToggle()} />
         <button data-testid="lobby-confirm" onClick={() => props.onConfirmPlayerCount()} />
       </div>
     ) : null,
@@ -61,186 +74,146 @@ import LudoGame from "../LudoGame";
 
 jest.setTimeout(3 * 60 * 1000);
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const pause = async (ms) => {
-  const until = Date.now() + ms;
-  while (Date.now() < until) {
-    // eslint-disable-next-line no-await-in-loop
-    await act(async () => {
-      await sleep(Math.min(100, until - Date.now()));
-    });
-  }
+let server;
+let currentPath = "";
+const PathSpy = () => {
+  currentPath = useLocation().pathname;
+  return null;
 };
-const click = async (el) => {
-  await act(async () => {
-    fireEvent.click(el);
+const mountAt = (entry) =>
+  render(
+    <MemoryRouter initialEntries={[entry]}>
+      <PathSpy />
+      <Routes>
+        <Route path="/ludo-game/*" element={<LudoGame />} />
+        <Route path="/" element={<div data-testid="home">HOME</div>} />
+      </Routes>
+    </MemoryRouter>,
+  );
+
+const startGame = async (computer) => {
+  await click(buttonByText(/^Start( Game)?$/));
+  await waitFor(() => byTestId("lobby-confirm"), { label: "lobby" });
+  await click(byTestId("lobby-count"));
+  if (computer) await click(byTestId("lobby-computer"));
+  await click(byTestId("lobby-confirm"));
+  await waitFor(() => /^\/ludo-game\/[^/]+$/.test(currentPath), { label: "game route" });
+  await waitFor(() => q(".ludo-tokens"), { label: "board" });
+};
+
+beforeAll(() => {
+  server = startLudoServer(PORT, {
+    timings: { stepMs: 40, moveSettleMs: 80, passMs: 300, autoMoveMs: 300, botRollMs: 150, botMoveMs: 250 },
   });
-};
-const waitFor = async (predicate, { timeout = 10000, label = "condition" } = {}) => {
-  const started = Date.now();
-  for (;;) {
-    const result = predicate();
-    if (result) return result;
-    if (Date.now() - started > timeout) throw new Error(`Timed out waiting for ${label}`);
-    // eslint-disable-next-line no-await-in-loop
-    await pause(50);
-  }
-};
+});
 
-const q = (selector) => document.querySelector(selector);
-const byTestId = (id) => q(`[data-testid="${id}"]`);
-const buttonByText = (re) =>
-  Array.from(document.querySelectorAll("button")).find((b) => re.test(b.textContent.trim()));
-const tokens = () =>
-  Array.from(document.querySelectorAll('button[aria-label^="Piece "]'))
-    .map((b) => `${b.getAttribute("aria-label")}@${b.parentElement.style.left},${b.parentElement.style.top}`)
-    .sort()
-    .join("|");
-const hint = () => q(".ludo-turn__hint")?.textContent || "";
-const readyDice = () => q(".ludo-dice-btn.ludo-dice-btn--ready:not([disabled])");
-const savedGames = () => JSON.parse(localStorage.getItem("ludo_saved_local_games") || "[]");
-
-const renderGame = async () => {
-  await act(async () => {
-    render(
-      <MemoryRouter initialEntries={["/ludo-game"]}>
-        <LudoGame />
-      </MemoryRouter>,
-    );
-  });
-  await pause(300);
-};
-
-// Human plays: roll when possible, else move the first playable token.
-const playFor = async (ms) => {
-  const until = Date.now() + ms;
-  while (Date.now() < until) {
-    const dice = readyDice();
-    const token = q('button[aria-label^="Piece "]:not([disabled])');
-    // eslint-disable-next-line no-await-in-loop
-    if (dice) await click(dice);
-    // eslint-disable-next-line no-await-in-loop
-    else if (token) await click(token);
-    // eslint-disable-next-line no-await-in-loop
-    await pause(200);
-  }
-};
+afterAll(() => new Promise((resolve) => server.close(() => resolve())));
 
 beforeEach(() => {
-  // Offline play needs no server; the socket just never connects.
-  process.env.REACT_APP_SOCKET_URL = "http://localhost:1";
-  jest.spyOn(console, "error").mockImplementation(() => {});
-  jest.spyOn(console, "log").mockImplementation(() => {});
-  jest.spyOn(console, "warn").mockImplementation(() => {});
-  jest.spyOn(console, "debug").mockImplementation(() => {});
-  window.confirm = () => true;
+  process.env.REACT_APP_SOCKET_URL = URL;
+  silenceConsole();
   localStorage.clear();
   sessionStorage.clear();
 });
 
-afterEach(() => {
-  cleanup();
-});
-
-it("pauses, saves and resumes an offline game against the computer", async () => {
-  await renderGame();
-  await click(buttonByText(/^Start( Game)?$/));
-  await waitFor(() => byTestId("lobby-confirm"), { label: "lobby" });
-  await click(byTestId("lobby-count"));
-  await click(byTestId("lobby-computer"));
-  await click(byTestId("lobby-confirm"));
-  await waitFor(() => q(".ludo-tokens") && readyDice(), { label: "game started" });
-
-  // Play until at least one token has left home (six needed), capped.
-  const initialTokens = tokens();
-  const startedAt = Date.now();
-  while (tokens() === initialTokens && Date.now() - startedAt < 60000) {
-    // eslint-disable-next-line no-await-in-loop
-    await playFor(1500);
-  }
-  expect(tokens()).not.toBe(initialTokens);
-  expect(savedGames()).toHaveLength(1); // autosaved while playing
-
-  // Pause once the board is idle (the button is disabled mid-roll/move).
-  const pauseBtn = await waitFor(
-    () => {
-      const b = byTestId("ludo-pause");
-      return b && !b.disabled ? b : null;
-    },
-    { timeout: 15000, label: "pause enabled" },
-  );
-  await click(pauseBtn);
-  await waitFor(() => byTestId("ludo-paused"), { label: "paused overlay" });
-  await pause(600); // let an in-flight step settle
-  const frozen = tokens();
-  const frozenHint = hint();
-
-  // Nothing moves while paused: no dice, no tokens, and the computer waits.
-  await pause(4000);
-  expect(tokens()).toBe(frozen);
-  expect(readyDice()).toBeNull();
-  expect(q('button[aria-label^="Piece "]:not([disabled])')).toBeNull();
-
-  // Resume in place, then pause again and save & exit.
-  await click(buttonByText(/Resume$/));
-  await waitFor(() => !byTestId("ludo-paused"), { label: "overlay closed" });
-  await click(
-    await waitFor(
-      () => {
-        const b = byTestId("ludo-pause");
-        return b && !b.disabled ? b : null;
-      },
-      { timeout: 15000, label: "pause enabled again" },
-    ),
-  );
-  await waitFor(() => byTestId("ludo-paused"), { label: "paused again" });
-  await pause(600);
-  const savedBoard = tokens();
-  const savedHint = hint();
-  await click(buttonByText(/^Save & exit$/));
-  await waitFor(() => byTestId("ludo-saved-games"), { label: "saved games list" });
-  expect(q(".ludo-tokens")).toBeNull();
-  expect(savedGames()).toHaveLength(1);
-  expect(savedGames()[0].paused).toBe(true);
-  expect(frozenHint).toBeTruthy();
-
-  // "Reload" the page and resume from the saved list.
-  cleanup();
-  await renderGame();
-  const entry = await waitFor(() => q(".ludo-saved-game .ludo-live-game"), {
-    label: "saved game after reload",
+it("vs computer: the computer plays, pause → save & exit → resume from Your Games, restart, delete", async () => {
+  let view;
+  await act(async () => {
+    view = mountAt("/ludo-game");
   });
-  expect(entry.textContent).toMatch(/Vs computer/);
-  await click(entry);
-  await waitFor(() => q(".ludo-tokens"), { label: "board after resume" });
   await pause(300);
-  expect(tokens()).toBe(savedBoard);
-  expect(hint()).toBe(savedHint);
-  expect(byTestId("ludo-paused")).toBeNull();
+  await startGame(true);
+  expect(q(".ludo-header__subtitle").textContent).toBe("Vs computer");
+  const firstPath = currentPath;
 
-  // And the game carries on.
-  const resumedBoard = tokens();
-  const resumedAt = Date.now();
-  while (tokens() === resumedBoard && Date.now() - resumedAt < 45000) {
+  // Play until the computer has taken a turn.
+  let sawComputer = false;
+  for (let i = 0; i < 400 && !sawComputer; i += 1) {
     // eslint-disable-next-line no-await-in-loop
-    await playFor(1500);
+    await playStep();
+    if (/Computer turn/.test(q(".ludo-turn__hint")?.textContent || "")) sawComputer = true;
+    // eslint-disable-next-line no-await-in-loop
+    await pause(60);
   }
-  expect(tokens()).not.toBe(resumedBoard);
-  expect(savedGames()).toHaveLength(1); // same save keeps updating, no duplicate
+  expect(sawComputer).toBe(true);
+
+  // Pause on our turn and leave the board.
+  await waitFor(() => readyDice(), { timeout: 20000, label: "our turn" });
+  await click(byTestId("ludo-pause"));
+  await waitFor(() => byTestId("ludo-paused"), { label: "paused" });
+  expect(byTestId("ludo-paused").textContent).toMatch(/You paused the game/);
+  const board = tokens();
+  await click(buttonByText(/^Save & exit$/));
+  await waitFor(() => currentPath === "/ludo-game", { label: "menu" });
+
+  // Later (even after leaving the page): it's in "Your Games", paused.
+  view.unmount();
+  await act(async () => {
+    view = mountAt("/ludo-game");
+  });
+  const listed = await waitFor(
+    () => Array.from(document.querySelectorAll(".ludo-live-game")).find((n) => /Paused/.test(n.textContent)),
+    { label: "paused game listed" },
+  );
+  expect(listed.textContent).toMatch(/Vs computer/);
+  await click(listed);
+  await waitFor(() => currentPath === firstPath && byTestId("ludo-paused"), { label: "reopened paused" });
+  await pause(200);
+  expect(tokens()).toBe(board);
+  await click(buttonByText(/Resume$/));
+  await waitFor(() => !byTestId("ludo-paused") && readyDice(), { label: "resumed, our turn" });
+
+  // Restart: a new game (new route), every token back in its yard.
+  await click(buttonByText(/^Restart$/));
+  await click(
+    Array.from(document.querySelectorAll(".ludo-leave-confirm button")).find((b) => /^Restart$/.test(b.textContent.trim())),
+  );
+  await waitFor(() => /^\/ludo-game\/[^/]+$/.test(currentPath) && currentPath !== firstPath, { label: "new game" });
+  await waitFor(() => q(".ludo-tokens") && readyDice(), { label: "new board ready" });
+  const fresh = Array.from(document.querySelectorAll('button[aria-label^="Piece "]'));
+  expect(fresh).toHaveLength(8);
+
+  // Back to the menu and delete it; the restarted one replaced the old game.
+  await click(byTestId("ludo-pause"));
+  await waitFor(() => byTestId("ludo-paused"), { label: "paused again" });
+  await click(buttonByText(/^Save & exit$/));
+  await waitFor(() => currentPath === "/ludo-game", { label: "menu again" });
+  await waitFor(() => document.querySelectorAll(".ludo-live-game").length === 1, { label: "one saved game" });
+  await click(q(".ludo-saved-game__delete"));
+  await click(buttonByText(/^Delete$/));
+  await waitFor(() => document.querySelectorAll(".ludo-live-game").length === 0, { label: "deleted" });
+  view.unmount();
 });
 
-it("restart discards the saved offline game", async () => {
-  await renderGame();
-  await click(buttonByText(/^Start( Game)?$/));
-  await waitFor(() => byTestId("lobby-confirm"), { label: "lobby" });
-  await click(byTestId("lobby-count"));
-  await click(byTestId("lobby-computer"));
-  await click(byTestId("lobby-confirm"));
-  await waitFor(() => readyDice(), { label: "game started" });
-  await click(readyDice());
-  await pause(1500);
-  expect(savedGames()).toHaveLength(1);
-  await click(buttonByText(/^Restart$/));
+it("Leave asks in-app, then exits the Ludo page instead of restarting", async () => {
+  window.confirm = jest.fn(() => true);
+  let view;
+  await act(async () => {
+    view = mountAt("/ludo-game");
+  });
   await pause(300);
-  expect(savedGames()).toHaveLength(0);
+  await startGame(false);
+  expect(q(".ludo-header__subtitle").textContent).toBe("Pass & play");
+  const leave = await waitFor(
+    () => Array.from(document.querySelectorAll("button")).find((b) => b.textContent.trim() === "Leave"),
+    { label: "Leave button" },
+  );
+  await click(leave);
+  expect(window.confirm).not.toHaveBeenCalled();
+  expect(byTestId("leave-confirm")).toBeTruthy();
+  await click(byTestId("leave-confirm-yes"));
+  await waitFor(() => byTestId("home"), { timeout: 3000, label: "left the Ludo page" });
+  expect(q(".ludo-root")).toBeNull();
+  view.unmount();
+});
+
+it("a game link that no longer exists shows a way back", async () => {
+  let view;
+  await act(async () => {
+    view = mountAt("/ludo-game/does-not-exist");
+  });
+  await waitFor(() => byTestId("ludo-game-gone"), { label: "game unavailable" });
+  await click(buttonByText(/^Back to Ludo$/));
+  await waitFor(() => currentPath === "/ludo-game", { label: "menu" });
+  view.unmount();
 });

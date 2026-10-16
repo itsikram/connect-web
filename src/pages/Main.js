@@ -23,9 +23,7 @@ import {
   dismissToast,
 } from "../utils/toastUtils";
 import {
-  isUserInLudoGame,
   markInviteHandled,
-  setActiveLudoGameId,
   shouldShowLudoInviteAlert,
   resolveLudoInviteNotifications,
 } from "../utils/ludoInviteUtils";
@@ -1525,7 +1523,10 @@ const Main = () => {
     return () => socket.off("connectCacheUpdate", handleConnectCacheUpdate);
   }, [profileId, isAuthenticated]);
 
-  // Global ludo game invitation handlers - work throughout the entire app
+  // Global Ludo invites. The server hosts every game and keeps each player's
+  // open invites (until accepted, declined or withdrawn): `ludo:invites` is
+  // the full list, `ludo:invite` a new one. The Ludo page handles its own
+  // invites, so no toasts while it is open.
   useEffect(() => {
     if (!profileId || !myProfile?._id || !isAuthenticated) return;
 
@@ -1538,421 +1539,109 @@ const Main = () => {
       }
     };
 
-    const removePendingInvite = (gameId, from) => {
-      setPendingLudoInvites((prev) =>
-        prev.filter(
-          (inv) =>
-            !(
-              String(inv.gameId) === String(gameId) &&
-              String(inv.from) === String(from)
-            ),
-        ),
-      );
-    };
+    const normalize = (x) => ({
+      from: x.by ?? x.from,
+      name: x.name,
+      avatar: x.avatar,
+      cover: x.cover,
+      gameId: x.gameId,
+      slotIndex: x.slotIndex,
+      playerCount: x.playerCount,
+      reinvite: x.reinvite === true,
+      inviteId: x.inviteId,
+      ts: x.ts || Date.now(),
+    });
 
-    const upsertPendingInvite = (invite) => {
-      if (!invite?.gameId || !invite?.from) return;
-      setPendingLudoInvites((prev) => {
-        const exists = prev.some(
-          (item) =>
-            String(item.gameId) === String(invite.gameId) &&
-            String(item.from) === String(invite.from),
-        );
-        if (exists) {
-          return [
-            invite,
-            ...prev.filter(
-              (item) =>
-                !(
-                  String(item.gameId) === String(invite.gameId) &&
-                  String(item.from) === String(invite.from)
-                ),
-            ),
-          ].slice(0, 20);
-        }
-        return [invite, ...prev].slice(0, 20);
-      });
+    const removePendingInvite = (gameId) => {
+      setPendingLudoInvites((prev) =>
+        prev.filter((inv) => String(inv.gameId) !== String(gameId)),
+      );
     };
 
     const acceptLudoInvite = (invite) => {
       if (!invite?.gameId) return;
-      try {
-        dismissInviteToast();
-        markInviteHandled(invite.gameId, invite.from);
-        setActiveLudoGameId(invite.gameId);
-        removePendingInvite(invite.gameId, invite.from);
-        resolveLudoInviteNotifications(invite.gameId, invite.from);
-
-        try {
-          if (socket && socket.connected) {
-            socket.emit("ludo:invites:dismiss", {
-              gameId: invite.gameId,
-              by: invite.from,
-            });
-          }
-        } catch (_e) {}
-
-        const inviteData = {
-          from: invite.from,
-          name: invite.name,
-          avatar: invite.avatar,
-          cover: invite.cover,
-          gameId: invite.gameId,
-          slotIndex: invite.slotIndex,
-          playerCount: invite.playerCount,
-          reinvite: invite.reinvite === true,
-          inviteId: invite.inviteId,
-          ts: invite.ts || Date.now(),
-          autoAccept: true,
-          source: "notification-menu",
-        };
-        localStorage.setItem("ludo_pending_invite", JSON.stringify(inviteData));
-        // Notify an already-mounted LudoGame page (e.g. user is currently on
-        // /ludo-game) so it picks up the invite immediately. If the page is
-        // not mounted yet, the navigate() below will mount it fresh and it
-        // will read the invite from localStorage on mount.
-        try {
-          window.dispatchEvent(
-            new CustomEvent("ludo:pendingInviteUpdated", {
-              detail: inviteData,
-            }),
-          );
-        } catch (_e) {}
-        navigate("/ludo-game");
-      } catch (error) {
-        console.error("[LUDO_INVITE] Error accepting invite:", error);
-      }
+      dismissInviteToast();
+      markInviteHandled(invite.gameId, invite.from);
+      removePendingInvite(invite.gameId);
+      resolveLudoInviteNotifications(invite.gameId, invite.from);
+      navigate(`/ludo-game/${encodeURIComponent(invite.gameId)}`, {
+        state: { acceptInvite: { slotIndex: invite.slotIndex } },
+      });
     };
 
     const declineLudoInvite = (invite) => {
       if (!invite?.gameId) return;
+      markInviteHandled(invite.gameId, invite.from);
+      removePendingInvite(invite.gameId);
+      resolveLudoInviteNotifications(invite.gameId, invite.from);
+      dismissInviteToast();
       try {
-        markInviteHandled(invite.gameId, invite.from);
-        removePendingInvite(invite.gameId, invite.from);
-        resolveLudoInviteNotifications(invite.gameId, invite.from);
-        if (socket && socket.connected) {
-          socket.emit("ludo:invites:dismiss", {
-            gameId: invite.gameId,
-            by: invite.from,
-          });
-        }
-        if (currentLudoInviteToastIdRef.current !== null) {
-          dismissInviteToast();
-        }
-      } catch (_e) {
-        console.error("[LUDO_INVITE] Error declining invite:", _e);
-      }
+        socket?.emit("ludo:invites:dismiss", {
+          gameId: invite.gameId,
+          by: invite.from,
+        });
+      } catch (_e) {}
     };
 
     window.acceptLudoInviteFromHeader = acceptLudoInvite;
     window.declineLudoInviteFromHeader = declineLudoInvite;
 
-    const onInvite = (payload) => {
-      try {
-        if (!payload) return;
-        // If we're already on the Ludo page for this game, suppress and dismiss.
-        if (location.pathname.includes("/ludo-game")) {
-          try {
-            const activeInvite = localStorage.getItem("ludo_pending_invite");
-            const parsedInvite = activeInvite ? JSON.parse(activeInvite) : null;
-            const samePendingGame =
-              parsedInvite?.gameId &&
-              String(parsedInvite.gameId) === String(payload.gameId);
-            if (samePendingGame || isUserInLudoGame(payload.gameId)) {
-              if (socket && socket.connected) {
-                socket.emit("ludo:invites:dismiss", {
-                  gameId: payload.gameId,
-                  by: payload.by,
-                });
-              }
-              return;
-            }
-          } catch (_e) {
-            return;
-          }
-          return;
-        }
-        // Check if invite is for this user
-        if (payload.to && String(payload.to) !== String(myProfile._id)) return;
+    const onLudoPage = () =>
+      window.location.pathname.startsWith("/ludo-game");
 
-        if (!payload.reinvite && isUserInLudoGame(payload.gameId)) {
-          try {
-            if (socket && socket.connected) {
-              socket.emit("ludo:invites:dismiss", {
-                gameId: payload.gameId,
-                by: payload.by,
-              });
-            }
-          } catch (_e) {}
-          return;
-        }
-
-        if (!shouldShowLudoInviteAlert(payload.gameId, payload.by, payload)) {
-          return;
-        }
-
-        // Create unique key for this invite
-        const inviteKey = payload.inviteId || `${payload.gameId}:${payload.by}`;
-        const now = Date.now();
-
-        // Check if we've already shown a toast for this invite recently (30 seconds)
-        const lastShownTime = shownLudoInviteToastsRef.current.get(inviteKey);
-        if (lastShownTime && now - lastShownTime < 30000) {
-          return; // Already shown a toast for this invite recently, skip
-        }
-
-        // Mark immediately to prevent duplicate toasts
-        shownLudoInviteToastsRef.current.set(inviteKey, now);
-
-        // Clean up old entries (older than 1 minute)
-        for (const [
-          key,
-          timestamp,
-        ] of shownLudoInviteToastsRef.current.entries()) {
-          if (now - timestamp > 60000) {
-            shownLudoInviteToastsRef.current.delete(key);
-          }
-        }
-
-        const invite = {
-          from: payload.by,
-          name: payload.name,
-          avatar: payload.avatar,
-          cover: payload.cover,
-          gameId: payload.gameId,
-          slotIndex: payload.slotIndex,
-          playerCount: payload.playerCount,
-          reinvite: payload.reinvite === true,
-          inviteId: payload.inviteId,
-          ts: payload.ts || now,
-        };
-
-        upsertPendingInvite(invite);
-
-        // Dismiss previous ludo invite toast if one exists (only show one at a time)
-        dismissInviteToast();
-
-        // Show toast notification
-        const toastId = showLudoInviteToast(
-          payload.name || "A connect",
-          payload.avatar,
-          () => {
-            acceptLudoInvite(invite);
-          },
-          () => {
-            declineLudoInvite(invite);
-            if (currentLudoInviteToastIdRef.current === toastId) {
-              currentLudoInviteToastIdRef.current = null;
-            }
-          },
-        );
-
-        // Store current toast ID
-        currentLudoInviteToastIdRef.current = toastId;
-      } catch (error) {
-        console.error("[LUDO_INVITE] Error handling invite:", error);
+    const announce = (invite) => {
+      if (onLudoPage()) return;
+      if (!shouldShowLudoInviteAlert(invite.gameId, invite.from, invite)) return;
+      const inviteKey = invite.inviteId || `${invite.gameId}:${invite.from}`;
+      const now = Date.now();
+      const lastShown = shownLudoInviteToastsRef.current.get(inviteKey);
+      if (lastShown && now - lastShown < 30000) return;
+      shownLudoInviteToastsRef.current.set(inviteKey, now);
+      for (const [key, ts] of shownLudoInviteToastsRef.current.entries()) {
+        if (now - ts > 60000) shownLudoInviteToastsRef.current.delete(key);
       }
+      dismissInviteToast();
+      const toastId = showLudoInviteToast(
+        invite.name || "A connect",
+        invite.avatar,
+        () => acceptLudoInvite(invite),
+        () => {
+          declineLudoInvite(invite);
+          if (currentLudoInviteToastIdRef.current === toastId) {
+            currentLudoInviteToastIdRef.current = null;
+          }
+        },
+      );
+      currentLudoInviteToastIdRef.current = toastId;
+    };
+
+    const onInvite = (payload) => {
+      if (!payload?.gameId) return;
+      if (payload.to && String(payload.to) !== String(myProfile._id)) return;
+      const invite = normalize(payload);
+      setPendingLudoInvites((prev) =>
+        [invite, ...prev.filter((i) => String(i.gameId) !== String(invite.gameId))].slice(0, 20),
+      );
+      announce(invite);
     };
 
     const onInvites = (payload) => {
-      try {
-        if (location.pathname.includes("/ludo-game")) {
-          const arr = Array.isArray(payload?.invites) ? payload.invites : [];
-          arr.forEach((inv) => {
-            try {
-              const gameId = inv?.gameId;
-              const from = inv?.by ?? inv?.from;
-              if (!gameId) return;
-              const activeInvite = localStorage.getItem("ludo_pending_invite");
-              const parsedInvite = activeInvite
-                ? JSON.parse(activeInvite)
-                : null;
-              const samePendingGame =
-                parsedInvite?.gameId &&
-                String(parsedInvite.gameId) === String(gameId);
-              if (
-                (samePendingGame || isUserInLudoGame(gameId)) &&
-                socket &&
-                socket.connected
-              ) {
-                socket.emit("ludo:invites:dismiss", {
-                  gameId,
-                  by: from,
-                });
-              }
-            } catch (_e) {}
-          });
-          return;
-        }
-
-        const arr = Array.isArray(payload?.invites) ? payload.invites : [];
-        const normalized = arr.map((x) => ({
-          from: x.by ?? x.from,
-          name: x.name,
-          avatar: x.avatar,
-          cover: x.cover,
-          gameId: x.gameId,
-          slotIndex: x.slotIndex,
-          playerCount: x.playerCount,
-          reinvite: x.reinvite === true,
-          inviteId: x.inviteId,
-          ts: x.ts || Date.now(),
-        }));
-
-        // Filter out invites for games the user is already in or already handled
-        const filteredNormalized = normalized.filter((inv) => {
-          if (!inv.reinvite && isUserInLudoGame(inv.gameId)) {
-            try {
-              if (socket && socket.connected) {
-                socket.emit("ludo:invites:dismiss", {
-                  gameId: inv.gameId,
-                  by: inv.from,
-                });
-              }
-            } catch (_e) {}
-            return false;
-          }
-          return shouldShowLudoInviteAlert(inv.gameId, inv.from, inv);
-        });
-
-        filteredNormalized.forEach(upsertPendingInvite);
-
-        const now = Date.now();
-
-        // Filter and mark toasts synchronously to prevent duplicates
-        const newInvites = filteredNormalized.filter((inv) => {
-          const inviteKey = inv.inviteId || `${inv.gameId}:${inv.from}`;
-          const lastShownTime = shownLudoInviteToastsRef.current.get(inviteKey);
-          if (lastShownTime && now - lastShownTime < 30000) {
-            return false; // Already shown a toast for this invite recently, skip
-          }
-
-          // Mark immediately to prevent duplicate toasts
-          shownLudoInviteToastsRef.current.set(inviteKey, now);
-          return true;
-        });
-
-        // Clean up old entries (older than 1 minute)
-        for (const [
-          key,
-          timestamp,
-        ] of shownLudoInviteToastsRef.current.entries()) {
-          if (now - timestamp > 60000) {
-            shownLudoInviteToastsRef.current.delete(key);
-          }
-        }
-
-        // Check if we should dismiss all other invites (when accepting one)
-        const shouldDismissOthers =
-          localStorage.getItem("ludo_dismiss_all_other_invites") === "true";
-        if (shouldDismissOthers) {
-          localStorage.removeItem("ludo_dismiss_all_other_invites");
-          filteredNormalized.forEach((inv) => {
-            try {
-              if (socket && socket.connected) {
-                socket.emit("ludo:invites:dismiss", {
-                  gameId: inv.gameId,
-                  by: inv.from,
-                });
-              }
-              markInviteHandled(inv.gameId, inv.from);
-              removePendingInvite(inv.gameId, inv.from);
-            } catch (_e) {}
-          });
-          shownLudoInviteToastsRef.current.clear();
-          dismissInviteToast();
-          return;
-        }
-
-        dismissInviteToast();
-
-        // Show toast only for the first new invite (only one toast at a time)
-        if (newInvites.length > 0) {
-          const inv = newInvites[0]; // Only show the first one
-          const toastId = showLudoInviteToast(
-            inv.name || "A connect",
-            inv.avatar,
-            () => {
-              acceptLudoInvite(inv);
-            },
-            () => {
-              declineLudoInvite(inv);
-              if (currentLudoInviteToastIdRef.current === toastId) {
-                currentLudoInviteToastIdRef.current = null;
-              }
-            },
-          );
-
-          // Store current toast ID
-          currentLudoInviteToastIdRef.current = toastId;
-        }
-      } catch (error) {
-        console.error("[LUDO_INVITES] Error handling invites:", error);
-      }
+      const list = (Array.isArray(payload?.invites) ? payload.invites : [])
+        .map(normalize)
+        .filter((inv) => inv.gameId);
+      setPendingLudoInvites(list.slice(0, 20));
+      // An invite that is no longer open: drop its toast.
+      if (!list.length) dismissInviteToast();
+      if (list[0]) announce(list[0]);
     };
 
-    // Handle when player successfully joins a game - dismiss all other invites
-    const onPlayers = (payload) => {
-      try {
-        // When players list is received, it means we've successfully joined a game
-        // Dismiss all other pending invites
-        if (
-          payload?.players &&
-          Array.isArray(payload.players) &&
-          payload.players.length > 0
-        ) {
-          // Check if current user is in the players list (successfully joined)
-          const isUserInPlayers =
-            payload.players.some(
-              (p) =>
-                p.profileId &&
-                myProfile?._id &&
-                String(p.profileId) === String(myProfile._id),
-            ) ||
-            payload.players.some(
-              (p) =>
-                p._id &&
-                myProfile?._id &&
-                String(p._id) === String(myProfile._id),
-            );
-
-          if (isUserInPlayers) {
-            setActiveLudoGameId(payload.gameId);
-            markInviteHandled(payload.gameId, payload.from);
-            resolveLudoInviteNotifications(payload.gameId, payload.from);
-            setPendingLudoInvites([]);
-
-            dismissInviteToast();
-            shownLudoInviteToastsRef.current.clear();
-
-            try {
-              if (socket && socket.connected && payload.gameId) {
-                socket.emit("ludo:invites:dismiss", {
-                  gameId: payload.gameId,
-                  by: payload.from,
-                });
-              }
-            } catch (_e) {}
-          }
-        }
-      } catch (error) {
-        console.error("[LUDO_PLAYERS] Error handling players event:", error);
-      }
-    };
-
-    // Attach socket listeners
     if (socket) {
       socket.on("ludo:invite", onInvite);
       socket.on("ludo:invites", onInvites);
-      socket.on("ludo:players", onPlayers);
-
-      // Request pending invites on mount
       if (socket.connected) {
         try {
           socket.emit("ludo:invites:get", {});
-        } catch (_e) {
-          // Ignore errors
-        }
+        } catch (_e) {}
       }
     }
 
@@ -1962,17 +1651,9 @@ const Main = () => {
       if (socket) {
         socket.off("ludo:invite", onInvite);
         socket.off("ludo:invites", onInvites);
-        socket.off("ludo:players", onPlayers);
       }
     };
-  }, [
-    profileId,
-    myProfile?._id,
-    isAuthenticated,
-    navigate,
-    socket,
-    location.pathname,
-  ]);
+  }, [profileId, myProfile?._id, isAuthenticated, navigate]);
 
   // Global chess game invitation handlers - work throughout the entire app
   useEffect(() => {
@@ -2879,9 +2560,8 @@ const Main = () => {
               <Route path=":profile/" element={<Profile />}></Route>
             </Route>
 
-            <Route path="/ludo-game" element={<LudoGame />}>
-              {" "}
-            </Route>
+            {/* /ludo-game is the Ludo menu; /ludo-game/:gameId opens a game. */}
+            <Route path="/ludo-game/*" element={<LudoGame />} />
             <Route path="/chess-game" element={<ChessGame />}>
               {" "}
             </Route>
