@@ -1073,7 +1073,7 @@ const Main = () => {
             !isViewingChatWith(updatedMessage.senderId)
           ) {
             const senderName = updatedMessage.senderName || "Connect";
-            const senderPP = updatedMessage.senderPP || "/default-avatar.png";
+            const senderPP = updatedMessage.senderPP || config?.defaultProfile;
             notify(
               truncateToTenWords(chatMessagePreview(updatedMessage)),
               senderName,
@@ -1173,7 +1173,7 @@ const Main = () => {
           updatedMessage.messageType === "call" &&
           updatedMessage.callEvent !== "missed";
         const senderName = data.senderName || "Connect";
-        const senderPP = data.senderPP || "/default-avatar.png";
+        const senderPP = data.senderPP || config?.defaultProfile;
         const preview = chatMessagePreview(updatedMessage);
 
         // Voice / photo / video messages used to produce no alert at all
