@@ -11,6 +11,18 @@ import '../components/LandingPage.css';
 const SITE_URL = 'https://connect-bd.online';
 const JSON_LD_ID = 'public-profile-structured-data';
 
+// Profile photos are full-size uploads; let Cloudinary resize and convert
+// them. Same transforms as server.js so the browser reuses its downloads.
+const cloudinarySized = (url, transform) =>
+  typeof url === 'string'
+    ? url.replace(
+        /^(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(?!.*[wfq]_)/,
+        `$1${transform}/`
+      )
+    : url;
+const COVER_TRANSFORM = 'f_auto,q_auto,c_fill,w_1080,h_270';
+const AVATAR_TRANSFORM = 'f_auto,q_auto,c_fill,w_256,h_256';
+
 const setMeta = (attr, key, content) => {
   let el = document.querySelector(`meta[${attr}="${key}"]`);
   if (!el) {
@@ -68,11 +80,26 @@ const applyProfileSeo = (p) => {
   });
 };
 
+// server.js embeds the profile it rendered, so the first render matches the
+// server HTML instead of flashing a loading card. The head is already set.
+const embeddedProfile = (username) => {
+  try {
+    const p = JSON.parse(document.getElementById('public-profile-data')?.textContent || 'null');
+    return p && p.username?.toLowerCase() === String(username).toLowerCase() ? p : null;
+  } catch (e) {
+    return null;
+  }
+};
+
 const PublicProfile = () => {
   const { profile: username } = useParams();
-  const [state, setState] = useState({ loading: true, profile: null });
+  const [state, setState] = useState(() => {
+    const p = embeddedProfile(username);
+    return p ? { loading: false, profile: p } : { loading: true, profile: null };
+  });
 
   useEffect(() => {
+    if (embeddedProfile(username)) return undefined;
     let active = true;
     setState({ loading: true, profile: null });
     // fetch rather than axios: this page is part of the small public bundle.
@@ -128,11 +155,15 @@ const PublicProfile = () => {
             <article className="public-profile-card">
               <div
                 className="public-profile-cover"
-                style={p.coverPic ? { backgroundImage: `url("${p.coverPic}")` } : undefined}
+                style={
+                  p.coverPic
+                    ? { backgroundImage: `url("${cloudinarySized(p.coverPic, COVER_TRANSFORM)}")` }
+                    : undefined
+                }
               />
               <img
                 className="public-profile-avatar"
-                src={p.profilePic || config.defaultProfile}
+                src={p.profilePic ? cloudinarySized(p.profilePic, AVATAR_TRANSFORM) : config.defaultProfile}
                 alt={`${p.name} profile picture`}
                 width="128"
                 height="128"

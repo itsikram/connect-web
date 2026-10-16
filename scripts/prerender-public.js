@@ -2,7 +2,7 @@
 // visitors land on (/ and /about) to static HTML, plus a minified copy of
 // their stylesheet, into build/prerender/. server.js puts both into the
 // HTML it serves so the first paint needs no JavaScript or CSS download;
-// React (PublicApp) then replaces the markup with the same markup.
+// React (PublicApp) then hydrates that markup instead of re-creating it.
 process.env.BABEL_ENV = "test"; // babel-preset-react-app: CommonJS for Node
 process.env.NODE_ENV = "test"; // matching React build (the preset emits jsxDEV)
 
@@ -31,13 +31,14 @@ for (const ext of [".js", ".jsx"]) {
 for (const ext of [".css", ".scss"]) Module._extensions[ext] = () => {};
 
 const React = require("react");
-const { renderToStaticMarkup } = require("react-dom/server");
+const { renderToString } = require("react-dom/server");
 const { StaticRouter } = require("react-router-dom/server");
 
 const render = (location, file) => {
   const mod = require(path.join(SRC, file));
   const Page = mod.default || mod;
-  return renderToStaticMarkup(
+  // renderToString (not StaticMarkup) so index.js can hydrate it in place.
+  return renderToString(
     React.createElement(StaticRouter, { location }, React.createElement(Page))
   );
 };
@@ -53,6 +54,13 @@ const minifyCss = (css) =>
 fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, "home.html"), render("/", "components/LandingPage.jsx"));
 fs.writeFileSync(path.join(OUT, "about.html"), render("/about", "pages/AboutConnect.js"));
+{
+  const { ABOUT_JSON_LD, JSON_LD_ID } = require(path.join(SRC, "pages", "AboutConnect.js"));
+  fs.writeFileSync(
+    path.join(OUT, "about.head.html"),
+    `<script type="application/ld+json" id="${JSON_LD_ID}">${JSON.stringify(ABOUT_JSON_LD).replace(/</g, "\\u003c")}</script>`
+  );
+}
 fs.writeFileSync(
   path.join(OUT, "public.css"),
   minifyCss(fs.readFileSync(path.join(SRC, "components", "LandingPage.css"), "utf8"))

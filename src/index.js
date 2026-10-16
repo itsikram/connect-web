@@ -33,7 +33,13 @@ const loadRoot = usePublicApp
   : import(/* webpackChunkName: "full-app" */ './FullApp');
 
 loadRoot.then(({ default: Root }) => {
-  ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
+  // server.js pre-renders / and /about; hydrating keeps that DOM (no repaint).
+  const prerendered = document.querySelector('#root > [data-prerender="hydrate"]');
+  if (usePublicApp && prerendered) {
+    ReactDOM.hydrateRoot(prerendered, <Root />);
+  } else {
+    ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
+  }
 });
 
 

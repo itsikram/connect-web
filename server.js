@@ -231,40 +231,55 @@ const readBuildText = (file) => {
   }
 };
 
-const PRERENDERED = { "/": "home.html", "/about": "about.html" };
+// route -> pre-rendered markup (+ optional <head> tags) in build/prerender/
+const PRERENDERED = {
+  "/": { body: "home.html" },
+  "/about": { body: "about.html", head: "about.head.html" },
+};
 
 const SESSION_CHECK =
   '<script>try{var u=JSON.parse(localStorage.getItem("user")||sessionStorage.getItem("user")||"null");' +
   'if(u&&(u.accessToken||u.refreshToken))document.documentElement.classList.add("has-session")}catch(e){}</script>';
 
-// Start downloading the PublicApp chunk with the HTML instead of after main.js.
-const publicChunkPreloads = () => {
-  try {
-    const { files } = JSON.parse(readBuildText(path.join(BUILD_DIR, "asset-manifest.json")));
-    return Object.keys(files)
-      .filter((k) => /^public-app\.js$/.test(k))
-      .map((k) => `<link rel="preload" as="script" href="${files[k]}">`)
-      .join("");
-  } catch (_) {
-    return "";
-  }
-};
+// These pages are complete as HTML, so the app bundle waits for the first
+// sign of a visitor (scroll, tap, key, mouse) instead of competing with the
+// first paint on slow phones. Logged-in visitors need the full app at once.
+const INTERACTION_EVENTS = ["pointerdown", "keydown", "touchstart", "scroll", "mousemove", "focusin"];
+const deferredAppLoader = (src) =>
+  `<script>(function(){var ev=${JSON.stringify(INTERACTION_EVENTS)},done=0;` +
+  `function go(){if(done)return;done=1;ev.forEach(function(e){removeEventListener(e,go,true)});` +
+  `var s=document.createElement("script");s.src=${JSON.stringify(src)};document.head.appendChild(s)}` +
+  `if(document.documentElement.classList.contains("has-session"))go();` +
+  `else ev.forEach(function(e){addEventListener(e,go,{capture:true,passive:true})})})()</script>`;
 
-const withPublicShell = (html, markup) => {
+// opts.hydrate: markup is the exact React output (pre-rendered), so index.js
+// hydrates it; otherwise (profiles) React replaces it. opts.head: extra tags.
+const withPublicShell = (html, markup, opts = {}) => {
   const css = readBuildText(path.join(PRERENDER_DIR, "public.css"));
   if (!css || !markup) return html;
+  let loader = "";
+  html = html.replace(
+    /<script defer="defer" src="(\/static\/js\/main\.[0-9a-f]+\.js)"><\/script>/,
+    (_, src) => {
+      loader = deferredAppLoader(src);
+      return "";
+    }
+  );
   return html
+    // A late web-font swap re-lays out the page and moves LCP; these pages
+    // use Inter only if it is already there (cached) at first paint.
+    .replace(/(fonts\.googleapis\.com\/css2\?[^"']*display=)swap/g, "$1optional")
     .replace(
       /<meta name="viewport" content="[^"]*"\s*\/?>/,
       '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
     )
     .replace(
       "</head>",
-      `${SESSION_CHECK}<style>${css}.has-session [data-prerender]{display:none}</style>${publicChunkPreloads()}</head>`
+      `${opts.head || ""}${SESSION_CHECK}${loader}<style>${css}.has-session [data-prerender]{display:none}</style></head>`
     )
     .replace(
       '<div id="root"></div>',
-      `<div id="root"><div data-prerender>${markup}</div></div>`
+      `<div id="root"><div data-prerender${opts.hydrate ? '="hydrate"' : ""}>${markup}</div></div>`
     );
 };
 
@@ -298,11 +313,12 @@ const renderIndexHtml = (pathname) => {
     html = setMeta(html, "property", "og:image", page.image);
     html = setMeta(html, "name", "twitter:image", page.image);
   }
-  if (PRERENDERED[route]) {
-    html = withPublicShell(
-      html,
-      readBuildText(path.join(PRERENDER_DIR, PRERENDERED[route]))
-    );
+  const pre = PRERENDERED[route];
+  if (pre) {
+    html = withPublicShell(html, readBuildText(path.join(PRERENDER_DIR, pre.body)), {
+      hydrate: true,
+      head: pre.head ? readBuildText(path.join(PRERENDER_DIR, pre.head)) : "",
+    });
   }
   if (route.startsWith("/portfolio")) {
     const body = renderPortfolioBody(route, getPortfolioData());
@@ -521,6 +537,18 @@ const profileUsernameFor = (pathname) => {
   return m[1];
 };
 
+// Profile photos are full-size uploads (often multi-MB PNGs). Cloudinary can
+// resize and convert them on the fly; keep in sync with PublicProfile.js.
+const cloudinarySized = (url, transform) =>
+  typeof url === "string"
+    ? url.replace(
+        /^(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(?!.*[wfq]_)/,
+        `$1${transform}/`
+      )
+    : url;
+const COVER_TRANSFORM = "f_auto,q_auto,c_fill,w_1080,h_270";
+const AVATAR_TRANSFORM = "f_auto,q_auto,c_fill,w_256,h_256";
+
 const renderProfileHtml = (p) => {
   const url = `${SITE_URL}/${encodeURIComponent(p.username)}`;
   const title = `${p.name} (@${p.username}) on Connect BD`;
@@ -569,22 +597,34 @@ const renderProfileHtml = (p) => {
 
   // Same markup as src/pages/PublicProfile.js, styled by the inlined CSS.
   const firstName = String(p.name).split(" ")[0];
+  const cover = p.coverPic ? cloudinarySized(p.coverPic, COVER_TRANSFORM) : "";
+  const avatar = p.profilePic
+    ? cloudinarySized(p.profilePic, AVATAR_TRANSFORM)
+    : DEFAULT_PROFILE_PIC;
   const body =
     `<div class="landing-page"><div class="landing-inner">` +
     `<nav class="landing-nav" aria-label="Main"><a class="landing-brand" href="/"><img src="/logo-72.webp" alt="" width="36" height="36">Connect BD</a>` +
     `<div class="landing-nav-links"><a href="/login">Log In</a><a class="landing-nav-cta" href="/signup">Sign Up</a></div></nav>` +
     `<main><article class="public-profile-card">` +
     `<div class="public-profile-cover"${
-      p.coverPic ? ` style="background-image:url(&quot;${esc(p.coverPic)}&quot;)"` : ""
+      cover ? ` style="background-image:url(&quot;${esc(cover)}&quot;)"` : ""
     }></div>` +
-    `<img class="public-profile-avatar" src="${esc(p.profilePic || DEFAULT_PROFILE_PIC)}" alt="${esc(p.name)} profile picture" width="128" height="128">` +
+    `<img class="public-profile-avatar" src="${esc(avatar)}" alt="${esc(p.name)} profile picture" width="128" height="128">` +
     `<h1>${esc(p.name)}${p.isVerified ? '<span class="public-profile-badge" title="Verified"> ✓</span>' : ""}</h1>` +
     `<p class="public-profile-username">@${esc(p.username)}</p>` +
     (p.bio ? `<p class="public-profile-bio">${esc(p.bio)}</p>` : "") +
     `<div class="hero-buttons"><a class="landing-btn landing-btn--primary" href="/login">Log in to connect with ${esc(firstName)}</a>` +
     `<a class="landing-btn landing-btn--secondary" href="/signup">Join Connect</a></div>` +
     `</article></main></div></div>`;
-  const shell = withPublicShell(html, body);
+  // PublicProfile.js renders from this instead of fetching it again.
+  const data = JSON.stringify({ ...p, indexable: true }).replace(/</g, "\\u003c");
+  // The cover is a CSS background, so tell the browser about it up front.
+  const preload = cover
+    ? `<link rel="preload" as="image" href="${esc(cover)}" fetchpriority="high">`
+    : "";
+  const shell = withPublicShell(html, body, {
+    head: `${preload}<script type="application/json" id="public-profile-data">${data}</script>`,
+  });
   return shell !== html
     ? shell
     : html.replace('<div id="root"></div>', `<div id="root">${body}</div>`);

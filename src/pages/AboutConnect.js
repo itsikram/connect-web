@@ -23,33 +23,40 @@ const FAQ = [
   },
 ];
 
-const JSON_LD_ID = 'about-connect-structured-data';
+export const JSON_LD_ID = 'about-connect-structured-data';
+
+// Also written into the served HTML by server.js (via the pre-render), so
+// crawlers get it without running JS.
+export const ABOUT_JSON_LD = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'AboutPage',
+      url: 'https://connect-bd.online/about',
+      name: 'About Connect – Connect BD Social Media App by Ikramul',
+      about: { '@type': 'Organization', name: 'Connect BD', url: 'https://connect-bd.online/' },
+    },
+    {
+      '@type': 'FAQPage',
+      mainEntity: FAQ.map(({ q, a }) => ({
+        '@type': 'Question',
+        name: q,
+        acceptedAnswer: { '@type': 'Answer', text: a },
+      })),
+    },
+  ],
+};
 
 const AboutConnect = () => {
   useEffect(() => {
-    const script = document.createElement('script');
-    script.type = 'application/ld+json';
-    script.id = JSON_LD_ID;
-    script.textContent = JSON.stringify({
-      '@context': 'https://schema.org',
-      '@graph': [
-        {
-          '@type': 'AboutPage',
-          url: 'https://connect-bd.online/about',
-          name: 'About Connect – Connect BD Social Media App by Ikramul',
-          about: { '@type': 'Organization', name: 'Connect BD', url: 'https://connect-bd.online/' },
-        },
-        {
-          '@type': 'FAQPage',
-          mainEntity: FAQ.map(({ q, a }) => ({
-            '@type': 'Question',
-            name: q,
-            acceptedAnswer: { '@type': 'Answer', text: a },
-          })),
-        },
-      ],
-    });
-    document.head.appendChild(script);
+    let script = document.getElementById(JSON_LD_ID);
+    if (!script) {
+      script = document.createElement('script');
+      script.type = 'application/ld+json';
+      script.id = JSON_LD_ID;
+      script.textContent = JSON.stringify(ABOUT_JSON_LD);
+      document.head.appendChild(script);
+    }
     return () => script.remove();
   }, []);
 
