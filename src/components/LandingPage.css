@@ -358,3 +358,67 @@
     border: 2px solid #000;
   }
 }
+
+.landing-page .footer-bottom a {
+  color: #e2e8f0;
+}
+
+/* Public profile (/:username for logged-out visitors) */
+.landing-page .public-profile-card {
+  position: relative;
+  max-width: 720px;
+  min-height: 320px;
+  margin: 16px auto 48px;
+  padding: 0 20px 32px;
+  text-align: center;
+  background: #fff;
+  border-radius: 20px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+.landing-page .public-profile-cover {
+  height: 180px;
+  margin: 0 -20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) center / cover no-repeat;
+}
+
+.landing-page .public-profile-avatar {
+  width: 128px;
+  height: 128px;
+  margin-top: -64px;
+  border-radius: 50%;
+  border: 4px solid #fff;
+  object-fit: cover;
+  background: #edf2f7;
+}
+
+.landing-page .public-profile-card h1 {
+  margin: 12px 0 0;
+  font-size: 1.8rem;
+  color: #2d3748;
+}
+
+.landing-page .public-profile-card > h1:first-child {
+  padding-top: 40px;
+}
+
+.landing-page .public-profile-badge {
+  color: #667eea;
+}
+
+.landing-page .public-profile-username {
+  color: #718096;
+  margin: 4px 0 12px;
+}
+
+.landing-page .public-profile-bio {
+  max-width: 520px;
+  margin: 0 auto 24px;
+  color: #4a5568;
+}
+
+.landing-page .public-profile-card .landing-btn--secondary {
+  color: #667eea;
+  border-color: #667eea;
+}

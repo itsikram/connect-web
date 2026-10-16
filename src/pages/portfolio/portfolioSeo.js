@@ -37,48 +37,50 @@ export function personFromPortfolio(data) {
 export function getPortfolioSeo(pathname = '', data) {
   const path = (pathname || '/portfolio').replace(/\/$/, '') || '/portfolio';
   const person = personFromPortfolio(data);
-  const keywords =
-    data?.seo?.keywords ||
-    [person.name, ...(person.alternateNames || []), `${person.name} portfolio`, person.jobTitle].join(', ');
+  const keywords = [
+    data?.seo?.keywords,
+    'Md Ikram, Ikram, Programmer Ikram, Ikramul Islam, Md Ikramul, WordPress Developer, WordPress Developer Bangladesh, MERN Developer, React Native Developer',
+  ]
+    .filter(Boolean)
+    .join(', ');
 
+  // Titles/descriptions are code-owned so they always carry the name
+  // keywords people search for. Keep in sync with PUBLIC_PAGES in server.js.
   const pages = {
     home: {
       path: '/portfolio',
-      title:
-        data?.seo?.homeTitle ||
-        `${person.name} | ${person.jobTitle} | Portfolio`,
-      description: data?.seo?.homeDescription || person.description,
+      title: 'Md Ikram (Programmer Ikram) – WordPress Developer & Software Engineer',
+      description:
+        'Md Ikram (Ikramul Islam), known as Programmer Ikram, is a WordPress Developer and Senior Software Developer from Bangladesh building WordPress, MERN Stack and React Native apps.',
       keywords,
     },
     about: {
       path: '/portfolio/about',
-      title: data?.aboutPage?.title
-        ? `${data.aboutPage.title} | ${person.name}`
-        : `About ${person.name} | ${person.jobTitle}`,
-      description: data?.aboutPage?.subtitle || person.description,
-      keywords: `${keywords}, about ${person.name}`,
+      title: 'About Md Ikram – Programmer Ikram, WordPress & MERN Developer',
+      description:
+        'About Md Ikram (Ikramul Islam / Programmer Ikram): a WordPress Developer and Senior Software Developer from Munshiganj, Bangladesh, with 5+ years of experience.',
+      keywords: `${keywords}, about Md Ikram`,
     },
     resume: {
       path: '/portfolio/resume',
-      title: data?.resumePage?.title
-        ? `${data.resumePage.title}`
-        : `Resume of ${person.name}`,
-      description: data?.resumePage?.subtitle || `Resume and experience of ${person.name}.`,
-      keywords: `${keywords}, ${person.name} resume, ${person.name} CV`,
+      title: 'Md Ikram Resume – WordPress Developer & Senior Software Developer',
+      description:
+        'Resume of Md Ikram (Programmer Ikram, Ikramul Islam): WordPress development, MERN Stack and React Native experience, skills and education.',
+      keywords: `${keywords}, Md Ikram resume, Md Ikram CV`,
     },
     blogs: {
       path: '/portfolio/blogs',
-      title: data?.blogs?.title || `Blog by ${person.name}`,
-      description: data?.blogs?.subtitle || `Articles by ${person.name}.`,
-      keywords: `${keywords}, ${person.name} blog`,
+      title: 'Blog by Programmer Ikram (Md Ikram) – WordPress, React & MERN',
+      description:
+        'Articles by Md Ikram (Programmer Ikram) on WordPress development, React, React Native and the MERN Stack.',
+      keywords: `${keywords}, Programmer Ikram blog`,
     },
     contact: {
       path: '/portfolio/contact',
-      title: data?.contactPage?.title || `Contact ${person.name}`,
+      title: 'Contact Md Ikram – Hire a WordPress Developer in Bangladesh',
       description:
-        data?.contactPage?.subtitle ||
-        `Contact ${person.name}${person.email ? ` at ${person.email}` : ''}.`,
-      keywords: `${keywords}, contact ${person.name}, hire ${person.name}`,
+        'Hire Md Ikram (Programmer Ikram / Ikramul Islam) for WordPress websites, custom themes and plugins, MERN Stack and React Native apps.',
+      keywords: `${keywords}, hire WordPress developer, contact Md Ikram`,
     },
   };
 
@@ -99,10 +101,12 @@ export function buildPortfolioJsonLd(pathname = '', data) {
     '@type': 'Person',
     '@id': `${PORTFOLIO_BASE_URL}/portfolio/#person`,
     name: personInfo.name,
-    alternateName: personInfo.alternateNames,
+    alternateName: Array.from(
+      new Set([...(personInfo.alternateNames || []), 'Programmer Ikram', 'Ikram', 'Ikramul Islam']),
+    ),
     url: `${PORTFOLIO_BASE_URL}/portfolio`,
     image: imageUrl,
-    jobTitle: personInfo.jobTitle,
+    jobTitle: [personInfo.jobTitle, 'WordPress Developer'],
     description: personInfo.description,
     email: personInfo.email,
     telephone: personInfo.telephone,
@@ -114,6 +118,8 @@ export function buildPortfolioJsonLd(pathname = '', data) {
     sameAs: personInfo.sameAs,
     knowsAbout: [
       'WordPress',
+      'WordPress Theme Development',
+      'WordPress Plugin Development',
       'MERN Stack',
       'React',
       'React Native',

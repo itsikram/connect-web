@@ -124,6 +124,8 @@ const PostComments = lazy(() => import("../components/post/PostComments.js"));
 const PostReacts = lazy(() => import("../components/post/PostReacts.js"));
 const PortfolioContainer = lazy(() => import("./portfolio/PortfolioContainer.js"));
 const LandingPage = lazy(() => import("../components/LandingPage"));
+const AboutConnect = lazy(() => import("./AboutConnect"));
+const PublicProfile = lazy(() => import("./PublicProfile"));
 const PortfolioContact = lazy(() => import("./portfolio/PortfolioContact.js"));
 const PortfolioHome = lazy(() => import("./portfolio/PortfolioHome.js"));
 const PortfolioAbout = lazy(() => import("./portfolio/PortfolioAbout.js"));
@@ -360,6 +362,13 @@ let lastNotificationFetchTime = getLastNotificationFetchTime(); // Timestamp of 
 const Main = () => {
   const dispatch = useDispatch();
   const { token, user, isAuthenticated, logout, loading: authLoading } = useAuth();
+  // Logged-out, online visitors (and search crawlers) get the public landing
+  // page and public profiles; offline visitors fall through to
+  // ProtectedRoute's redirect to saved downloads.
+  const isPublicVisitor =
+    !authLoading &&
+    !isAuthenticated &&
+    !(typeof navigator !== "undefined" && navigator.onLine === false);
   const isLoading = useSelector((state) => state.option.isLoading);
   const myProfile = useSelector((state) => state.profile);
   // const settings = useSelector(state => state.setting)
@@ -379,9 +388,9 @@ const Main = () => {
   const seoPages = [
     {
       match: /^\/$/,
-      title: "Connect BD - Social Media App in Bangladesh | Connect with Connects",
+      title: "Connect – Connect BD Social Media App by Ikramul | Connect Online",
       description:
-        "Connect BD by Ikramul is a modern social media app for Bangladesh users to connect, share moments, make video calls, and build communities online.",
+        "Connect (Connect BD) is a free social media app by Ikramul. Chat, video call, share moments and build communities with Connect online on web, Android and iPhone.",
     },
     {
       match: /^\/login$/,
@@ -406,6 +415,12 @@ const Main = () => {
       title: "Download Connect BD App for Android & iPhone | Connect",
       description:
         "Download the Connect BD social media app for Android and iPhone. Chat, share moments, make video calls, and join communities on the go.",
+    },
+    {
+      match: /^\/about\/?$/,
+      title: "About Connect – Connect BD Social Media App by Ikramul",
+      description:
+        "About Connect (Connect BD): the free social media app by Ikramul for chat, video calls, posts and communities. Learn who built the Connect App and how to use Connect online.",
     },
     {
       match: /^\/privacy(-policy)?\/?$/,
@@ -2701,6 +2716,7 @@ const Main = () => {
             <Route path="expo" element={<ExpoConsole />}></Route>
             <Route path="download-app" element={<DownloadApp />}></Route>
             <Route path="privacy" element={<PrivacyPolicy />}></Route>
+            <Route path="about" element={<AboutConnect />}></Route>
             <Route path="privacy-policy" element={<PrivacyPolicy />}></Route>
             <Route path="terms" element={<TermsOfService />}></Route>
             <Route path="terms-of-service" element={<TermsOfService />}></Route>
@@ -2726,12 +2742,7 @@ const Main = () => {
             <Route
               index
               element={
-                // Logged-out visitors (and search crawlers) get the public
-                // landing page; offline visitors still fall through to
-                // ProtectedRoute's redirect to saved downloads.
-                !authLoading &&
-                !isAuthenticated &&
-                !(typeof navigator !== "undefined" && navigator.onLine === false) ? (
+                isPublicVisitor ? (
                   <LandingPage />
                 ) : (
                   <ProtectedRoute>
@@ -2752,11 +2763,15 @@ const Main = () => {
             <Route
               path="/:profile/"
               element={
-                <ProtectedRoute>
-                  <Suspense fallback={<ProfileSkeleton />}>
-                    <Profile />
-                  </Suspense>
-                </ProtectedRoute>
+                isPublicVisitor ? (
+                  <PublicProfile />
+                ) : (
+                  <ProtectedRoute>
+                    <Suspense fallback={<ProfileSkeleton />}>
+                      <Profile />
+                    </Suspense>
+                  </ProtectedRoute>
+                )
               }
             >
               <Route index element={<PorfilePosts />} />

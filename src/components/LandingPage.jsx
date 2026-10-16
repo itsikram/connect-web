@@ -23,10 +23,12 @@ const LandingPage = () => {
           {/* Hero Section */}
           <header className="hero-section">
             <div className="hero-content">
-              <h1>Connect BD — Social Media App to Connect with Connects</h1>
+              <h1>Connect — the Connect BD Social Media App</h1>
               <p className="hero-subtitle">
-                <strong>Connect by Ikramul</strong> is a modern social media platform designed to help you
-                connect with connects, share precious moments, and build meaningful communities.
+                <strong>Connect</strong> (also called <strong>Connect BD</strong> or the{' '}
+                <strong>Connect App</strong>) is a free social media platform by Ikramul. Get{' '}
+                <strong>Connect online</strong> to chat, video call, share moments and build communities
+                with your connects.
               </p>
               <div className="hero-buttons">
                 <Link to="/signup" className="landing-btn landing-btn--primary">Get Started</Link>
@@ -116,6 +118,7 @@ const LandingPage = () => {
               <li><Link to="/portfolio">About the developer</Link></li>
               <li><Link to="/portfolio/blogs">Blog</Link></li>
               <li><Link to="/portfolio/contact">Contact</Link></li>
+              <li><Link to="/about">About Connect</Link></li>
               <li><Link to="/privacy-policy">Privacy Policy</Link></li>
               <li><Link to="/terms-of-service">Terms of Service</Link></li>
             </ul>

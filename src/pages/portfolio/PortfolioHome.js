@@ -33,6 +33,15 @@ const PortfolioHome = () => {
             {hero.titlePrefix || "Hi, I'm"}{' '}
             <span className="color-pc">{hero.highlightedName || profile.name || 'Md Ikram'}</span>
           </h1>
+          <p className="color-tc home-desc">
+            <strong>{profile.jobTitle || 'Senior Software Developer'} &amp; WordPress Developer</strong>
+            {profile.alternateNames?.length
+              ? ` · also known as ${[...profile.alternateNames]
+                  .sort((a, b) => /programmer/i.test(b) - /programmer/i.test(a))
+                  .slice(0, 3)
+                  .join(', ')}`
+              : ''}
+          </p>
           <p className="color-tc home-desc">{hero.description}</p>
           <div className="hero-cta">
             <Link className="btn btn-primary" to="/portfolio/resume">

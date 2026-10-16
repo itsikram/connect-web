@@ -72,9 +72,9 @@ const PORTFOLIO_IMAGE = `${SITE_URL}/assets/images/portfolio-pp.png`;
 
 const PUBLIC_PAGES = {
   "/": {
-    title: "Connect BD - Social Media App in Bangladesh | Connect with Connects",
+    title: "Connect – Connect BD Social Media App by Ikramul | Connect Online",
     description:
-      "Connect BD by Ikramul is a modern social media app for Bangladesh users to connect, share moments, make video calls, and build communities online.",
+      "Connect (Connect BD) is a free social media app by Ikramul. Chat, video call, share moments and build communities with Connect online on web, Android and iPhone.",
   },
   "/login": {
     title: "Login | Connect BD by Ikramul",
@@ -96,6 +96,11 @@ const PUBLIC_PAGES = {
     description:
       "Download the Connect BD social media app for Android and iPhone. Chat, share moments, make video calls, and join communities on the go.",
   },
+  "/about": {
+    title: "About Connect – Connect BD Social Media App by Ikramul",
+    description:
+      "About Connect (Connect BD): the free social media app by Ikramul for chat, video calls, posts and communities. Learn who built the Connect App and how to use Connect online.",
+  },
   "/privacy-policy": {
     title: "Privacy Policy | Connect BD",
     description:
@@ -110,36 +115,36 @@ const PUBLIC_PAGES = {
   "/privacy": { alias: "/privacy-policy" },
   "/terms": { alias: "/terms-of-service" },
   "/portfolio": {
-    title: "Md Ikram | Senior Software Developer | Portfolio",
+    title: "Md Ikram (Programmer Ikram) – WordPress Developer & Software Engineer",
     description:
-      "Md Ikram (Ikramul Islam) is a Senior Software Developer from Munshiganj, Bangladesh, specializing in WordPress, MERN Stack, and React Native.",
+      "Md Ikram (Ikramul Islam), known as Programmer Ikram, is a WordPress Developer and Senior Software Developer from Bangladesh building WordPress, MERN Stack and React Native apps.",
     image: PORTFOLIO_IMAGE,
     ogType: "profile",
   },
   "/portfolio/about": {
-    title: "About Md Ikram | Senior Software Developer",
+    title: "About Md Ikram – Programmer Ikram, WordPress & MERN Developer",
     description:
-      "About Md Ikram (Ikramul Islam), a Senior Software Developer from Bangladesh building web and mobile apps with WordPress, MERN Stack, and React Native.",
+      "About Md Ikram (Ikramul Islam / Programmer Ikram): a WordPress Developer and Senior Software Developer from Munshiganj, Bangladesh, with 5+ years of experience.",
     image: PORTFOLIO_IMAGE,
     ogType: "profile",
   },
   "/portfolio/resume": {
-    title: "Resume of Md Ikram | Senior Software Developer",
+    title: "Md Ikram Resume – WordPress Developer & Senior Software Developer",
     description:
-      "Resume, skills, and work experience of Md Ikram (Ikramul Islam), Senior Software Developer from Bangladesh.",
+      "Resume of Md Ikram (Programmer Ikram, Ikramul Islam): WordPress development, MERN Stack and React Native experience, skills and education.",
     image: PORTFOLIO_IMAGE,
     ogType: "profile",
   },
   "/portfolio/blogs": {
-    title: "Blog by Md Ikram | Web & App Development Articles",
+    title: "Blog by Programmer Ikram (Md Ikram) – WordPress, React & MERN",
     description:
-      "Articles on web development, React, React Native, and WordPress by Md Ikram (Ikramul Islam).",
+      "Articles by Md Ikram (Programmer Ikram) on WordPress development, React, React Native and the MERN Stack.",
     image: PORTFOLIO_IMAGE,
   },
   "/portfolio/contact": {
-    title: "Contact Md Ikram | Hire a Senior Software Developer",
+    title: "Contact Md Ikram – Hire a WordPress Developer in Bangladesh",
     description:
-      "Contact Md Ikram (Ikramul Islam) for web development, React Native apps, and WordPress projects.",
+      "Hire Md Ikram (Programmer Ikram / Ikramul Islam) for WordPress websites, custom themes and plugins, MERN Stack and React Native apps.",
     image: PORTFOLIO_IMAGE,
   },
 };
@@ -231,7 +236,8 @@ let portfolioCache = { data: null, fetchedAt: 0, refreshing: false };
 
 const fetchJson = (url, timeoutMs) =>
   new Promise((resolve, reject) => {
-    const req = https.get(url, { timeout: timeoutMs }, (res) => {
+    const client = url.startsWith("http:") ? http : https;
+    const req = client.get(url, { timeout: timeoutMs }, (res) => {
       if (res.statusCode !== 200) {
         res.resume();
         return reject(new Error(`HTTP ${res.statusCode}`));
@@ -351,7 +357,7 @@ const renderPortfolioBody = (route, d) => {
     const projects = ((d.projects && d.projects.items) || [])
       .map((pr) => `<article><h3>${esc(pr.title)}</h3><p>${esc(pr.description || "")}</p></article>`)
       .join("");
-    main = `<h1>${esc(name)} — ${esc(p.jobTitle || "")}</h1><p>${esc(p.tagline || "")}</p><p>${esc(h.description || "")}</p>
+    main = `<h1>${esc(name)} (Programmer Ikram) — WordPress Developer &amp; ${esc(p.jobTitle || "Software Developer")}</h1><p>Also known as ${esc((p.alternateNames || ["Programmer Ikram", "Ikramul Islam"]).join(", "))}. ${esc(p.tagline || "")}</p><p>${esc(h.description || "")}</p>
 <h2>${esc((d.skills && d.skills.title) || "Skills")}</h2>${skills}
 <h2>${esc((d.projects && d.projects.title) || "Projects")}</h2>${projects}
 <h2>Work Experience</h2>${experience}`;
@@ -364,10 +370,136 @@ const renderPortfolioBody = (route, d) => {
 
 refreshPortfolio();
 
-const sendIndex = (req, res, pathname) => {
+// --- SEO: public user profiles (/:username) --------------------------------
+// The API's /api/profile/public/:username returns display fields only, and
+// only for profiles whose posts are Public ("indexable"). Everything else
+// stays noindex. First path segments used by the app itself skip the lookup.
+const APP_ROUTES = new Set(
+  (
+    "menu wallet video-call youtube expo download-app downloads search login signup " +
+    "forgot-password reset-password story post connects watch message ludo-game chess-game " +
+    "video-player marketplace groups yt-download camera notes tasks timer flashcards calendar " +
+    "habits health rehab settings test-notifications privacy terms about portfolio api static " +
+    "assets privacy-policy terms-of-service"
+  ).split(" ")
+);
+const USERNAME_RE = /^[A-Za-z0-9._-]{1,64}$/;
+const PROFILE_TTL_MS = 5 * 60 * 1000;
+const PROFILE_CACHE_MAX = 5000;
+const profileCache = new Map(); // username -> { at, data } (data null = not public)
+
+const lookupPublicProfile = async (username) => {
+  const hit = profileCache.get(username);
+  if (hit && Date.now() - hit.at < PROFILE_TTL_MS) return hit.data;
+  for (const base of PORTFOLIO_API_BASES) {
+    try {
+      const data = await fetchJson(
+        `${base}/api/profile/public/${encodeURIComponent(username)}`,
+        4000
+      );
+      const value = data && data.indexable ? data : null;
+      if (profileCache.size >= PROFILE_CACHE_MAX) {
+        profileCache.delete(profileCache.keys().next().value);
+      }
+      profileCache.set(username, { at: Date.now(), data: value });
+      return value;
+    } catch (e) {
+      // 404 means the server answered: not a (public) profile.
+      if (/HTTP 404/.test(e.message)) {
+        profileCache.set(username, { at: Date.now(), data: null });
+        return null;
+      }
+      /* network error / 5xx: try the next server */
+    }
+  }
+  throw new Error("profile API unavailable");
+};
+
+const profileUsernameFor = (pathname) => {
+  const route = pathname.replace(/\/+$/, "");
+  const m = /^\/([^/]+)$/.exec(route);
+  if (!m || !USERNAME_RE.test(m[1]) || APP_ROUTES.has(m[1].toLowerCase())) return null;
+  return m[1];
+};
+
+const renderProfileHtml = (p) => {
+  const url = `${SITE_URL}/${encodeURIComponent(p.username)}`;
+  const title = `${p.name} (@${p.username}) on Connect BD`;
+  const description = (
+    p.bio
+      ? `${p.name} (@${p.username}) is on Connect BD. ${p.bio}`
+      : `${p.name} (@${p.username}) is on Connect, the Connect BD social media app. Join Connect to chat, call and share moments with ${p.name}.`
+  ).slice(0, 300);
+  const image = p.profilePic || `${SITE_URL}/logo512.png`;
+
+  let html = readIndexHtml()
+    .replace(/<title>[^<]*<\/title>/, `<title>${esc(title)}</title>`)
+    .replace(/(<link rel="canonical" href=")[^"]*(")/, `$1${esc(url)}$2`);
+  html = setMeta(html, "name", "description", description);
+  html = setMeta(html, "name", "robots", "index, follow, max-image-preview:large");
+  html = setMeta(html, "property", "og:type", "profile");
+  html = setMeta(html, "property", "og:url", url);
+  html = setMeta(html, "property", "og:title", title);
+  html = setMeta(html, "property", "og:description", description);
+  html = setMeta(html, "property", "og:image", image);
+  html = setMeta(html, "name", "twitter:url", url);
+  html = setMeta(html, "name", "twitter:title", title);
+  html = setMeta(html, "name", "twitter:description", description);
+  html = setMeta(html, "name", "twitter:image", image);
+
+  const jsonLd = JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "ProfilePage",
+    url,
+    name: title,
+    dateCreated: p.joinedAt,
+    mainEntity: {
+      "@type": "Person",
+      name: p.name,
+      alternateName: `@${p.username}`,
+      identifier: p.username,
+      description: p.bio || undefined,
+      image: p.profilePic || undefined,
+      url,
+    },
+  }).replace(/</g, "\\u003c");
+  html = html.replace(
+    "</head>",
+    `<script type="application/ld+json">${jsonLd}</script></head>`
+  );
+
+  const body = `<div style="max-width:720px;margin:0 auto;padding:24px 16px;font-family:Inter,system-ui,sans-serif;line-height:1.6;color:#e5e7eb;background:#111112;text-align:center"><nav><a href="/">Connect BD</a> · <a href="/about">About Connect</a> · <a href="/signup">Sign up</a></nav><main>${
+    p.profilePic
+      ? `<img src="${esc(p.profilePic)}" alt="${esc(p.name)} profile picture" width="128" height="128" style="border-radius:50%;object-fit:cover">`
+      : ""
+  }<h1>${esc(p.name)}</h1><p>@${esc(p.username)}</p>${
+    p.bio ? `<p>${esc(p.bio)}</p>` : ""
+  }<p><a href="/signup">Join Connect</a> to chat, call and share moments with ${esc(p.name)}.</p></main></div>`;
+  return html.replace('<div id="root"></div>', `<div id="root">${body}</div>`);
+};
+
+const renderAny = async (pathname) => {
+  const username = profileUsernameFor(pathname);
+  if (!username) return renderIndexHtml(pathname);
+  try {
+    const profile = await lookupPublicProfile(username);
+    if (profile) return { html: renderProfileHtml(profile), robots: null };
+    return renderIndexHtml(pathname); // not public: noindex like other app routes
+  } catch (_) {
+    // API down: don't tell Google to drop the page, just point it at itself.
+    const url = `${SITE_URL}/${encodeURIComponent(username)}`;
+    const html = readIndexHtml().replace(
+      /(<link rel="canonical" href=")[^"]*(")/,
+      `$1${esc(url)}$2`
+    );
+    return { html, robots: null };
+  }
+};
+
+const sendIndex = async (req, res, pathname) => {
   let rendered;
   try {
-    rendered = renderIndexHtml(pathname);
+    rendered = await renderAny(pathname);
   } catch (_) {
     return sendFile(req, res, INDEX_HTML, "no-cache");
   }
