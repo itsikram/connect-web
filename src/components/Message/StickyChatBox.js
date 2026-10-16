@@ -30,6 +30,7 @@ import "../../pages/Message.css";
 import "./UserInfoModal.css";
 import { sanitizeProfileImageUrl } from "../../utils/profileImage";
 import MessageCacheManager from "../../utils/messageCacheManager";
+import { getPresence, usePresence } from "../../utils/presence";
 import {
   emitChatMessage,
   idOf,
@@ -217,16 +218,6 @@ const StickyChatBox = ({
     }
   };
 
-  const checkOnlineStatus = async (profileId) => {
-    try {
-      const statuses = await fetchOnlineStatusesCached([profileId], { ttlMs: 30000 });
-      return Boolean(statuses[profileId]?.isActive);
-    } catch (error) {
-      console.error("Error checking online status:", error);
-      return false;
-    }
-  };
-
   // WebSocket-based message sending with optimistic UI
   const sendMessage = async (messageData) => {
     const tempId = `temp-${Date.now()}-${Math.random()}`;
@@ -371,28 +362,34 @@ const StickyChatBox = ({
     return unique;
   };
 
-  // Check if user is active - HTTP-based polling
+  // Online status: live socket presence, HTTP only until that is known.
+  const livePresence = usePresence(connectId);
+  const applyPresence = useCallback((status) => {
+    if (!status) return;
+    setIsActive(Boolean(status.isActive));
+    setLastSeen(
+      !status.isActive && status.lastSeen
+        ? moment(status.lastSeen).format("hh:mm A")
+        : false,
+    );
+  }, []);
+
   useEffect(() => {
-    if (!connectId || !userId || isLoading) return;
+    if (livePresence) applyPresence(livePresence);
+  }, [livePresence, applyPresence]);
 
-    if (connectProfile?.isActive) {
-      setIsActive(true);
-    }
-
-    const checkStatus = async () => {
-      const isOnline = await checkOnlineStatus(connectId);
-      setIsActive(isOnline);
-
-      if (!isOnline) {
-        const now = moment();
-        setLastSeen(now.format("hh:mm A"));
-      }
+  useEffect(() => {
+    if (!connectId || !userId || isLoading || getPresence(connectId)) return;
+    let cancelled = false;
+    if (connectProfile?.isActive) setIsActive(true);
+    fetchOnlineStatusesCached([connectId], { ttlMs: 30000 })
+      .then((statuses) => {
+        if (!cancelled && !getPresence(connectId)) applyPresence(statuses[connectId]);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
     };
-
-    checkStatus();
-    const interval = setInterval(checkStatus, 90000);
-
-    return () => clearInterval(interval);
   }, [connectId, userId, isLoading]);
 
   // Check if blocked

@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux';
 import UserPP from '../../components/UserPP';
 import RsMenuItemSkleton from '../../skletons/rs/RsMenuItemSkleton';
 import { fetchChatListCached, fetchOnlineStatusesCached } from '../../utils/requestCache';
+import { getPresence, usePresenceVersion } from '../../utils/presence';
 
 let RightSidebar = () => {
     let userJson = localStorage.getItem('user') ? localStorage.getItem('user') : '{}'
@@ -11,6 +12,8 @@ let RightSidebar = () => {
     let myContacts = useSelector(state => state.message) // Get contacts with messages from Redux
     const [activeConnects, setActiveConnects] = useState([]);
     const [connectProfileStatusMap, setConnectProfileStatusMap] = useState({});
+    // Re-render on live presence changes (read via getPresence below).
+    usePresenceVersion();
     const [cachedContacts, setCachedContacts] = useState(() => {
         try {
             const userData = JSON.parse(localStorage.getItem('user') || '{}')
@@ -134,6 +137,8 @@ let RightSidebar = () => {
 
     // Get online status from contacts data (same source used by message UI)
     const getOnlineStatusFromContacts = useCallback((profileId) => {
+        const live = getPresence(profileId);
+        if (live) return live.isActive;
         const contactStatus = contactStatusMap.get(profileId);
         if (contactStatus) {
             return contactStatus.isOnline;
@@ -306,7 +311,8 @@ let RightSidebar = () => {
                     {
                         sortedConnectsData && sortedConnectsData.length > 0 ? sortedConnectsData.map((data, index) => {
 
-                            const profileIsActive = connectProfileStatusMap[data._id];
+                            const profileIsActive =
+                                getPresence(data._id)?.isActive ?? connectProfileStatusMap[data._id];
                             let isFrndActive = Boolean(
                                 profileIsActive !== undefined
                                     ? profileIsActive

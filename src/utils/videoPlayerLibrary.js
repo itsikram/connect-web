@@ -47,14 +47,16 @@ export const loadCustomPlaylist = () => {
         if (!raw) return [];
         const parsed = JSON.parse(raw);
         if (!Array.isArray(parsed)) return [];
-        return parsed.map(normalizePlaylistItem).filter(Boolean);
+        // Older builds stored local files here with blob URLs that are dead after a reload.
+        return parsed.map(normalizePlaylistItem).filter((v) => v && v.type !== 'file');
     } catch (_) {
         return [];
     }
 };
 
 export const saveCustomPlaylist = (items) => {
-    const customOnly = (items || []).filter((v) => v.type === 'url' || v.type === 'file');
+    // Local files live in IndexedDB (localVideoStore); their blob URLs don't survive a reload.
+    const customOnly = (items || []).filter((v) => v.type === 'url');
     if (customOnly.length === 0) {
         localStorage.removeItem(PLAYLIST_STORAGE_KEY);
         return;

@@ -45,6 +45,7 @@ const ChatHeader = ({
   connectProfile,
   room,
   lastSeen,
+  isActive: isConnectActive,
   connectProfilePic,
   connectId: routeConnectId,
   isChatLoading = false,
@@ -2577,7 +2578,7 @@ const ChatHeader = ({
     if (emotion) {
       return "Sharing emotion";
     }
-    if (data?.isActive) {
+    if (isConnectActive ?? data?.isActive) {
       return "Currently active";
     }
     if (lastSeen) {
@@ -2591,7 +2592,7 @@ const ChatHeader = ({
       return "Last seen recently";
     }
     return "Unknown";
-  }, [emotion, userInfoData, connectProfile, lastSeen]);
+  }, [emotion, userInfoData, connectProfile, lastSeen, isConnectActive]);
 
   const getUserName = useCallback(() => {
     const data = userInfoData || connectProfile;
@@ -2642,7 +2643,7 @@ const ChatHeader = ({
                 size="full"
                 hasStory={false}
                 profile={connectProfile?._id || routeConnectId}
-                active={connectProfile.isActive}
+                active={Boolean(isConnectActive ?? connectProfile.isActive)}
               ></UserPP>
             )}
           </div>
@@ -2658,6 +2659,8 @@ const ChatHeader = ({
                     {emotion.split(" ").slice(1).join(" ")}
                     {expression && expression !== "none" && ` • ${expression}`}
                   </span>
+                ) : isConnectActive ? (
+                  <span className="chat-header-active-status">Active now</span>
                 ) : lastSeen ? (
                   <span className="chat-header-active-status text-capitalized">
                     Last Seen: {lastSeen}
@@ -2671,15 +2674,17 @@ const ChatHeader = ({
                       {expression &&
                         expression !== "none" &&
                         ` • ${expression}`}
-                      {lastSeen ? " |" : ""}
+                      {isConnectActive || lastSeen ? " |" : ""}
                     </span>
                   )}
-                  {lastSeen && (
+                  {isConnectActive ? (
+                    <span className="chat-header-active-status"> Active now</span>
+                  ) : lastSeen ? (
                     <span className="chat-header-active-status text-capitalized">
                       {" "}
                       Last Seen: {lastSeen}
                     </span>
-                  )}
+                  ) : null}
                 </>
               )}
             </div>
@@ -3350,12 +3355,12 @@ const ChatHeader = ({
                           "https://via.placeholder.com/120?text=User";
                       }}
                     />
-                    {connectProfile?.isActive && (
+                    {(isConnectActive ?? connectProfile?.isActive) && (
                       <span className="user-info-status-badge active"></span>
                     )}
                   </div>
                   <h2 className="user-info-name">{getUserName()}</h2>
-                  {connectProfile?.isActive ? (
+                  {(isConnectActive ?? connectProfile?.isActive) ? (
                     <span className="user-info-status-text active">Online</span>
                   ) : (
                     <span className="user-info-status-text">Offline</span>

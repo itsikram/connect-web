@@ -1,4 +1,5 @@
 import api from "../api/api";
+import { getPresence } from "./presence";
 
 const memoryCache = new Map();
 const inflightRequests = new Map();
@@ -192,6 +193,12 @@ export const fetchOnlineStatusesCached = async (
   const missingIds = [];
 
   ids.forEach((id) => {
+    // Socket presence is live and authoritative.
+    const live = getPresence(id);
+    if (live) {
+      statuses[id] = live;
+      return;
+    }
     if (!forceRefresh) {
       const cached = readMemoryCache(`onlineStatus:${id}`, ttlMs);
       if (cached !== null) {

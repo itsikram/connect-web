@@ -17,6 +17,7 @@ import {
 } from "../utils/requestCache";
 import { getProfileSuccess } from "../services/actions/profileActions";
 import moment from "moment";
+import { getPresence, usePresence } from "../utils/presence";
 import SingleMessage from "../components/Message/SingleMessage";
 import $ from "jquery";
 import { newMessage, seenMessage } from "../services/actions/messageActions";
@@ -530,6 +531,10 @@ const Chat = () => {
         throw error;
       }
 
+      // Messages that arrive while the chat is open land in the Redux store as
+      // unseen too; clear them so the header / bottom-bar badges drop.
+      dispatch(seenMessage(connectId));
+
       const unseenIdSet = new Set(unseenMessageIds);
       setMessages((prevMessages) =>
         prevMessages.map((msg) =>
@@ -539,7 +544,7 @@ const Chat = () => {
     } catch (error) {
       console.error("Error marking messages as seen:", error);
     }
-  }, [connectId, canMarkAsSeen]);
+  }, [connectId, canMarkAsSeen, dispatch]);
 
   // Opening a conversation clears its OS notifications (Web Push and page
   // notifications both use the `chat-<senderId>` tag).
@@ -753,17 +758,33 @@ const Chat = () => {
         }
       };
 
-      setOnlineStatus();
-
-      // Refresh online status every 2 minutes (aligned with contacts refresh)
-      const statusInterval = setInterval(setOnlineStatus, 120000);
-
-      return function () {
-        clearInterval(statusInterval);
-      };
+      // Live socket presence (below) takes over once it is known.
+      if (!getPresence(connectId)) setOnlineStatus();
     },
     [connectId, userId, getOnlineStatusFromContacts],
   );
+
+  // Realtime online/offline + last seen for this chat's connect.
+  const livePresence = usePresence(connectId);
+  useEffect(() => {
+    if (!livePresence) return;
+    setIsActive(livePresence.isActive);
+    if (livePresence.isActive || !livePresence.lastSeen) {
+      setLastSeen(false);
+      return;
+    }
+    const lastSeenTimeStamp = moment(livePresence.lastSeen);
+    const diffDays = moment(Date.now()).diff(lastSeenTimeStamp, "days");
+    setLastSeen(
+      lastSeenTimeStamp.format(
+        diffDays === 0
+          ? "hh:mm A"
+          : diffDays > 365
+            ? "MM/YY hh:mm A"
+            : "DD/MM hh:mm A",
+      ),
+    );
+  }, [livePresence]);
 
   useEffect(
     function () {
@@ -778,7 +799,7 @@ const Chat = () => {
       setConnectProfile(
         cachedConnectProfile || { _id: connectId, profilePic: "" },
       );
-      if (cachedConnectProfile) {
+      if (cachedConnectProfile && !getPresence(connectId)) {
         setIsActive(Boolean(cachedConnectProfile.isActive));
         setLastSeen(cachedConnectProfile.lastSeen || false);
       }
@@ -1404,7 +1425,7 @@ const Chat = () => {
                   <UserPP
                     profilePic={`${connectProfile.profilePic}`}
                     profile={connectProfile._id} username={connectProfile?.username}
-                    active={connectProfile.isActive}
+                    active={isActive}
                   ></UserPP>
                 </div>
                 <div className="chat-message">

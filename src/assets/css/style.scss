@@ -1478,22 +1478,24 @@ select {
               right: -7px;
               top: -5px;
               color: $tc;
-              font-size: 14px;
+              font-size: 11px;
               background-color: $pc;
-              height: 17px;
-              min-width: 17px;
-              border-radius: 50%;
-              overflow: hidden;
+              height: 18px;
+              min-width: 18px;
+              padding: 0 5px;
+              box-sizing: border-box;
+              // Pill, not circle: a circle with overflow hidden clipped 2+ digits.
+              border-radius: 9px;
               display: flex;
               align-items: center;
               justify-content: center;
-              font-weight: 600;
-              line-height: 0;
+              font-weight: 700;
+              line-height: 18px;
+              white-space: nowrap;
+              pointer-events: none;
 
-              // border: 1px solid $bc;
               .counter {
-                margin-top: -1px;
-                padding: 4px;
+                display: block;
               }
             }
           }

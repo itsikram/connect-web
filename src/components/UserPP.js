@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import config from "../config/config.json";
 import { PROFILE_IMG_REFERRER_POLICY, sanitizeProfileImageUrl } from "../utils/profileImage";
 import { getProfilePath } from "../utils/profilePath";
+import { usePresence } from "../utils/presence";
 
 const default_pp_src = config.defaultProfile;
 
@@ -12,6 +13,9 @@ let UserPP = ({profilePic, profile, username, active, hasStory,size = 40}) => {
     let navigate = useNavigate();
 
     var profileId = profile;
+    // Avatars that show an online dot follow live socket presence.
+    const livePresence = usePresence(active !== undefined ? profileId : null);
+    if (livePresence) active = livePresence.isActive;
 
     let goToProfile = useCallback(e => {
         navigate(getProfilePath(e.currentTarget.dataset.id, "", username))

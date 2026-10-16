@@ -23,6 +23,8 @@ import { getProfilePath } from "../../utils/profilePath";
 
 const EMPTY_LIST = [];
 
+export const formatBadgeCount = (count) => (count > 99 ? "99+" : count);
+
 export const selectUnreadMessageCount = (state) => {
   const myId = state.profile?._id;
   const list = state.message;
@@ -51,7 +53,7 @@ const selectUnseenNotificationCount = (state) => {
   let count = 0;
   for (let i = 0; i < list.length; i += 1) {
     const item = list[i];
-    if (item && item.type !== "message" && item.isSeen === false) count += 1;
+    if (item && item.type !== "message" && item.isSeen !== true) count += 1;
   }
   return count;
 };
@@ -248,7 +250,7 @@ let HeaderRight = ({ pendingLudoInvites = [], pendingChessInvites = [] }) => {
                 <i className="far fa-comment-alt-lines"></i>
                 {totalMessages > 0 && (
                   <span className="hr-counter-badge">
-                    <span className="counter">{totalMessages}</span>
+                    <span className="counter">{formatBadgeCount(totalMessages)}</span>
                   </span>
                 )}
               </div>
@@ -351,7 +353,7 @@ let HeaderRight = ({ pendingLudoInvites = [], pendingChessInvites = [] }) => {
               <i className="far fa-bell"></i>
               {totalNotifications > 0 && (
                 <span className="hr-counter-badge">
-                  <span className="counter">{totalNotifications}</span>
+                  <span className="counter">{formatBadgeCount(totalNotifications)}</span>
                 </span>
               )}
             </div>

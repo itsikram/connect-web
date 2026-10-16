@@ -6,6 +6,10 @@ import EmojiPicker from "emoji-picker-react";
 import socket from "../../common/socket";
 import "./StickyChatFooter.css";
 import ComposerContextPreview from "./ComposerContextPreview";
+import useComposerImageUploads, {
+  MAX_COMPOSER_IMAGES,
+} from "../../hooks/useComposerImageUploads";
+import { showErrorToast, showInfoToast } from "../../utils/toastUtils";
 import ComposerMicMenu from "./ComposerMicMenu";
 import useComposerLiveTranscribe from "../../hooks/useComposerLiveTranscribe";
 import { mergeTranscriptChunk } from "../../hooks/transcriptText";
@@ -35,7 +39,7 @@ const StickyChatFooter = ({
   const [isInputFocused, setIsInputFocused] = useState(false);
   const isSendingRef = useRef(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
+
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [showMicMenu, setShowMicMenu] = useState(false);
@@ -52,6 +56,7 @@ const StickyChatFooter = ({
   const isTypingRef = useRef(false);
   const lastTypingEmitRef = useRef(0);
   const imageInput = useRef(null);
+  const imageUploads = useComposerImageUploads();
   const uploadFileInput = useRef(null);
   const emojiContainerRef = useRef(null);
   const emojiButtonRef = useRef(null);
@@ -221,7 +226,15 @@ const StickyChatFooter = ({
       e.preventDefault();
       e.stopPropagation();
 
-      if (isSendingRef.current || (!inputValue.trim() && !attachmentUrl)) {
+      if (imageUploads.isUploading) {
+        showInfoToast("Photos are still uploading…");
+        return;
+      }
+      const photoUrls = imageUploads.readyUrls;
+      if (
+        isSendingRef.current ||
+        (!inputValue.trim() && !attachmentUrl && photoUrls.length === 0)
+      ) {
         return;
       }
 
@@ -232,18 +245,24 @@ const StickyChatFooter = ({
       const roomId = room || [userId, connectId].sort().join("_");
       const messageContent = inputValue.trim();
 
-      const data = {
-        room: roomId,
-        senderId: userId,
-        receiverId: connectId,
-        message: messageContent,
-        attachment: attachmentUrl,
-        parent: replyData.messageId || false,
-        isAi,
-      };
+      // One message per photo; the text and reply ride on the first one.
+      const attachments = [
+        ...(attachmentUrl ? [attachmentUrl] : []),
+        ...photoUrls,
+      ];
+      const outgoing = (attachments.length ? attachments : [false]).map(
+        (attachment, index) => ({
+          room: roomId,
+          senderId: userId,
+          receiverId: connectId,
+          message: index === 0 ? messageContent : "",
+          attachment,
+          parent: index === 0 ? replyData.messageId || false : false,
+          isAi,
+        }),
+      );
 
-      // Send message via HTTP
-      sendMessage(data)
+      Promise.all(outgoing.map((data) => sendMessage(data)))
         .then(() => {
           removeTyping();
           scrollToLastMessage();
@@ -259,6 +278,7 @@ const StickyChatFooter = ({
         });
       setInputValue("");
       setAttachmentUrl("");
+      imageUploads.clearImages();
       setIsReplying?.(false);
       setReplyData({
         messageId: null,
@@ -271,6 +291,7 @@ const StickyChatFooter = ({
     [
       inputValue,
       attachmentUrl,
+      imageUploads,
       room,
       userId,
       connectId,
@@ -288,7 +309,7 @@ const StickyChatFooter = ({
   const handleKeyPress = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (inputValue.trim() || attachmentUrl) {
+      if (inputValue.trim() || attachmentUrl || imageUploads.hasImages) {
         handleSendMessage(e);
       }
     }
@@ -350,36 +371,52 @@ const StickyChatFooter = ({
       }
     } catch (error) {
       console.error("Error uploading file:", error);
+      showErrorToast(error?.response?.data?.error || "Could not upload that file.");
     } finally {
       setIsUploadingFile(false);
+      e.target.value = "";
     }
   };
 
   const handleImageButtonClick = () => {
+    if (!imageUploads.canAddMore) {
+      showInfoToast(`You can send up to ${MAX_COMPOSER_IMAGES} photos at once.`);
+      return;
+    }
     imageInput.current?.click();
   };
 
-  const handleImageChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    setIsUploadingImage(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await api.post("/upload/file", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-
-      if (res.status === 200 && res.data?.secure_url) {
-        setAttachmentUrl(res.data.secure_url);
-      }
-    } catch (error) {
-      console.error("Error uploading image:", error);
-    } finally {
-      setIsUploadingImage(false);
+  const addComposerImages = (files) => {
+    const list = Array.from(files || []);
+    if (!list.length) return;
+    const skipped = imageUploads.addFiles(list);
+    const added = list.length - skipped;
+    if (!added) {
+      showErrorToast(
+        imageUploads.canAddMore
+          ? "Only image files can be sent as photos."
+          : `You can send up to ${MAX_COMPOSER_IMAGES} photos at once.`,
+      );
+    } else if (skipped) {
+      showInfoToast(
+        `Added ${added} photo${added === 1 ? "" : "s"} · max ${MAX_COMPOSER_IMAGES} per message, non-images skipped.`,
+      );
     }
+  };
+
+  const handleImageChange = (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    addComposerImages(files);
+  };
+
+  const handleComposerPaste = (e) => {
+    const files = Array.from(e.clipboardData?.files || []).filter((file) =>
+      String(file.type).startsWith("image/"),
+    );
+    if (!files.length) return;
+    e.preventDefault();
+    addComposerImages(files);
   };
 
   const pickSupportedMimeType = () => {
@@ -619,6 +656,11 @@ const StickyChatFooter = ({
         userId={userId}
         connectProfile={connectProfile}
         attachmentUrl={attachmentUrl}
+        images={imageUploads.images}
+        onRemoveImage={imageUploads.removeImage}
+        onRetryImage={imageUploads.retryImage}
+        onAddImages={handleImageButtonClick}
+        canAddMoreImages={imageUploads.canAddMore}
         onCancelReply={() => {
           setIsReplying?.(false);
           setReplyData({
@@ -706,24 +748,23 @@ const StickyChatFooter = ({
             />
 
             <button
-              className={`sticky-chat-attachment-btn ${isUploadingImage ? "loading" : ""}`}
+              className={`sticky-chat-attachment-btn ${imageUploads.isUploading ? "loading" : ""}`}
               onClick={handleImageButtonClick}
-              disabled={isUploadingImage}
-              aria-label="Attach image"
+              aria-label="Attach photos"
             >
               <i
                 className={
-                  isUploadingImage ? "fas fa-spinner fa-spin" : "fas fa-image"
+                  imageUploads.isUploading ? "fas fa-spinner fa-spin" : "fas fa-image"
                 }
               ></i>
             </button>
             <input
               type="file"
               accept="image/*"
+              multiple
               ref={imageInput}
               onChange={handleImageChange}
               style={{ display: "none" }}
-              disabled={isUploadingImage}
             />
 
             <div className="composer-mic-wrap" ref={micMenuRef}>
@@ -784,6 +825,7 @@ const StickyChatFooter = ({
             value={inputValue}
             onChange={handleInputChange}
             onKeyDown={handleKeyPress}
+            onPaste={handleComposerPaste}
             onFocus={(e) => {
               setIsInputFocused(true);
               if (inputValue.trim().length > 0) {
@@ -807,16 +849,16 @@ const StickyChatFooter = ({
         </div>
 
         <div className="sticky-chat-action-buttons">
-          {isInputFocused || inputValue.trim() || attachmentUrl ? (
+          {isInputFocused || inputValue.trim() || attachmentUrl || imageUploads.hasImages ? (
             <button
-              className={`sticky-chat-action-btn send ${isSendingMessage ? "loading" : ""}`}
+              className={`sticky-chat-action-btn send ${isSendingMessage || imageUploads.isUploading ? "loading" : ""}`}
               onClick={handleSendMessage}
-              disabled={isSendingMessage}
-              aria-label="Send message"
+              disabled={isSendingMessage || imageUploads.isUploading}
+              aria-label={imageUploads.isUploading ? "Waiting for uploads" : "Send message"}
             >
               <i
                 className={
-                  isSendingMessage
+                  isSendingMessage || imageUploads.isUploading
                     ? "fas fa-spinner fa-spin"
                     : "fas fa-paper-plane"
                 }

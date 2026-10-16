@@ -6257,3 +6257,153 @@
         padding-left: 52px !important;
     }
 }
+
+/* ---------- Multi-photo composer strip ---------- */
+.composer-images {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+    background: rgba(12, 18, 32, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+}
+
+.composer-images-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.composer-images-title {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #e2e8f0;
+    -webkit-text-fill-color: #e2e8f0 !important;
+}
+
+.composer-images-bar {
+    flex: 0 0 90px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.12);
+    overflow: hidden;
+}
+
+.composer-images-bar span {
+    display: block;
+    height: 100%;
+    background: #3b82f6;
+    transition: width 0.2s ease;
+}
+
+.composer-images-row {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+}
+
+.composer-image-tile,
+.composer-image-add {
+    position: relative;
+    flex: 0 0 64px;
+    width: 64px;
+    height: 64px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.composer-image-tile img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.composer-image-tile.is-error {
+    border-color: rgba(239, 68, 68, 0.7);
+}
+
+.composer-image-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    border: 0;
+    padding: 0;
+    background: rgba(2, 6, 23, 0.55);
+    color: #fff;
+    -webkit-text-fill-color: #fff !important;
+    cursor: default;
+}
+
+.composer-image-tile.is-error .composer-image-overlay {
+    background: rgba(127, 29, 29, 0.6);
+    cursor: pointer;
+}
+
+.composer-image-ring {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: conic-gradient(#3b82f6 var(--pct, 0%), rgba(255, 255, 255, 0.25) 0);
+    -webkit-mask: radial-gradient(circle, transparent 7px, #000 8px);
+    mask: radial-gradient(circle, transparent 7px, #000 8px);
+}
+
+.composer-image-tile.is-processing .composer-image-ring,
+.composer-image-tile.is-queued .composer-image-ring {
+    background: conic-gradient(#3b82f6 25%, rgba(255, 255, 255, 0.25) 0);
+    animation: composer-image-spin 0.9s linear infinite;
+}
+
+@keyframes composer-image-spin {
+    to { transform: rotate(360deg); }
+}
+
+.composer-image-status {
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.composer-image-remove {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 18px;
+    height: 18px;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(2, 6, 23, 0.8);
+    color: #fff;
+    -webkit-text-fill-color: #fff !important;
+    font-size: 10px;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    z-index: 1;
+}
+
+.composer-image-add {
+    display: grid;
+    place-items: center;
+    border-style: dashed;
+    border-color: rgba(255, 255, 255, 0.25);
+    background: transparent;
+    color: #e2e8f0;
+    -webkit-text-fill-color: #e2e8f0 !important;
+    cursor: pointer;
+}
+
+.composer-image-add:hover {
+    border-color: #3b82f6;
+}

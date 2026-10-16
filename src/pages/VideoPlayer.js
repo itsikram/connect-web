@@ -50,6 +50,13 @@ import api from "../api/api";
 import { getYtDownloadApiUrl, normalizeServerUrl } from "../utils/offlineUtils";
 import { showErrorToast, showSuccessToast } from "../utils/toastUtils";
 import { subscribeWatchDownloads } from "../utils/watchDownloadProgress";
+import {
+  isVideoFile,
+  stripExtension,
+  saveLocalVideo,
+  loadLocalVideos,
+  deleteLocalVideo,
+} from "../utils/localVideoStore";
 
 const VideoPlayer = () => {
   const myProfileId = useSelector((state) => state.profile?._id);
@@ -138,7 +145,42 @@ const VideoPlayer = () => {
 
   const videoRef = useRef(null);
   const fileInputRef = useRef(null);
+  const folderInputRef = useRef(null);
   const blobUrlsRef = useRef(new Set());
+  const [localFilesHydrated, setLocalFilesHydrated] = useState(false);
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const [localImport, setLocalImport] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadLocalVideos().then((rows) => {
+      if (cancelled) return;
+      const restored = rows
+        .map((row) => {
+          if (!row?.blob) return null;
+          const url = URL.createObjectURL(row.blob);
+          blobUrlsRef.current.add(url);
+          return normalizePlaylistItem({
+            id: row.id,
+            url,
+            title: row.title || stripExtension(row.name),
+            type: "file",
+            online: false,
+          });
+        })
+        .filter(Boolean);
+      if (restored.length) {
+        setCustomVideos((prev) => [
+          ...prev.filter((v) => !restored.some((r) => r.id === v.id)),
+          ...restored,
+        ]);
+      }
+      setLocalFilesHydrated(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const skipPipOnUnmount = useRef(false);
   const currentVideoRef = useRef(null);
   const playlistPipRef = useRef([]);
@@ -356,6 +398,8 @@ const VideoPlayer = () => {
   bgApiRef.current = backgroundAudio;
 
   useEffect(() => {
+    // Wait for local files so their saved positions aren't pruned before they load.
+    if (!localFilesHydrated) return;
     setPlaylistOrder((prev) => {
       const synced = syncPlaylistOrder(prev, allVideos);
       if (synced.join("|") !== prev.join("|")) {
@@ -364,7 +408,7 @@ const VideoPlayer = () => {
       }
       return prev;
     });
-  }, [allVideos]);
+  }, [allVideos, localFilesHydrated]);
 
   const refreshLibrary = useCallback(
     async ({ showSpinner = false } = {}) => {
@@ -1255,39 +1299,102 @@ const VideoPlayer = () => {
     }
   };
 
-  const handleFileUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !file.type.startsWith("video/")) return;
+  const importLocalFiles = async (fileList) => {
+    const all = Array.from(fileList || []);
+    const files = all.filter(isVideoFile);
+    const skipped = all.length - files.length;
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (folderInputRef.current) folderInputRef.current.value = "";
+    if (!files.length) {
+      if (all.length) showErrorToast("No video files found in that selection.");
+      return;
+    }
 
-    const blobUrl = URL.createObjectURL(file);
-    blobUrlsRef.current.add(blobUrl);
+    const stamp = Date.now();
+    // A typed title only makes sense for a single file.
+    const customTitle = files.length === 1 ? videoTitle.trim() : "";
+    const imported = files
+      .map((file, i) => {
+        const blobUrl = URL.createObjectURL(file);
+        blobUrlsRef.current.add(blobUrl);
+        return {
+          file,
+          video: normalizePlaylistItem({
+            id: `file-${stamp}-${i}`,
+            url: blobUrl,
+            title: customTitle || stripExtension(file.name),
+            type: "file",
+            online: false,
+          }),
+        };
+      })
+      .filter((entry) => entry.video);
+    const newVideos = imported.map((entry) => entry.video);
 
-    const newVideo = normalizePlaylistItem({
-      id: `file-${Date.now()}`,
-      url: blobUrl,
-      title: videoTitle.trim() || file.name,
-      type: "file",
-      online: false,
-    });
-
-    if (!newVideo) return;
-
-    const nextCustom = [...customVideos, newVideo];
+    const nextCustom = [...customVideos, ...newVideos];
     setCustomVideos(nextCustom);
     setPlaylistOrder((prev) => {
       const next = syncPlaylistOrder(
-        [...prev, newVideo.id],
+        [...prev, ...newVideos.map((v) => v.id)],
         mergePlaylist(watchVideos, savedVideos, nextCustom),
       );
       savePlaylistOrder(next);
       return next;
     });
-    focusVideoInList(newVideo.id, nextCustom);
-    addToPlayQueue(newVideo);
+    focusVideoInList(newVideos[0].id, nextCustom);
+    newVideos.forEach((video) => addToPlayQueue(video));
     setFilter("all");
     setVideoTitle("");
 
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    // Persist so the videos are still here after a reload.
+    let failed = 0;
+    setLocalImport({ done: 0, total: imported.length });
+    for (let i = 0; i < imported.length; i += 1) {
+      const { file, video } = imported[i];
+      try {
+        await saveLocalVideo({ id: video.id, title: video.title, file });
+      } catch (_) {
+        failed += 1;
+      }
+      setLocalImport({ done: i + 1, total: imported.length });
+    }
+    setLocalImport(null);
+
+    const added = `${newVideos.length} video${newVideos.length === 1 ? "" : "s"}`;
+    if (failed) {
+      showErrorToast(
+        `Added ${added}, but ${failed} couldn't be saved on this device (storage full) and will be gone after a reload.`,
+      );
+    } else {
+      const skippedNote = skipped
+        ? ` · skipped ${skipped} non-video file${skipped === 1 ? "" : "s"}`
+        : "";
+      showSuccessToast(`Added ${added} from this device${skippedNote}.`);
+    }
+  };
+
+  const handleFileUpload = (e) => {
+    importLocalFiles(e.target.files);
+  };
+
+  const handleFilesDragOver = (e) => {
+    if (!Array.from(e.dataTransfer?.types || []).includes("Files")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    if (!isDraggingFiles) setIsDraggingFiles(true);
+  };
+
+  const handleFilesDragLeave = (e) => {
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    setIsDraggingFiles(false);
+  };
+
+  const handleFilesDrop = (e) => {
+    if (!e.dataTransfer?.files?.length) return;
+    e.preventDefault();
+    setIsDraggingFiles(false);
+    importLocalFiles(e.dataTransfer.files);
+    setActiveTab("queue");
   };
 
   const handleRemoveVideo = (video) => {
@@ -1299,6 +1406,7 @@ const VideoPlayer = () => {
         URL.revokeObjectURL(video.url);
         blobUrlsRef.current.delete(video.url);
       }
+      if (video.type === "file") deleteLocalVideo(video.id);
     }
 
     setPlaylistOrder((prev) => {
@@ -2467,25 +2575,61 @@ const VideoPlayer = () => {
               <div className="vp-panel-head">
                 <div>
                   <h2>Add a video</h2>
-                  <p>Paste a direct link or pick a file from this device.</p>
+                  <p>Paste a direct link or import videos from this device.</p>
                 </div>
               </div>
               <button
                 type="button"
-                className="vp-upload-tile"
+                className={`vp-upload-tile${isDraggingFiles ? " is-dragging" : ""}`}
                 onClick={() => fileInputRef.current?.click()}
+                onDragOver={handleFilesDragOver}
+                onDragLeave={handleFilesDragLeave}
+                onDrop={handleFilesDrop}
               >
                 <span className="vp-upload-icon"><i className="fas fa-file-upload" /></span>
                 <span className="vp-upload-text">
-                  <strong>Choose from device</strong>
-                  <small>MP4, MOV, WEBM and more</small>
+                  <strong>
+                    {isDraggingFiles ? "Drop videos to import" : "Choose videos from device"}
+                  </strong>
+                  <small>
+                    {isTouchDevice
+                      ? "Select several at once · MP4, MOV, WEBM…"
+                      : "Select several or drag & drop · MP4, MOV, WEBM…"}
+                  </small>
                 </span>
                 <i className="fas fa-chevron-right" />
               </button>
+              {!isTouchDevice ? (
+                <button
+                  type="button"
+                  className="vp-upload-folder"
+                  onClick={() => folderInputRef.current?.click()}
+                >
+                  <i className="fas fa-folder-open" /> Import a whole folder
+                </button>
+              ) : null}
+              {localImport ? (
+                <p className="vp-upload-progress" role="status">
+                  <i className="fas fa-spinner fa-spin" /> Saving to this device…{" "}
+                  {localImport.done}/{localImport.total}
+                </p>
+              ) : null}
               <input
                 ref={fileInputRef}
                 type="file"
                 accept="video/*"
+                multiple
+                onChange={(e) => {
+                  handleFileUpload(e);
+                  setActiveTab("queue");
+                }}
+                style={{ display: "none" }}
+              />
+              <input
+                ref={folderInputRef}
+                type="file"
+                webkitdirectory=""
+                multiple
                 onChange={(e) => {
                   handleFileUpload(e);
                   setActiveTab("queue");

@@ -17,6 +17,10 @@ import ComposerMicMenu from "./ComposerMicMenu";
 import useComposerLiveTranscribe from "../../hooks/useComposerLiveTranscribe";
 import { mergeTranscriptChunk } from "../../hooks/transcriptText";
 import useConnectChatSettings from "../../hooks/useConnectChatSettings";
+import useComposerImageUploads, {
+  MAX_COMPOSER_IMAGES,
+} from "../../hooks/useComposerImageUploads";
+import { showErrorToast, showInfoToast } from "../../utils/toastUtils";
 
 const UPLOAD_PLACEHOLDER =
   "/assets/images/loading.gif";
@@ -77,6 +81,7 @@ const ChatFooter = ({
   const analyserRef = useRef(null);
   const audioSourceRef = useRef(null);
   const imageInput = useRef(null);
+  const imageUploads = useComposerImageUploads();
   const uploadFileInput = useRef(null);
   const micMenuRef = useRef(null);
   const micButtonRef = useRef(null);
@@ -285,8 +290,15 @@ const ChatFooter = ({
           "",
       ).trim();
 
+      if (imageUploads.isUploading) {
+        showInfoToast("Photos are still uploading…");
+        return;
+      }
+      const photoUrls = imageUploads.readyUrls;
+      if (attachmentUrl === UPLOAD_PLACEHOLDER) return;
+
       // Check if message is empty
-      if (!typedMessage && !attachmentUrl) {
+      if (!typedMessage && !attachmentUrl && photoUrls.length === 0) {
         return;
       }
 
@@ -300,19 +312,30 @@ const ChatFooter = ({
       if (roomId) {
         const messageContent = typedMessage;
 
-        const messageData = {
+        const baseData = {
           room: roomId,
           senderId: userId,
           receiverId: connectId,
-          message: messageContent,
-          attachment: attachmentUrl,
-          parent: isReplying ? replyData.messageId : false,
           isAi,
         };
+        // One message per photo; the text and reply ride on the first one.
+        const attachments = [
+          ...(attachmentUrl ? [attachmentUrl] : []),
+          ...photoUrls,
+        ];
+        const outgoing = (attachments.length ? attachments : [false]).map(
+          (attachment, index) => ({
+            ...baseData,
+            message: index === 0 ? messageContent : "",
+            attachment,
+            parent: index === 0 && isReplying ? replyData.messageId : false,
+          }),
+        );
 
-        // Send message via HTTP
-        sendMessage(messageData)
+        // Emitted in order over the socket so photos keep their order.
+        Promise.all(outgoing.map((messageData) => sendMessage(messageData)))
           .then(() => {
+            imageUploads.clearImages();
             removeTyping();
             scrollToLastMessage();
             setInputValue("");
@@ -347,6 +370,7 @@ const ChatFooter = ({
       messages,
       inputValue,
       attachmentUrl,
+      imageUploads,
       room,
       userId,
       connectId,
@@ -435,66 +459,63 @@ const ChatFooter = ({
       senderId: null,
       messageType: null,
     });
-    if (!attachmentUrl) setIsPreview(false);
+    if (!attachmentUrl && !imageUploads.hasImages) setIsPreview(false);
   };
 
   const handleAttachmentPreviewClose = () => {
     setAttachmentUrl("");
-    if (!(isReplying && replyData.messageId)) setIsPreview(false);
+    if (!(isReplying && replyData.messageId) && !imageUploads.hasImages) {
+      setIsPreview(false);
+    }
   };
 
-  const handleMessageImageButtonClick = useCallback(async () => {
+  const handleMessageImageButtonClick = useCallback(() => {
     if (isChatLoadingRef.current) return;
-    const clickEvent = new MouseEvent("click", {
-      bubbles: true,
-      cancelable: false,
-    });
-    const attachmentInput = document.createElement("input");
-    attachmentInput.type = "file";
-
-    attachmentInput.addEventListener("change", async (e) => {
-      const attachmentFile = e.target.files[0];
-      if (attachmentFile) {
-        setIsUploadingImage(true);
-        try {
-          const attachmentFormData = new FormData();
-          attachmentFormData.append("image", attachmentFile);
-          setAttachmentUrl(
-            "/assets/images/loading.gif",
-          );
-          setIsPreview(true);
-
-          const uploadAttachmentRes = await api.post(
-            "/upload",
-            attachmentFormData,
-            {
-              headers: {
-                "Content-Type": "multipart/form-data",
-              },
-            },
-          );
-
-          if (uploadAttachmentRes.status === 200) {
-            const attachmentUrl = uploadAttachmentRes.data.secure_url;
-            if (attachmentUrl) {
-              setAttachmentUrl(attachmentUrl);
-            }
-          }
-        } catch (error) {
-          console.log("Error uploading image:", error);
-        } finally {
-          setIsUploadingImage(false);
-        }
-      }
-    });
-
-    if (attachmentInput) {
-      attachmentInput.dispatchEvent(clickEvent);
+    if (!imageUploads.canAddMore) {
+      showInfoToast(`You can send up to ${MAX_COMPOSER_IMAGES} photos at once.`);
+      return;
     }
-  }, [attachmentUrl, isPreview]);
+    imageInput.current?.click();
+  }, [imageUploads.canAddMore]);
 
-  const handleMessageImageChange = async () => {
-    // Handle image change
+  const addComposerImages = useCallback(
+    (files) => {
+      const list = Array.from(files || []);
+      if (!list.length) return;
+      const skipped = imageUploads.addFiles(list);
+      const added = list.length - skipped;
+      if (!added) {
+        showErrorToast(
+          imageUploads.canAddMore
+            ? "Only image files can be sent as photos."
+            : `You can send up to ${MAX_COMPOSER_IMAGES} photos at once.`,
+        );
+        return;
+      }
+      if (skipped) {
+        showInfoToast(
+          `Added ${added} photo${added === 1 ? "" : "s"} · max ${MAX_COMPOSER_IMAGES} per message, non-images skipped.`,
+        );
+      }
+      setIsPreview(true);
+      setShowAttachTray(false);
+    },
+    [imageUploads, setIsPreview],
+  );
+
+  const handleMessageImageChange = (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    addComposerImages(files);
+  };
+
+  const handleComposerPaste = (e) => {
+    const files = Array.from(e.clipboardData?.files || []).filter((file) =>
+      String(file.type).startsWith("image/"),
+    );
+    if (!files.length) return;
+    e.preventDefault();
+    addComposerImages(files);
   };
 
   const isLiveVoiceActiveRef = useRef(false);
@@ -886,14 +907,12 @@ const ChatFooter = ({
       if (rawFile) {
         setIsUploadingFile(true);
         try {
-          const rawFile = new FormData();
-          rawFile.append("file", rawFile);
-          setAttachmentUrl(
-            "/assets/images/loading.gif",
-          );
-          // setIsPreview(true)
+          const fileForm = new FormData();
+          fileForm.append("file", rawFile);
+          setAttachmentUrl(UPLOAD_PLACEHOLDER);
+          setIsPreview(true);
 
-          const uploadAttachmentRes = await api.post("/upload/file", rawFile, {
+          const uploadAttachmentRes = await api.post("/upload/file", fileForm, {
             headers: {
               "Content-Type": "multipart/form-data",
             },
@@ -907,8 +926,13 @@ const ChatFooter = ({
           }
         } catch (error) {
           console.log("Error uploading file:", error);
+          setAttachmentUrl("");
+          showErrorToast(
+            error?.response?.data?.error || "Could not upload that file.",
+          );
         } finally {
           setIsUploadingFile(false);
+          if (e.target) e.target.value = "";
         }
       }
     },
@@ -947,7 +971,11 @@ const ChatFooter = ({
     };
   }, []);
 
-  const hasComposableContent = Boolean(inputValue.trim() || attachmentUrl);
+  const hasComposableContent = Boolean(
+    inputValue.trim() || attachmentUrl || imageUploads.hasImages,
+  );
+  const sendBlockedByUpload =
+    imageUploads.isUploading || attachmentUrl === UPLOAD_PLACEHOLDER;
   const composerLocked = Boolean(isChatLoading);
   const toggleAttachTray = () => {
     if (isChatLoadingRef.current) return;
@@ -975,6 +1003,11 @@ const ChatFooter = ({
           uploadPlaceholder={UPLOAD_PLACEHOLDER}
           onCancelReply={handleReplyPreviewClose}
           onRemoveAttachment={handleAttachmentPreviewClose}
+          images={imageUploads.images}
+          onRemoveImage={imageUploads.removeImage}
+          onRetryImage={imageUploads.retryImage}
+          onAddImages={handleMessageImageButtonClick}
+          canAddMoreImages={imageUploads.canAddMore}
         />
 
         {isTranscribing ? (
@@ -1087,6 +1120,7 @@ const ChatFooter = ({
                 onChange={handleInputChange}
                 value={inputValue}
                 onKeyDown={handleKeyPress}
+                onPaste={handleComposerPaste}
                 placeholder={
                   isTranscribing
                     ? String(transcribeLang).startsWith("bn")
@@ -1183,20 +1217,20 @@ const ChatFooter = ({
                 }
                 role="button"
                 tabIndex={composerLocked || isSendingMessage ? -1 : 0}
-                className={`composer-icon-btn send message-action-button send-message ${attachmentUrl == "/assets/images/loading.gif" && "button-disabled"} ${composerLocked || isSendingMessage ? "disabled" : ""}`}
-                aria-label="Send message"
-                aria-disabled={composerLocked || isSendingMessage}
+                className={`composer-icon-btn send message-action-button send-message ${sendBlockedByUpload ? "button-disabled" : ""} ${composerLocked || isSendingMessage ? "disabled" : ""}`}
+                aria-label={sendBlockedByUpload ? "Waiting for uploads" : "Send message"}
+                aria-disabled={composerLocked || isSendingMessage || sendBlockedByUpload}
                 style={{
-                  opacity: composerLocked || isSendingMessage ? 0.6 : 1,
+                  opacity: composerLocked || isSendingMessage || sendBlockedByUpload ? 0.6 : 1,
                   cursor:
-                    composerLocked || isSendingMessage
+                    composerLocked || isSendingMessage || sendBlockedByUpload
                       ? "not-allowed"
                       : "pointer",
                 }}
               >
                 <i
                   className={
-                    isSendingMessage
+                    isSendingMessage || sendBlockedByUpload
                       ? "fas fa-spinner fa-spin"
                       : "fas fa-paper-plane"
                   }
@@ -1494,10 +1528,11 @@ const ChatFooter = ({
           <input
             type="file"
             accept="image/*"
+            multiple
             style={{ display: "none" }}
             ref={imageInput}
-            onChange={handleMessageImageChange.bind(this)}
-            disabled={composerLocked || isUploadingImage}
+            onChange={handleMessageImageChange}
+            disabled={composerLocked}
           />
         </div>
       </div>

@@ -11,6 +11,7 @@ import { useSelector } from "react-redux";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import moment from "moment";
 import { fetchChatListCached, fetchOnlineStatusesCached } from "../../utils/requestCache";
+import { getPresence, usePresenceVersion } from "../../utils/presence";
 import MsgListSkleton from "../../skletons/message/MsgListSkleton";
 import ContactCacheManager from "../../utils/contactCacheManager";
 import socket from "../../common/socket";
@@ -146,6 +147,8 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
       .map((contact) => contact.person._id);
   });
   const [connectProfileStatusMap, setConnectProfileStatusMap] = useState({});
+  // Re-render on every live presence change (statuses read via getPresence).
+  usePresenceVersion();
   const [loading, setLoading] = useState(() => cachedContacts.length === 0);
 
   // HTTP-based contacts fetching (now includes online status)
@@ -612,7 +615,9 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
                     : contactMessages[0].isSeen
                   : true;
                 const isActive = idOf(contactPerson._id) === idOf(params.profile);
-                const profileIsActive = connectProfileStatusMap[contactPerson._id];
+                const profileIsActive =
+                  getPresence(contactPerson._id)?.isActive ??
+                  connectProfileStatusMap[contactPerson._id];
                 const isOnline =
                   profileIsActive !== undefined
                     ? profileIsActive
@@ -753,7 +758,18 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
               <div className="online-indicator" aria-live="polite">
                 <span className="indicator-dot"></span>
                 <span className="indicator-text">
-                  Online • {activeConnects.length}
+                  Online •{" "}
+                  {
+                    (contacts || []).filter((contact) => {
+                      const id = contact?.person?._id;
+                      if (!id) return false;
+                      return (
+                        getPresence(id)?.isActive ??
+                        connectProfileStatusMap[id] ??
+                        activeConnects.includes(id)
+                      );
+                    }).length
+                  }
                 </span>
               </div>
             </div>
@@ -886,7 +902,9 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
                     : true;
                   const isActive =
                     idOf(contactPerson._id) === idOf(params.profile);
-                  const profileIsActive = connectProfileStatusMap[contactPerson._id];
+                  const profileIsActive =
+                    getPresence(contactPerson._id)?.isActive ??
+                    connectProfileStatusMap[contactPerson._id];
                   const isOnline =
                     profileIsActive !== undefined
                       ? profileIsActive

@@ -86,6 +86,7 @@ import useShakeDetector from "../hooks/useShakeDetector";
 import MobileBottomNav from "../partials/MobileBottomNav/MobileBottomNav";
 import OfflineBanner from "../components/OfflineBanner/OfflineBanner";
 import useOnlineStatus from "../hooks/useOnlineStatus";
+import { startPresence } from "../utils/presence";
 // Saved media must open with no connection, so keep these pages in the main
 // bundle instead of lazy chunks that might be missing from the offline cache.
 import SavedVideos from "./SavedVideos.js";
@@ -407,6 +408,11 @@ const Main = () => {
     // route to crawlers and marks every other route noindex.
     // /portfolio/* SEO is owned by PortfolioSEO (name-focused Person schema)
   ];
+
+  // Live online/offline statuses of connects (socket presence).
+  useEffect(() => {
+    startPresence();
+  }, []);
 
   useEffect(() => {
     const pathname = location.pathname || "/";

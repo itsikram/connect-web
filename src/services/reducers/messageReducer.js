@@ -117,24 +117,24 @@ const messageReducer = (state = initialState, action) => {
                 return state;
             }
 
-            const usOtherContacts = state.filter(state => state?.person?._id !== seenContactId)
-            const seenContact = state.filter(state => state?.person?._id === seenContactId)
+            // Ids may arrive as strings (route params) or ObjectId-like values,
+            // so compare as strings. Keep the list order and return the same
+            // state when nothing changed so unread badges don't re-render.
+            const seenId = String(seenContactId)
+            const index = state.findIndex(c => String(c?.person?._id) === seenId)
+            const seenContact = index >= 0 ? state[index] : null
 
-            // Check if the contact exists and has messages before trying to access them
-            if (seenContact.length > 0 && seenContact[0]?.messages && seenContact[0].messages.length > 0) {
-                // Create a deep copy to avoid mutation
-                // Mark ALL unseen messages from this contact as seen
-                const updatedSeenContact = {
-                    ...seenContact[0],
-                    messages: seenContact[0].messages.map((msg) => 
-                        msg.isSeen !== true ? { ...msg, isSeen: true } : msg
+            if (seenContact?.messages?.length > 0) {
+                if (!seenContact.messages.some(msg => msg && msg.isSeen !== true)) return state
+
+                const nextState = state.slice()
+                nextState[index] = {
+                    ...seenContact,
+                    messages: seenContact.messages.map((msg) =>
+                        msg && msg.isSeen !== true ? { ...msg, isSeen: true } : msg
                     )
-                };
-
-                return [
-                    updatedSeenContact,
-                    ...usOtherContacts,
-                ];
+                }
+                return nextState
             } else {
                 // If contact doesn't exist or has no messages, silently return unchanged state
                 // This can happen when the seen message is processed before the contact is loaded

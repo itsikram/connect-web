@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useSelector } from "react-redux";
-import { selectUnreadMessageCount } from "../header/HeaderRight";
+import { formatBadgeCount, selectUnreadMessageCount } from "../header/HeaderRight";
 import "./MobileBottomNav.css";
 
 // Same tabs as the Connect mobile app's bottom bar.
@@ -56,7 +56,7 @@ const MobileBottomNav = () => {
                 <i className={`${isActive ? "fas" : "fal"} ${tab.icon}`} aria-hidden="true" />
                 {tab.badge === "messages" && unreadMessages > 0 && (
                   <span className="mobile-bottom-nav-badge">
-                    {unreadMessages > 99 ? "99+" : unreadMessages}
+                    {formatBadgeCount(unreadMessages)}
                   </span>
                 )}
               </span>
