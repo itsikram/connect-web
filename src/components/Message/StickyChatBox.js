@@ -35,6 +35,7 @@ import {
   idOf,
   isConversationMessage,
   applySeenToMessages,
+  mergeInitialHistory,
   upsertConfirmedMessage,
 } from "../../utils/optimisticMessage";
 
@@ -655,15 +656,10 @@ const StickyChatBox = ({
           const historyIds = new Set(
             deduplicated.map((message) => idOf(message?._id)).filter(Boolean),
           );
-          setMessages((prev) => {
-            const liveMessages = prev.filter(
-              (message) =>
-                message?.isOptimistic ||
-                (!cachedMessageIdsRef.current.has(idOf(message?._id)) &&
-                  !historyIds.has(idOf(message?._id))),
-            );
-            return [...deduplicated, ...liveMessages];
-          });
+          const cachedIds = cachedMessageIdsRef.current;
+          setMessages((prev) =>
+            mergeInitialHistory(deduplicated, prev, cachedIds),
+          );
           cachedMessageIdsRef.current = historyIds;
           hasLoadedFreshMessagesRef.current = true;
           setHasMoreMessages(response.data.hasMore ?? deduplicated.length >= 20);

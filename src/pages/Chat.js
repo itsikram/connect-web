@@ -35,6 +35,7 @@ import {
   isConversationMessage,
   applySeenToMessages,
   mergeHistoryWithLive,
+  mergeInitialHistory,
   upsertConfirmedMessage,
 } from "../utils/optimisticMessage";
 
@@ -1085,20 +1086,10 @@ const Chat = () => {
           if (cancelled) return;
 
           if (response.ok) {
-            const historyIds = new Set(
-              response.messages.map((message) => idOf(message?._id)).filter(Boolean),
+            const cachedIds = cachedMessageIdsRef.current;
+            setMessages((prev) =>
+              mergeInitialHistory(response.messages, prev, cachedIds),
             );
-            setMessages((prev) => {
-              // Replace cached history with the server snapshot, but retain
-              // optimistic/socket messages received while the request ran.
-              const liveMessages = prev.filter(
-                (message) =>
-                  message?.isOptimistic ||
-                  (!cachedMessageIdsRef.current.has(idOf(message?._id)) &&
-                    !historyIds.has(idOf(message?._id))),
-              );
-              return [...response.messages, ...liveMessages];
-            });
             cachedMessageIdsRef.current = new Set(
               response.messages
                 .map((message) => idOf(message?._id))

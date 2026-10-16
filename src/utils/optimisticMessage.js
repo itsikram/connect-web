@@ -132,6 +132,33 @@ export function mergeHistoryWithLive(history, live) {
   return [...hist, ...extras];
 }
 
+// Replace locally cached history with a fresh server snapshot while keeping
+// optimistic/socket messages that arrived during the request. A cached
+// message missing from the snapshot is only dropped when it falls inside the
+// time range the snapshot covers (i.e. it was deleted); anything newer than
+// the snapshot's latest message means the snapshot is behind, so keep it.
+export function mergeInitialHistory(history, prev, cachedIds) {
+  const hist = Array.isArray(history) ? history.filter(Boolean) : [];
+  const prevList = Array.isArray(prev) ? prev.filter(Boolean) : [];
+  const cached = cachedIds instanceof Set ? cachedIds : new Set();
+  const histIds = new Set(hist.map((m) => idOf(m._id)).filter(Boolean));
+  const newestHistoryTs = hist.reduce((max, m) => {
+    const ts = new Date(m?.timestamp || 0).getTime();
+    return Number.isFinite(ts) && ts > max ? ts : max;
+  }, 0);
+
+  const extras = prevList.filter((msg) => {
+    if (msg.isOptimistic) return true;
+    const id = idOf(msg._id);
+    if (!id || histIds.has(id)) return false;
+    if (!cached.has(id)) return true;
+    const ts = new Date(msg.timestamp || 0).getTime();
+    return hist.length > 0 && Number.isFinite(ts) && ts > newestHistoryTs;
+  });
+
+  return mergeHistoryWithLive(hist, extras);
+}
+
 export function applyLastMessageToContacts(contacts, message, myId) {
   if (!message || !Array.isArray(contacts)) return { contacts, found: false };
   const contactId = otherContactId(message, myId);

@@ -91,8 +91,10 @@ const getGetRequestOptimization = (requestConfig) => {
     return { cacheTtl: 0 };
   }
 
+  // Chat history must always reflect the latest messages; only dedupe
+  // concurrent requests, never serve a remembered snapshot.
   if (pathname.includes("/message/getChatHistory")) {
-    return { cacheTtl: 4000 };
+    return { cacheTtl: 0 };
   }
 
   if (pathname.includes("/message/getOldMessages")) {
