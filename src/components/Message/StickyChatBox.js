@@ -37,6 +37,9 @@ import {
   isConversationMessage,
   applySeenToMessages,
   mergeInitialHistory,
+  messageKey,
+  prependOlderMessages,
+  sortMessages,
   upsertConfirmedMessage,
 } from "../../utils/optimisticMessage";
 
@@ -685,7 +688,13 @@ const StickyChatBox = ({
     MessageCacheManager.setCachedMessages(
       userId,
       connectId,
-      messages.filter((message) => message && message._id && !message.isOptimistic),
+      messages.filter(
+        (message) =>
+          message &&
+          message._id &&
+          !message.isOptimistic &&
+          isConversationMessage(message, userId, connectId),
+      ),
     );
   }, [messages, userId, connectId]);
 
@@ -807,6 +816,32 @@ const StickyChatBox = ({
     socket.on("seenMessage", handleMessageSeen);
     socket.on("messageReactionUpdated", handleReactionUpdate);
 
+    const handleDeleteMessage = (deletedMessageId) => {
+      setMessages((prev) =>
+        prev.filter((msg) => String(msg?._id) !== String(deletedMessageId)),
+      );
+    };
+    const handleSecureOpened = (data = {}) => {
+      if (!isConversationMessage(data, userId, connectId)) return;
+      const openedId = idOf(data.messageId || data._id);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          idOf(msg?._id) === openedId
+            ? {
+                ...msg,
+                secure: {
+                  ...(msg.secure || {}),
+                  state: "opened",
+                  openedAt: data.openedAt || new Date().toISOString(),
+                },
+              }
+            : msg,
+        ),
+      );
+    };
+    socket.on("deleteMessage", handleDeleteMessage);
+    socket.on("secureMessageOpened", handleSecureOpened);
+
     const rejoinRoom = () => {
       socket.emit("joinRoom", roomId);
     };
@@ -820,6 +855,8 @@ const StickyChatBox = ({
       socket.off("messageSeen", handleMessageSeen);
       socket.off("seenMessage", handleMessageSeen);
       socket.off("messageReactionUpdated", handleReactionUpdate);
+      socket.off("deleteMessage", handleDeleteMessage);
+      socket.off("secureMessageOpened", handleSecureOpened);
       socket.off("connect", rejoinRoom);
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
@@ -1107,7 +1144,14 @@ const StickyChatBox = ({
               prevTop: el.scrollTop,
             };
           }
-          setMessages((prev) => [...response.messages, ...prev]);
+          setMessages((prev) =>
+            prependOlderMessages(
+              response.messages.filter((m) =>
+                isConversationMessage(m, userId, connectId),
+              ),
+              prev,
+            ),
+          );
           setHasMoreMessages(response.hasMore);
         } else {
           setHasMoreMessages(false);
@@ -1122,7 +1166,8 @@ const StickyChatBox = ({
     };
 
     loadMoreMessages();
-  }, [scrollPercent, hasMoreMessages, isMsgLoading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollPercent, hasMoreMessages, isMsgLoading, userId, connectId]);
 
   // Restore the scroll anchor right after older messages are prepended, before paint.
   useLayoutEffect(() => {
@@ -1426,9 +1471,11 @@ const StickyChatBox = ({
           {isLoading || (isInitialMsgLoading && messages.length === 0) ? (
             <SingleMsgSkleton count={8} />
           ) : messages.length > 0 ? (
-            messages.map((msg, index) => (
+            sortMessages(
+              messages.filter((m) => isConversationMessage(m, userId, connectId)),
+            ).map((msg, index) => (
               <SingleMessage
-                key={msg._id ? `${msg._id}-${index}` : `msg-${index}`}
+                key={messageKey(msg) || `msg-${index}`}
                 msg={msg}
                 connectProfile={connectProfile}
                 messages={messages}

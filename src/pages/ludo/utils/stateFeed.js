@@ -137,7 +137,8 @@ export const createStateFeed = ({ onChange, onEvent, now = () => Date.now() } = 
   const push = (next) => {
     if (!next || disposed) return;
     const previous = state;
-    const sameGame = previous && previous.gameId === next.gameId;
+    // A new epoch is the same game reloaded on the server: take it as-is.
+    const sameGame = Boolean(previous && previous.gameId === next.gameId && previous.epoch === next.epoch);
     if (sameGame && Number(next.version) <= Number(previous.version)) return;
     state = next;
 

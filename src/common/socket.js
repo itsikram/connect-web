@@ -11,6 +11,7 @@ import {
     usesRuntimeServerConfig,
     applyServerConfig,
 } from '../utils/offlineUtils';
+import { getUserFromStorage } from '../utils/storageUtils';
 
 let socketInstance = null;
 let socketProxy = null;
@@ -102,7 +103,14 @@ const attachFailover = (instance) => {
         consecutiveErrors = 0;
         if (socketServers) rememberServer(socketServers[serverIndex]);
     });
-    instance.on('connect_error', () => {
+    instance.on('connect_error', (err) => {
+        if (isRefusedByServer(err)) {
+            // A refused connection is not retried by socket.io itself.
+            setTimeout(() => {
+                if (!instance.connected && readStoredProfileId()) instance.connect();
+            }, AUTH_RETRY_MS);
+            return;
+        }
         consecutiveErrors += 1;
         if (consecutiveErrors >= FAILOVER_AFTER_ERRORS) failoverToNextServer();
     });
@@ -128,6 +136,21 @@ const attachFailover = (instance) => {
         });
     }
 };
+
+// The access token the REST API uses; the server takes the socket's identity
+// from it (a claimed profile id alone is not trusted).
+const readStoredToken = () => {
+    const token = getUserFromStorage()?.accessToken;
+    return token ? String(token) : null;
+};
+
+// Read on every (re)connect, so a refreshed token is used.
+const socketAuth = (cb) => cb({ profile: socketProfileId, token: readStoredToken() });
+
+// The server refused this socket (auth middleware): the server is up, so
+// this is not a failover case. Retry later; API calls refresh the token.
+const AUTH_RETRY_MS = 5000;
+const isRefusedByServer = (err) => Boolean(err && err.data && err.type !== 'TransportError');
 
 const readStoredProfileId = () => {
     try {
@@ -159,7 +182,7 @@ const syncSocketIdentity = () => {
     if (currentProfileId !== socketProfileId) {
         socketProfileId = currentProfileId;
         socketInstance.io.opts.query = { ...(socketInstance.io.opts.query || {}), profile: currentProfileId };
-        socketInstance.auth = { profile: currentProfileId };
+        socketInstance.auth = socketAuth;
         socketInstance.disconnect();
         socketInstance.connect();
         return;
@@ -182,9 +205,7 @@ const getSocket = () => {
                 query: {
                     profile: profileId
                 },
-                auth: {
-                    profile: profileId
-                },
+                auth: socketAuth,
             });
             attachFailover(socketInstance);
         } catch (error) {

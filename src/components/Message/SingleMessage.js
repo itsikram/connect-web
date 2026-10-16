@@ -16,6 +16,7 @@ import {
   getProfileDisplayName,
 } from "../../utils/messageMedia";
 import { QUICK_REACTION_PRESETS } from "../../utils/chatThemes";
+import { SecureMessageBubble, isSecureMessage } from "./SecureMessage";
 
 const messageTokenPattern = /(^|[^\p{L}\p{N}_])#([\p{L}\p{N}_]{1,50})/giu;
 
@@ -399,10 +400,26 @@ const SingleMessage = ({
     }, 1200);
   };
 
+  const isSecure = isSecureMessage(msg);
   const isCallMessage = msg.messageType === "call";
-  const isAudioMessage = () => isAudioMsg(msg);
-  const hasMedia = hasImageAttachment(msg);
-  const hasCaption = Boolean(String(msg.message || "").trim());
+  const isAudioMessage = () => !isSecure && isAudioMsg(msg);
+  const hasMedia = !isSecure && hasImageAttachment(msg);
+  const hasCaption = !isSecure && Boolean(String(msg.message || "").trim());
+
+  // Only the state (sealed / opened / expired) is stored; the content of a
+  // secure message never enters the message list.
+  const handleSecureStateChange = (messageId, state, openedAt) => {
+    setMessages?.((prevMessages) =>
+      prevMessages.map((message) =>
+        String(message?._id) === String(messageId)
+          ? {
+              ...message,
+              secure: { ...(message.secure || {}), state, openedAt: openedAt || message.secure?.openedAt || null },
+            }
+          : message,
+      ),
+    );
+  };
   const isMediaOnly = hasMedia && !hasCaption && !isCallMessage && !isAudioMessage();
 
   const formatTime = (secs) => {
@@ -582,16 +599,18 @@ const SingleMessage = ({
           >
             <i className="fa fa-reply"></i>
           </button>
-          <button
-            type="button"
-            data-id={msg._id}
-            className="chat-message-option share speaker"
-            onClick={handleSpeakMessage.bind(this)}
-            aria-label="Speak message"
-            title="Speak message"
-          >
-            <i className="fa fa-volume-up"></i>
-          </button>
+          {!isSecure && (
+            <button
+              type="button"
+              data-id={msg._id}
+              className="chat-message-option share speaker"
+              onClick={handleSpeakMessage.bind(this)}
+              aria-label="Speak message"
+              title="Speak message"
+            >
+              <i className="fa fa-volume-up"></i>
+            </button>
+          )}
           {isSent && (
             <>
               <button
@@ -614,7 +633,14 @@ const SingleMessage = ({
         onActivate={handleParentMsgClick}
       />
 
-      {isCallMessage ? (
+      {isSecure ? (
+        <SecureMessageBubble
+          msg={msg}
+          isMine={isSent}
+          senderName={getProfileDisplayName(connectProfile, "")}
+          onStateChange={handleSecureStateChange}
+        />
+      ) : isCallMessage ? (
         renderCallContent()
       ) : isAudioMessage() ? (
         renderAudioContent()
@@ -624,7 +650,7 @@ const SingleMessage = ({
         </div>
       ) : null}
 
-      {!isCallMessage && !isAudioMessage() && (
+      {!isSecure && !isCallMessage && !isAudioMessage() && (
         <MessageAttachment src={msg.attachment} />
       )}
 
@@ -671,9 +697,10 @@ const SingleMessage = ({
     </>
   );
 
-  const isMine = msg.senderId === myId;
+  const isMine = String(msg.senderId) === String(myId);
   const bubbleClass = [
     "chat-message",
+    isSecure ? "is-secure" : "",
     hasMedia ? "has-attachment" : "",
     isMediaOnly ? "media-only" : "",
     isAudioMessage() ? "is-voice" : "",

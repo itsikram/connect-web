@@ -60,6 +60,8 @@ function getLastMessagePreview(lastMessage) {
     return "Start a conversation...";
   }
 
+  if (lastMessage.messageType === "secure") return "🔒 Secure message";
+
   if (lastMessage.messageType === "call") {
     const isVideo = lastMessage.callType === "video";
     const isMissed = lastMessage.callEvent === "missed";

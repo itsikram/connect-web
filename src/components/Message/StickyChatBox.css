@@ -1041,3 +1041,14 @@
 .sticky-chat-box[data-chat-theme] .sticky-chat-attachment-btn:hover:not(:disabled) {
     border-color: color-mix(in srgb, var(--chat-accent, #00d4ff) 50%, transparent);
 }
+
+/* Keep the sticky chat above the mobile bottom nav instead of under it */
+@media (max-width: 768px) {
+    body.has-mobile-bottom-nav .sticky-chat-wrapper {
+        bottom: calc(var(--mobile-bottom-nav-h, 60px) + env(safe-area-inset-bottom, 0px) + 10px) !important;
+    }
+
+    body.has-mobile-bottom-nav .sticky-chat-box:not(.minimized) {
+        height: calc(100dvh - var(--mobile-bottom-nav-h, 60px) - env(safe-area-inset-bottom, 0px) - 90px);
+    }
+}

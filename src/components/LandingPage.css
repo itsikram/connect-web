@@ -8,6 +8,8 @@
   background: #fff;
   min-height: 100vh;
   overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 /* The public pages also render without Bootstrap (PublicApp and the
@@ -76,24 +78,35 @@ body {
   gap: 10px;
   font-weight: 700;
   font-size: 1.25rem;
+  line-height: 1.2;
   color: #2d3748;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .landing-page .landing-brand img {
   width: 36px;
   height: 36px;
   border-radius: 10px;
+  flex-shrink: 0;
 }
 
 .landing-page .landing-nav-links {
   display: flex;
+  align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .landing-page .landing-nav-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
   padding: 8px 16px;
   border-radius: 50px;
   font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
   color: #4c51bf;
 }
 
@@ -380,6 +393,51 @@ body {
     max-width: 300px;
     box-sizing: border-box;
     text-align: center;
+  }
+}
+
+/* Small phones (iPhone 12 mini / SE: 375px and below) */
+@media (max-width: 400px) {
+  .landing-page .landing-nav {
+    gap: 8px;
+    padding: 12px 0;
+  }
+
+  .landing-page .landing-brand {
+    gap: 8px;
+    font-size: 1.05rem;
+  }
+
+  .landing-page .landing-brand img {
+    width: 32px;
+    height: 32px;
+  }
+
+  .landing-page .landing-nav-links {
+    gap: 4px;
+  }
+
+  .landing-page .landing-nav-links a {
+    padding: 8px 12px;
+    font-size: 0.9rem;
+  }
+
+  .landing-page .hero-section {
+    padding: 40px 16px;
+    border-radius: 24px;
+  }
+
+  .landing-page .hero-content h1 {
+    font-size: 1.65rem;
+  }
+
+  .landing-page .hero-subtitle {
+    font-size: 0.95rem;
+  }
+
+  .landing-page .landing-btn {
+    padding: 13px 24px;
+    font-size: 1rem;
   }
 }
 

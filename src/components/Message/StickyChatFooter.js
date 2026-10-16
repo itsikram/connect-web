@@ -5,6 +5,7 @@ import { useSelector } from "react-redux";
 import EmojiPicker from "emoji-picker-react";
 import socket from "../../common/socket";
 import "./StickyChatFooter.css";
+import "./SecureMessage.css";
 import ComposerContextPreview from "./ComposerContextPreview";
 import useComposerImageUploads, {
   MAX_COMPOSER_IMAGES,
@@ -47,6 +48,11 @@ const StickyChatFooter = ({
   const [transcribeLang, setTranscribeLang] = useState("en-US");
   const [recordingMs, setRecordingMs] = useState(0);
   const [actionEmoji, setActionEmoji] = useState("👍");
+  // Secure mode: the next messages vanish after the receiver opens them.
+  // Off by default and reset per conversation so it is never left on by
+  // accident.
+  const [secureMode, setSecureMode] = useState(false);
+  const secureModeRef = useRef(false);
 
   const recorderRef = useRef(null);
   const recordingChunksRef = useRef([]);
@@ -77,6 +83,15 @@ const StickyChatFooter = ({
     inputValueRef.current = inputValue;
   }, [inputValue]);
 
+  useEffect(() => {
+    secureModeRef.current = secureMode;
+  }, [secureMode]);
+
+  useEffect(() => {
+    secureModeRef.current = false;
+    setSecureMode(false);
+  }, [connectId]);
+
   const scrollToLastMessage = () => {
     if (msgListRef?.current) {
       setTimeout(() => {
@@ -101,7 +116,8 @@ const StickyChatFooter = ({
       socket.emit("typing", {
         room: roomId,
         isTyping: typing,
-        type: typing ? value : "",
+        // Never stream the draft of a secure message as a live preview.
+        type: typing && !secureModeRef.current ? value : "",
         receiverId: connectId,
         senderId: userId,
       });

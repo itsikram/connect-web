@@ -21,6 +21,7 @@ import useComposerImageUploads, {
   MAX_COMPOSER_IMAGES,
 } from "../../hooks/useComposerImageUploads";
 import { showErrorToast, showInfoToast } from "../../utils/toastUtils";
+import "./SecureMessage.css";
 
 const UPLOAD_PLACEHOLDER =
   "/assets/images/loading.gif";
@@ -54,6 +55,11 @@ const ChatFooter = ({
   const [isImojiChangeContainer, setIsEmojiChangeContainer] = useState(false);
   const [actionEmoji, setActionEmoji] = useState("👍");
   const [isAi, setIsAi] = useState(false);
+  // Secure mode: the next messages vanish after the receiver opens them.
+  // Off by default and reset per conversation so it is never left on by
+  // accident.
+  const [secureMode, setSecureMode] = useState(false);
+  const secureModeRef = useRef(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const isSendingRef = useRef(false); // Ref to track sending state synchronously
   const isChatLoadingRef = useRef(false);
@@ -105,6 +111,15 @@ const ChatFooter = ({
   }, [inputValue]);
 
   useEffect(() => {
+    secureModeRef.current = secureMode;
+  }, [secureMode]);
+
+  useEffect(() => {
+    secureModeRef.current = false;
+    setSecureMode(false);
+  }, [connectId]);
+
+  useEffect(() => {
     isChatLoadingRef.current = Boolean(isChatLoading);
   }, [isChatLoading]);
 
@@ -142,7 +157,8 @@ const ChatFooter = ({
       socket.emit("typing", {
         room: roomId,
         isTyping: typing,
-        type: typing ? value : "",
+        // Never stream the draft of a secure message as a live preview.
+        type: typing && !secureModeRef.current ? value : "",
         receiverId: connectId,
         senderId: userId,
       });
@@ -317,6 +333,7 @@ const ChatFooter = ({
           senderId: userId,
           receiverId: connectId,
           isAi,
+          ...(secureModeRef.current && !isAi ? { secure: true } : {}),
         };
         // One message per photo; the text and reply ride on the first one.
         const attachments = [
@@ -353,6 +370,7 @@ const ChatFooter = ({
           .catch((error) => {
             console.error("Failed to send message:", error);
             if (typedMessage) setInputValue(typedMessage);
+            showErrorToast(error?.message || "Message not sent. Please try again.");
           })
           .finally(() => {
             // Reset sending flag after a short delay
@@ -977,6 +995,17 @@ const ChatFooter = ({
   const sendBlockedByUpload =
     imageUploads.isUploading || attachmentUrl === UPLOAD_PLACEHOLDER;
   const composerLocked = Boolean(isChatLoading);
+  const canUseSecure = !isAi;
+  const isSecureComposer = secureMode && canUseSecure;
+  const toggleSecureMode = () => {
+    if (composerLocked || !canUseSecure) return;
+    const next = !secureModeRef.current;
+    secureModeRef.current = next;
+    setSecureMode(next);
+    // Drop any live-typing preview the other side already has.
+    if (next) removeTyping();
+    requestAnimationFrame(() => messageInput?.current?.focus?.({ preventScroll: true }));
+  };
   const toggleAttachTray = () => {
     if (isChatLoadingRef.current) return;
     setShowAttachTray((prev) => !prev);
@@ -1082,6 +1111,19 @@ const ChatFooter = ({
           </div>
         ) : null}
 
+        {isSecureComposer ? (
+          <div className="composer-secure-banner" role="status">
+            <i className="fas fa-lock" aria-hidden="true"></i>
+            <span>
+              Secure mode: messages are encrypted, hidden from notifications
+              and vanish after they're opened (or in 24h).
+            </span>
+            <button type="button" onClick={toggleSecureMode}>
+              Turn off
+            </button>
+          </div>
+        ) : null}
+
         <div className="new-message-container composer-main">
           <div
             className={`composer-icon-btn attach-toggle ${showAttachTray ? "active" : ""} ${composerLocked || isUploadingFile || isUploadingImage ? "disabled" : ""}`}
@@ -1114,7 +1156,33 @@ const ChatFooter = ({
           </div>
 
           <div className="new-message-form composer-field-wrap">
-            <div className="new-message-input-container composer-field">
+            <div
+              className={`new-message-input-container composer-field${isSecureComposer ? " is-secure" : ""}`}
+            >
+              {canUseSecure ? (
+                <button
+                  type="button"
+                  className={`composer-secure-toggle${isSecureComposer ? " is-on" : ""}`}
+                  onClick={toggleSecureMode}
+                  disabled={composerLocked}
+                  aria-pressed={isSecureComposer}
+                  aria-label={
+                    isSecureComposer
+                      ? "Turn off secure mode"
+                      : "Send a secure, vanishing message"
+                  }
+                  title={
+                    isSecureComposer
+                      ? "Secure mode is on"
+                      : "Secure message (vanishes after it's read)"
+                  }
+                >
+                  <i
+                    className={`fas ${isSecureComposer ? "fa-lock" : "fa-lock-open"}`}
+                    aria-hidden="true"
+                  ></i>
+                </button>
+              ) : null}
               <input
                 ref={messageInput}
                 onChange={handleInputChange}
@@ -1126,7 +1194,9 @@ const ChatFooter = ({
                     ? String(transcribeLang).startsWith("bn")
                       ? "Listening in Bangla…"
                       : "Listening in English…"
-                    : "Message"
+                    : isSecureComposer
+                      ? "Secure message"
+                      : "Message"
                 }
                 id="newMessageInput"
                 className="new-message-input"
@@ -1194,7 +1264,7 @@ const ChatFooter = ({
             ref={messageActionButtonContainer}
             className="message-action-button-container composer-end-actions"
           >
-            {hasComposableContent ? (
+            {hasComposableContent || isSecureComposer ? (
               <div
                 onClick={
                   composerLocked || isSendingMessage
@@ -1217,13 +1287,22 @@ const ChatFooter = ({
                 }
                 role="button"
                 tabIndex={composerLocked || isSendingMessage ? -1 : 0}
-                className={`composer-icon-btn send message-action-button send-message ${sendBlockedByUpload ? "button-disabled" : ""} ${composerLocked || isSendingMessage ? "disabled" : ""}`}
-                aria-label={sendBlockedByUpload ? "Waiting for uploads" : "Send message"}
+                className={`composer-icon-btn send message-action-button send-message ${sendBlockedByUpload || !hasComposableContent ? "button-disabled" : ""} ${composerLocked || isSendingMessage ? "disabled" : ""}${isSecureComposer ? " is-secure" : ""}`}
+                aria-label={
+                  sendBlockedByUpload
+                    ? "Waiting for uploads"
+                    : isSecureComposer
+                      ? "Send secure message"
+                      : "Send message"
+                }
                 aria-disabled={composerLocked || isSendingMessage || sendBlockedByUpload}
                 style={{
-                  opacity: composerLocked || isSendingMessage || sendBlockedByUpload ? 0.6 : 1,
+                  opacity:
+                    composerLocked || isSendingMessage || sendBlockedByUpload || !hasComposableContent
+                      ? 0.6
+                      : 1,
                   cursor:
-                    composerLocked || isSendingMessage || sendBlockedByUpload
+                    composerLocked || isSendingMessage || sendBlockedByUpload || !hasComposableContent
                       ? "not-allowed"
                       : "pointer",
                 }}

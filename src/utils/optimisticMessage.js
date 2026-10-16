@@ -12,6 +12,101 @@ export function idOf(value) {
   return String(value);
 }
 
+const timeOf = (message) => {
+  const ts = new Date(message?.timestamp || message?.createdAt || 0).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+};
+
+// Stable React key: the tempId survives the optimistic -> confirmed swap, so
+// the bubble is not re-mounted (no flicker) when the server confirms it.
+export function messageKey(message) {
+  return String(message?.tempId || idOf(message?._id) || "");
+}
+
+// Confirmed messages in server-time order, then still-pending (optimistic /
+// failed) ones in the order they were sent. Pending messages carry the
+// device clock, which can be off, so they never sort into the confirmed
+// history. Duplicates (same _id or tempId) keep the last copy.
+export function sortMessages(messages) {
+  const list = Array.isArray(messages) ? messages.filter(Boolean) : [];
+  const slots = [];
+  const slotByKey = new Map();
+  list.forEach((message) => {
+    const keys = [];
+    const id = idOf(message._id);
+    if (id) keys.push(`id:${id}`);
+    if (message.tempId) keys.push(`temp:${message.tempId}`);
+    const slot = keys.map((key) => slotByKey.get(key)).find((s) => s != null);
+    if (slot == null) {
+      slots.push(message);
+      keys.forEach((key) => slotByKey.set(key, slots.length - 1));
+      return;
+    }
+    // A confirmed copy always wins over a pending one.
+    if (slots[slot].isOptimistic || !message.isOptimistic) slots[slot] = message;
+    keys.forEach((key) => slotByKey.set(key, slot));
+  });
+  const confirmed = [];
+  const pending = [];
+  slots.forEach((message, index) => {
+    (message.isOptimistic ? pending : confirmed).push({ message, index });
+  });
+  confirmed.sort(
+    (a, b) =>
+      timeOf(a.message) - timeOf(b.message) ||
+      idOf(a.message._id).localeCompare(idOf(b.message._id)) ||
+      a.index - b.index,
+  );
+  pending.sort((a, b) => a.index - b.index);
+  return [...confirmed, ...pending].map(({ message }) => message);
+}
+
+// Reconcile the list on screen with a fresh "latest page" from the server.
+//   knownIds  ids that were on screen (or in cache) before the request; a
+//             known message missing from the snapshot was deleted, unless it
+//             is older than the snapshot window and `keepOlder` is set
+//             (an older page the user scrolled up to load).
+//   Anything not known arrived live while the request was in flight: keep it.
+export function reconcileWithSnapshot(
+  snapshot,
+  current,
+  { knownIds, keepOlder = false, hasMore = true } = {},
+) {
+  const hist = sortMessages(snapshot);
+  const known = knownIds instanceof Set ? knownIds : new Set();
+  const histIds = new Set(hist.map((m) => idOf(m._id)).filter(Boolean));
+  const confirmedHist = hist.filter((m) => !m.isOptimistic);
+  const oldestTs = confirmedHist.length ? timeOf(confirmedHist[0]) : 0;
+  const newestTs = confirmedHist.length
+    ? timeOf(confirmedHist[confirmedHist.length - 1])
+    : 0;
+
+  const extras = (Array.isArray(current) ? current : []).filter((msg) => {
+    if (!msg) return false;
+    if (msg.isOptimistic) {
+      // Already confirmed in the snapshot (same tempId) -> drop the pending copy.
+      return !hist.some((h) => msg.tempId && h.tempId === msg.tempId);
+    }
+    const id = idOf(msg._id);
+    if (!id || histIds.has(id)) return false;
+    if (!known.has(id)) return true;
+    const ts = timeOf(msg);
+    if (hist.length === 0) return false;
+    if (ts > newestTs) return true;
+    return keepOlder && hasMore && ts < oldestTs;
+  });
+
+  return sortMessages([...hist, ...extras]);
+}
+
+// Older page loaded by scrolling up: prepend without duplicating anything.
+export function prependOlderMessages(older, current) {
+  return sortMessages([
+    ...(Array.isArray(older) ? older : []),
+    ...(Array.isArray(current) ? current : []),
+  ]);
+}
+
 export function emitChatMessage(updatedMessage, meta = {}) {
   if (typeof window === "undefined" || !updatedMessage) return;
   window.dispatchEvent(
@@ -58,7 +153,7 @@ export function upsertConfirmedMessage(prev, confirmed, tempId) {
     return true;
   });
 
-  return [...withoutDupes, confirmed];
+  return sortMessages([...withoutDupes, { ...confirmed, isOptimistic: false }]);
 }
 
 export function isConversationMessage(msg, userId, connectId) {
@@ -129,7 +224,7 @@ export function mergeHistoryWithLive(history, live) {
     return id && !histIds.has(id);
   });
 
-  return [...hist, ...extras];
+  return sortMessages([...hist, ...extras]);
 }
 
 // Replace locally cached history with a fresh server snapshot while keeping
@@ -138,25 +233,7 @@ export function mergeHistoryWithLive(history, live) {
 // time range the snapshot covers (i.e. it was deleted); anything newer than
 // the snapshot's latest message means the snapshot is behind, so keep it.
 export function mergeInitialHistory(history, prev, cachedIds) {
-  const hist = Array.isArray(history) ? history.filter(Boolean) : [];
-  const prevList = Array.isArray(prev) ? prev.filter(Boolean) : [];
-  const cached = cachedIds instanceof Set ? cachedIds : new Set();
-  const histIds = new Set(hist.map((m) => idOf(m._id)).filter(Boolean));
-  const newestHistoryTs = hist.reduce((max, m) => {
-    const ts = new Date(m?.timestamp || 0).getTime();
-    return Number.isFinite(ts) && ts > max ? ts : max;
-  }, 0);
-
-  const extras = prevList.filter((msg) => {
-    if (msg.isOptimistic) return true;
-    const id = idOf(msg._id);
-    if (!id || histIds.has(id)) return false;
-    if (!cached.has(id)) return true;
-    const ts = new Date(msg.timestamp || 0).getTime();
-    return hist.length > 0 && Number.isFinite(ts) && ts > newestHistoryTs;
-  });
-
-  return mergeHistoryWithLive(hist, extras);
+  return reconcileWithSnapshot(history, prev, { knownIds: cachedIds });
 }
 
 export function applyLastMessageToContacts(contacts, message, myId) {

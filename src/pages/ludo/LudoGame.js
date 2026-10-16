@@ -5,12 +5,7 @@ import api from "../../api/api";
 import siteConfig from "../../config/config.json";
 import { unlockAudio, resumeAudioFromGesture } from "../../utils/audioUnlock";
 import "./LudoGame.css";
-import {
-  COLORS,
-  HOME_COLUMN_LENGTH,
-  PLAYER_LETTERS,
-  PLAYER_NAMES,
-} from "./constants/gameConstants";
+import { COLORS, PLAYER_LETTERS, PLAYER_NAMES } from "./constants/gameConstants";
 import { adjustHexColor } from "./utils/colorUtils";
 import {
   boardSeatOf,
@@ -1727,11 +1722,6 @@ const BoardScreen = ({ conn, gameId, me, myProfile, fx, invites, notice, setNoti
               </button>
             )}
           </div>
-          {state.mode === "online" && (
-            <div className="ludo-muted" style={{ marginTop: 6, fontSize: 12 }}>
-              Home column: squares {maxSteps - (HOME_COLUMN_LENGTH - 1)}–{maxSteps}
-            </div>
-          )}
         </div>
       </div>
 

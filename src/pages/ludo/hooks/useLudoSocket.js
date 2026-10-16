@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { getSocketUrl } from "../../../utils/offlineUtils";
+import { getUserFromStorage } from "../../../utils/storageUtils";
+
+// The access token the REST API uses; the server takes the socket's identity
+// from it. Read on every (re)connect so a refreshed token is used.
+const readStoredToken = () => {
+  const token = getUserFromStorage()?.accessToken;
+  return token ? String(token) : null;
+};
 
 const socketBaseUrl = () => {
   try {
@@ -25,6 +33,7 @@ export const useLudoSocket = (profileId) => {
       transports: ["websocket", "polling"],
       path: "/socket.io",
       query: { profile: profileId },
+      auth: (cb) => cb({ profile: profileId, token: readStoredToken() }),
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
@@ -37,11 +46,24 @@ export const useLudoSocket = (profileId) => {
     setConnected(s.connected);
     const onConnect = () => setConnected(true);
     const onDisconnect = () => setConnected(false);
+    // The server refused the connection (e.g. an expired token): socket.io
+    // doesn't retry that by itself; API calls refresh the token meanwhile.
+    let retryTimer = null;
+    const onConnectError = (err) => {
+      if (!err?.data || err.type === "TransportError") return;
+      clearTimeout(retryTimer);
+      retryTimer = setTimeout(() => {
+        if (!s.connected) s.connect();
+      }, 5000);
+    };
     s.on("connect", onConnect);
     s.on("disconnect", onDisconnect);
+    s.on("connect_error", onConnectError);
     return () => {
+      clearTimeout(retryTimer);
       s.off("connect", onConnect);
       s.off("disconnect", onDisconnect);
+      s.off("connect_error", onConnectError);
       s.close();
       socketRef.current = null;
       setSocket(null);

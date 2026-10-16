@@ -2,6 +2,7 @@ import React, {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useState,
   useRef,
 } from "react";
@@ -35,12 +36,34 @@ import {
   idOf,
   isConversationMessage,
   applySeenToMessages,
-  mergeHistoryWithLive,
-  mergeInitialHistory,
+  messageKey,
+  prependOlderMessages,
+  reconcileWithSnapshot,
+  sortMessages,
   upsertConfirmedMessage,
 } from "../utils/optimisticMessage";
+import {
+  SECURE_MESSAGE_TYPE,
+  SECURE_PLACEHOLDER,
+} from "../components/Message/SecureMessage";
 
 const NEAR_BOTTOM_PX = 100;
+// Show the "jump to latest" button once the reader is this far up.
+const FAR_FROM_BOTTOM_PX = 600;
+const PAGE_SIZE = 20;
+
+// "Today", "Yesterday", "Monday", "12 Mar 2026" — shown when the day changes.
+const dayLabelFor = (msg, previous) => {
+  const day = moment(msg?.timestamp);
+  if (!day.isValid()) return null;
+  if (previous && moment(previous.timestamp).isSame(day, "day")) return null;
+  const today = moment().startOf("day");
+  const diff = today.diff(day.clone().startOf("day"), "days");
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  if (diff > 1 && diff < 7) return day.format("dddd");
+  return day.format(day.isSame(today, "year") ? "D MMM" : "D MMM YYYY");
+};
 
 // Function to calculate image brightness
 const getImageBrightness = async (imageUrl) => {
@@ -130,7 +153,11 @@ const Chat = () => {
   const pendingScrollRestoreRef = useRef(null);
   const pendingFollowLatestRef = useRef(false);
   const hasInitialScrolledRef = useRef(false);
-  const hasLoadedFreshMessagesRef = useRef(false);
+  // Which conversation the messages on screen were last loaded fresh for.
+  // The cache is only written for that conversation: a plain boolean let
+  // the previous chat's messages be saved into the next chat's cache on a
+  // switch, and they then showed up inside the wrong conversation.
+  const freshLoadedForRef = useRef(null);
   const cachedMessageIdsRef = useRef(new Set());
   const isMsgLoadingRef = useRef(false);
   const typingTimeoutRef = useRef(null);
@@ -154,6 +181,13 @@ const Chat = () => {
 
   const params = useParams();
   const connectId = params.profile;
+  // The conversation on screen right now, for async work that must not land
+  // in a different chat after the user switched.
+  const activeConnectRef = useRef(connectId);
+  activeConnectRef.current = connectId;
+  const [newBelowCount, setNewBelowCount] = useState(0);
+  const newBelowIdsRef = useRef(new Set());
+  const [isFarFromBottom, setIsFarFromBottom] = useState(false);
   const { theme, wallpaper, settings: chatAppearance } = useConnectChatSettings(
     connectId,
   );
@@ -231,11 +265,17 @@ const Chat = () => {
 
   // Persist conversation changes after fresh data has been loaded once.
   useEffect(() => {
-    if (!hasLoadedFreshMessagesRef.current || !userId || !connectId) return;
+    if (!userId || !connectId || freshLoadedForRef.current !== connectId) return;
     MessageCacheManager.setCachedMessages(
       userId,
       connectId,
-      messages.filter((m) => m && m._id && !m.isOptimistic),
+      messages.filter(
+        (m) =>
+          m &&
+          m._id &&
+          !m.isOptimistic &&
+          isConversationMessage(m, userId, connectId),
+      ),
     );
   }, [messages, userId, connectId]);
 
@@ -250,17 +290,13 @@ const Chat = () => {
           },
         });
 
-        const messages = Array.isArray(response?.data?.messages)
-          ? response.data.messages
-          : [];
+        const messages = (
+          Array.isArray(response?.data?.messages) ? response.data.messages : []
+        ).filter((m) => isConversationMessage(m, profileId, connectIdArg));
         const hasMore =
           typeof response?.data?.hasMore === "boolean"
             ? response.data.hasMore
             : messages.length >= limit;
-
-        // An empty successful response is meaningful too (for example after
-        // messages were deleted), so replace stale cached data in that case.
-        MessageCacheManager.setCachedMessages(profileId, connectIdArg, messages);
 
         return { messages, hasMore, ok: true };
       } catch (error) {
@@ -315,6 +351,15 @@ const Chat = () => {
       const scrollTop = el.scrollTop;
       const maxScroll = el.scrollHeight - el.clientHeight;
       isNearBottomRef.current = checkIsNearBottom(el);
+      // Not before the first jump to the bottom, or it flashes on open.
+      const far =
+        hasInitialScrolledRef.current &&
+        getDistanceFromBottom(el) > FAR_FROM_BOTTOM_PX;
+      setIsFarFromBottom((prev) => (prev === far ? prev : far));
+      if (isNearBottomRef.current && newBelowIdsRef.current.size > 0) {
+        newBelowIdsRef.current = new Set();
+        setNewBelowCount(0);
+      }
       // Ignore layout/programmatic scroll until the first jump-to-bottom finishes.
       // Otherwise chat-open fires getOldMessages while the list is still at 0%.
       if (!hasInitialScrolledRef.current) {
@@ -341,7 +386,7 @@ const Chat = () => {
         el.removeEventListener("scroll", handleScroll);
       }
     };
-  }, [connectId, checkIsNearBottom]);
+  }, [connectId, checkIsNearBottom, getDistanceFromBottom]);
 
   const messagesRef = useRef(messages);
   useEffect(() => {
@@ -381,6 +426,8 @@ const Chat = () => {
       oldestMessage?.timestamp || oldestMessage?.createdAt;
     if (!beforeTimestamp) return;
 
+    const requestConnect = connectId;
+    const isStale = () => activeConnectRef.current !== requestConnect;
     loadingOlderRef.current = true;
     setIsLoadingOlderMessages(true);
     (async () => {
@@ -388,11 +435,15 @@ const Chat = () => {
       try {
         const response = await fetchOldMessages(
           userId,
-          connectId,
+          requestConnect,
           beforeTimestamp,
-          20,
+          PAGE_SIZE,
         );
-        const older = response.messages || [];
+        // The user opened another chat meanwhile: these belong to the old one.
+        if (isStale()) return;
+        const older = (response.messages || []).filter((m) =>
+          isConversationMessage(m, userId, requestConnect),
+        );
         if (older.length === 0) {
           setHasMoreMessages(false);
           return;
@@ -405,15 +456,17 @@ const Chat = () => {
             prevTop: el.scrollTop,
           };
         }
-        setMessages((prev) => [...older, ...prev]);
+        setMessages((prev) => prependOlderMessages(older, prev));
         setHasMoreMessages(response.hasMore);
       } catch (error) {
         pendingScrollRestoreRef.current = null;
         console.error("Error loading older messages:", error);
       } finally {
-        loadingOlderRef.current = false;
-        setIsLoadingOlderMessages(false);
-        setIsMsgLoading(false);
+        if (!isStale()) {
+          loadingOlderRef.current = false;
+          setIsLoadingOlderMessages(false);
+          setIsMsgLoading(false);
+        }
       }
     })();
     // Intentionally omit isMsgLoading: when it flips false, deps would match again and load every page in one burst.
@@ -421,27 +474,34 @@ const Chat = () => {
 
   // WebSocket-based message sending with optimistic UI
   const sendMessage = async (messageData) => {
-    const tempId = `temp-${Date.now()}-${Math.random()}`;
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const isSecure = messageData?.secure === true;
+    // A secure message's text only travels in the socket payload; the list,
+    // Redux, the chat list and every cache only ever see the placeholder.
     const optimisticMessage = {
       _id: tempId,
       tempId,
       senderId: userId,
       receiverId: connectId,
-      message: messageData.message,
-      attachment: messageData.attachment,
+      message: isSecure ? SECURE_PLACEHOLDER : messageData.message,
+      attachment: isSecure ? null : messageData.attachment,
       parent: messageData.parent,
-      messageType: messageData.messageType || "text",
+      messageType: isSecure
+        ? SECURE_MESSAGE_TYPE
+        : messageData.messageType || "text",
+      ...(isSecure ? { secure: { state: "sealed" } } : {}),
       timestamp: new Date(),
       isOptimistic: true,
     };
 
     const payload = { ...messageData, tempId };
 
+    pendingFollowLatestRef.current = true;
     setMessages((prev) => [...prev.filter(Boolean), optimisticMessage]);
     emitChatMessage(optimisticMessage);
     dispatch(newMessage(optimisticMessage, userId));
     scrollToLastMessage("smooth");
-    triggerLoveRain(messageData.message);
+    if (!isSecure) triggerLoveRain(messageData.message);
 
     const applyConfirmed = (updatedMessage) => {
       if (!updatedMessage?._id) return;
@@ -571,8 +631,19 @@ const Chat = () => {
     const appendIncomingMessage = (updatedMessage) => {
       if (!updatedMessage?._id) return;
 
-      pendingFollowLatestRef.current = true;
-      isNearBottomRef.current = true;
+      // Follow new messages only when the reader is at the bottom (or sent
+      // it); someone reading older messages is not yanked down. They get a
+      // "new messages" button instead.
+      const isMine = idOf(updatedMessage.senderId) === idOf(userId);
+      const alreadyShown = messagesRef.current.some(
+        (m) => idOf(m?._id) === idOf(updatedMessage._id),
+      );
+      if (isMine || isNearBottomRef.current) {
+        pendingFollowLatestRef.current = true;
+      } else if (!alreadyShown) {
+        newBelowIdsRef.current.add(idOf(updatedMessage._id));
+        setNewBelowCount(newBelowIdsRef.current.size);
+      }
 
       setMessages((prev) =>
         upsertConfirmedMessage(prev, updatedMessage, updatedMessage.tempId),
@@ -650,6 +721,25 @@ const Chat = () => {
       );
     };
 
+    const handleSecureOpened = (data = {}) => {
+      if (!isConversationMessage(data, userId, connectId)) return;
+      const openedId = idOf(data.messageId || data._id);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          idOf(msg?._id) === openedId
+            ? {
+                ...msg,
+                secure: {
+                  ...(msg.secure || {}),
+                  state: "opened",
+                  openedAt: data.openedAt || new Date().toISOString(),
+                },
+              }
+            : msg,
+        ),
+      );
+    };
+
     const handleReactionUpdate = (payload) => {
       const updatedMessage = payload?.message || payload;
       if (
@@ -678,6 +768,7 @@ const Chat = () => {
     socket.on("seenMessage", handleMessageSeen);
     socket.on("messageReactionUpdated", handleReactionUpdate);
     socket.on("deleteMessage", handleDeleteMessage);
+    socket.on("secureMessageOpened", handleSecureOpened);
 
     const rejoinRoom = () => {
       socket.emit("joinRoom", roomId);
@@ -693,6 +784,7 @@ const Chat = () => {
       socket.off("seenMessage", handleMessageSeen);
       socket.off("messageReactionUpdated", handleReactionUpdate);
       socket.off("deleteMessage", handleDeleteMessage);
+      socket.off("secureMessageOpened", handleSecureOpened);
       socket.off("connect", rejoinRoom);
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
@@ -1081,11 +1173,16 @@ const Chat = () => {
       if (!connectId || !userId) return;
       let cancelled = false;
       setRoom([userId, connectId].sort().join("_"));
-      hasLoadedFreshMessagesRef.current = false;
+      freshLoadedForRef.current = null;
       markedSeenIdsRef.current = new Set();
-      const cachedMessages = MessageCacheManager.getCachedMessages(
-        userId,
-        connectId,
+      newBelowIdsRef.current = new Set();
+      setNewBelowCount(0);
+      setIsFarFromBottom(false);
+      setIsLoadingOlderMessages(false);
+      const cachedMessages = sortMessages(
+        (
+          MessageCacheManager.getCachedMessages(userId, connectId) || []
+        ).filter((message) => isConversationMessage(message, userId, connectId)),
       );
       cachedMessageIdsRef.current = new Set(
         (cachedMessages || [])
@@ -1103,13 +1200,16 @@ const Chat = () => {
       const fetchInitialMessages = async function () {
         setIsMsgLoading(true);
         try {
-          const response = await fetchChatHistory(userId, connectId, 20);
+          const response = await fetchChatHistory(userId, connectId, PAGE_SIZE);
           if (cancelled) return;
 
           if (response.ok) {
             const cachedIds = cachedMessageIdsRef.current;
+            freshLoadedForRef.current = connectId;
             setMessages((prev) =>
-              mergeInitialHistory(response.messages, prev, cachedIds),
+              reconcileWithSnapshot(response.messages, prev, {
+                knownIds: cachedIds,
+              }),
             );
             cachedMessageIdsRef.current = new Set(
               response.messages
@@ -1117,7 +1217,6 @@ const Chat = () => {
                 .filter(Boolean),
             );
             setHasMoreMessages(response.hasMore ?? false);
-            hasLoadedFreshMessagesRef.current = true;
           } else {
             // Keep cached/live messages visible when the refresh fails.
             console.warn("Keeping cached messages because refresh failed");
@@ -1131,15 +1230,30 @@ const Chat = () => {
       };
 
       fetchInitialMessages();
+      // Catch up after the tab was in the background (missed socket events,
+      // deletes, seen receipts). Older pages the reader loaded stay in place.
+      let lastRefreshAt = Date.now();
       const refreshOnFocus = () => {
-         if (document.visibilityState !== "visible") return;
-         fetchChatHistory(userId, connectId, 20).then((response) => {
-           if (cancelled) return;
-           if (!response.ok) return;
-           setMessages((prev) => mergeHistoryWithLive(response.messages, prev));
-           setHasMoreMessages(response.hasMore ?? false);
-           hasLoadedFreshMessagesRef.current = true;
-         });
+        if (document.visibilityState !== "visible") return;
+        const now = Date.now();
+        if (now - lastRefreshAt < 3000) return;
+        lastRefreshAt = now;
+        const knownIds = new Set(
+          messagesRef.current.map((m) => idOf(m?._id)).filter(Boolean),
+        );
+        const loadedOlderPages = knownIds.size > PAGE_SIZE;
+        fetchChatHistory(userId, connectId, PAGE_SIZE).then((response) => {
+          if (cancelled || !response.ok) return;
+          freshLoadedForRef.current = connectId;
+          setMessages((prev) =>
+            reconcileWithSnapshot(response.messages, prev, {
+              knownIds,
+              keepOlder: true,
+              hasMore: response.hasMore,
+            }),
+          );
+          if (!loadedOlderPages) setHasMoreMessages(response.hasMore ?? false);
+        });
       };
       window.addEventListener("focus", refreshOnFocus);
       document.addEventListener("visibilitychange", refreshOnFocus);
@@ -1161,11 +1275,28 @@ const Chat = () => {
     scrollToLastMessage("auto");
   }, [connectId, messages.length, isMsgLoading, scrollToLastMessage]);
 
-  // Keep typing indicator visible while the other person is typing.
+  // Keep typing indicator visible while the other person is typing (only
+  // when the reader is already at the bottom).
   useEffect(() => {
-    if (!isTyping) return;
+    if (!isTyping || !isNearBottomRef.current) return;
     scrollToLastMessage("smooth");
   }, [isTyping, typeMessage, scrollToLastMessage]);
+
+  // Only this conversation's messages, in order, without duplicates — no
+  // matter what a cache, socket event or late response put in the state.
+  const visibleMessages = useMemo(
+    () =>
+      sortMessages(
+        messages.filter((m) => isConversationMessage(m, userId, connectId)),
+      ),
+    [messages, userId, connectId],
+  );
+
+  const jumpToLatest = useCallback(() => {
+    newBelowIdsRef.current = new Set();
+    setNewBelowCount(0);
+    scrollToLastMessage("smooth");
+  }, [scrollToLastMessage]);
 
   useEffect(() => {
     if (!canMarkAsSeen) return;
@@ -1361,7 +1492,7 @@ const Chat = () => {
             id="chatMessageList"
             ref={msgListRef}
           >
-            {messages.length > 0 && isLoadingOlderMessages && (
+            {visibleMessages.length > 0 && isLoadingOlderMessages && (
               <div
                 className="chat-load-older-indicator"
                 aria-live="polite"
@@ -1375,23 +1506,30 @@ const Chat = () => {
               </div>
             )}
 
-            {messages.length > 0 ? (
-              messages.filter(Boolean).map((msg, index) => {
+            {visibleMessages.length > 0 ? (
+              visibleMessages.map((msg, index) => {
+                const dayLabel = dayLabelFor(msg, visibleMessages[index - 1]);
                 return (
-                  <SingleMessage
-                    key={msg._id ? `${msg._id}-${index}` : `msg-${index}`}
-                    msg={msg}
-                    connectProfile={connectProfile}
-                    messages={messages}
-                    setMessages={setMessages}
-                    isActive={isActive}
-                    setIsReplying={setIsReplying}
-                    setReplyData={setReplyData}
-                    isPreview={isPreview}
-                    setIsPreview={setIsPreview}
-                    msgListRef={msgListRef}
-                    isMsgLoading={isMsgLoading}
-                  />
+                  <React.Fragment key={messageKey(msg) || `msg-${index}`}>
+                    {dayLabel ? (
+                      <div className="chat-date-separator" role="separator">
+                        <span>{dayLabel}</span>
+                      </div>
+                    ) : null}
+                    <SingleMessage
+                      msg={msg}
+                      connectProfile={connectProfile}
+                      messages={visibleMessages}
+                      setMessages={setMessages}
+                      isActive={isActive}
+                      setIsReplying={setIsReplying}
+                      setReplyData={setReplyData}
+                      isPreview={isPreview}
+                      setIsPreview={setIsPreview}
+                      msgListRef={msgListRef}
+                      isMsgLoading={isMsgLoading}
+                    />
+                  </React.Fragment>
                 );
               })
             ) : isMsgLoading ? (
@@ -1443,6 +1581,29 @@ const Chat = () => {
             )}
           </div>
         </div>
+
+        {(newBelowCount > 0 || isFarFromBottom) && visibleMessages.length > 0 ? (
+          <button
+            type="button"
+            className="chat-jump-latest"
+            onClick={jumpToLatest}
+            aria-label={
+              newBelowCount > 0
+                ? `${newBelowCount} new messages, jump to latest`
+                : "Jump to latest message"
+            }
+          >
+            <i className="fas fa-arrow-down" aria-hidden="true"></i>
+            {newBelowCount > 0 ? (
+              <>
+                <span>New messages</span>
+                <span className="count">{newBelowCount}</span>
+              </>
+            ) : (
+              <span>Latest</span>
+            )}
+          </button>
+        ) : null}
 
         <div
           className="chat-footer-slot"
