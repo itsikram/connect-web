@@ -100,6 +100,8 @@ const Groups = lazy(() => import("./Groups"));
 const Menu = lazy(() => import("./Menu"));
 const DownloadApp = lazy(() => import("./DownloadApp"));
 const YtDownload = lazy(() => import("./YtDownload.js"));
+const PrivacyPolicy = lazy(() => import("./legal/PrivacyPolicy"));
+const TermsOfService = lazy(() => import("./legal/TermsOfService"));
 const Message = lazy(() => import("./Message"));
 const Story = lazy(() => import("./Story"));
 const StoryReacts = lazy(() => import("../components/story/StoryReacts.js"));
@@ -2682,6 +2684,10 @@ const Main = () => {
             <Route path="expo" element={<ExpoConsole />}></Route>
             <Route path="download-app" element={<DownloadApp />}></Route>
             <Route path="downloads" element={<SavedVideos />}></Route>
+            <Route path="privacy" element={<PrivacyPolicy />}></Route>
+            <Route path="privacy-policy" element={<PrivacyPolicy />}></Route>
+            <Route path="terms" element={<TermsOfService />}></Route>
+            <Route path="terms-of-service" element={<TermsOfService />}></Route>
             <Route path="downloads/:videoId" element={<SingleVideo />}></Route>
             <Route
               path="search"
