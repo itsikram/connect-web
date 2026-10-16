@@ -84,7 +84,11 @@ function App() {
       window.navigator.standalone === true ||
       window.matchMedia?.('(display-mode: standalone)').matches;
     if (isIos || !isPhone || isStandalone) return undefined;
-    const timer = window.setTimeout(() => setShowDownloadModal(true), 12000);
+    const timer = window.setTimeout(() => {
+      // The Download App page already shows every install option.
+      if (window.location.pathname.startsWith('/download-app')) return;
+      setShowDownloadModal(true);
+    }, 12000);
     return () => window.clearTimeout(timer);
   }, []);
 

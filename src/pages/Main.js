@@ -97,6 +97,7 @@ const Video = lazy(() => import("./Video.js"));
 const Marketplace = lazy(() => import("./Marketplace"));
 const Groups = lazy(() => import("./Groups"));
 const Menu = lazy(() => import("./Menu"));
+const DownloadApp = lazy(() => import("./DownloadApp"));
 const YtDownload = lazy(() => import("./YtDownload.js"));
 const Message = lazy(() => import("./Message"));
 const Story = lazy(() => import("./Story"));
@@ -2653,6 +2654,7 @@ const Main = () => {
             ></Route>
             <Route path="youtube" element={<Youtebe />}></Route>
             <Route path="expo" element={<ExpoConsole />}></Route>
+            <Route path="download-app" element={<DownloadApp />}></Route>
             <Route path="downloads" element={<SavedVideos />}></Route>
             <Route path="downloads/:videoId" element={<SingleVideo />}></Route>
             <Route

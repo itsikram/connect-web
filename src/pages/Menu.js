@@ -12,13 +12,13 @@ const WALLET_APP = {
   href: "/wallet",
 };
 
-const EXPO_APP = {
-  key: "expo",
-  name: "Expo Go Tunnel",
-  desc: "Start the app server and open Connect in Expo Go",
-  faIcon: "fa-mobile-alt",
+const DOWNLOAD_APP = {
+  key: "download-app",
+  name: "Download App",
+  desc: "Get Connect for Android, iOS or Expo Go",
+  faIcon: "fa-download",
   colorA: "#00D4FF",
-  href: "/expo",
+  href: "/download-app",
 };
 
 const Menu = () => {
@@ -31,7 +31,7 @@ const Menu = () => {
         </header>
 
         <nav className="apps-menu-grid" aria-label="Apps">
-          {[...MENU_APPS, WALLET_APP, EXPO_APP].map((app) => (
+          {[...MENU_APPS, WALLET_APP, DOWNLOAD_APP].map((app) => (
             <Link
               key={app.key}
               to={app.href || "#"}

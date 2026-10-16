@@ -1,0 +1,85 @@
+/* /download-app. Builds on the Apps menu card styles (Menu.css). */
+.download-app-container {
+  max-width: 640px;
+}
+
+.download-app-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  color: #94a3b8;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.download-app-back:hover,
+.download-app-back:focus-visible {
+  color: #f1f5f9;
+}
+
+.download-app-list {
+  display: grid;
+  gap: 12px;
+}
+
+/* Buttons and disabled divs share the link card look. */
+.download-app-card {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.download-app-card.is-disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.download-app-card.is-disabled:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+
+.download-app-card .apps-menu-desc {
+  -webkit-line-clamp: 3;
+}
+
+.download-app-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: middle;
+  color: var(--app-accent);
+  background: color-mix(in srgb, var(--app-accent) 14%, transparent);
+}
+
+.download-app-note {
+  margin: 20px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #94a3b8;
+}
+
+.download-app-note a {
+  color: #7dd3fc;
+}
+
+/* Menu.css stacks cards vertically on wide screens; keep this list in rows. */
+@media (min-width: 992px) {
+  .download-app-list .apps-menu-card {
+    flex-direction: row;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    min-height: 72px;
+  }
+
+  .download-app-list .apps-menu-chevron {
+    display: inline-block;
+  }
+}
