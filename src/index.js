@@ -4,6 +4,7 @@ import reportWebVitals from './reportWebVitals';
 import { register as registerServiceWorker } from './serviceWorkerRegistration';
 import { startServerConfigSync } from './utils/offlineUtils';
 import { hasStoredSession, isPublicPath } from './publicRoutes';
+import { isAdPage, loadAdSense } from './utils/adsense';
 
 // Follow the server list set in the admin panel (Settings → Servers).
 startServerConfigSync();
@@ -40,6 +41,9 @@ loadRoot.then(({ default: Root }) => {
   } else {
     ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
   }
+
+  // Logged-out public pages and content pages (portfolio, about, legal) only.
+  if (isAdPage(window.location.pathname, { publicApp: usePublicApp })) loadAdSense();
 });
 
 

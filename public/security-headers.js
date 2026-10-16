@@ -4,6 +4,8 @@
  */
 
 // Content Security Policy
+// Google AdSense needs its script and frame hosts below (ads, ad-quality
+// checks and the consent message); images/connections already allow https:.
 // Check if we're in development mode (localhost, 127.0.0.1, or local network IPs)
 const hostname = window.location.hostname;
 const isDevelopment = hostname === 'localhost' || 
@@ -16,27 +18,27 @@ const isDevelopment = hostname === 'localhost' ||
 
 const csp = isDevelopment ? `
   default-src 'self';
-  script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.google.com https://www.gstatic.com https://apis.google.com https://maps.googleapis.com https://accounts.google.com https://cdn.jsdelivr.net;
+  script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.google.com https://www.gstatic.com https://apis.google.com https://maps.googleapis.com https://accounts.google.com https://cdn.jsdelivr.net https://pagead2.googlesyndication.com https://*.googlesyndication.com https://*.doubleclick.net https://*.googleadservices.com https://adservice.google.com https://*.adtrafficquality.google https://fundingchoicesmessages.google.com https://*.gstatic.com;
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com;
   style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com;
   font-src 'self' https://fonts.gstatic.com;
   img-src 'self' data: https: http: blob:;
   media-src 'self' data: https: http: blob:;
   connect-src 'self' http://localhost:* http://127.0.0.1:* http: https: wss: ws:;
-  frame-src 'self' https://www.google.com https://maps.google.com https://accounts.google.com https://www.youtube.com https://www.youtube-nocookie.com;
+  frame-src 'self' https://www.google.com https://maps.google.com https://accounts.google.com https://www.youtube.com https://www.youtube-nocookie.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://*.adtrafficquality.google https://fundingchoicesmessages.google.com;
   object-src 'none';
   base-uri 'self';
   form-action 'self';
 ` : `
   default-src 'self';
-  script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.google.com https://www.gstatic.com https://apis.google.com https://maps.googleapis.com https://accounts.google.com https://cdn.jsdelivr.net;
+  script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.google.com https://www.gstatic.com https://apis.google.com https://maps.googleapis.com https://accounts.google.com https://cdn.jsdelivr.net https://pagead2.googlesyndication.com https://*.googlesyndication.com https://*.doubleclick.net https://*.googleadservices.com https://adservice.google.com https://*.adtrafficquality.google https://fundingchoicesmessages.google.com https://*.gstatic.com;
   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com;
   style-src-elem 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com;
   font-src 'self' https://fonts.gstatic.com;
   img-src 'self' data: https: blob:;
   media-src 'self' data: https: blob:;
   connect-src 'self' https: wss: ws:;
-  frame-src 'self' https://www.google.com https://maps.google.com https://accounts.google.com https://www.youtube.com https://www.youtube-nocookie.com;
+  frame-src 'self' https://www.google.com https://maps.google.com https://accounts.google.com https://www.youtube.com https://www.youtube-nocookie.com https://*.googlesyndication.com https://*.doubleclick.net https://*.google.com https://*.adtrafficquality.google https://fundingchoicesmessages.google.com;
   object-src 'none';
   base-uri 'self';
   form-action 'self';

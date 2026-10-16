@@ -47,11 +47,35 @@ const PrivacyPolicy = () => {
       <ul>
         <li>With other users, according to your settings and what you choose to share.</li>
         <li>With service providers that help us run the Service (hosting, storage, real-time calling, push notifications, payments, AI processing, analytics), under confidentiality obligations.</li>
+        <li>With advertising partners such as Google, which use cookies to show ads on public pages (see section 4).</li>
         <li>When required by law, or to protect the rights, safety and property of our users or others.</li>
         <li>In connection with a merger, acquisition or sale of assets, with notice to you.</li>
       </ul>
 
-      <h2>4. Data retention</h2>
+      <h2>4. Advertising and cookies</h2>
+      <p>
+        Some public pages of our website show ads served by Google AdSense. To do this:
+      </p>
+      <ul>
+        <li>Third-party vendors, including Google, use cookies to serve ads based on your prior visits to this website or other websites.</li>
+        <li>Google's use of advertising cookies enables it and its partners to serve ads to you based on your visits to this and/or other sites on the Internet.</li>
+        <li>
+          You may opt out of personalised advertising by visiting{' '}
+          <a href="https://www.google.com/settings/ads" target="_blank" rel="noopener noreferrer">Google Ads Settings</a>,
+          or opt out of some third-party vendors' use of cookies for personalised advertising at{' '}
+          <a href="https://www.aboutads.info/choices/" target="_blank" rel="noopener noreferrer">www.aboutads.info</a>.
+        </li>
+        <li>
+          Learn more about how Google uses information from sites that use its services at{' '}
+          <a href="https://policies.google.com/technologies/partner-sites" target="_blank" rel="noopener noreferrer">policies.google.com/technologies/partner-sites</a>.
+        </li>
+        <li>Where the law requires it (for example in the EEA, UK and Switzerland), we ask for your consent before personalised ads or non-essential cookies are used, and you can change your choice at any time.</li>
+      </ul>
+      <p>
+        We do not show ads on sign-in screens or inside your private messages and calls.
+      </p>
+
+      <h2>5. Data retention</h2>
       <p>
         We keep your information for as long as your account is active or as needed to
         provide the Service. When you delete your account, we delete or anonymise your
@@ -59,7 +83,7 @@ const PrivacyPolicy = () => {
         for legal, security or dispute-resolution reasons.
       </p>
 
-      <h2>5. Your rights and choices</h2>
+      <h2>6. Your rights and choices</h2>
       <ul>
         <li>Access, update or correct your profile information in the app.</li>
         <li>Request a copy or deletion of your data by contacting us.</li>
@@ -67,33 +91,33 @@ const PrivacyPolicy = () => {
         <li>Depending on where you live, you may have additional rights under laws such as GDPR or CCPA.</li>
       </ul>
 
-      <h2>6. Security</h2>
+      <h2>7. Security</h2>
       <p>
         We use reasonable technical and organisational measures to protect your
         information, including encryption in transit. No method of transmission or
         storage is completely secure, so we cannot guarantee absolute security.
       </p>
 
-      <h2>7. Children</h2>
+      <h2>8. Children</h2>
       <p>
         The Service is not intended for children under 13 (or the minimum age in your
         country). We do not knowingly collect information from them. If you believe a
         child has given us information, contact us and we will delete it.
       </p>
 
-      <h2>8. International transfers</h2>
+      <h2>9. International transfers</h2>
       <p>
         Your information may be processed in countries other than your own. We take
         steps to ensure it receives an adequate level of protection.
       </p>
 
-      <h2>9. Changes to this policy</h2>
+      <h2>10. Changes to this policy</h2>
       <p>
         We may update this policy from time to time. We will post the new version here
         and update the date above. Significant changes will be notified in the app.
       </p>
 
-      <h2>10. Contact us</h2>
+      <h2>11. Contact us</h2>
       <p>
         Questions or requests: <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
       </p>
