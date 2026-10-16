@@ -2,6 +2,7 @@
 // Hosting via `npm start`). Serves ./build and falls back to index.html for
 // client-side routes. Local development uses `npm run dev`.
 const http = require("http");
+const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const zlib = require("zlib");
@@ -186,8 +187,168 @@ const renderIndexHtml = (pathname) => {
     html = setMeta(html, "property", "og:image", page.image);
     html = setMeta(html, "name", "twitter:image", page.image);
   }
+  if (route.startsWith("/portfolio")) {
+    const body = renderPortfolioBody(route, getPortfolioData());
+    if (body) {
+      html = html.replace(
+        '<div id="root"></div>',
+        `<div id="root">${body}</div>`
+      );
+    }
+  }
   return { html, robots: null };
 };
+
+// --- SEO: static portfolio content ----------------------------------------
+// Without this every /portfolio URL serves the same empty app shell, which
+// Google tends to leave as "Discovered - currently not indexed". We render
+// the real portfolio text (from the same /api/portfolio the app uses) into
+// #root; React's createRoot replaces it as soon as the app mounts.
+const PORTFOLIO_API_BASES = (
+  process.env.PORTFOLIO_API_BASES ||
+  "https://connect-server-nhaw.onrender.com,https://connect-server-u85b.onrender.com,https://connect-server-k1if.onrender.com,https://oeazgm4zwn.c35.airoapp.ai"
+)
+  .split(",")
+  .map((s) => s.trim().replace(/\/$/, ""))
+  .filter(Boolean);
+const PORTFOLIO_TTL_MS = 10 * 60 * 1000;
+
+let portfolioCache = { data: null, fetchedAt: 0, refreshing: false };
+
+const fetchJson = (url, timeoutMs) =>
+  new Promise((resolve, reject) => {
+    const req = https.get(url, { timeout: timeoutMs }, (res) => {
+      if (res.statusCode !== 200) {
+        res.resume();
+        return reject(new Error(`HTTP ${res.statusCode}`));
+      }
+      let raw = "";
+      res.setEncoding("utf8");
+      res.on("data", (c) => (raw += c));
+      res.on("end", () => {
+        try {
+          resolve(JSON.parse(raw));
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+    req.on("timeout", () => req.destroy(new Error("timeout")));
+    req.on("error", reject);
+  });
+
+const refreshPortfolio = async () => {
+  if (portfolioCache.refreshing) return;
+  portfolioCache.refreshing = true;
+  try {
+    for (const base of PORTFOLIO_API_BASES) {
+      try {
+        const data = await fetchJson(`${base}/api/portfolio`, 8000);
+        if (data && data.profile) {
+          portfolioCache.data = data;
+          portfolioCache.fetchedAt = Date.now();
+          return;
+        }
+      } catch (_) {
+        /* try the next server */
+      }
+    }
+  } finally {
+    portfolioCache.refreshing = false;
+  }
+};
+
+// Never block a page on the API: serve what we have, refresh in background.
+const getPortfolioData = () => {
+  if (Date.now() - portfolioCache.fetchedAt > PORTFOLIO_TTL_MS) {
+    refreshPortfolio();
+  }
+  return portfolioCache.data;
+};
+
+const esc = escapeAttr;
+const list = (items) =>
+  items && items.length
+    ? `<ul>${items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>`
+    : "";
+
+const renderPortfolioBody = (route, d) => {
+  if (!d || !d.profile) return "";
+  const p = d.profile;
+  const name = p.name || "Md Ikram";
+  const nav = `<nav aria-label="Portfolio"><a href="/portfolio">Home</a> · <a href="/portfolio/about">About</a> · <a href="/portfolio/resume">Resume</a> · <a href="/portfolio/blogs">Blog</a> · <a href="/portfolio/contact">Contact</a> · <a href="/">Connect BD</a></nav>`;
+  const experience = (d.experiences || [])
+    .map(
+      (e) =>
+        `<article><h3>${esc(e.role)} — ${esc(e.company)}</h3><p>${esc(
+          e.period || ""
+        )}${e.location ? ` · ${esc(e.location)}` : ""}</p>${list(e.bullets)}</article>`
+    )
+    .join("");
+  const education = (d.education || [])
+    .map(
+      (e) =>
+        `<article><h3>${esc(e.title)}${e.field ? ` — ${esc(e.field)}` : ""}</h3><p>${esc(
+          [e.org, e.board, e.period, e.result].filter(Boolean).join(" · ")
+        )}</p></article>`
+    )
+    .join("");
+  const skills = ((d.skills && d.skills.groups) || [])
+    .map((g) => `<h3>${esc(g.title)}</h3><p>${esc((g.items || []).join(", "))}</p>`)
+    .join("");
+
+  let main;
+  if (route === "/portfolio/about") {
+    const a = d.aboutPage || {};
+    main = `<h1>${esc(a.title || `About ${name}`)}</h1><p>${esc(a.subtitle || "")}</p>
+<h2>Career Objectives</h2><p>${esc(a.careerObjectives || "")}</p>
+<h2>Strengths</h2>${list(a.strengths)}
+<h2>Skills</h2>${skills}`;
+  } else if (route === "/portfolio/resume") {
+    const r = d.resumePage || {};
+    main = `<h1>${esc(r.title || `Resume of ${name}`)}</h1><p>${esc(r.subtitle || "")}</p>
+<h2>Work Experience</h2>${experience}<h2>Education</h2>${education}<h2>Skills</h2>${skills}`;
+  } else if (route === "/portfolio/blogs") {
+    const b = d.blogs || {};
+    const posts = (b.posts || [])
+      .map(
+        (post) =>
+          `<article><h2>${esc(post.title)}</h2><p>${esc(
+            [post.date, post.readTime].filter(Boolean).join(" · ")
+          )}</p><p>${esc(post.excerpt || "")}</p></article>`
+      )
+      .join("");
+    main = `<h1>${esc(b.title || `Blog by ${name}`)}</h1><p>${esc(b.subtitle || "")}</p>${posts}`;
+  } else if (route === "/portfolio/contact") {
+    const c = d.contactPage || {};
+    const s = d.social || {};
+    const links = [
+      ["LinkedIn", s.linkedin],
+      ["GitHub", s.github],
+      ["Facebook", s.facebook],
+    ]
+      .filter(([, href]) => href)
+      .map(([label, href]) => `<li><a href="${esc(href)}" rel="me">${label}</a></li>`)
+      .join("");
+    main = `<h1>${esc(c.title || `Contact ${name}`)}</h1><p>${esc(c.subtitle || "")}</p>
+<p>${esc(name)} — ${esc(p.jobTitle || "")}${p.locality ? `, ${esc(p.locality)}` : ""}${p.country ? `, ${esc(p.country)}` : ""}.</p>${links ? `<ul>${links}</ul>` : ""}`;
+  } else {
+    const h = d.hero || {};
+    const projects = ((d.projects && d.projects.items) || [])
+      .map((pr) => `<article><h3>${esc(pr.title)}</h3><p>${esc(pr.description || "")}</p></article>`)
+      .join("");
+    main = `<h1>${esc(name)} — ${esc(p.jobTitle || "")}</h1><p>${esc(p.tagline || "")}</p><p>${esc(h.description || "")}</p>
+<h2>${esc((d.skills && d.skills.title) || "Skills")}</h2>${skills}
+<h2>${esc((d.projects && d.projects.title) || "Projects")}</h2>${projects}
+<h2>Work Experience</h2>${experience}`;
+  }
+
+  return `<div style="max-width:860px;margin:0 auto;padding:24px 16px;font-family:Inter,system-ui,sans-serif;line-height:1.6;color:#e5e7eb;background:#111112">${nav}<main>${main}</main>${
+    d.footerText ? `<footer><p>${esc(d.footerText)}</p></footer>` : ""
+  }</div>`;
+};
+
+refreshPortfolio();
 
 const sendIndex = (req, res, pathname) => {
   let rendered;
