@@ -1,163 +1,224 @@
-import React, { useMemo } from 'react';
-import { COLORS, HOME_POSITIONS } from '../constants/gameConstants';
-import { getPositionOnPath } from '../utils/gameLogic';
+import React, { memo } from "react";
+import {
+  BOARD_GRID_STROKE,
+  BOARD_OUTER_STROKE,
+  COLORS,
+} from "../constants/gameConstants";
+import { playerIndexForBoardSeat, yardImageFor } from "../utils/boardGeometry";
 
-export const GameBoard = ({ 
-    BOARD_SIZE, 
-    CELL_SIZE, 
-    players, 
-    selectedPlayerCount,
-    renderPlayerOrder,
-    tokenNode
-}) => {
-    const renderBoardGrid = () => {
-        const rects = [];
-        for (let row = 0; row < 15; row++) {
-            for (let col = 0; col < 15; col++) {
-                rects.push(
-                    <rect
-                        key={`cell-${row}-${col}`}
-                        x={col * CELL_SIZE}
-                        y={row * CELL_SIZE}
-                        width={CELL_SIZE}
-                        height={CELL_SIZE}
-                        fill={'#FFFFFF'}
-                        stroke={'#000000'}
-                        strokeWidth={1}
-                    />
-                );
-            }
-        }
-        return rects;
-    };
-
-    const renderStaticRects = () => {
-        const elems = [];
-        // Corner home areas (colored border with inner white)
-        const drawHome = (x0, y0, color, idx) => {
-            elems.push(<rect key={`home-outer-${x0}-${y0}`} x={x0 * CELL_SIZE} y={y0 * CELL_SIZE} width={CELL_SIZE * 6} height={CELL_SIZE * 6} fill={color} stroke="#000" strokeWidth={2} />);
-            const innerX = (x0 + 1) * CELL_SIZE;
-            const innerY = (y0 + 1) * CELL_SIZE;
-            const innerW = CELL_SIZE * 4;
-            const innerH = CELL_SIZE * 4;
-            // Background cover image
-            const coverUrl = players[idx]?.cover || players[idx]?.cover;
-            if (coverUrl && idx < selectedPlayerCount) {
-                elems.push((
-                    <image key={`home-cover-${x0}-${y0}`} href={coverUrl} x={innerX} y={innerY} width={innerW} height={innerH} preserveAspectRatio="xMidYMid slice" />
-                ));
-                // Dark overlay over background image for contrast
-                elems.push(
-                    <rect key={`home-cover-overlay-${x0}-${y0}`} x={innerX} y={innerY} width={innerW} height={innerH} fill="rgba(0,0,0,0.5)" />
-                );
-                // Border frame over the image
-                elems.push(<rect key={`home-inner-border-${x0}-${y0}`} x={innerX} y={innerY} width={innerW} height={innerH} fill="none" stroke="#000" strokeWidth={2} />);
-            } else {
-                // Fallback white background
-                elems.push(<rect key={`home-inner-${x0}-${y0}`} x={innerX} y={innerY} width={innerW} height={innerH} fill="#FFFFFF" stroke="#000" strokeWidth={2} />);
-            }
-            // four pips
-            const cx = (x0 + 1) * CELL_SIZE + CELL_SIZE * 2;
-            const cy = (y0 + 1) * CELL_SIZE + CELL_SIZE * 2;
-            const pipRadius = CELL_SIZE * 0.30;
-            const gap = CELL_SIZE * 0.45; // increase spacing between home placeholders
-            const offsets = [[-gap, -gap], [gap, -gap], [-gap, gap], [gap, gap]];
-            offsets.forEach((o, i) => {
-                elems.push(<circle key={`pip-${x0}-${y0}-${i}`} cx={cx + o[0]} cy={cy + o[1]} r={pipRadius} fill={color} stroke="#000" strokeWidth={2} />);
-            });
-        };
-        drawHome(0, 0, COLORS[0], 0); // red
-        drawHome(9, 0, COLORS[1], 1); // green
-        drawHome(0, 9, COLORS[2], 2); // blue
-        drawHome(9, 9, COLORS[3], 3); // yellow
-
-        // Cross paths - single width
-        for (let c = 0; c < 15; c++) {
-            elems.push(<rect key={`hpath-${c}`} x={c * CELL_SIZE} y={7 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill="#FFFFFF" stroke="#000" strokeWidth={1} />);
-        }
-        for (let r = 0; r < 15; r++) {
-            elems.push(<rect key={`vpath-${r}`} x={7 * CELL_SIZE} y={r * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill="#FFFFFF" stroke="#000" strokeWidth={1} />);
-        }
-
-        const homeLineColor = "gray"
-
-        // Colored home columns (five squares towards center)
-        for (let r = 1; r <= 5; r++) elems.push(<rect key={`green-col-${r}`} x={7 * CELL_SIZE} y={r * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={COLORS[1]} stroke="#000" strokeWidth={1} />);
-        for (let c = 9; c <= 13; c++) elems.push(<rect key={`yellow-row-${c}`} x={c * CELL_SIZE} y={7 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={COLORS[3]} stroke="#000" strokeWidth={1} />);
-        for (let r = 9; r <= 12; r++) elems.push(<rect key={`blue-col-${r}`} x={7 * CELL_SIZE} y={r * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={COLORS[2]} stroke="#000" strokeWidth={1} />);
-        for (let c = 1; c <= 5; c++) elems.push(<rect key={`red-row-${c}`} x={c * CELL_SIZE} y={7 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={COLORS[0]} stroke="#000" strokeWidth={1} />);
-
-        // Center pinwheel across the full 3x3 center (cells 6..8,6..8)
-        // Coordinates of the 3x3 center square
-        const cx = (7.5) * CELL_SIZE; // center point
-        const cy = (7.5) * CELL_SIZE;
-        const xLeft = 6 * CELL_SIZE;
-        const xRight = 9 * CELL_SIZE;
-        const yTop = 6 * CELL_SIZE;
-        const yBottom = 9 * CELL_SIZE;
-        // Top (green)
-        elems.push(<path key="center-tri-green" d={`M ${xLeft} ${yTop} L ${xRight} ${yTop} L ${cx} ${cy} Z`} fill={COLORS[1]} stroke="#000" strokeWidth={1} />);
-        // Right (yellow)
-        elems.push(<path key="center-tri-yellow" d={`M ${xRight} ${yTop} L ${xRight} ${yBottom} L ${cx} ${cy} Z`} fill={COLORS[3]} stroke="#000" strokeWidth={1} />);
-        // Bottom (blue)
-        elems.push(<path key="center-tri-blue" d={`M ${xLeft} ${yBottom} L ${xRight} ${yBottom} L ${cx} ${cy} Z`} fill={COLORS[2]} stroke="#000" strokeWidth={1} />);
-        // Left (red)
-        elems.push(<path key="center-tri-red" d={`M ${xLeft} ${yTop} L ${xLeft} ${yBottom} L ${cx} ${cy} Z`} fill={COLORS[0]} stroke="#000" strokeWidth={1} />);
-
-        // Highlight entry cells for all players
-        elems.push(<rect key="highlight-1-6" x={1 * CELL_SIZE} y={6 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={COLORS[0]} stroke="#000" strokeWidth={1} />);   // Red entry
-        elems.push(<rect key="highlight-8-1" x={8 * CELL_SIZE} y={1 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={COLORS[1]} stroke="#000" strokeWidth={1} />);   // Green entry
-        elems.push(<rect key="highlight-6-13" x={6 * CELL_SIZE} y={13 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={COLORS[2]} stroke="#000" strokeWidth={1} />); // Blue entry
-        elems.push(<rect key="highlight-13-8" x={13 * CELL_SIZE} y={8 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={COLORS[3]} stroke="#000" strokeWidth={1} />); // Yellow entry
-
-        // Ensure cell (7,12) is blue
-        elems.push(<rect key="force-blue-7-12" x={7 * CELL_SIZE} y={13 * CELL_SIZE} width={CELL_SIZE} height={CELL_SIZE} fill={COLORS[2]} stroke="#000" strokeWidth={1} />);
-
-        return (<>{elems}</>);
-    };
-
-    const boardStyle = {
-        position: 'relative',
-        width: `${BOARD_SIZE}px`,
-        height: `${BOARD_SIZE}px`,
-        maxWidth: '100%',
-        maxHeight: '100%',
-        borderRadius: '15px',
-        overflow: 'hidden',
-        background: '#fff',
-        boxShadow: '0 6px 12px rgba(0,0,0,0.4)',
-        transform: 'translateZ(0)', // Hardware acceleration
-        willChange: 'transform',
-        boxSizing: 'border-box'
-    };
-
-    return (
-        <div style={boardStyle}>
-            <svg 
-                width={BOARD_SIZE} 
-                height={BOARD_SIZE} 
-                viewBox={`0 0 ${BOARD_SIZE} ${BOARD_SIZE}`}
-                preserveAspectRatio="none"
-                style={{ display: 'block', width: `${BOARD_SIZE}px`, height: `${BOARD_SIZE}px` }}
-            >
-                <rect x="0" y="0" width={BOARD_SIZE} height={BOARD_SIZE} fill="#FFFFFF" stroke="#000000" strokeWidth="2" rx="10" ry="10" />
-                {renderBoardGrid()}
-                {renderStaticRects()}
-            </svg>
-            {/* Tokens overlay - positioned absolutely to match SVG coordinates exactly */}
-            <div style={{ 
-                position: 'absolute', 
-                left: 0, 
-                top: 0, 
-                width: `${BOARD_SIZE}px`, 
-                height: `${BOARD_SIZE}px`,
-                transform: 'translateZ(0)',
-                willChange: 'contents'
-            }}>
-                {renderPlayerOrder.map((playerIndex) => (
-                    players[playerIndex]?.pieces.map((piece, pieceIndex) => tokenNode(playerIndex, pieceIndex, piece))
-                ))}
-            </div>
-        </div>
-    );
+const safeStar = (col, row, color, key, cell) => {
+  const cx = (col + 0.5) * cell;
+  const cy = (row + 0.5) * cell;
+  const r = cell * 0.32;
+  const points = [];
+  for (let i = 0; i < 8; i++) {
+    const angle = (Math.PI / 4) * i - Math.PI / 2;
+    const radius = i % 2 === 0 ? r : r * 0.42;
+    points.push(`${cx + Math.cos(angle) * radius},${cy + Math.sin(angle) * radius}`);
+  }
+  return (
+    <polygon
+      key={key}
+      points={points.join(" ")}
+      fill={color}
+      stroke={BOARD_OUTER_STROKE}
+      strokeWidth={0.8}
+      opacity={0.95}
+    />
+  );
 };
+
+const square = (key, x, y, cell, fill) => (
+  <rect
+    key={key}
+    x={x * cell}
+    y={y * cell}
+    width={cell}
+    height={cell}
+    fill={fill}
+    stroke={BOARD_GRID_STROKE}
+    strokeWidth={0.75}
+  />
+);
+
+/**
+ * The static 15x15 board. Each corner yard shows its player's photo (cover
+ * photo, or profile picture) for every seat — the host's and remote players'.
+ */
+export const GameBoard = memo(function GameBoard({ size, cellSize, players, playerCount }) {
+  const cell = cellSize;
+  const stroke = BOARD_OUTER_STROKE;
+  const elems = [];
+
+  for (let row = 0; row < 15; row++) {
+    for (let col = 0; col < 15; col++) {
+      elems.push(square(`cell-${row}-${col}`, col, row, cell, "#FAFAF8"));
+    }
+  }
+
+  const drawYard = (x0, y0, boardSeat) => {
+    const color = COLORS[boardSeat];
+    elems.push(
+      <rect
+        key={`home-outer-${boardSeat}`}
+        x={x0 * cell}
+        y={y0 * cell}
+        width={cell * 6}
+        height={cell * 6}
+        fill={color}
+        stroke={stroke}
+        strokeWidth={1.5}
+        rx={cell * 0.15}
+      />,
+    );
+    const innerX = (x0 + 1) * cell;
+    const innerY = (y0 + 1) * cell;
+    const innerW = cell * 4;
+    const playerIndex = playerIndexForBoardSeat(boardSeat, playerCount);
+    const image = playerIndex === null ? null : yardImageFor(players?.[playerIndex]);
+    if (image) {
+      const clipId = `ludo-yard-clip-${boardSeat}`;
+      elems.push(
+        <clipPath key={`clip-${boardSeat}`} id={clipId}>
+          <rect x={innerX} y={innerY} width={innerW} height={innerW} rx={cell * 0.1} />
+        </clipPath>,
+        <image
+          key={`home-photo-${boardSeat}`}
+          data-testid={`ludo-yard-photo-${playerIndex}`}
+          href={image}
+          x={innerX}
+          y={innerY}
+          width={innerW}
+          height={innerW}
+          preserveAspectRatio="xMidYMid slice"
+          clipPath={`url(#${clipId})`}
+        />,
+        <rect
+          key={`home-photo-shade-${boardSeat}`}
+          x={innerX}
+          y={innerY}
+          width={innerW}
+          height={innerW}
+          fill="rgba(0,0,0,0.45)"
+        />,
+        <rect
+          key={`home-photo-frame-${boardSeat}`}
+          x={innerX}
+          y={innerY}
+          width={innerW}
+          height={innerW}
+          fill="none"
+          stroke={stroke}
+          strokeWidth={1.5}
+          rx={cell * 0.1}
+        />,
+      );
+    } else {
+      elems.push(
+        <rect
+          key={`home-inner-${boardSeat}`}
+          x={innerX}
+          y={innerY}
+          width={innerW}
+          height={innerW}
+          fill="#FFFEFA"
+          stroke={stroke}
+          strokeWidth={1.5}
+          rx={cell * 0.1}
+        />,
+      );
+    }
+    const cx = innerX + cell * 2;
+    const cy = innerY + cell * 2;
+    const gap = cell * 0.45;
+    [
+      [-gap, -gap],
+      [gap, -gap],
+      [-gap, gap],
+      [gap, gap],
+    ].forEach(([dx, dy], i) => {
+      elems.push(
+        <circle
+          key={`pip-${boardSeat}-${i}`}
+          cx={cx + dx}
+          cy={cy + dy}
+          r={cell * 0.3}
+          fill={color}
+          stroke={stroke}
+          strokeWidth={1.5}
+        />,
+        <circle
+          key={`pip-inner-${boardSeat}-${i}`}
+          cx={cx + dx}
+          cy={cy + dy}
+          r={cell * 0.3 * 0.55}
+          fill="rgba(255,255,255,0.35)"
+        />,
+      );
+    });
+  };
+  drawYard(0, 0, 0);
+  drawYard(9, 0, 1);
+  drawYard(0, 9, 2);
+  drawYard(9, 9, 3);
+
+  for (let c = 0; c < 15; c++) elems.push(square(`hpath-${c}`, c, 7, cell, "#FFFEFA"));
+  for (let r = 0; r < 15; r++) elems.push(square(`vpath-${r}`, 7, r, cell, "#FFFEFA"));
+  for (let r = 1; r <= 5; r++) elems.push(square(`green-col-${r}`, 7, r, cell, COLORS[1]));
+  for (let c = 9; c <= 13; c++) elems.push(square(`yellow-row-${c}`, c, 7, cell, COLORS[3]));
+  for (let r = 9; r <= 13; r++) elems.push(square(`blue-col-${r}`, 7, r, cell, COLORS[2]));
+  for (let c = 1; c <= 5; c++) elems.push(square(`red-row-${c}`, c, 7, cell, COLORS[0]));
+
+  const cx = 7.5 * cell;
+  const cy = 7.5 * cell;
+  const left = 6 * cell;
+  const right = 9 * cell;
+  const top = 6 * cell;
+  const bottom = 9 * cell;
+  [
+    ["green", `M ${left} ${top} L ${right} ${top} L ${cx} ${cy} Z`, COLORS[1]],
+    ["yellow", `M ${right} ${top} L ${right} ${bottom} L ${cx} ${cy} Z`, COLORS[3]],
+    ["blue", `M ${left} ${bottom} L ${right} ${bottom} L ${cx} ${cy} Z`, COLORS[2]],
+    ["red", `M ${left} ${top} L ${left} ${bottom} L ${cx} ${cy} Z`, COLORS[0]],
+  ].forEach(([name, d, fill]) =>
+    elems.push(<path key={`center-${name}`} d={d} fill={fill} stroke={stroke} strokeWidth={1} />),
+  );
+
+  // Entry squares
+  elems.push(square("entry-red", 1, 6, cell, COLORS[0]));
+  elems.push(square("entry-green", 8, 1, cell, COLORS[1]));
+  elems.push(square("entry-blue", 6, 13, cell, COLORS[2]));
+  elems.push(square("entry-yellow", 13, 8, cell, COLORS[3]));
+
+  elems.push(safeStar(2, 7, "#FFFEFA", "star-2-7", cell));
+  elems.push(safeStar(7, 2, "#FFFEFA", "star-7-2", cell));
+  elems.push(safeStar(13, 7, "#FFFEFA", "star-13-7", cell));
+  elems.push(safeStar(7, 13, "#FFFEFA", "star-7-13", cell));
+  elems.push(safeStar(1, 6, "rgba(255,255,255,0.85)", "star-1-6", cell));
+  elems.push(safeStar(8, 1, "rgba(255,255,255,0.85)", "star-8-1", cell));
+  elems.push(safeStar(6, 13, "rgba(255,255,255,0.85)", "star-6-13", cell));
+  elems.push(safeStar(13, 8, "rgba(255,255,255,0.85)", "star-13-8", cell));
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      preserveAspectRatio="xMidYMid meet"
+      style={{ display: "block", width: `${size}px`, height: `${size}px` }}
+    >
+      <rect
+        x="0"
+        y="0"
+        width={size}
+        height={size}
+        fill="#FAFAF8"
+        stroke={BOARD_OUTER_STROKE}
+        strokeWidth="2"
+        rx="12"
+        ry="12"
+      />
+      {elems}
+    </svg>
+  );
+});
