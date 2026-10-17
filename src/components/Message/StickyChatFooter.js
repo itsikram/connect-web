@@ -260,6 +260,7 @@ const StickyChatFooter = ({
 
       const roomId = room || [userId, connectId].sort().join("_");
       const messageContent = inputValue.trim();
+      const secure = secureModeRef.current && !isAi;
 
       // One message per photo; the text and reply ride on the first one.
       const attachments = [
@@ -275,6 +276,7 @@ const StickyChatFooter = ({
           attachment,
           parent: index === 0 ? replyData.messageId || false : false,
           isAi,
+          ...(secure ? { secure: true } : {}),
         }),
       );
 
@@ -285,6 +287,10 @@ const StickyChatFooter = ({
         })
         .catch((error) => {
           console.error("Failed to send message:", error);
+          // Give the draft back unless something new was typed meanwhile.
+          if (messageContent) {
+            setInputValue((current) => current || messageContent);
+          }
         })
         .finally(() => {
           setTimeout(() => {
@@ -665,6 +671,28 @@ const StickyChatFooter = ({
     };
   }, [removeTyping]);
 
+  const hasComposableContent = Boolean(
+    inputValue.trim() || attachmentUrl || imageUploads.hasImages,
+  );
+  const canUseSecure = !isAi;
+  const isSecureComposer = secureMode && canUseSecure;
+  // A voice note is never secure, so the toggle waits while one is in flight.
+  const secureToggleDisabled = isRecording || isUploadingAudio;
+  const toggleSecureMode = () => {
+    if (secureToggleDisabled || !canUseSecure) return;
+    const next = !secureModeRef.current;
+    secureModeRef.current = next;
+    setSecureMode(next);
+    if (next) {
+      // Drop any live-typing preview the other side already has.
+      removeTyping();
+      setShowMicMenu(false);
+    }
+    requestAnimationFrame(() =>
+      messageInput?.current?.focus?.({ preventScroll: true }),
+    );
+  };
+
   return (
     <div className="sticky-chat-footer-container">
       <ComposerContextPreview
@@ -738,6 +766,19 @@ const StickyChatFooter = ({
         </div>
       ) : null}
 
+      {isSecureComposer ? (
+        <div className="composer-secure-banner" role="status">
+          <i className="fas fa-lock" aria-hidden="true"></i>
+          <span>
+            Secure mode: encrypted, hidden from notifications and gone after
+            it's opened (or in 24h).
+          </span>
+          <button type="button" onClick={toggleSecureMode}>
+            Turn off
+          </button>
+        </div>
+      ) : null}
+
       <div
         className={`sticky-chat-input-wrapper${showMicMenu ? " mic-menu-open" : ""}`}
       >
@@ -783,58 +824,87 @@ const StickyChatFooter = ({
               style={{ display: "none" }}
             />
 
-            <div className="composer-mic-wrap" ref={micMenuRef}>
-              <button
-                ref={micButtonRef}
-                className={`sticky-chat-attachment-btn ${isRecording ? "recording" : ""} ${isUploadingAudio ? "loading" : ""} ${isTranscribing || showMicMenu ? "recording" : ""}`}
-                onClick={handleMicButtonClick}
-                disabled={isUploadingAudio}
-                aria-haspopup="menu"
-                aria-expanded={showMicMenu}
-                aria-label={
-                  isRecording
-                    ? "Stop recording"
-                    : isTranscribing
-                      ? "Stop live transcription"
-                      : "Voice options"
-                }
-              >
-                <i
-                  className={
-                    isUploadingAudio
-                      ? "fas fa-spinner fa-spin"
-                      : isRecording || isTranscribing
-                        ? "fas fa-stop"
-                        : "fas fa-microphone"
+            {/* Voice notes are never secure, so secure mode hides the mic. */}
+            {!isSecureComposer ? (
+              <div className="composer-mic-wrap" ref={micMenuRef}>
+                <button
+                  ref={micButtonRef}
+                  className={`sticky-chat-attachment-btn ${isRecording ? "recording" : ""} ${isUploadingAudio ? "loading" : ""} ${isTranscribing || showMicMenu ? "recording" : ""}`}
+                  onClick={handleMicButtonClick}
+                  disabled={isUploadingAudio}
+                  aria-haspopup="menu"
+                  aria-expanded={showMicMenu}
+                  aria-label={
+                    isRecording
+                      ? "Stop recording"
+                      : isTranscribing
+                        ? "Stop live transcription"
+                        : "Voice options"
                   }
-                ></i>
-              </button>
-              {showMicMenu
-                ? createPortal(
-                    <div
-                      ref={micMenuPanelRef}
-                      className="sticky-chat-mic-menu-portal"
-                      style={{
-                        left: `${micMenuPosition.left}px`,
-                        bottom: `${micMenuPosition.bottom}px`,
-                      }}
-                    >
-                      <ComposerMicMenu
-                        view={micMenuView}
-                        onOpenTranscribe={() => setMicMenuView("transcribe")}
-                        onBack={() => setMicMenuView("main")}
-                        onSelectLang={startLiveTranscribe}
-                        onVoiceMessage={startVoiceMessage}
-                      />
-                    </div>,
-                    document.body,
-                  )
-                : null}
-            </div>
+                >
+                  <i
+                    className={
+                      isUploadingAudio
+                        ? "fas fa-spinner fa-spin"
+                        : isRecording || isTranscribing
+                          ? "fas fa-stop"
+                          : "fas fa-microphone"
+                    }
+                  ></i>
+                </button>
+                {showMicMenu
+                  ? createPortal(
+                      <div
+                        ref={micMenuPanelRef}
+                        className="sticky-chat-mic-menu-portal"
+                        style={{
+                          left: `${micMenuPosition.left}px`,
+                          bottom: `${micMenuPosition.bottom}px`,
+                        }}
+                      >
+                        <ComposerMicMenu
+                          view={micMenuView}
+                          onOpenTranscribe={() => setMicMenuView("transcribe")}
+                          onBack={() => setMicMenuView("main")}
+                          onSelectLang={startLiveTranscribe}
+                          onVoiceMessage={startVoiceMessage}
+                        />
+                      </div>,
+                      document.body,
+                    )
+                  : null}
+              </div>
+            ) : null}
           </div>
         )}
 
         <div className="sticky-chat-input-container">
+          {canUseSecure ? (
+            <button
+              type="button"
+              className={`composer-secure-toggle${isSecureComposer ? " is-on" : ""}`}
+              // Keep focus in the input so the composer layout doesn't jump.
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={toggleSecureMode}
+              disabled={secureToggleDisabled}
+              aria-pressed={isSecureComposer}
+              aria-label={
+                isSecureComposer
+                  ? "Turn off secure mode"
+                  : "Send a secure, vanishing message"
+              }
+              title={
+                isSecureComposer
+                  ? "Secure mode is on"
+                  : "Secure message (vanishes after it's read)"
+              }
+            >
+              <i
+                className={`fas ${isSecureComposer ? "fa-lock" : "fa-lock-open"}`}
+                aria-hidden="true"
+              ></i>
+            </button>
+          ) : null}
           <input
             ref={messageInput}
             type="text"
@@ -857,20 +927,28 @@ const StickyChatFooter = ({
                 ? String(transcribeLang).startsWith("bn")
                   ? "Listening in Bangla…"
                   : "Listening in English…"
-                : "Type a message..."
+                : isSecureComposer
+                  ? "Secure message"
+                  : "Type a message..."
             }
-            className={`sticky-chat-input ${isInputFocused ? "focused" : ""}`}
+            className={`sticky-chat-input ${isInputFocused ? "focused" : ""}${canUseSecure ? " has-secure-toggle" : ""}${isSecureComposer ? " is-secure" : ""}`}
             disabled={isRecording || isUploadingAudio}
           />
         </div>
 
         <div className="sticky-chat-action-buttons">
-          {isInputFocused || inputValue.trim() || attachmentUrl || imageUploads.hasImages ? (
+          {isInputFocused || hasComposableContent || isSecureComposer ? (
             <button
-              className={`sticky-chat-action-btn send ${isSendingMessage || imageUploads.isUploading ? "loading" : ""}`}
+              className={`sticky-chat-action-btn send ${isSendingMessage || imageUploads.isUploading ? "loading" : ""}${isSecureComposer ? " is-secure" : ""}`}
               onClick={handleSendMessage}
               disabled={isSendingMessage || imageUploads.isUploading}
-              aria-label={imageUploads.isUploading ? "Waiting for uploads" : "Send message"}
+              aria-label={
+                imageUploads.isUploading
+                  ? "Waiting for uploads"
+                  : isSecureComposer
+                    ? "Send secure message"
+                    : "Send message"
+              }
             >
               <i
                 className={

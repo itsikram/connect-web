@@ -16,6 +16,7 @@ import socket from "../../common/socket";
 import { sendBumpToConnect } from "../../utils/sendBump";
 import { newMessage, seenMessage } from "../../services/actions/messageActions";
 import SingleMessage from "./SingleMessage";
+import { SECURE_MESSAGE_TYPE, SECURE_PLACEHOLDER } from "./SecureMessage";
 import ChatHeader from "./ChatHeader";
 import StickyChatFooter from "./StickyChatFooter";
 import SingleMsgSkleton from "../../skletons/message/SingleMsgSkleton";
@@ -31,6 +32,7 @@ import "./UserInfoModal.css";
 import { sanitizeProfileImageUrl } from "../../utils/profileImage";
 import MessageCacheManager from "../../utils/messageCacheManager";
 import { getPresence, usePresence } from "../../utils/presence";
+import { showErrorToast } from "../../utils/toastUtils";
 import {
   emitChatMessage,
   idOf,
@@ -224,15 +226,21 @@ const StickyChatBox = ({
   // WebSocket-based message sending with optimistic UI
   const sendMessage = async (messageData) => {
     const tempId = `temp-${Date.now()}-${Math.random()}`;
+    const isSecure = messageData?.secure === true;
+    // A secure message's text only travels in the socket payload; the list,
+    // Redux, the chat list and the message cache only ever see the placeholder.
     const optimisticMessage = {
       _id: tempId,
       tempId,
       senderId: userId,
       receiverId: connectId,
-      message: messageData.message,
-      attachment: messageData.attachment,
+      message: isSecure ? SECURE_PLACEHOLDER : messageData.message,
+      attachment: isSecure ? null : messageData.attachment,
       parent: messageData.parent,
-      messageType: messageData.messageType || "text",
+      messageType: isSecure
+        ? SECURE_MESSAGE_TYPE
+        : messageData.messageType || "text",
+      ...(isSecure ? { secure: { state: "sealed" } } : {}),
       timestamp: new Date(),
       isOptimistic: true,
     };
@@ -256,7 +264,7 @@ const StickyChatBox = ({
     setShowScrollToBottom(false);
     setUnreadWhileScrolled(0);
     scrollToLastMessage("smooth");
-    triggerLoveRain(messageData.message);
+    if (!isSecure) triggerLoveRain(messageData.message);
 
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -285,6 +293,10 @@ const StickyChatBox = ({
               (msg) => msg && msg._id !== tempId && msg.tempId !== tempId,
             ),
           );
+          // One toast per conversation, even when several photos fail at once.
+          showErrorToast(err?.message || "Message not sent. Please try again.", {
+            toastId: `sticky-send-failed-${connectId}`,
+          });
           reject(err);
           return;
         }
