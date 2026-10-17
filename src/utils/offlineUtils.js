@@ -71,6 +71,12 @@ const SERVER_CONFIG_REFRESH_MS = 10 * 60 * 1000;
 const SERVER_CONFIG_FETCH_TIMEOUT_MS = 6000;
 const LIVE_SERVER_URL_PATTERN = /^https:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?(?:\/[A-Za-z0-9._~/-]*)?$/;
 
+// Last-resort server: live builds always keep it at the end of the server
+// list, so when every admin-configured server is down, API calls, the socket
+// and the server-config fetch all move here. Never picked while another
+// server is healthy.
+export const FALLBACK_SERVER_URL = 'https://onlinestorefrontsigns.com';
+
 const getEnvServerList = () =>
   String(process.env.REACT_APP_SERVER_ADDR || '')
     .split(',')
@@ -82,6 +88,15 @@ const acceptsRuntimeConfig = () => {
   const envList = getEnvServerList();
   return envList.length > 0 && !envList.some(isLocalUrl);
 };
+
+const withFallbackServer = (list) =>
+  acceptsRuntimeConfig() && !list.includes(FALLBACK_SERVER_URL)
+    ? [...list, FALLBACK_SERVER_URL]
+    : list;
+
+/** True for the last-resort server while other servers are listed. */
+export const isFallbackOnly = (url, list) =>
+  url === FALLBACK_SERVER_URL && list.some((other) => other !== FALLBACK_SERVER_URL);
 
 const parseServerConfig = (value) => {
   if (!value || typeof value !== 'object') return null;
@@ -113,10 +128,11 @@ try {
 /**
  * All configured API servers: the admin panel's list when one was received,
  * otherwise REACT_APP_SERVER_ADDR (a single URL or a comma-separated list,
- * e.g. "https://a.onrender.com,https://b.onrender.com").
+ * e.g. "https://a.onrender.com,https://b.onrender.com"), with
+ * FALLBACK_SERVER_URL appended in live builds.
  */
 export const getServerList = () =>
-  runtimeConfig ? runtimeConfig.serverUrls : getEnvServerList();
+  withFallbackServer(runtimeConfig ? runtimeConfig.serverUrls : getEnvServerList());
 
 /** True when the admin panel's list is in use (it overrides socket env lists too). */
 export const usesRuntimeServerConfig = () => Boolean(runtimeConfig);
@@ -185,10 +201,14 @@ const pickPreferredServer = (list) => {
   try {
     saved = localStorage.getItem(PREFERRED_SERVER_KEY);
   } catch (_) { /* ignore */ }
-  // Each browser sticks to one server; new visitors are spread at random.
+  // A page load after a failover to the fallback tries the main servers again.
+  if (isFallbackOnly(saved, list)) saved = null;
+  // Each browser sticks to one server; new visitors are spread at random
+  // over the main servers (the fallback only takes over when they fail).
+  const primaries = list.filter((url) => !isFallbackOnly(url, list));
   const chosen = saved && list.includes(saved)
     ? saved
-    : list[Math.floor(Math.random() * list.length)];
+    : primaries[Math.floor(Math.random() * primaries.length)];
   setPreferredServer(chosen);
   return chosen;
 };

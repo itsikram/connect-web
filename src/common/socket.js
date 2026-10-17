@@ -10,6 +10,7 @@ import {
     SERVER_CHANGED_EVENT,
     usesRuntimeServerConfig,
     applyServerConfig,
+    isFallbackOnly,
 } from '../utils/offlineUtils';
 import { getUserFromStorage } from '../utils/storageUtils';
 
@@ -61,6 +62,8 @@ const pickInitialServer = () => {
     socketServers = getSocketServers();
     let saved = null;
     try { saved = localStorage.getItem(SERVER_STORAGE_KEY); } catch (_e) { /* ignore */ }
+    // A saved fallback server is only kept while it is the API's home too.
+    if (isFallbackOnly(saved, socketServers) && saved !== getServerAddress()) saved = null;
     if (!saved || !socketServers.includes(saved)) saved = getServerAddress(); // same home as the API
     if (saved && isServerDown(saved)) saved = getNextServer(saved, socketServers);
     const savedIndex = saved ? socketServers.indexOf(saved) : -1;

@@ -339,7 +339,7 @@ const renderIndexHtml = (pathname) => {
 // #root; React's createRoot replaces it as soon as the app mounts.
 const PORTFOLIO_API_BASES = (
   process.env.PORTFOLIO_API_BASES ||
-  "https://connect-server-nhaw.onrender.com,https://connect-server-u85b.onrender.com,https://connect-server-k1if.onrender.com,https://oeazgm4zwn.c35.airoapp.ai"
+  "https://connect-server-nhaw.onrender.com,https://connect-server-u85b.onrender.com,https://connect-server-k1if.onrender.com,https://oeazgm4zwn.c35.airoapp.ai,https://onlinestorefrontsigns.com"
 )
   .split(",")
   .map((s) => s.trim().replace(/\/$/, ""))
