@@ -1,5 +1,5 @@
 // Runs after `react-scripts build`. Renders the public pages that logged-out
-// visitors land on (/ and /about) to static HTML, plus a minified copy of
+// visitors land on (/, /about and /download-app) to static HTML, plus a minified copy of
 // their stylesheet, into build/prerender/. server.js puts both into the
 // HTML it serves so the first paint needs no JavaScript or CSS download;
 // React (PublicApp) then hydrates that markup instead of re-creating it.
@@ -61,8 +61,22 @@ fs.writeFileSync(path.join(OUT, "about.html"), render("/about", "pages/AboutConn
     `<script type="application/ld+json" id="${JSON_LD_ID}">${JSON.stringify(ABOUT_JSON_LD).replace(/</g, "\\u003c")}</script>`
   );
 }
+// /download-app lives in the full app, which replaces this markup (no
+// hydration), so it only has to read right to crawlers and on first paint.
+fs.writeFileSync(path.join(OUT, "download.html"), render("/download-app", "pages/DownloadApp.js"));
+{
+  const { DOWNLOAD_JSON_LD, JSON_LD_ID } = require(path.join(SRC, "pages", "DownloadApp.js"));
+  const css = ["Menu.css", "DownloadApp.css"]
+    .map((f) => fs.readFileSync(path.join(SRC, "pages", f), "utf8"))
+    .join("\n");
+  fs.writeFileSync(
+    path.join(OUT, "download.head.html"),
+    `<script type="application/ld+json" id="${JSON_LD_ID}">${JSON.stringify(DOWNLOAD_JSON_LD).replace(/</g, "\\u003c")}</script>` +
+      `<style>${minifyCss(css)}</style>`
+  );
+}
 fs.writeFileSync(
   path.join(OUT, "public.css"),
   minifyCss(fs.readFileSync(path.join(SRC, "components", "LandingPage.css"), "utf8"))
 );
-console.log("Pre-rendered / and /about into build/prerender/");
+console.log("Pre-rendered /, /about and /download-app into build/prerender/");

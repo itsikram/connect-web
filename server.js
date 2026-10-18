@@ -126,9 +126,9 @@ const PUBLIC_PAGES = {
       "Reset your Connect BD password and get back to messaging, sharing, and calling your connects on the Connect social media app.",
   },
   "/download-app": {
-    title: "Download Connect BD App for Android & iPhone | Connect",
+    title: "Connect Download – Get the Connect App for Android & iPhone",
     description:
-      "Download the Connect BD social media app for Android and iPhone. Chat, share moments, make video calls, and join communities on the go.",
+      "Connect Download: get the free Connect App (Connect BD) for Android, iPhone and iPad. Chat, HD video calls, posts and communities. Install in minutes.",
   },
   "/about": {
     title: "About Connect – Connect BD Social Media App by Ikramul",
@@ -319,6 +319,16 @@ const renderIndexHtml = (pathname) => {
       hydrate: true,
       head: pre.head ? readBuildText(path.join(PRERENDER_DIR, pre.head)) : "",
     });
+  }
+  if (route === "/download-app") {
+    // Full-app page: the bundle loads as usual and replaces this markup.
+    const body = readBuildText(path.join(PRERENDER_DIR, "download.html"));
+    const head = readBuildText(path.join(PRERENDER_DIR, "download.head.html"));
+    if (body && head) {
+      html = html
+        .replace("</head>", `${head}</head>`)
+        .replace('<div id="root"></div>', `<div id="root">${body}</div>`);
+    }
   }
   if (route.startsWith("/portfolio")) {
     const body = renderPortfolioBody(route, getPortfolioData());

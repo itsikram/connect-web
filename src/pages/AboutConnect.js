@@ -144,7 +144,7 @@ const AboutConnect = () => {
               </Link>
               <Link to="/download-app" className="download-btn">
                 <span className="platform">Android &amp; iPhone</span>
-                <span className="store">Download the app</span>
+                <span className="store">Download Connect App</span>
               </Link>
             </div>
           </section>

@@ -69,6 +69,99 @@
   color: #7dd3fc;
 }
 
+.download-app-eyebrow {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7dd3fc;
+}
+
+.download-app-section {
+  margin-top: 32px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #cbd5e1;
+}
+
+.download-app-section h2 {
+  margin: 0 0 12px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.download-app-section h3 {
+  margin: 16px 0 6px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.download-app-section p,
+.download-app-section ol {
+  margin: 0 0 8px;
+}
+
+.download-app-section ol {
+  padding-left: 20px;
+}
+
+.download-app-section a {
+  color: #7dd3fc;
+}
+
+.download-app-section strong {
+  color: #f1f5f9;
+}
+
+.download-app-features {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.download-app-features li {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.download-app-features i {
+  width: 18px;
+  flex-shrink: 0;
+  text-align: center;
+  color: #7dd3fc;
+}
+
+.download-app-faq {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 12px 0;
+}
+
+.download-app-faq:last-child {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.download-app-faq summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.download-app-faq p {
+  margin: 8px 0 0;
+}
+
+@media (min-width: 640px) {
+  .download-app-features {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 /* Menu.css stacks cards vertically on wide screens; keep this list in rows. */
 @media (min-width: 992px) {
   .download-app-list .apps-menu-card {

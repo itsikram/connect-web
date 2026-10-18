@@ -32,7 +32,7 @@ const LandingPage = () => {
               </p>
               <div className="hero-buttons">
                 <Link to="/signup" className="landing-btn landing-btn--primary">Get Started</Link>
-                <Link to="/download-app" className="landing-btn landing-btn--secondary">Download App</Link>
+                <Link to="/download-app" className="landing-btn landing-btn--secondary">Download Connect App</Link>
               </div>
             </div>
           </header>
@@ -109,7 +109,7 @@ const LandingPage = () => {
             <ul>
               <li><Link to="/signup">Create an account</Link></li>
               <li><Link to="/login">Log in</Link></li>
-              <li><Link to="/download-app">Download the app</Link></li>
+              <li><Link to="/download-app">Connect Download</Link></li>
             </ul>
           </div>
           <div className="footer-section">

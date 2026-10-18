@@ -410,9 +410,9 @@ const Main = () => {
     },
     {
       match: /^\/download-app\/?$/,
-      title: "Download Connect BD App for Android & iPhone | Connect",
+      title: "Connect Download – Get the Connect App for Android & iPhone",
       description:
-        "Download the Connect BD social media app for Android and iPhone. Chat, share moments, make video calls, and join communities on the go.",
+        "Connect Download: get the free Connect App (Connect BD) for Android, iPhone and iPad. Chat, HD video calls, posts and communities. Install in minutes.",
     },
     {
       match: /^\/about\/?$/,
