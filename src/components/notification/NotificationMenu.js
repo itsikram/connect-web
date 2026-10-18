@@ -415,10 +415,18 @@ const NotificationMenu = ({
         key={notification._id}
         className={`notif-item ${unread ? "unread" : ""}`}
       >
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
           className="notif-item-main"
           onClick={() => handleOpen(notification)}
+          onKeyDown={(e) => {
+            if (e.target !== e.currentTarget) return;
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              handleOpen(notification);
+            }
+          }}
         >
           <div className="notif-avatar-wrap">
             <img
@@ -470,7 +478,8 @@ const NotificationMenu = ({
                     onClose?.();
                   }}
                 >
-                  Accept
+                  <i className="fas fa-check" aria-hidden />
+                  <span>Accept</span>
                 </button>
                 <button
                   type="button"
@@ -488,7 +497,8 @@ const NotificationMenu = ({
                     }
                   }}
                 >
-                  Decline
+                  <i className="fas fa-times" aria-hidden />
+                  <span>Decline</span>
                 </button>
               </div>
             ) : null}
@@ -516,7 +526,7 @@ const NotificationMenu = ({
           </div>
 
           {unread ? <span className="notif-unread-dot" aria-hidden /> : null}
-        </button>
+        </div>
 
         {!isGameInvite && (
           <div
@@ -527,6 +537,8 @@ const NotificationMenu = ({
               type="button"
               className="notif-more-btn"
               aria-label="Notification options"
+              aria-haspopup="menu"
+              aria-expanded={isMenuOpen}
               onClick={(e) => {
                 e.stopPropagation();
                 setItemMenuId(isMenuOpen ? null : notification._id);
@@ -536,25 +548,37 @@ const NotificationMenu = ({
               <i className="fas fa-ellipsis-h" />
             </button>
             {isMenuOpen && (
-              <ul className="notif-item-menu">
+              <ul className="notif-item-menu" role="menu">
                 {unread && (
-                  <li
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      markOneRead(notification._id);
-                      setItemMenuId(null);
-                    }}
-                  >
-                    <i className="fas fa-check" /> Mark as read
+                  <li role="none">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="notif-menu-option"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        markOneRead(notification._id);
+                        setItemMenuId(null);
+                      }}
+                    >
+                      <i className="fas fa-check" aria-hidden />
+                      <span>Mark as read</span>
+                    </button>
                   </li>
                 )}
-                <li
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteOne(notification._id);
-                  }}
-                >
-                  <i className="fas fa-trash-alt" /> Remove this notification
+                <li role="none">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="notif-menu-option danger"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteOne(notification._id);
+                    }}
+                  >
+                    <i className="fas fa-trash-alt" aria-hidden />
+                    <span>Remove this notification</span>
+                  </button>
                 </li>
               </ul>
             )}
@@ -579,38 +603,58 @@ const NotificationMenu = ({
       <div className="notification-leftside-header notif-menu-header">
         <h2 className="notification-leftside-title">Notifications</h2>
         <div className="notification-sidebar-header-menu" ref={optionsRef}>
-          <div
-            className="header-menu-icons"
+          <button
+            type="button"
+            className={`header-menu-icons ${optionsOpen ? "active" : ""}`}
             onClick={(e) => {
               e.stopPropagation();
               setOptionsOpen((v) => !v);
               setItemMenuId(null);
             }}
-            role="button"
-            tabIndex={0}
             aria-label="Notification options"
             aria-expanded={optionsOpen}
-            aria-haspopup="true"
+            aria-haspopup="menu"
           >
             <i className="far fa-ellipsis-h" />
-          </div>
+          </button>
           {optionsOpen && (
-            <ul className="notification-option-menu notif-options-dropdown">
-              <li
-                onClick={markAllAsRead}
-                className={unreadCount === 0 ? "disabled" : ""}
-              >
-                Mark all as read
+            <ul
+              className="notification-option-menu notif-options-dropdown"
+              role="menu"
+            >
+              <li role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="notif-menu-option"
+                  onClick={markAllAsRead}
+                  disabled={unreadCount === 0}
+                >
+                  <i className="fas fa-check-double" aria-hidden />
+                  <span>Mark all as read</span>
+                </button>
               </li>
-              <li
-                onClick={deleteAll}
-                className={feed.length === 0 ? "disabled" : ""}
-              >
-                Delete all
+              <li role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="notif-menu-option danger"
+                  onClick={deleteAll}
+                  disabled={feed.length === 0}
+                >
+                  <i className="fas fa-trash-alt" aria-hidden />
+                  <span>Delete all</span>
+                </button>
               </li>
-              <li>
-                <Link to="/settings/notification" onClick={() => onClose?.()}>
-                  Notification settings
+              <li role="none">
+                <Link
+                  to="/settings/notification"
+                  role="menuitem"
+                  className="notif-menu-option"
+                  onClick={() => onClose?.()}
+                >
+                  <i className="fas fa-cog" aria-hidden />
+                  <span>Notification settings</span>
                 </Link>
               </li>
             </ul>
