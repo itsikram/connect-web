@@ -48,6 +48,7 @@ export const MENU_APPS = [
     icon: "⬇️",
     faIcon: "fa-download",
     href: "/yt-download",
+    flag: "ytDownloadEnabled",
     colorA: "#FF0000",
     colorB: "#DC2626",
   },

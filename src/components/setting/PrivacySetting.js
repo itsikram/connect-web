@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import api from '../../api/api';
+import { loadSettings } from '../../services/actions/settingsActions';
 import { showSuccessToast, showErrorToast } from '../../utils/toastUtils';
 
 const PrivacySetting = () => {
     const profile = useSelector(state => state.profile);
+    const dispatch = useDispatch();
     const [settings, setSettings] = useState({
         postVisibility: 'public',
         connectRequestVisibility: 'public',
@@ -64,6 +66,7 @@ const PrivacySetting = () => {
             setSaving(true);
             const res = await api.post('/setting/update', settings);
             if (res.status === 200) {
+                dispatch(loadSettings(res.data));
                 showSuccessToast('Privacy settings saved successfully!');
             }
         } catch (error) {
@@ -74,16 +77,19 @@ const PrivacySetting = () => {
         }
     };
 
+    // Location sharing saves as soon as it's toggled; the selects save with the button.
     const handleLocationSharingToggle = async (e) => {
         const newValue = e.target.checked;
         setSettings(prev => ({ ...prev, isShareLocation: newValue }));
-        // Auto-save location sharing setting
-        if (profile?._id) {
-            try {
-                await api.post('/setting/update', { isShareLocation: newValue });
-            } catch (error) {
-                console.error('Error updating location sharing setting:', error);
-            }
+        if (!profile?._id) return;
+        try {
+            const res = await api.post('/setting/update', { isShareLocation: newValue });
+            if (res.status === 200) dispatch(loadSettings(res.data));
+            showSuccessToast(newValue ? 'Location sharing turned on' : 'Location sharing turned off');
+        } catch (error) {
+            console.error('Error updating location sharing setting:', error);
+            setSettings(prev => ({ ...prev, isShareLocation: !newValue }));
+            showErrorToast('Failed to update location sharing');
         }
     };
 
@@ -114,7 +120,7 @@ const PrivacySetting = () => {
                                 onChange={(e) => setSettings(prev => ({ ...prev, postVisibility: e.target.value }))}
                             >
                                 <option value='om'>Only Me</option>
-                                <option value='fof'>Connect of Connects</option>
+                                <option value='fof'>Connects of Connects</option>
                                 <option value='public'>Public</option>
                             </select>
                         </div>
@@ -127,7 +133,7 @@ const PrivacySetting = () => {
                                 onChange={(e) => setSettings(prev => ({ ...prev, connectRequestVisibility: e.target.value }))}
                             >
                                 <option value='om'>Only Me</option>
-                                <option value='fof'>Connect of Connects</option>
+                                <option value='fof'>Connects of Connects</option>
                                 <option value='public'>Public</option>
                             </select>
                         </div>
@@ -140,31 +146,26 @@ const PrivacySetting = () => {
                                 onChange={(e) => setSettings(prev => ({ ...prev, timelinePostVisibility: e.target.value }))}
                             >
                                 <option value='om'>Only Me</option>
-                                <option value='fof'>Connect of Connects</option>
+                                <option value='fof'>Connects of Connects</option>
                                 <option value='public'>Public</option>
                             </select>
                         </div>
 
-                        <div className="form-group mb-2">
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', backgroundColor: '#222324', borderRadius: '8px' }}>
-                                <div>
-                                    <label htmlFor="isShareLocation" style={{ margin: 0, fontWeight: '500' }}>
-                                        Share Location with Connects
-                                    </label>
-                                    <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: '#666' }}>
-                                        Allow connects to see your real-time location in the info modal
-                                    </p>
-                                </div>
-                                <div className="form-check form-switch">
-                                    <input
-                                        className="form-check-input"
-                                        type="checkbox"
-                                        id="isShareLocation"
-                                        checked={settings.isShareLocation}
-                                        onChange={handleLocationSharingToggle}
-                                        style={{ width: '50px', height: '25px', cursor: 'pointer' }}
-                                    />
-                                </div>
+                        <div className="form-check form-switch my-3">
+                            <input
+                                className="form-check-input"
+                                type="checkbox"
+                                id="isShareLocation"
+                                checked={settings.isShareLocation}
+                                onChange={handleLocationSharingToggle}
+                            />
+                            <div className="form-check-label-group">
+                                <label className="form-check-label" htmlFor="isShareLocation">
+                                    Share Location with Connects
+                                </label>
+                                <small className="form-text text-muted">
+                                    Allow connects to see your real-time location in the info modal
+                                </small>
                             </div>
                         </div>
 

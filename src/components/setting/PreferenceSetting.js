@@ -15,13 +15,11 @@ const PreferenceSetting = () => {
     const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
-        if (oldSettings?.themeMode || oldSettings?.language) {
-            setSettings({
-                themeMode: oldSettings.themeMode || 'dark',
-                language: oldSettings.language || 'eng',
-            });
-        }
-    }, [oldSettings?.themeMode]);
+        setSettings({
+            themeMode: oldSettings.themeMode || 'dark',
+            language: oldSettings.language || 'eng',
+        });
+    }, [oldSettings.themeMode, oldSettings.language]);
 
     const handleInputChange = useCallback((e) => {
         const { name, value } = e.target;
@@ -61,7 +59,7 @@ const PreferenceSetting = () => {
                             name="themeMode"
                             id="themeMode"
                         >
-                            <option value="default">Default</option>
+                            <option value="default">Same as device</option>
                             <option value="dark">Dark</option>
                             <option value="light">Light</option>
                         </select>
@@ -78,6 +76,9 @@ const PreferenceSetting = () => {
                             <option value="eng">English</option>
                             <option value="bn">Bangla</option>
                         </select>
+                        <small className="form-text text-muted">
+                            Used for voice typing and the AI assistant.
+                        </small>
                     </div>
 
                     <button type="submit" className="btn btn-primary" disabled={isSaving}>

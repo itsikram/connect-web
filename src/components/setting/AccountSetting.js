@@ -22,7 +22,7 @@ const isValidEmail = (email) =>
 const AccountSetting = () => {
   const dispatch = useDispatch();
   const myProfile = useSelector((state) => state.profile);
-  const { user, updateUser } = useContext(AuthContext);
+  const { user, updateUser, logout } = useContext(AuthContext);
   const currentEmail = getProfileEmail(myProfile);
   const emailFetchAttempted = useRef(false);
   const [data, setData] = useState({
@@ -321,6 +321,8 @@ const AccountSetting = () => {
         });
 
         if (res.status === 200) {
+          // Keep the profile in sync so the Profile tab doesn't save the old name back.
+          dispatch(getProfileSuccess({ ...myProfile, banglaName: trimmedName }));
           showSuccessToast("Bengali name updated successfully");
           setVoiceConfidence(null);
         }
@@ -333,7 +335,7 @@ const AccountSetting = () => {
         setIsSavingBangla(false);
       }
     },
-    [banglaName, voiceConfidence],
+    [banglaName, voiceConfidence, dispatch, myProfile],
   );
 
   const handleSubmit = useCallback(
@@ -346,15 +348,42 @@ const AccountSetting = () => {
         return;
       }
 
+      const nextEmail = String(data.userEmail || "").trim().toLowerCase();
+      const emailChanged =
+        Boolean(nextEmail) && nextEmail !== currentEmail.toLowerCase();
+      const passwordTouched = Boolean(
+        data.currentPassword || data.newPassword || data.confirmPassword,
+      );
+
+      if (!emailChanged && !passwordTouched) {
+        showErrorToast("Nothing to update. Edit your email or fill in the password fields.");
+        return;
+      }
+
+      if (emailChanged && !isValidEmail(nextEmail)) {
+        showErrorToast("Please enter a valid email address");
+        return;
+      }
+
+      if (passwordTouched) {
+        if (!data.currentPassword || !data.newPassword || !data.confirmPassword) {
+          showErrorToast("Please fill in all password fields");
+          return;
+        }
+        if (data.newPassword.length < 6) {
+          showErrorToast("New password must be at least 6 characters");
+          return;
+        }
+        if (data.newPassword !== data.confirmPassword) {
+          showErrorToast("Your new password and confirm password do not match");
+          return;
+        }
+      }
+
       setIsSaving(true);
 
       try {
-        const nextEmail = String(data.userEmail || "").trim().toLowerCase();
-        if (nextEmail && nextEmail !== currentEmail.toLowerCase()) {
-          if (!isValidEmail(nextEmail)) {
-            showErrorToast("Please enter a valid email address");
-            return;
-          }
+        if (emailChanged) {
 
           const emailChangeRes = await api.post("auth/changeEmail", {
             email: nextEmail,
@@ -366,46 +395,22 @@ const AccountSetting = () => {
             setData((prev) => ({ ...prev, userEmail: savedEmail }));
             setEditEmail(false);
             showSuccessToast("Email updated successfully");
-            return;
           }
         }
 
-        if (
-          !data.newPassword &&
-          !data.confirmPassword &&
-          !data.currentPassword
-        ) {
-          return;
-        }
+        if (!passwordTouched) return;
 
-        if (
-          !data.currentPassword ||
-          !data.newPassword ||
-          !data.confirmPassword
-        ) {
-          showErrorToast("Please fill in all password fields");
-          return;
-        }
-
-        if (data.newPassword.length < 6) {
-          showErrorToast("New password must be at least 6 characters");
-          return;
-        }
-
-        if (data.newPassword !== data.confirmPassword) {
-          showErrorToast("Your new password and confirm password do not match");
-          return;
-        }
-
-        const res = await api.post("auth/changePass", data);
-
-        if (res.status === 400) {
-          showErrorToast("Your current password is invalid");
-          return;
-        }
+        const res = await api.post("auth/changePass", {
+          currentPassword: data.currentPassword,
+          newPassword: data.newPassword,
+          confirmPassword: data.confirmPassword,
+        });
 
         if (res.status === 200 || res.status === 202) {
-          localStorage.setItem("user", JSON.stringify(res.data));
+          // Only the token changes; keep the rest of the stored session.
+          if (res.data?.accessToken) {
+            updateUser({ accessToken: res.data.accessToken });
+          }
           showSuccessToast("Password updated successfully");
           setData((prev) => ({
             ...prev,
@@ -423,7 +428,7 @@ const AccountSetting = () => {
         setIsSaving(false);
       }
     },
-    [applyEmailToProfile, currentEmail, data, showVoiceConfirmation],
+    [applyEmailToProfile, currentEmail, data, showVoiceConfirmation, updateUser],
   );
 
   const deleteAccount = useCallback(async (e) => {
@@ -437,8 +442,8 @@ const AccountSetting = () => {
     try {
       const deletedAccountRes = await api.post("auth/delete");
       if (deletedAccountRes.status === 200) {
-        localStorage.removeItem("user");
         showSuccessToast(deletedAccountRes.data.message || "Account deleted");
+        logout();
         window.location.href = "/";
       }
     } catch (error) {
@@ -449,7 +454,7 @@ const AccountSetting = () => {
     } finally {
       setIsDeleting(false);
     }
-  }, []);
+  }, [logout]);
 
   const handleEditEmailClick = useCallback(
     (e) => {

@@ -3,10 +3,12 @@ import { Link, useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import UserPP from "../../components/UserPP";
 import { SIDEBAR_MENU_ITEMS } from "./sidebarMenuItems";
+import useFeatureFlags, { filterByFeatureFlags } from "../../hooks/useFeatureFlags";
 import { getProfilePath } from "../../utils/profilePath";
 
 let LeftSidebar = () => {
   let profileData = useSelector((state) => state.profile);
+  const featureFlags = useFeatureFlags();
   let navigate = useNavigate();
 
   let userInfo = JSON.parse(localStorage.getItem("user") || "{}");
@@ -85,7 +87,7 @@ let LeftSidebar = () => {
               </div>
             </div>
           </li>
-          {SIDEBAR_MENU_ITEMS.map((item) => (
+          {filterByFeatureFlags(SIDEBAR_MENU_ITEMS, featureFlags).map((item) => (
             <li key={item.id}>{renderMenuItem(item)}</li>
           ))}
         </ul>

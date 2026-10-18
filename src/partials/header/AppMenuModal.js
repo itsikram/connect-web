@@ -5,6 +5,7 @@ import ModalContainer from "../../components/modal/ModalContainer";
 import UserPP from "../../components/UserPP";
 import useIsMobile from "../../utils/useIsMobile";
 import { SIDEBAR_MENU_ITEMS } from "../sidebar/sidebarMenuItems";
+import useFeatureFlags, { filterByFeatureFlags } from "../../hooks/useFeatureFlags";
 import api from "../../api/api";
 import { getProfileSuccess } from "../../services/actions/profileActions";
 import "./AppMenuModal.css";
@@ -27,6 +28,7 @@ function getProfileDisplayName(profileData) {
 }
 
 const AppMenuModal = ({ isOpen, onRequestClose, onAIAgentOpen }) => {
+  const featureFlags = useFeatureFlags();
   const isMobile = useIsMobile();
   const profileData = useSelector((state) => state.profile);
   const dispatch = useDispatch();
@@ -53,12 +55,12 @@ const AppMenuModal = ({ isOpen, onRequestClose, onAIAgentOpen }) => {
 
   const sortedItems = useMemo(() => {
     const orderIndex = new Map(appOrder.map((id, index) => [id, index]));
-    return [...SIDEBAR_MENU_ITEMS].sort(
+    return filterByFeatureFlags(SIDEBAR_MENU_ITEMS, featureFlags).sort(
       (a, b) =>
         (orderIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
         (orderIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER),
     );
-  }, [appOrder]);
+  }, [appOrder, featureFlags]);
 
   const persistOrder = useCallback(
     async (nextOrder) => {

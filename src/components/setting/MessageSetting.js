@@ -67,39 +67,19 @@ const MessageSetting = () => {
             const formData = new FormData();
             formData.append('chatBackground', file);
 
-            console.log('📸 Uploading background image:', {
-                name: file.name,
-                size: file.size,
-                type: file.type
-            });
-            
             const updateSetting = await api.post('setting/update', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             
-            console.log('✅ Response received:', {
-                status: updateSetting.status,
-                statusText: updateSetting.statusText,
-                data: updateSetting.data
-            });
-            
             if (updateSetting.status === 200) {
-                console.log('🎉 Settings updated successfully');
-                console.log('Chat background URL:', updateSetting.data?.chatBackground);
-                console.log('Full settings data:', updateSetting.data);
-                
                 dispatch(loadSettings(updateSetting.data));
                 showSuccessToast('Chat background updated successfully');
             } else {
-                console.warn('⚠️ Unexpected response status:', updateSetting.status);
                 showErrorToast('Unexpected response from server');
             }
         } catch (error) {
-            console.error('❌ Error uploading background:', error);
-            console.error('Error response status:', error.response?.status);
-            console.error('Error response data:', error.response?.data);
-            console.error('Error message:', error.message);
-            showErrorToast('Failed to upload chat background');
+            console.error('Error uploading background:', error);
+            showErrorToast(error?.response?.data?.message || 'Failed to upload chat background');
         } finally {
             setIsUploadingBackground(false);
             // Reset input

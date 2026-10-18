@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { MENU_APPS } from "../constants/menuApps";
+import useFeatureFlags, { filterByFeatureFlags } from "../hooks/useFeatureFlags";
 import "./Menu.css";
 
 const WALLET_APP = {
@@ -22,6 +23,9 @@ const DOWNLOAD_APP = {
 };
 
 const Menu = () => {
+  const flags = useFeatureFlags();
+  const apps = filterByFeatureFlags([...MENU_APPS, WALLET_APP, DOWNLOAD_APP], flags);
+
   return (
     <div className="apps-menu-page">
       <div className="apps-menu-container">
@@ -31,7 +35,7 @@ const Menu = () => {
         </header>
 
         <nav className="apps-menu-grid" aria-label="Apps">
-          {[...MENU_APPS, WALLET_APP, DOWNLOAD_APP].map((app) => (
+          {apps.map((app) => (
             <Link
               key={app.key}
               to={app.href || "#"}

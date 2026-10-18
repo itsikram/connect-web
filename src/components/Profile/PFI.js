@@ -1,4 +1,5 @@
 import React, { Fragment, useState,useEffect } from 'react';
+import { showErrorToast } from '../../utils/toastUtils';
 import $ from 'jquery'
 import { Link,useParams } from 'react-router-dom';
 import { getProfilePath } from '../../utils/profilePath';
@@ -74,6 +75,7 @@ const PFI = (props) => {
 
         } catch (error) {
             console.log(error)
+            showErrorToast(error?.response?.data?.message || 'Could not send the connect request')
         }
 
     }

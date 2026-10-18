@@ -2,14 +2,11 @@ import React, { useState, useEffect, useCallback } from "react";
 import api from "../../api/api";
 import { useSelector, useDispatch } from "react-redux";
 import { getProfileSuccess } from "../../services/actions/profileActions";
-import { showProfileUpdateToast } from "../../utils/toastUtils";
-import { Link } from "react-router-dom";
-import { loadSettings } from "../../services/actions/settingsActions";
+import { showProfileUpdateToast, showErrorToast } from "../../utils/toastUtils";
 import BanglaNameField from "./BanglaNameField";
 
 const ProfileSetting = () => {
   let myProfile = useSelector((state) => state.profile);
-  let oldSettings = useSelector((state) => state.setting);
   let dispatch = useDispatch();
 
   let [settings, setSetings] = useState({
@@ -25,7 +22,11 @@ const ProfileSetting = () => {
     permanentAddress: "",
   });
   let [isSaving, setIsSaving] = useState(false);
+  const [workPlaces, setWorkPlaces] = useState([{}]);
+  const [schools, setSchools] = useState([{}]);
 
+  // Fill the form when the profile first loads (or the account changes), not on
+  // every background profile refresh, which would wipe what the user is typing.
   useEffect(() => {
     if (!myProfile?.user) return;
     setSetings({
@@ -38,7 +39,10 @@ const ProfileSetting = () => {
       presentAddress: myProfile.presentAddress || "",
       permanentAddress: myProfile.permanentAddress || "",
     });
-  }, [myProfile]);
+    setWorkPlaces(myProfile.workPlaces?.length ? myProfile.workPlaces : [{}]);
+    setSchools(myProfile.schools?.length ? myProfile.schools : [{}]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myProfile?._id, Boolean(myProfile?.user)]);
 
   let handleInputChange = useCallback((e) => {
     setSetings((prev) => ({
@@ -52,14 +56,16 @@ const ProfileSetting = () => {
       e.preventDefault();
       setIsSaving(true);
       try {
-        let res = await api.post("/profile/update", settings);
+        const payload = {
+          ...settings,
+          schools: schools.filter((school) => school?.name || school?.degree),
+          workPlaces: workPlaces.filter(
+            (workplace) => workplace?.name || workplace?.designation,
+          ),
+        };
+        let res = await api.post("/profile/update", payload);
         if (res.status === 200) {
           dispatch(getProfileSuccess(res.data));
-
-          // if (settings?.workPlaces.length > 0) {
-          //     let settingRes = await api.post('setting/update', { ...oldSettings, ...settings })
-          //     dispatch(loadSettings(settingRes.data))
-          // }
           showProfileUpdateToast(
             "Your Profile Updated Successfully",
             myProfile.fullName,
@@ -68,20 +74,16 @@ const ProfileSetting = () => {
           );
         }
       } catch (error) {
-        console.log("Error updating profile:", error);
+        console.error("Error updating profile:", error);
+        showErrorToast(
+          error?.response?.data?.message || "Failed to update your profile",
+        );
       } finally {
         setIsSaving(false);
       }
     },
-    [settings],
+    [settings, schools, workPlaces, dispatch, myProfile],
   );
-  const [workPlaces, setWorkPlaces] = useState([{}]);
-  const [schools, setSchools] = useState([{}]);
-
-  useEffect(() => {
-    setWorkPlaces(myProfile?.workPlaces || [{}]);
-    setSchools(myProfile?.schools || [{}]);
-  }, [myProfile]);
 
   // handle schools
 
@@ -94,13 +96,6 @@ const ProfileSetting = () => {
       name: schools[currentIndex].name,
     };
     setSchools(newSchools);
-    let allSettings = {
-      ...settings,
-      schools: newSchools.filter(
-        (school, index) => school.name !== "" || school.degree !== "",
-      ),
-    };
-    setSetings(allSettings);
   };
 
   const handleDynamicSclNameChange = (index, event) => {
@@ -113,14 +108,6 @@ const ProfileSetting = () => {
     };
 
     setSchools(newSchools);
-    let allSettings = {
-      ...settings,
-      schools: newSchools.filter(
-        (school, index) => school.name !== "" || school.degree !== "",
-      ),
-    };
-
-    setSetings(allSettings);
   };
 
   const handleAddDynamicSchool = (e) => {
@@ -145,14 +132,6 @@ const ProfileSetting = () => {
       name: workPlaces[currentIndex].name,
     };
     setWorkPlaces(newWorkPlaces);
-    let allSettings = {
-      ...settings,
-      workPlaces: newWorkPlaces.filter(
-        (workplace, index) =>
-          workplace.name !== "" || workplace.designation !== "",
-      ),
-    };
-    setSetings(allSettings);
   };
 
   const handleDynamicWpNameChange = (index, event) => {
@@ -164,15 +143,6 @@ const ProfileSetting = () => {
       designation: workPlaces[currentIndex].designation,
     };
     setWorkPlaces(newWorkPlaces);
-    let allSettings = {
-      ...settings,
-      workPlaces: newWorkPlaces.filter(
-        (workplace, index) =>
-          workplace.name !== "" || workplace.designation !== "",
-      ),
-    };
-
-    setSetings(allSettings);
   };
 
   const handleAddDynamicWorkplace = (e) => {
@@ -194,7 +164,7 @@ const ProfileSetting = () => {
           <p className="setting-section-desc">
             Update how your name and details appear on Connect.
           </p>
-          <form>
+          <form onSubmit={handleSubmitSettings}>
             <div className="form-group mb-2">
               <label htmlFor="firstName">First Name</label>
               <input
@@ -346,7 +316,7 @@ const ProfileSetting = () => {
 
                   <div className="col">
                     <div key={index} className="form-group mb-2">
-                      <label className="form-label">SChool Name</label>
+                      <label className="form-label">School Name</label>
                       <div className="input-group">
                         <div className="input-group-prepend">
                           <span className="input-group-text py-3">
@@ -368,8 +338,9 @@ const ProfileSetting = () => {
                 </div>
               ))}
               <button
+                type="button"
                 className="btn btn-secondary"
-                onClick={handleAddDynamicSchool.bind(this)}
+                onClick={handleAddDynamicSchool}
               >{`${schools.length > 0 ? "Add Another School" : "Add School"}`}</button>
             </div>
             <hr />
@@ -427,14 +398,14 @@ const ProfileSetting = () => {
                 </div>
               ))}
               <button
+                type="button"
                 className="btn btn-secondary"
-                onClick={handleAddDynamicWorkplace.bind(this)}
+                onClick={handleAddDynamicWorkplace}
               >{`${workPlaces.length > 0 ? "Add Another Workplace" : "Add Workplace"}`}</button>
             </div>
 
             <button
               type="submit"
-              onClick={handleSubmitSettings.bind(this)}
               className={`btn btn-primary ${isSaving ? "disabled" : ""}`}
               disabled={isSaving}
               style={{

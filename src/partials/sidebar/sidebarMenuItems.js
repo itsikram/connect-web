@@ -54,6 +54,7 @@ const MENU_APP_ITEMS = MENU_APPS.filter((app) => app.key !== "camera").map(
     to: app.href,
     icon: app.faIcon,
     accent: app.colorA,
+    flag: app.flag,
   }),
 );
 

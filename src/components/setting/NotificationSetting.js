@@ -3,62 +3,46 @@ import { useSelector, useDispatch } from 'react-redux';
 import api from '../../api/api';
 import { loadSettings } from '../../services/actions/settingsActions';
 import { showSuccessToast, showErrorToast } from '../../utils/toastUtils';
+import webNotificationService from '../../services/webNotificationService';
 
 const NOTIFICATION_DEFAULTS = {
     connectRequestReceived: true,
     connectRequestAccepted: true,
     newMessageReceived: true,
-    newConnectPost: true,
-    newConnectStory: true,
-    newConnectWatch: true,
     connectRequestReceivedEmail: false,
     connectRequestAcceptedEmail: false,
     newMessageReceivedEmail: false,
-    newConnectPostEmail: false,
-    newConnectStoryEmail: false,
-    newConnectWatchEmail: false,
 };
 
 const PUSH_TOGGLES = [
     { key: 'connectRequestReceived', label: 'Connect Request Received', help: 'Get notified when someone sends you a connect request' },
     { key: 'connectRequestAccepted', label: 'Connect Request Accepted', help: 'Get notified when someone accepts your connect request' },
     { key: 'newMessageReceived', label: 'New Message Received', help: 'Get notified when you receive a new message' },
-    { key: 'newConnectPost', label: "New Connect's Post", help: 'Get notified when your connects create new posts' },
-    { key: 'newConnectStory', label: "New Connect's Story", help: 'Get notified when your connects share new stories' },
-    { key: 'newConnectWatch', label: "New Connect's Watch", help: 'Get notified when your connects share new watch content' },
 ];
 
 const EMAIL_TOGGLES = [
     { key: 'connectRequestReceivedEmail', label: 'Connect Request Received', help: 'Get email notifications for new connect requests' },
     { key: 'connectRequestAcceptedEmail', label: 'Connect Request Accepted', help: 'Get email notifications when connect requests are accepted' },
-    { key: 'newMessageReceivedEmail', label: 'New Message Received', help: 'Get email notifications for new messages' },
-    { key: 'newConnectPostEmail', label: "New Connect's Post", help: 'Get email notifications for new connect posts' },
-    { key: 'newConnectStoryEmail', label: "New Connect's Story", help: 'Get email notifications for new connect stories' },
-    { key: 'newConnectWatchEmail', label: "New Connect's Watch", help: 'Get email notifications for new connect watch content' },
+    { key: 'newMessageReceivedEmail', label: 'Unread Messages', help: "Get an email when messages stay unread for a while" },
 ];
 
 const NotificationSetting = () => {
     const dispatch = useDispatch();
     const reduxSettings = useSelector((state) => state.setting);
+    const profileId = useSelector((state) => state.profile?._id);
     const [notificationSettings, setNotificationSettings] = useState(NOTIFICATION_DEFAULTS);
     const [isSaving, setIsSaving] = useState(false);
     const [isUnregistering, setIsUnregistering] = useState(false);
 
     useEffect(() => {
-        setNotificationSettings({
-            connectRequestReceived: reduxSettings.connectRequestReceived ?? true,
-            connectRequestAccepted: reduxSettings.connectRequestAccepted ?? true,
-            newMessageReceived: reduxSettings.newMessageReceived ?? true,
-            newConnectPost: reduxSettings.newConnectPost ?? true,
-            newConnectStory: reduxSettings.newConnectStory ?? true,
-            newConnectWatch: reduxSettings.newConnectWatch ?? true,
-            connectRequestReceivedEmail: reduxSettings.connectRequestReceivedEmail ?? false,
-            connectRequestAcceptedEmail: reduxSettings.connectRequestAcceptedEmail ?? false,
-            newMessageReceivedEmail: reduxSettings.newMessageReceivedEmail ?? false,
-            newConnectPostEmail: reduxSettings.newConnectPostEmail ?? false,
-            newConnectStoryEmail: reduxSettings.newConnectStoryEmail ?? false,
-            newConnectWatchEmail: reduxSettings.newConnectWatchEmail ?? false,
-        });
+        setNotificationSettings(
+            Object.fromEntries(
+                Object.entries(NOTIFICATION_DEFAULTS).map(([key, fallback]) => [
+                    key,
+                    reduxSettings[key] ?? fallback,
+                ]),
+            ),
+        );
     }, [reduxSettings]);
 
     const handleToggle = (key) => {
@@ -87,7 +71,7 @@ const NotificationSetting = () => {
 
     const handleUnregisterAllDevices = useCallback(async () => {
         const confirmed = window.confirm(
-            'Unregister all browsers and devices for notifications? This will unregister all other devices except the current one.'
+            'Stop notifications on all your other browsers and devices? This browser keeps getting them.'
         );
         if (!confirmed) return;
 
@@ -95,6 +79,10 @@ const NotificationSetting = () => {
         try {
             await api.post('/web-notification/unregister-all-browsers');
             await api.post('/notification/token/unregister-all-others', { currentToken: '' });
+            // The calls above clear every browser, including this one; add this one back.
+            if (profileId) {
+                await webNotificationService.registerBrowserId(profileId, api).catch(() => {});
+            }
             showSuccessToast('All other devices have been unregistered for notifications.');
         } catch (error) {
             console.error('Failed to unregister devices', error);
@@ -102,7 +90,7 @@ const NotificationSetting = () => {
         } finally {
             setIsUnregistering(false);
         }
-    }, []);
+    }, [profileId]);
 
     const renderToggle = ({ key, label, help }) => (
         <div className="form-check form-switch my-3" key={key}>

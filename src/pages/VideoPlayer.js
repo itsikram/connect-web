@@ -1295,7 +1295,7 @@ const VideoPlayer = () => {
       });
     } catch (error) {
       setYoutubeDownload({ queueId: downloadQueueId || "", title: result.title || "YouTube video", percent: 0, stage: "Failed", error: error.message });
-      showErrorToast(error?.response?.data?.error || error.message || "Could not start YouTube download.");
+      showErrorToast(error?.response?.data?.error || error?.response?.data?.message || error.message || "Could not start YouTube download.");
     }
   };
 

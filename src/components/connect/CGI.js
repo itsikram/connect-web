@@ -1,4 +1,5 @@
 import React, { Fragment, useState, useEffect } from 'react';
+import { showErrorToast } from '../../utils/toastUtils';
 import { Link } from "react-router-dom";
 import api from '../../api/api';
 import $ from 'jquery'
@@ -95,6 +96,7 @@ let CGI = (props) => {
 
         } catch (error) {
             console.log(error)
+            showErrorToast(error?.response?.data?.message || 'Could not send the connect request')
         } finally {
             setIsAdding(false)
         }

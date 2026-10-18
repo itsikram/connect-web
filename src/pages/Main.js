@@ -90,6 +90,7 @@ import { startPresence } from "../utils/presence";
 // bundle instead of lazy chunks that might be missing from the offline cache.
 import SavedVideos from "./SavedVideos.js";
 import SingleVideo from "../components/downloads/SingleVideo.js";
+import FeatureGate from "../components/FeatureGate.js";
 
 const Profile = lazy(() => import("./Profile"));
 const Connects = lazy(() => import("./Connects"));
@@ -2590,7 +2591,14 @@ const Main = () => {
             <Route path="/groups" element={<Groups />}>
               {" "}
             </Route>
-            <Route path="/yt-download" element={<YtDownload />}>
+            <Route
+              path="/yt-download"
+              element={
+                <FeatureGate flag="ytDownloadEnabled" title="YouTube downloads are turned off">
+                  <YtDownload />
+                </FeatureGate>
+              }
+            >
               {" "}
             </Route>
             <Route

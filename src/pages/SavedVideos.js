@@ -5,6 +5,7 @@ import VideoCard from '../components/downloads/VideoCard';
 import { subscribeWatchDownloads } from '../utils/watchDownloadProgress';
 import { formatBytes } from '../utils/downloadFileWithProgress';
 import useOnlineStatus from '../hooks/useOnlineStatus';
+import useFeatureFlags, { isFeatureOn } from '../hooks/useFeatureFlags';
 import './SavedVideos.css';
 
 const getRestorableUrl = getSavedVideoSourceUrl;
@@ -18,6 +19,7 @@ const SavedVideos = () => {
     const [isLoadingPrevious, setIsLoadingPrevious] = useState(false);
     const [deletingPreviousId, setDeletingPreviousId] = useState('');
     const isOnline = useOnlineStatus();
+    const ytDownloadsOn = isFeatureOn(useFeatureFlags(), 'ytDownloadEnabled');
 
     const refreshSaved = useCallback(() => {
         console.log('[SavedVideos] Refreshing local saved videos...');
@@ -261,14 +263,16 @@ const SavedVideos = () => {
                         <h2>No saved videos yet</h2>
                         <p>
                             {isOnline
-                                ? 'Download from YouTube or save a video from Watch to store it on this device.'
+                                ? ytDownloadsOn
+                                    ? 'Download from YouTube or save a video from Watch to store it on this device.'
+                                    : 'Save a video from Watch to store it on this device.'
                                 : "You're offline. Music and videos you save while online will play here without internet."}
                         </p>
                         {isOnline && <div className="sv-empty-actions">
-                            <Link to="/yt-download" className="sv-btn sv-btn--primary">
+                            {ytDownloadsOn && <Link to="/yt-download" className="sv-btn sv-btn--primary">
                                 <i className="fas fa-download" aria-hidden="true" />
                                 YouTube Downloader
-                            </Link>
+                            </Link>}
                             <Link to="/watch" className="sv-btn sv-btn--ghost">
                                 <i className="fas fa-tv" aria-hidden="true" />
                                 Browse Watch

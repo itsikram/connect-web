@@ -1,4 +1,5 @@
 import React, { Fragment, useState } from 'react';
+import { showErrorToast } from '../../utils/toastUtils';
 import api from '../../api/api';
 import $ from 'jquery';
 import { useDispatch, useSelector } from 'react-redux';
@@ -55,7 +56,7 @@ const ProfileButtons = (props) => {
         if (mode === 'send') {
             setIsAddingConnect(true);
             try { await api.post('/connects/sendRequest/', { profile: profileData._id, relationTypes }); setRequestSent(true); }
-            catch (err) { console.error(err); } finally { setIsAddingConnect(false); }
+            catch (err) { console.error(err); showErrorToast(err?.response?.data?.message || 'Could not send the connect request'); } finally { setIsAddingConnect(false); }
         } else {
             setIsConfirmingReq(true);
             try {
