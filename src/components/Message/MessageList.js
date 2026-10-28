@@ -10,13 +10,19 @@ import UserPP from "../UserPP";
 import { useSelector } from "react-redux";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import moment from "moment";
-import { fetchChatListCached, fetchOnlineStatusesCached } from "../../utils/requestCache";
+import {
+  fetchChatListCached,
+  fetchOnlineStatusesCached,
+  invalidateCachedResource,
+} from "../../utils/requestCache";
+import { invalidateGetCache } from "../../api/api";
 import { getPresence, usePresenceVersion } from "../../utils/presence";
 import MsgListSkleton from "../../skletons/message/MsgListSkleton";
 import ContactCacheManager from "../../utils/contactCacheManager";
 import socket from "../../common/socket";
 import {
   applyLastMessageToContacts,
+  applyMessageEditToContacts,
   CHAT_MESSAGE_EVENT,
   idOf,
   mergeContactsPreferNewer,
@@ -327,12 +333,25 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
       });
     };
 
+    // An edited last message updates its preview in place (no reordering).
+    const onMessageEdited = (data) => {
+      setContacts((prev) => {
+        const next = applyMessageEditToContacts(prev, data);
+        if (next !== prev) writeContactCache(next);
+        return next;
+      });
+      // The cached chat-list response still has the old text.
+      invalidateCachedResource(`chatList:${myId}`);
+      invalidateGetCache("/message/chatList");
+    };
+
     socket.on("newMessage", onSocketMessage);
     socket.on("newMessageToUser", onSocketMessage);
     socket.on("messageSent", onSocketMessage);
     socket.on("messageSeen", onMessageSeen);
     socket.on("seenMessage", onMessageSeen);
     socket.on("conversationDeleted", onConversationDeleted);
+    socket.on("messageEdited", onMessageEdited);
     window.addEventListener(CHAT_MESSAGE_EVENT, onLocalMessage);
 
     return () => {
@@ -342,6 +361,7 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
       socket.off("messageSeen", onMessageSeen);
       socket.off("seenMessage", onMessageSeen);
       socket.off("conversationDeleted", onConversationDeleted);
+      socket.off("messageEdited", onMessageEdited);
       window.removeEventListener(CHAT_MESSAGE_EVENT, onLocalMessage);
     };
   }, [myId, fetchContacts, writeContactCache]);

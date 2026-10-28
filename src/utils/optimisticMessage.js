@@ -17,6 +17,106 @@ const timeOf = (message) => {
   return Number.isFinite(ts) ? ts : 0;
 };
 
+const editedTimeOf = (message) => {
+  const ts = new Date(message?.editedAt || 0).getTime();
+  return Number.isFinite(ts) ? ts : 0;
+};
+
+// A server copy can predate an edit this device already shows (a cached
+// response, or a request that raced the `messageEdited` event): keep the
+// newer edit instead of flashing the old text back.
+function withNewerEdit(fresh, local) {
+  if (!fresh || !local || local.isOptimistic) return fresh;
+  if (editedTimeOf(local) <= editedTimeOf(fresh)) return fresh;
+  return {
+    ...fresh,
+    message: local.message,
+    isEdited: true,
+    editedAt: local.editedAt,
+  };
+}
+
+// Normalise a `messageEdited` socket payload (or an edited message returned
+// by POST /message/edit) into the fields an edit changes.
+export function toMessageEdit(edit) {
+  if (!edit || typeof edit !== "object") return null;
+  const id = idOf(edit.messageId || edit._id);
+  if (!id || typeof edit.message !== "string") return null;
+  return {
+    id,
+    message: edit.message,
+    isEdited: edit.isEdited === undefined ? true : Boolean(edit.isEdited),
+    hasEditedAt: Object.prototype.hasOwnProperty.call(edit, "editedAt"),
+    editedAt: edit.editedAt ?? null,
+  };
+}
+
+// The edited message gets the new text and "edited" flag, and replies that
+// quote it show the new text. Returns the same array when nothing changed.
+export function applyMessageEdit(messages, editPayload) {
+  const list = Array.isArray(messages) ? messages : [];
+  const edit = toMessageEdit(editPayload);
+  if (!edit) return list;
+  let changed = false;
+  const next = list.map((msg) => {
+    if (!msg) return msg;
+    if (idOf(msg._id) === edit.id) {
+      const editedAt = edit.hasEditedAt ? edit.editedAt : msg.editedAt ?? null;
+      if (
+        msg.message === edit.message &&
+        Boolean(msg.isEdited) === edit.isEdited &&
+        String(msg.editedAt ?? "") === String(editedAt ?? "")
+      ) {
+        return msg;
+      }
+      changed = true;
+      return {
+        ...msg,
+        message: edit.message,
+        isEdited: edit.isEdited,
+        editedAt,
+      };
+    }
+    const parent = msg.parent;
+    if (
+      parent &&
+      typeof parent === "object" &&
+      idOf(parent._id) === edit.id &&
+      parent.message !== edit.message
+    ) {
+      changed = true;
+      return { ...msg, parent: { ...parent, message: edit.message } };
+    }
+    return msg;
+  });
+  return changed ? next : list;
+}
+
+// Same edit applied to chat-list contacts ({ person, messages }), in place:
+// an edit never moves a conversation up the list.
+export function applyMessageEditToContacts(contacts, editPayload) {
+  if (!Array.isArray(contacts)) return contacts;
+  let changed = false;
+  const next = contacts.map((contact) => {
+    if (!contact || !Array.isArray(contact.messages)) return contact;
+    const messages = applyMessageEdit(contact.messages, editPayload);
+    if (messages === contact.messages) return contact;
+    changed = true;
+    return { ...contact, messages };
+  });
+  return changed ? next : contacts;
+}
+
+// Edit/save rules shared by every chat surface (mirrors the server): my own,
+// confirmed, plain text messages that have text.
+export function canEditMessage(msg, myId) {
+  if (!msg || msg.isOptimistic || msg.sendFailed) return false;
+  if (!idOf(msg._id) || String(msg._id).startsWith("temp-")) return false;
+  if (!idOf(myId) || idOf(msg.senderId) !== idOf(myId)) return false;
+  if ((msg.messageType || "text") !== "text") return false;
+  return typeof msg.message === "string" && msg.message.trim().length > 0;
+}
+
 // Stable React key: the tempId survives the optimistic -> confirmed swap, so
 // the bubble is not re-mounted (no flicker) when the server confirms it.
 export function messageKey(message) {
@@ -72,7 +172,14 @@ export function reconcileWithSnapshot(
   current,
   { knownIds, keepOlder = false, hasMore = true } = {},
 ) {
-  const hist = sortMessages(snapshot);
+  const localById = new Map();
+  (Array.isArray(current) ? current : []).forEach((msg) => {
+    const id = msg && !msg.isOptimistic ? idOf(msg._id) : "";
+    if (id) localById.set(id, msg);
+  });
+  const hist = sortMessages(snapshot).map((msg) =>
+    withNewerEdit(msg, localById.get(idOf(msg._id))),
+  );
   const known = knownIds instanceof Set ? knownIds : new Set();
   const histIds = new Set(hist.map((m) => idOf(m._id)).filter(Boolean));
   const confirmedHist = hist.filter((m) => !m.isOptimistic);
@@ -277,6 +384,15 @@ export function mergeContactsPreferNewer(serverContacts, localContacts) {
     const serverTs = new Date(server?.messages?.[0]?.timestamp || 0).getTime();
     if (local?.messages?.[0] && localTs > serverTs) {
       return { ...server, messages: local.messages };
+    }
+    // Same last message, but this device already has a newer edit of it.
+    const serverLast = server?.messages?.[0];
+    const localLast = local?.messages?.[0];
+    if (serverLast && localLast && idOf(serverLast._id) === idOf(localLast._id)) {
+      const merged = withNewerEdit(serverLast, localLast);
+      if (merged !== serverLast) {
+        return { ...server, messages: [merged, ...server.messages.slice(1)] };
+      }
     }
     return server;
   });

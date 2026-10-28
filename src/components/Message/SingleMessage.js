@@ -17,6 +17,19 @@ import {
 } from "../../utils/messageMedia";
 import { QUICK_REACTION_PRESETS } from "../../utils/chatThemes";
 import { SecureMessageBubble, isSecureMessage } from "./SecureMessage";
+import { applyMessageEdit, canEditMessage } from "../../utils/optimisticMessage";
+import { showErrorToast } from "../../utils/toastUtils";
+
+// Keep in step with the server limit in utils/messageEdit.js.
+const MAX_EDIT_LENGTH = 10000;
+
+// Grow the edit box with its text (CSS caps the height and scrolls after).
+const resizeEditInput = (input) => {
+  if (!input) return;
+  input.style.height = "auto";
+  const borders = input.offsetHeight - input.clientHeight;
+  input.style.height = `${input.scrollHeight + borders}px`;
+};
 
 const messageTokenPattern = /(^|[^\p{L}\p{N}_])#([\p{L}\p{N}_]{1,50})/giu;
 
@@ -199,8 +212,27 @@ const SingleMessage = ({
   const [audioCurrent, setAudioCurrent] = useState(0);
   const [showOptions, setShowOptions] = useState(true);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState("");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
   const audioRef = useRef(null);
   const parentPollRef = useRef(null);
+  const editInputRef = useRef(null);
+  const isEditable = canEditMessage(msg, myId);
+  const showEditor = isEditing && isEditable;
+
+  // Focus the editor with the caret at the end of the text.
+  useEffect(() => {
+    if (!showEditor) return;
+    const input = editInputRef.current;
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    const end = input.value.length;
+    try {
+      input.setSelectionRange(end, end);
+    } catch (_e) {}
+    resizeEditInput(input);
+  }, [showEditor]);
 
   useEffect(() => {
     const reactions = normalizeReactions(msg.reacts);
@@ -238,6 +270,96 @@ const SingleMessage = ({
       }
     } catch (error) {
       console.error("Error deleting message:", error);
+    }
+  };
+
+  const startEditMessage = (e) => {
+    e?.stopPropagation?.();
+    if (!isEditable || isSavingEdit) return;
+    hideOptions();
+    setShowReactionPicker(false);
+    setEditText(String(msg.message || ""));
+    setIsEditing(true);
+  };
+
+  const cancelEditMessage = () => {
+    setIsEditing(false);
+    setEditText("");
+  };
+
+  const saveEditedMessage = async () => {
+    const messageId = msg?._id;
+    const nextText = editText.trim();
+    if (!messageId || !nextText || isSavingEdit) return;
+    if (nextText === String(msg.message || "").trim()) {
+      cancelEditMessage();
+      return;
+    }
+
+    const previous = {
+      messageId,
+      message: msg.message,
+      isEdited: Boolean(msg.isEdited),
+      editedAt: msg.editedAt ?? null,
+    };
+    setIsSavingEdit(true);
+    setIsEditing(false);
+    // Show the new text right away; the server copy (and the `messageEdited`
+    // event every other device gets) follows.
+    setMessages?.((prevMessages) =>
+      applyMessageEdit(prevMessages, {
+        messageId,
+        message: nextText,
+        isEdited: true,
+        editedAt: new Date().toISOString(),
+      }),
+    );
+
+    try {
+      const response = await api.post("/message/edit", {
+        messageId,
+        message: nextText,
+      });
+      const saved = response?.data?.data;
+      if (saved?._id) {
+        setMessages?.((prevMessages) =>
+          applyMessageEdit(prevMessages, {
+            messageId: saved._id,
+            message: saved.message,
+            isEdited: Boolean(saved.isEdited),
+            editedAt: saved.editedAt ?? null,
+          }),
+        );
+      }
+    } catch (error) {
+      setMessages?.((prevMessages) => applyMessageEdit(prevMessages, previous));
+      const status = error?.response?.status;
+      if (!status || status >= 500) {
+        // Network or server trouble: hand the text back instead of losing it.
+        setEditText(nextText);
+        setIsEditing(true);
+      }
+      showErrorToast(
+        error?.response?.data?.message ||
+          "Couldn't edit the message. Please try again.",
+      );
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleEditKeyDown = (e) => {
+    // Keep page-level key handlers (Escape closes open menus) out of the editor.
+    e.stopPropagation();
+    if (e.key === "Escape") {
+      e.preventDefault();
+      cancelEditMessage();
+      return;
+    }
+    const isComposing = e.nativeEvent?.isComposing || e.keyCode === 229;
+    if (e.key === "Enter" && !e.shiftKey && !isComposing) {
+      e.preventDefault();
+      saveEditedMessage();
     }
   };
 
@@ -553,9 +675,52 @@ const SingleMessage = ({
     );
   };
 
+  const renderEditor = () => (
+    <form
+      className="message-edit-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        saveEditedMessage();
+      }}
+    >
+      <textarea
+        ref={editInputRef}
+        className="message-edit-input"
+        value={editText}
+        onChange={(e) => {
+          setEditText(e.target.value);
+          resizeEditInput(e.target);
+        }}
+        onKeyDown={handleEditKeyDown}
+        rows={1}
+        maxLength={MAX_EDIT_LENGTH}
+        aria-label="Edit message"
+        enterKeyHint="done"
+        autoComplete="off"
+      />
+      <div className="message-edit-actions">
+        <span className="message-edit-hint">Enter to save · Esc to cancel</span>
+        <button
+          type="button"
+          className="message-edit-btn cancel"
+          onClick={cancelEditMessage}
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          className="message-edit-btn save"
+          disabled={!editText.trim() || isSavingEdit}
+        >
+          Save
+        </button>
+      </div>
+    </form>
+  );
+
   const renderBubbleBody = (isSent) => (
     <>
-      {!isCallMessage && (
+      {!isCallMessage && !showEditor && (
         <div
           className={`chat-message-options ${!showOptions ? "options-hidden" : ""}`}
         >
@@ -613,6 +778,19 @@ const SingleMessage = ({
           )}
           {isSent && (
             <>
+              {isEditable && (
+                <button
+                  type="button"
+                  data-id={msg._id}
+                  className="chat-message-option edit"
+                  onClick={startEditMessage}
+                  disabled={isSavingEdit}
+                  aria-label="Edit message"
+                  title="Edit message"
+                >
+                  <i className="fa fa-pen"></i>
+                </button>
+              )}
               <button
                 type="button"
                 data-id={msg._id}
@@ -644,6 +822,8 @@ const SingleMessage = ({
         renderCallContent()
       ) : isAudioMessage() ? (
         renderAudioContent()
+      ) : showEditor ? (
+        renderEditor()
       ) : hasCaption ? (
         <div className="message-container mb-0">
           <MessageText>{msg.message}</MessageText>
@@ -655,7 +835,19 @@ const SingleMessage = ({
       )}
 
       <div className="message-meta">
-        <span className="message-time">{getMessageTime(msg.timestamp)}</span>
+        <span className="message-time">
+          {getMessageTime(msg.timestamp)}
+          {msg.isEdited ? (
+            <span
+              className="message-edited-label"
+              title={
+                msg.editedAt ? `Edited ${getMessageTime(msg.editedAt)}` : "Edited"
+              }
+            >
+              {" · edited"}
+            </span>
+          ) : null}
+        </span>
         <span className="message-react" aria-label="Message reactions">
           {normalizeReactions(msg.reacts).map((reaction) => (
             <span
@@ -700,6 +892,7 @@ const SingleMessage = ({
   const isMine = String(msg.senderId) === String(myId);
   const bubbleClass = [
     "chat-message",
+    showEditor ? "is-editing" : "",
     isSecure ? "is-secure" : "",
     hasMedia ? "has-attachment" : "",
     isMediaOnly ? "media-only" : "",

@@ -2908,6 +2908,117 @@
     color: var(--msg-error);
 }
 
+.chat-message-option.edit:hover {
+    color: var(--msg-primary);
+}
+
+.chat-message-option:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Inline message editing */
+.chat-message.is-editing {
+    min-width: min(300px, 100%);
+}
+
+.message-edit-form {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 2px 0 4px;
+    text-indent: 0;
+}
+
+.message-edit-input {
+    display: block;
+    width: 100%;
+    min-height: 38px;
+    max-height: 180px;
+    padding: 8px 10px;
+    border: 1px solid rgba(127, 127, 127, 0.45);
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.22);
+    color: inherit;
+    font-family: inherit;
+    /* 16px keeps iOS Safari from zooming in on focus. */
+    font-size: 16px;
+    line-height: 1.4;
+    resize: none;
+    overflow-y: auto;
+    outline: none;
+    box-sizing: border-box;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.message-edit-input:focus {
+    border-color: rgba(255, 255, 255, 0.6);
+    box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.25);
+}
+
+.message-edit-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.message-edit-hint {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin-right: auto;
+    font-size: 0.6875rem;
+    opacity: 0.7;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.message-edit-btn {
+    flex: 0 0 auto;
+    border: 0;
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.4;
+    cursor: pointer;
+}
+
+.message-edit-btn.cancel {
+    background: rgba(255, 255, 255, 0.14);
+    color: inherit;
+}
+
+/* Dark chat backgrounds force white text on everything inside the chat
+   (.chat-body.dark-background *); keep the label readable on the accent. */
+.message-edit-form .message-edit-btn.save {
+    background: var(--chat-accent, var(--msg-primary, #00d4ff));
+    color: #041018 !important;
+}
+
+.message-edit-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.message-edited-label {
+    font-style: italic;
+    opacity: 0.85;
+}
+
+/* No room for the keyboard hint in a sticky chat box or on phones. */
+.sticky-chat-box .message-edit-hint {
+    display: none;
+}
+
+@media (max-width: 480px) {
+    .message-edit-hint {
+        display: none;
+    }
+}
+
 .message-reaction-picker {
     position: absolute;
     bottom: calc(100% + 6px);

@@ -1,4 +1,4 @@
-import {ADD_MESSAGE,ADD_MESSAGES,NEW_MESSAGE,SEEN_MESSAGE} from '../constants/messageConsts'
+import {ADD_MESSAGE,ADD_MESSAGES,NEW_MESSAGE,SEEN_MESSAGE,EDIT_MESSAGE} from '../constants/messageConsts'
 
 export const addMessage = (message) => {
     return {
@@ -28,6 +28,15 @@ export const seenMessage = (contactId => {
         payload: {contactId},
     }
 })
+
+// A `messageEdited` socket payload: updates that message's text wherever the
+// chat list holds it.
+export const messageEdited = (edit) => {
+    return {
+        type: EDIT_MESSAGE,
+        payload: edit,
+    }
+}
 
 // sendMessage action removed since it's no longer used and was causing errors
 

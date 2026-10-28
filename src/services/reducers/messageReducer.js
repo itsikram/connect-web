@@ -1,5 +1,6 @@
-import { ADD_MESSAGE, ADD_MESSAGES, NEW_MESSAGE, SEEN_MESSAGE } from "../constants/messageConsts";
+import { ADD_MESSAGE, ADD_MESSAGES, NEW_MESSAGE, SEEN_MESSAGE, EDIT_MESSAGE } from "../constants/messageConsts";
 import {CLEAR_ALL_STATE} from '../constants/authConsts';
+import { applyMessageEditToContacts } from "../../utils/optimisticMessage";
 const initialState = []
 const messageReducer = (state = initialState, action) => {
     switch (action.type) {
@@ -145,6 +146,10 @@ const messageReducer = (state = initialState, action) => {
                 return state;
             }
         }
+
+        case EDIT_MESSAGE:
+            // Same state object back when no contact holds the message.
+            return applyMessageEditToContacts(state, action.payload)
 
         case CLEAR_ALL_STATE:
             return initialState

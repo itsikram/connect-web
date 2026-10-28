@@ -73,8 +73,18 @@ import {
   addNotification,
   addNotifications,
 } from "../services/actions/notificationActions.js";
-import { addMessages, newMessage } from "../services/actions/messageActions.js";
-import { emitChatMessage, idOf } from "../utils/optimisticMessage";
+import {
+  addMessages,
+  messageEdited,
+  newMessage,
+} from "../services/actions/messageActions.js";
+import {
+  applyMessageEdit,
+  emitChatMessage,
+  idOf,
+  otherContactId,
+} from "../utils/optimisticMessage";
+import MessageCacheManager from "../utils/messageCacheManager";
 import { setBodyHeight, setLoading } from "../services/actions/optionAction";
 import { loadSettings } from "../services/actions/settingsActions.js";
 import { applyThemeMode } from "../utils/applyThemeMode";
@@ -1273,6 +1283,30 @@ const Main = () => {
       socket.off("newMessageToUser", handleNewMessageToUser);
     };
   }, [profileId, fetchNotifications, fetchNewMessages, dispatch]);
+
+  // A message edited by either participant (on any device): update chat-list
+  // previews and that conversation's cached history, even if it isn't open.
+  useEffect(() => {
+    if (!profileId) return undefined;
+
+    const handleMessageEdited = (payload) => {
+      if (!payload) return;
+      dispatch(messageEdited(payload));
+      const connectId = otherContactId(payload, profileId);
+      if (!connectId) return;
+      const cached = MessageCacheManager.getCachedMessages(profileId, connectId);
+      if (!Array.isArray(cached) || cached.length === 0) return;
+      const next = applyMessageEdit(cached, payload);
+      if (next !== cached) {
+        MessageCacheManager.setCachedMessages(profileId, connectId, next);
+      }
+    };
+
+    socket.on("messageEdited", handleMessageEdited);
+    return () => {
+      socket.off("messageEdited", handleMessageEdited);
+    };
+  }, [profileId, dispatch]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {

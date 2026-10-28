@@ -37,6 +37,7 @@ import {
   emitChatMessage,
   idOf,
   isConversationMessage,
+  applyMessageEdit,
   applySeenToMessages,
   mergeInitialHistory,
   messageKey,
@@ -833,6 +834,10 @@ const StickyChatBox = ({
         prev.filter((msg) => String(msg?._id) !== String(deletedMessageId)),
       );
     };
+    const handleMessageEdited = (payload) => {
+      if (!isConversationMessage(payload, userId, connectId)) return;
+      setMessages((prev) => applyMessageEdit(prev, payload));
+    };
     const handleSecureOpened = (data = {}) => {
       if (!isConversationMessage(data, userId, connectId)) return;
       const openedId = idOf(data.messageId || data._id);
@@ -852,6 +857,7 @@ const StickyChatBox = ({
       );
     };
     socket.on("deleteMessage", handleDeleteMessage);
+    socket.on("messageEdited", handleMessageEdited);
     socket.on("secureMessageOpened", handleSecureOpened);
 
     const rejoinRoom = () => {
@@ -868,6 +874,7 @@ const StickyChatBox = ({
       socket.off("seenMessage", handleMessageSeen);
       socket.off("messageReactionUpdated", handleReactionUpdate);
       socket.off("deleteMessage", handleDeleteMessage);
+      socket.off("messageEdited", handleMessageEdited);
       socket.off("secureMessageOpened", handleSecureOpened);
       socket.off("connect", rejoinRoom);
       if (typingTimeoutRef.current) {
