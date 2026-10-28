@@ -1,52 +1,79 @@
 .voice-input-enhancer {
-  align-items: center;
-  background: linear-gradient(135deg, #172554, #1e3a8a);
-  border: 1px solid rgba(147, 197, 253, 0.7);
-  border-radius: 20px;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.35);
-  display: flex;
-  gap: 2px;
-  padding: 2px;
   position: fixed;
   z-index: 1200;
 }
 
-.voice-input-enhancer select,
-.voice-input-enhancer button {
-  border: 0;
+.voice-input-enhancer > button {
+  align-items: center;
   background: transparent;
-  color: #eff6ff;
-  cursor: pointer;
-  font-size: 11px;
-  height: 28px;
-}
-
-.voice-input-enhancer select {
-  border-right: 1px solid rgba(191, 219, 254, 0.35);
-  font-weight: 700;
-  outline: none;
-  padding: 0 3px;
-  width: 42px;
-}
-
-.voice-input-enhancer button {
+  border: 0;
   border-radius: 50%;
+  color: var(--primary-color, #3b82f6);
+  cursor: pointer;
+  display: flex;
+  font-size: 18px;
+  height: 32px;
+  justify-content: center;
   padding: 0;
-  width: 28px;
+  touch-action: manipulation;
+  user-select: none;
+  width: 32px;
 }
 
-.voice-input-enhancer select:hover,
-.voice-input-enhancer select:focus-visible {
-  background: rgba(147, 197, 253, 0.24);
+.voice-input-enhancer > button:hover {
+  background: rgba(59, 130, 246, 0.12);
 }
 
-.voice-input-enhancer button:hover,
-.voice-input-enhancer button.is-listening {
-  background: #ef4444;
-  color: #fff;
+.voice-input-enhancer > button.is-listening {
+  color: #ef4444;
 }
 
-.voice-input-enhancer button:focus-visible,
-.voice-input-enhancer select:focus-visible {
-  box-shadow: 0 0 0 2px #fbbf24;
+.voice-input-enhancer > button.is-listening:hover {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.voice-input-enhancer > button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+
+.voice-input-enhancer__menu {
+  background: var(--card-bg, #1f2937);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.4);
+  color: var(--text-color, #f1f5f9);
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  padding: 6px;
+  position: absolute;
+  right: 0;
+  top: 36px;
+}
+
+.voice-input-enhancer__menu-title {
+  font-size: 12px;
+  opacity: 0.7;
+  padding: 6px 10px;
+}
+
+.voice-input-enhancer__menu button {
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.voice-input-enhancer__menu button:hover,
+.voice-input-enhancer__menu button.is-active {
+  background: rgba(59, 130, 246, 0.18);
+}
+
+.voice-input-enhancer__menu .voice-input-enhancer__cancel {
+  opacity: 0.7;
 }

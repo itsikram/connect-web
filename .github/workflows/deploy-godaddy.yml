@@ -1,0 +1,157 @@
+# Builds the React app and deploys it to GoDaddy Deluxe (cPanel "Setup Node.js
+# App", startup file server.js) on every push to main. Setup and rollback:
+# GODADDY_DEPLOY.md.
+name: Deploy to GoDaddy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time; a newer push waits instead of cancelling an upload.
+concurrency:
+  group: deploy-godaddy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      SSH_HOST: ${{ secrets.GODADDY_SSH_HOST }}
+      SSH_PORT: ${{ secrets.GODADDY_SSH_PORT }}
+      SSH_USER: ${{ secrets.GODADDY_SSH_USER }}
+      APP_DIR: ${{ vars.GODADDY_APP_DIR }}
+      HEALTHCHECK_URL: ${{ vars.GODADDY_HEALTHCHECK_URL }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check configuration
+        env:
+          SSH_KEY: ${{ secrets.GODADDY_SSH_KEY }}
+          WEB_ENV: ${{ secrets.WEB_ENV_PRODUCTION_LOCAL }}
+        run: |
+          missing=()
+          [ -n "$SSH_HOST" ] || missing+=("secret GODADDY_SSH_HOST")
+          [ -n "$SSH_USER" ] || missing+=("secret GODADDY_SSH_USER")
+          [ -n "$SSH_KEY" ] || missing+=("secret GODADDY_SSH_KEY")
+          [ -n "$WEB_ENV" ] || missing+=("secret WEB_ENV_PRODUCTION_LOCAL")
+          [ -n "$APP_DIR" ] || missing+=("variable GODADDY_APP_DIR")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing $(IFS=,; echo "${missing[*]}"). Add them under Settings > Secrets and variables > Actions (see GODADDY_DEPLOY.md)."
+            exit 1
+          fi
+          if ! [[ $APP_DIR =~ ^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$ ]] || [[ /$APP_DIR/ == */../* || /$APP_DIR/ == */./* ]]; then
+            echo "::error::GODADDY_APP_DIR must be the app root relative to the home folder, e.g. connect-web."
+            exit 1
+          fi
+
+      # Only builds the bundle; the host runs server.js on its own Node.js.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Write .env.production.local
+        env:
+          WEB_ENV: ${{ secrets.WEB_ENV_PRODUCTION_LOCAL }}
+        run: printf '%s\n' "$WEB_ENV" | tr -d '\r' > .env.production.local
+
+      - name: Build
+        env:
+          # CRA fails the build on any warning when CI=true; match local builds.
+          CI: "false"
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: npm run build
+
+      - name: Build the release bundle
+        id: bundle
+        run: |
+          [ -f build/index.html ] || { echo "::error::build/index.html is missing."; exit 1; }
+          bundle="$RUNNER_TEMP/bundle"
+          mkdir -p "$bundle/payload" "$bundle/meta"
+          cp -a build server.js package.json "$bundle/payload/"
+          : > "$bundle/meta/deleted"
+          echo 0 > "$bundle/meta/deps-changed"
+          echo 0 > "$bundle/meta/schema-changed"
+          tar -czf "$RUNNER_TEMP/release.tar.gz" -C "$bundle" payload meta
+          rm -f .env.production.local
+
+          sha=$(git rev-parse HEAD)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "checksum=$(sha256sum "$RUNNER_TEMP/release.tar.gz" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Deploying \`${sha:0:7}\` to \`~/$APP_DIR\`"
+            echo "- Build: $(find build -type f | wc -l) file(s), bundle $(du -h "$RUNNER_TEMP/release.tar.gz" | cut -f1)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.GODADDY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.GODADDY_SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/godaddy_deploy
+          chmod 600 ~/.ssh/godaddy_deploy
+          if [ -n "$SSH_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" | tr -d '\r' > ~/.ssh/known_hosts
+          else
+            echo "::warning::GODADDY_SSH_KNOWN_HOSTS is not set, so the host key is trusted on first use. Set it to pin the key."
+            ssh-keyscan -p "${SSH_PORT:-22}" -H "$SSH_HOST" > ~/.ssh/known_hosts
+          fi
+          cat > ~/.ssh/config <<EOF
+          Host godaddy
+            HostName $SSH_HOST
+            Port ${SSH_PORT:-22}
+            User $SSH_USER
+            IdentityFile ~/.ssh/godaddy_deploy
+            IdentitiesOnly yes
+            BatchMode yes
+            StrictHostKeyChecking yes
+            ConnectTimeout 30
+            ServerAliveInterval 30
+          EOF
+          ssh godaddy true
+
+      - name: Upload the bundle
+        id: upload
+        env:
+          SHA: ${{ steps.bundle.outputs.sha }}
+        run: |
+          remote=".deploy/incoming/${APP_DIR//\//_}-$SHA.tar.gz"
+          ssh godaddy "mkdir -p .deploy/incoming && cat > $remote" < "$RUNNER_TEMP/release.tar.gz"
+          echo "path=$remote" >> "$GITHUB_OUTPUT"
+
+      - name: Activate the release
+        env:
+          SHA: ${{ steps.bundle.outputs.sha }}
+          CHECKSUM: ${{ steps.bundle.outputs.checksum }}
+          REMOTE_BUNDLE: ${{ steps.upload.outputs.path }}
+        run: |
+          # server.js only uses Node built-ins, so the host needs no npm install.
+          ssh godaddy bash -s -- "$APP_DIR" "$SHA" "$REMOTE_BUNDLE" "$CHECKSUM" never build false \
+            < .github/deploy/godaddy-remote.sh
+
+      - name: Health check
+        if: env.HEALTHCHECK_URL != ''
+        run: |
+          for attempt in $(seq 1 12); do
+            code=$(curl -sSL -o /dev/null -w '%{http_code}' --max-time 30 "$HEALTHCHECK_URL" || true)
+            case $code in
+              2??) echo "$HEALTHCHECK_URL answered HTTP $code"; exit 0 ;;
+            esac
+            echo "Attempt $attempt: HTTP ${code:-no response}; retrying in 10s"
+            sleep 10
+          done
+          echo "::error::$HEALTHCHECK_URL did not answer with HTTP 2xx after the deploy. Check stderr.log in ~/$APP_DIR."
+          exit 1
+
+      - name: Remove secrets from the runner
+        if: always()
+        run: rm -f ~/.ssh/godaddy_deploy .env.production.local

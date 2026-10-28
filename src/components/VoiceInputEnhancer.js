@@ -2,7 +2,13 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import useComposerLiveTranscribe from "../hooks/useComposerLiveTranscribe";
 import "./VoiceInputEnhancer.css";
 
+// Mirrors the Expo app's VoiceTextInput: a plain mic icon inside the focused
+// field. Tap toggles listening (mic -> red stop); long-press or right-click
+// opens a Bangla/English picker that restarts capture in the chosen language.
+
 const TEXT_INPUT_TYPES = new Set(["", "text", "search", "email", "url", "tel"]);
+const LANGUAGE_STORAGE_KEY = "voiceInputLanguage";
+const LONG_PRESS_MS = 400;
 
 const isVoiceInput = (element) => {
   if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) {
@@ -23,25 +29,49 @@ const setInputValue = (element, value) => {
   element.dispatchEvent(new Event("input", { bubbles: true }));
 };
 
+const mergeTranscriptText = (base, text) =>
+  [String(base || "").trim(), String(text || "").trim()].filter(Boolean).join(" ");
+
+const initialLanguage = () => {
+  try {
+    const saved = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    if (saved === "bn-BD" || saved === "en-US") return saved;
+  } catch {}
+  return document.documentElement.lang?.startsWith("bn") ? "bn-BD" : "en-US";
+};
+
 export default function VoiceInputEnhancer() {
   const [target, setTarget] = useState(null);
-  const [language, setLanguage] = useState("en-US");
+  const [language, setLanguage] = useState(initialLanguage);
   const [position, setPosition] = useState(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const baseTextRef = useRef("");
   const targetRef = useRef(null);
   const applyingTranscriptRef = useRef(false);
+  const lastFinalRef = useRef("");
+  const longPressTimerRef = useRef(null);
+  const longPressedRef = useRef(false);
 
-  const applyTranscript = useCallback((text) => {
+  const writeToTarget = useCallback((value) => {
     const element = targetRef.current;
-    if (!element || !text) return;
-    const next = [baseTextRef.current.trim(), text.trim()].filter(Boolean).join(" ");
+    if (!element) return;
     applyingTranscriptRef.current = true;
-    baseTextRef.current = next;
-    setInputValue(element, next);
+    setInputValue(element, value);
   }, []);
 
   const { listening, start, stop } = useComposerLiveTranscribe({
-    onFinal: applyTranscript,
+    onFinal: (text) => {
+      const normalized = String(text || "").trim().replace(/\s+/g, " ").toLowerCase();
+      if (!normalized || normalized === lastFinalRef.current) return;
+      lastFinalRef.current = normalized;
+      const next = mergeTranscriptText(baseTextRef.current, text);
+      baseTextRef.current = next;
+      writeToTarget(next);
+    },
+    onInterim: (text) => {
+      if (!text) return;
+      writeToTarget(mergeTranscriptText(baseTextRef.current, text));
+    },
   });
 
   const updatePosition = useCallback(() => {
@@ -51,9 +81,11 @@ export default function VoiceInputEnhancer() {
       return;
     }
     const rect = element.getBoundingClientRect();
+    const size = 32;
+    const isMultiline = element instanceof HTMLTextAreaElement && rect.height > 56;
     setPosition({
-      top: Math.max(8, rect.top + Math.min(rect.height - 42, 8)),
-      right: Math.max(8, window.innerWidth - rect.right + 6),
+      top: isMultiline ? rect.top + 6 : rect.top + (rect.height - size) / 2,
+      left: rect.right - size - 4,
     });
   }, []);
 
@@ -64,10 +96,12 @@ export default function VoiceInputEnhancer() {
       targetRef.current = event.target;
       baseTextRef.current = event.target.value;
       setTarget(event.target);
+      setMenuOpen(false);
       updatePosition();
     };
     const handleInput = (event) => {
-      if (event.target !== targetRef.current || applyingTranscriptRef.current) {
+      if (event.target !== targetRef.current) return;
+      if (applyingTranscriptRef.current) {
         applyingTranscriptRef.current = false;
         return;
       }
@@ -82,6 +116,7 @@ export default function VoiceInputEnhancer() {
           targetRef.current = null;
           setTarget(null);
           setPosition(null);
+          setMenuOpen(false);
         }
       }, 0);
     };
@@ -109,47 +144,111 @@ export default function VoiceInputEnhancer() {
     }
   }, [target, stop]);
 
+  useEffect(() => () => window.clearTimeout(longPressTimerRef.current), []);
+
   if (!target || !position) return null;
 
+  const startListening = (nextLanguage) => {
+    lastFinalRef.current = "";
+    baseTextRef.current = target.value;
+    start(nextLanguage).then((started) => {
+      if (!started) {
+        window.alert("Microphone unavailable. Allow microphone access and try again.");
+      }
+    }).catch((error) => {
+      console.error("Unable to start voice input:", error);
+      window.alert("Microphone unavailable. Allow microphone access and try again.");
+    });
+  };
+
   const toggleVoice = () => {
+    if (longPressedRef.current) {
+      longPressedRef.current = false;
+      return;
+    }
+    setMenuOpen(false);
     if (listening) {
       stop();
       return;
     }
-    baseTextRef.current = target.value;
-    start(language).then((started) => {
-      if (!started) {
-        window.alert(
-          "Could not start voice input. Please allow microphone access and try again.",
-        );
-      }
-    });
+    startListening(language);
   };
+
+  const chooseLanguage = (nextLanguage) => {
+    setLanguage(nextLanguage);
+    setMenuOpen(false);
+    try {
+      window.localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage);
+    } catch {}
+    if (listening) stop();
+    // Restart after stop() settles so the new recognizer starts cleanly.
+    window.setTimeout(() => startListening(nextLanguage), listening ? 150 : 0);
+  };
+
+  const beginPress = () => {
+    longPressedRef.current = false;
+    window.clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressedRef.current = true;
+      setMenuOpen(true);
+    }, LONG_PRESS_MS);
+  };
+  const cancelPress = () => window.clearTimeout(longPressTimerRef.current);
+
+  const languageName = language.startsWith("bn") ? "Bangla" : "English";
 
   return (
     <div
       className="voice-input-enhancer"
-      style={{ top: position.top, right: position.right }}
+      style={{ top: position.top, left: position.left }}
     >
-      <select
-        value={language}
-        onChange={(event) => setLanguage(event.target.value)}
-        aria-label="Voice recognition language"
-        title="Voice recognition language"
-      >
-        <option value="en-US">EN</option>
-        <option value="bn-BD">বাং</option>
-      </select>
       <button
         type="button"
         onClick={toggleVoice}
         onMouseDown={(event) => event.preventDefault()}
+        onPointerDown={beginPress}
+        onPointerUp={cancelPress}
+        onPointerLeave={cancelPress}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          cancelPress();
+          setMenuOpen(true);
+        }}
         className={listening ? "is-listening" : ""}
-        aria-label={listening ? "Stop voice input" : "Start voice input"}
-        title={listening ? "Stop voice input" : `Start ${language.startsWith("bn") ? "Bangla" : "English"} voice input`}
+        aria-label={listening ? "Stop voice input" : `Start ${languageName} voice input`}
+        aria-haspopup="menu"
+        title={listening
+          ? "Stop voice input"
+          : `Start ${languageName} voice input (long-press to change language)`}
       >
         <i className={`fas ${listening ? "fa-stop" : "fa-microphone"}`} aria-hidden="true" />
       </button>
+      {menuOpen ? (
+        <div className="voice-input-enhancer__menu" role="menu">
+          <div className="voice-input-enhancer__menu-title">Voice input language</div>
+          {[["bn-BD", "Bangla"], ["en-US", "English"]].map(([code, label]) => (
+            <button
+              key={code}
+              type="button"
+              role="menuitemradio"
+              aria-checked={language === code}
+              className={language === code ? "is-active" : ""}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => chooseLanguage(code)}
+            >
+              {label}
+            </button>
+          ))}
+          <button
+            type="button"
+            className="voice-input-enhancer__cancel"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => setMenuOpen(false)}
+          >
+            Cancel
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
