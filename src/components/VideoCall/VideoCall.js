@@ -23,6 +23,8 @@ import {
   stopRingback,
   endedLabelFor,
   ENDED_SCREEN_MS,
+  PEER_RECONNECT_GRACE_MS,
+  peerLeftOnPurpose,
 } from "../../utils/callFeedback";
 import {
   markCallActive,
@@ -130,6 +132,9 @@ const VideoCall = ({ myId }) => {
   // The other person is in the media channel (timer starts here).
   const [mediaConnected, setMediaConnected] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
+  // The other side's connection dropped; waiting for them to rejoin.
+  const [peerReconnecting, setPeerReconnecting] = useState(false);
+  const peerGoneTimerRef = useRef(null);
   const [remoteVideoOn, setRemoteVideoOn] = useState(false);
   const [localPreviewOn, setLocalPreviewOn] = useState(false);
   const [endedInfo, setEndedInfo] = useState(null);
@@ -835,6 +840,11 @@ const VideoCall = ({ myId }) => {
     setOutgoingCallStatus("");
     setMediaConnected(false);
     setIsReconnecting(false);
+    if (peerGoneTimerRef.current) {
+      clearTimeout(peerGoneTimerRef.current);
+      peerGoneTimerRef.current = null;
+    }
+    setPeerReconnecting(false);
     setRemoteVideoOn(false);
     setLocalPreviewOn(false);
     setRemoteAspectRatio(null);
@@ -1205,6 +1215,12 @@ const VideoCall = ({ myId }) => {
         // Bind before joining so a fast publisher is never missed.
         client.on("user-joined", () => {
           setMediaConnected(true);
+          // The other side came back after a dropped connection.
+          if (peerGoneTimerRef.current) {
+            clearTimeout(peerGoneTimerRef.current);
+            peerGoneTimerRef.current = null;
+          }
+          setPeerReconnecting(false);
         });
         client.on("user-published", async (user, mediaType) => {
           try {
@@ -1224,21 +1240,34 @@ const VideoCall = ({ myId }) => {
             userVideo.current?.replaceChildren();
           }
         });
-        client.on("user-left", async (user) => {
-          console.log("Remote user left the channel:", user?.uid);
-          try {
-            // Peer dropped out of the media channel (app killed, network
-            // lost, tab closed): close the call on the server too so every
-            // device and the call log are updated.
-            const peer = callerRef.current;
-            if (callAcceptedRef.current && peer) {
-              socket.emit("video-call-end", { to: String(peer), channelName });
-              showEndedRef.current?.("Call ended");
+        client.on("user-left", (user, reason) => {
+          console.log("Remote user left the channel:", user?.uid, reason);
+          // Peer is gone for good (hung up, app killed, never came back):
+          // close the call on the server too so every device and the call
+          // log are updated.
+          const endForPeer = async () => {
+            peerGoneTimerRef.current = null;
+            if (clientRef.current !== client) return;
+            try {
+              const peer = callerRef.current;
+              if (callAcceptedRef.current && peer) {
+                socket.emit("video-call-end", { to: String(peer), channelName });
+                showEndedRef.current?.("Call ended");
+              }
+              await cleanupVideoCallRef.current?.();
+            } catch (e) {
+              console.warn("Cleanup after remote user-left failed:", e);
             }
-            await cleanupVideoCallRef.current?.();
-          } catch (e) {
-            console.warn("Cleanup after remote user-left failed:", e);
+          };
+          if (peerLeftOnPurpose(reason)) {
+            endForPeer();
+            return;
           }
+          // Their connection dropped: give them time to rejoin.
+          setPeerReconnecting(true);
+          setRemoteVideoOn(false);
+          if (peerGoneTimerRef.current) clearTimeout(peerGoneTimerRef.current);
+          peerGoneTimerRef.current = setTimeout(endForPeer, PEER_RECONNECT_GRACE_MS);
         });
         client.on("connection-state-change", (curState) => {
           setIsReconnecting(curState === "RECONNECTING");
@@ -2081,7 +2110,7 @@ const VideoCall = ({ myId }) => {
         name={showEnded ? endedInfo.name : callerName}
         avatar={showEnded ? endedInfo.pic : callerProfilePic}
         statusText={showEnded ? endedInfo.label : statusText}
-        reconnecting={!showEnded && isReconnecting}
+        reconnecting={!showEnded && (isReconnecting || peerReconnecting)}
         muted={!isMicrophone}
         cameraOn={isCameraOn}
         hasCamera={hasVideoInput}

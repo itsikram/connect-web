@@ -33,6 +33,8 @@ import {
   stopRingback,
   endedLabelFor,
   ENDED_SCREEN_MS,
+  PEER_RECONNECT_GRACE_MS,
+  peerLeftOnPurpose,
 } from "../../utils/callFeedback";
 import {
   markCallActive,
@@ -101,6 +103,9 @@ const AudioCall = ({ myId }) => {
   // timer starts from here (like WhatsApp), not from the socket "accept".
   const [mediaConnected, setMediaConnected] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
+  // The other side's connection dropped; waiting for them to rejoin.
+  const [peerReconnecting, setPeerReconnecting] = useState(false);
+  const peerGoneTimerRef = useRef(null);
   // Snapshot shown for a moment after the call closes ("Call ended",
   // "Declined", "On another call", "No answer").
   const [endedInfo, setEndedInfo] = useState(null);
@@ -724,6 +729,12 @@ const AudioCall = ({ myId }) => {
         });
         client.on("user-joined", () => {
           setMediaConnected(true);
+          // The other side came back after a dropped connection.
+          if (peerGoneTimerRef.current) {
+            clearTimeout(peerGoneTimerRef.current);
+            peerGoneTimerRef.current = null;
+          }
+          setPeerReconnecting(false);
         });
         client.on("connection-state-change", (curState) => {
           setIsReconnecting(curState === "RECONNECTING");
@@ -738,19 +749,30 @@ const AudioCall = ({ myId }) => {
             console.warn("AudioCall: token renewal failed", error);
           }
         });
-        client.on("user-left", (user) => {
-          console.log("AudioCall - Remote user left the channel:", user?.uid);
-          if (callAcceptedRef.current) {
-            // The peer dropped out of the media channel (app killed, network
-            // lost, tab closed) — tell the server so the call is closed on
-            // every device and logged, then clean up locally.
+        client.on("user-left", (user, reason) => {
+          console.log("AudioCall - Remote user left the channel:", user?.uid, reason);
+          if (!callAcceptedRef.current) return;
+          // The peer is gone for good (left, app killed, never came back) —
+          // tell the server so the call is closed on every device and
+          // logged, then clean up locally.
+          const endForPeer = () => {
+            peerGoneTimerRef.current = null;
+            if (!callAcceptedRef.current || clientRef.current !== client) return;
             const peer = callerRef.current;
             if (peer) {
               socket.emit("audio-call-end", { to: String(peer), channelName });
             }
             showEndedRef.current?.("Call ended");
             cleanupAudioCallRef.current?.();
+          };
+          if (peerLeftOnPurpose(reason)) {
+            endForPeer();
+            return;
           }
+          // Their connection dropped: give them time to rejoin.
+          setPeerReconnecting(true);
+          if (peerGoneTimerRef.current) clearTimeout(peerGoneTimerRef.current);
+          peerGoneTimerRef.current = setTimeout(endForPeer, PEER_RECONNECT_GRACE_MS);
         });
 
         // Open the microphone while joining instead of after it: the two are
@@ -1048,6 +1070,11 @@ const AudioCall = ({ myId }) => {
       clearInterval(remoteUserCheckInterval.current);
       remoteUserCheckInterval.current = null;
     }
+    if (peerGoneTimerRef.current) {
+      clearTimeout(peerGoneTimerRef.current);
+      peerGoneTimerRef.current = null;
+    }
+    setPeerReconnecting(false);
 
     setCallAccepted(false);
     callAcceptedRef.current = false;
@@ -1770,7 +1797,7 @@ const AudioCall = ({ myId }) => {
         name={showEnded ? endedInfo.name : callerName}
         avatar={showEnded ? endedInfo.pic : callerProfilePic}
         statusText={showEnded ? endedInfo.label : statusText}
-        reconnecting={!showEnded && isReconnecting}
+        reconnecting={!showEnded && (isReconnecting || peerReconnecting)}
         muted={!isMicrophone}
         onAccept={answerCall}
         onDecline={endCall}

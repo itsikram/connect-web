@@ -60,3 +60,11 @@ export const endedLabelFor = (reason) => {
       return "Call ended";
   }
 };
+
+// Agora reports why a remote user left the media channel. "Quit" means they
+// left on purpose (hung up). Anything else ("ServerTimeOut") means their
+// connection dropped — a network switch, a phone that locked, a lost signal —
+// so, like WhatsApp, show "Reconnecting…" and give them time to come back
+// before closing the call.
+export const PEER_RECONNECT_GRACE_MS = 15000;
+export const peerLeftOnPurpose = (reason) => !reason || reason === "Quit";
