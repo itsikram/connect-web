@@ -1,60 +1,31 @@
-# Deploying to GoDaddy Deluxe (cPanel) Node.js hosting
+# Deploying to GoDaddy Node.js hosting
 
-The site is served by `server.js` (Node built-ins only, so the host needs no
-`npm install`) from the `build/` folder.
-
-## First-time app setup
-
-cPanel → **Setup Node.js App** → **Create Application**
-
-- Node.js version: highest available
-- Application mode: Production
-- Application root: e.g. `connect-web`
-- Application URL: your domain (e.g. `connect-bd.online`)
-- Application startup file: `server.js`
-
-Do not set `PORT`; Passenger assigns it.
+The site is served by `server.js` (Node built-ins only) from the `build/` folder.
 
 ## Automatic deploys from GitHub
 
-`.github/workflows/deploy-godaddy.yml` runs on every push to `main`. It builds
-the app with `npm run build` on GitHub, uploads `build/`, `server.js` and
-`package.json` over SSH, swaps the new `build/` in with a rename (the old one
-stays as `build.previous`) and restarts the app. Nothing else in the app root
-(`.env`, logs, `tmp/`) is touched.
+This app runs on GoDaddy's managed Node.js hosting (host.godaddy.com → My Apps →
+**connect-web**, app ID `nzt7quc6de`), with **Settings → Integrations → GitHub Sync** pointed at
+this repo's `main` branch.
+
+`.github/workflows/deploy-godaddy.yml` runs on every push to `main` and calls
+the GoDaddy Hosting API: it imports the branch through GitHub Sync (what
+**Update Preview** does), waits for the preview build, then publishes it (what
+**Publish to Live** does). GoDaddy builds and runs the app itself, so build and
+runtime environment values belong in the app's **Settings → Secrets** on
+GoDaddy, not in GitHub.
 
 ### One-time setup
 
-1. GoDaddy → My Products → Web Hosting → **Manage** → Settings → **SSH Access**:
-   turn it on. Note the host (server IP or domain) and the cPanel username.
-2. On your computer, create a key without a passphrase:
-   `ssh-keygen -t ed25519 -N "" -C github-deploy -f godaddy_deploy`
-   (the server repo can use the same key).
-3. cPanel → **SSH Access** → Manage SSH Keys → **Import Key**: paste
-   `godaddy_deploy.pub`, then **Manage** → **Authorize** it.
-4. Pin the host key: `ssh-keyscan -p 22 <host>` and keep the output.
-5. GitHub → this repo → Settings → Secrets and variables → **Actions**:
-
-   | Kind     | Name                        | Value                                                 |
-   | -------- | --------------------------- | ----------------------------------------------------- |
-   | Secret   | `GODADDY_SSH_HOST`          | server IP or domain                                   |
-   | Secret   | `GODADDY_SSH_USER`          | cPanel username                                       |
-   | Secret   | `GODADDY_SSH_KEY`           | contents of `godaddy_deploy` (the private key)        |
-   | Secret   | `GODADDY_SSH_KNOWN_HOSTS`   | output of step 4 (recommended)                        |
-   | Secret   | `GODADDY_SSH_PORT`          | only if not 22                                        |
-   | Secret   | `WEB_ENV_PRODUCTION_LOCAL`  | full contents of your local `.env.production.local`   |
-   | Variable | `GODADDY_APP_DIR`           | application root, relative to home, e.g. `connect-web` |
-   | Variable | `GODADDY_HEALTHCHECK_URL`   | e.g. `https://connect-bd.online/` (optional, checked after each deploy) |
-
-   `.env.production` (committed) and `WEB_ENV_PRODUCTION_LOCAL` together
-   give the same build as `npm run build` on your computer. When you change
-   `.env.production.local`, update the secret too.
-
-6. Push to `main`, or run the workflow from the **Actions** tab.
+1. developer.godaddy.com → **Personal Access Tokens**: create a token with the
+   scopes `hosting.application:read`, `hosting.source:write` and
+   `hosting.deployment:execute`. One token can serve all your apps.
+2. GitHub → this repo → Settings → Secrets and variables → **Actions** → New
+   repository secret: name `GODADDY_PAT`, value the token.
+3. Push to `main`, or run the workflow from the **Actions** tab.
 
 ### Rollback
 
-- Quick: in cPanel **File Manager** (or Terminal) rename `build` →
-  `build.bad` and `build.previous` → `build`, then **Restart** the app.
-- From GitHub: open the run of the last good commit and click
-  **Re-run all jobs**.
+GitHub Sync always imports the head of `main`, so re-running an old workflow
+run publishes the current code. To roll back, `git revert` the bad commit and
+push.
