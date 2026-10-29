@@ -14,6 +14,7 @@ import {
   useParams,
   useLocation,
   useNavigate,
+  Navigate,
 } from "react-router-dom";
 import NProgress from "nprogress";
 import {
@@ -159,7 +160,20 @@ const VideoCallPage = lazy(() => import("./VideoCallPage.js"));
 const Youtebe = lazy(() => import("./Youtebe.js"));
 const LudoGame = lazy(() => import("./ludo"));
 const ChessGame = lazy(() => import("./ChessGame"));
-const VideoPlayer = lazy(() => import("./VideoPlayer.js"));
+const MediaPlayer = lazy(() => import("./MediaPlayer.js"));
+
+// The Media Player used to live at /video-player. Old links (bookmarks, the
+// pop-out player, AI agent) keep working and carry their state/query along.
+const LegacyVideoPlayerRedirect = () => {
+  const location = useLocation();
+  return (
+    <Navigate
+      to={{ pathname: "/media-player", search: location.search, hash: location.hash }}
+      state={location.state}
+      replace
+    />
+  );
+};
 const Notes = lazy(() => import("./Notes.js"));
 const Tasks = lazy(() => import("./Tasks.js"));
 const FocusTimer = lazy(() => import("./FocusTimer.js"));
@@ -2608,15 +2622,16 @@ const Main = () => {
               {" "}
             </Route>
             <Route
-              path="/video-player"
+              path="/media-player"
               element={
                 <ProtectedRoute>
-                  <VideoPlayer />
+                  <MediaPlayer />
                 </ProtectedRoute>
               }
             >
               {" "}
             </Route>
+            <Route path="/video-player" element={<LegacyVideoPlayerRedirect />} />
             {/* <Route path="/call" element={<Call />}> </Route> */}
             <Route
               path="/marketplace"

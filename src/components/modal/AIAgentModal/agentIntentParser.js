@@ -347,9 +347,9 @@ const STATIC_ROUTE_MAP = [
   },
   { keys: ["rehab", "rehabilitation"], route: "/rehab", label: "Rehab" },
   {
-    keys: ["video player", "player"],
-    route: "/video-player",
-    label: "Video Player",
+    keys: ["media player", "video player", "player"],
+    route: "/media-player",
+    label: "Media Player",
   },
   { keys: ["youtube", "yt"], route: "/youtube", label: "YouTube" },
   { keys: ["menu"], route: "/menu", label: "Menu" },
@@ -958,8 +958,8 @@ const INTENT_PATTERNS = [
     action: "OPEN_VIDEO_PLAYER",
     searchCapture: true,
     patterns: [
-      /(?:open|start|play)\s+(?:the\s+)?video\s+player(?:\s+(?:with|and play))?\s*(.*)/i,
-      /^video\s+player$/i,
+      /(?:open|start|play)\s+(?:the\s+)?(?:video|media)\s+player(?:\s+(?:with|and play))?\s*(.*)/i,
+      /^(?:video|media)\s+player$/i,
     ],
   },
   {

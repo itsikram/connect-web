@@ -267,7 +267,7 @@ const NAVIGATE_ROUTES = {
   navigate_camera: { route: "/camera", label: "Camera" },
   navigate_video_library: { route: "/downloads", label: "Video library" },
   navigate_downloads: { route: "/downloads", label: "Downloads" },
-  navigate_media_player: { route: "/video-player", label: "Media player" },
+  navigate_media_player: { route: "/media-player", label: "Media player" },
   navigate_youtube: { route: "/youtube", label: "YouTube" },
 };
 
@@ -301,7 +301,7 @@ const SCREEN_ROUTES = {
   ludo: "/ludo-game",
   chess: "/chess-game",
   youtube: "/youtube",
-  mediaplayer: "/video-player",
+  mediaplayer: "/media-player",
   downloads: "/downloads",
   camera: "/camera",
   notifications: "/notification",

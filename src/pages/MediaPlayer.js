@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import { useSelector } from "react-redux";
 import { useLocation } from "react-router-dom";
-import "./VideoPlayer.css";
+import "./MediaPlayer.css";
 import useIsMobile from "../utils/useIsMobile";
 import { useWatchPipOptional } from "../contexts/WatchPipContext";
 import { buildLibraryPipPayloadFromVideo } from "../utils/watchPipHelpers";
@@ -58,7 +58,7 @@ import {
   deleteLocalVideo,
 } from "../utils/localVideoStore";
 
-const VideoPlayer = () => {
+const MediaPlayer = () => {
   const myProfileId = useSelector((state) => state.profile?._id);
   const location = useLocation();
   const watchPip = useWatchPipOptional();
@@ -2676,4 +2676,4 @@ const VideoPlayer = () => {
   );
 };
 
-export default VideoPlayer;
+export default MediaPlayer;

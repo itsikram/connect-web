@@ -502,7 +502,7 @@ const APP_ROUTES = new Set(
   (
     "menu wallet video-call youtube expo download-app downloads search login signup " +
     "forgot-password reset-password story post connects watch message ludo-game chess-game " +
-    "video-player marketplace groups yt-download camera notes tasks timer flashcards calendar " +
+    "media-player video-player marketplace groups yt-download camera notes tasks timer flashcards calendar " +
     "habits health rehab settings test-notifications privacy terms about portfolio api static " +
     "assets privacy-policy terms-of-service call face images"
   ).split(" ")

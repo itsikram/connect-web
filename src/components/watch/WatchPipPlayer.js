@@ -632,13 +632,13 @@ const WatchPipPlayer = () => {
       const savedId = String(pip.libraryVideoId).startsWith("saved-")
         ? String(pip.libraryVideoId).replace(/^saved-/, "")
         : "";
-      if (savedId && !window.location.pathname.startsWith("/video-player")) {
+      if (savedId && !window.location.pathname.startsWith("/media-player")) {
         navigate(`/downloads/${savedId}`, {
           state: { resumeAt: time, autoplay: true },
         });
         return;
       }
-      navigate("/video-player", {
+      navigate("/media-player", {
         state: {
           resumeAt: time,
           videoId: pip.videoId || pip.libraryVideoId,

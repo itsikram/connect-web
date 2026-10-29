@@ -1919,14 +1919,14 @@ export const executeAction = async ({
             memory: { lastYoutubeUrl: url },
           };
         }
-        go("/video-player", {
+        go("/media-player", {
           state: url ? { playUrl: url, playTitle: label || "Video", autoplay: true } : undefined,
         });
         return {
           success: true,
           message: url
-            ? "🎬 Opening the video player with that file."
-            : "🎬 Opening the video player.",
+            ? "🎬 Opening the media player with that file."
+            : "🎬 Opening the media player.",
           memory: url ? { lastVideoUrl: url } : {},
         };
       }

@@ -276,7 +276,7 @@ export const CONNECT_ROUTES = [
   { route: "/yt-download", label: "YouTube downloader" },
   { route: "/downloads", label: "Saved videos" },
   { route: "/youtube", label: "YouTube" },
-  { route: "/video-player", label: "Video player" },
+  { route: "/media-player", label: "Media player" },
   { route: "/menu", label: "Menu" },
   { route: "/settings", label: "Profile settings" },
   { route: "/settings/account", label: "Account settings" },

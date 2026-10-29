@@ -8,7 +8,7 @@ const RESERVED_PROFILE_SLUGS = new Set([
   "call", "camera", "chess-game", "comments", "connects", "contact",
   "downloads", "expo", "face", "fitness", "flashcards", "forgot-password",
   "groups", "habits", "health", "home", "images", "login", "logout",
-  "ludo-game", "marketplace", "menu", "message", "notes", "notification",
+  "ludo-game", "marketplace", "media-player", "menu", "message", "notes", "notification",
   "notifications", "places", "portfolio", "post", "preference", "privacy",
   "profile", "reacts", "rehab", "requests", "reset-password", "resume",
   "search", "sent", "settings", "signup", "sound", "static", "story",

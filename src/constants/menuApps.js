@@ -32,12 +32,12 @@ export const MENU_APPS = [
     colorB: "#6366F1",
   },
   {
-    key: "video-player",
-    name: "Video Player",
+    key: "video-player", // kept: saved app-menu orders reference this key
+    name: "Media Player",
     desc: "Play video songs in a continuous loop",
     icon: "🎬",
     faIcon: "fa-play-circle",
-    href: "/video-player",
+    href: "/media-player",
     colorA: "#3B82F6",
     colorB: "#2563EB",
   },

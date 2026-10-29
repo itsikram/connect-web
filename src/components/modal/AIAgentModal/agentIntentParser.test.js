@@ -517,6 +517,15 @@ describe("agent action parsing", () => {
     });
   });
 
+  test("parses media player", () => {
+    expect(parseIntent("open the media player")).toMatchObject({
+      action: "OPEN_VIDEO_PLAYER",
+    });
+    expect(parseIntent("media player")).toMatchObject({
+      action: "OPEN_VIDEO_PLAYER",
+    });
+  });
+
   test("treats parsed commands as fast local intents", () => {
     const intent = parseIntent("set dark mode");
     expect(isFastLocalIntent(intent, "set dark mode")).toBe(true);
