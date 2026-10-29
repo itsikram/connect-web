@@ -907,6 +907,7 @@ const StickyChatFooter = ({
           ) : null}
           <input
             ref={messageInput}
+            data-voice-input="false"
             type="text"
             value={inputValue}
             onChange={handleInputChange}

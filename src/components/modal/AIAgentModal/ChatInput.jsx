@@ -616,6 +616,7 @@ const ChatInput = ({
 
         <textarea
           ref={inputRef}
+          data-voice-input="false"
           value={value}
           onChange={(e) => handleTextChange(e.target.value)}
           onKeyPress={handleKeyPress}
