@@ -50,6 +50,7 @@ import api from "../api/api";
 import { getYtDownloadApiUrl, normalizeServerUrl } from "../utils/offlineUtils";
 import { showErrorToast, showSuccessToast } from "../utils/toastUtils";
 import { subscribeWatchDownloads } from "../utils/watchDownloadProgress";
+import { saveVideoFromUrl } from "../utils/useSavedVideos";
 import {
   isVideoFile,
   stripExtension,
@@ -197,6 +198,8 @@ const MediaPlayer = () => {
   const resumeHandledRef = useRef(false);
   const libraryRefreshRef = useRef(null);
   const [libraryRefreshed, setLibraryRefreshed] = useState(false);
+  // Save-to-Saved-Videos progress, keyed by saved-video id.
+  const [saveDownloads, setSaveDownloads] = useState({});
   // Reopen the last video, paused at the same spot. Skipped when the page was
   // opened to play something specific (AI agent link, pop-out "expand").
   const explicitOpen = !!(location.state?.playUrl || location.state?.videoId);
@@ -521,6 +524,18 @@ const MediaPlayer = () => {
   useEffect(() => {
     refreshLibrary();
   }, [refreshLibrary]);
+
+  useEffect(
+    () =>
+      subscribeWatchDownloads((list) => {
+        const byId = {};
+        list.forEach((d) => {
+          byId[String(d.id)] = d;
+        });
+        setSaveDownloads(byId);
+      }),
+    [],
+  );
 
   // A video saved while this page is open shows up in the Saved list.
   useEffect(() => {
@@ -1961,6 +1976,107 @@ const MediaPlayer = () => {
     saved: savedPlaylists.length,
   };
 
+  // ---- Save video (to Saved Videos, same as the Watch page) ----
+  const savedVideoIds = useMemo(
+    () => new Set(savedVideos.map((v) => String(v.sourceId || "").trim()).filter(Boolean)),
+    [savedVideos],
+  );
+
+  // What saving this video means: its saved-video id, or why it can't be saved.
+  const getSaveTarget = (item) => {
+    if (!item) return null;
+    const libraryItem =
+      allVideos.find((v) => v.id === (item.videoId || item.id)) || item;
+    const type = libraryItem.type || item.type;
+    const url = String(libraryItem.url || item.url || "").trim();
+    const title = libraryItem.title || item.title || "Video";
+    if (type === "saved") return { saved: true, title };
+    // Local files are already kept on this device; YouTube pages aren't files.
+    if (type === "file" || type === "youtube" || !url || url.startsWith("blob:")) {
+      return null;
+    }
+    if (/(?:youtube\.com|youtu\.be)\//i.test(url)) return null;
+    const saveId = String(
+      (type === "watch" && libraryItem.sourceId) || libraryItem.sourceId || libraryItem.id || "",
+    ).trim();
+    if (!saveId) return null;
+    return {
+      saveId,
+      url,
+      title,
+      thumbnail: libraryItem.thumbnail || item.thumbnail || "",
+      saved: savedVideoIds.has(saveId),
+    };
+  };
+
+  const handleSaveVideo = (item) => {
+    const target = getSaveTarget(item);
+    if (!target || target.saved || !target.saveId) return;
+    const progress = saveDownloads[target.saveId];
+    if (progress?.status === "downloading") return;
+    saveVideoFromUrl(target.saveId, target.url, {
+      _id: target.saveId,
+      caption: target.title,
+      videoUrl: target.url,
+      thumbnail: target.thumbnail,
+    });
+  };
+
+  const renderSaveButton = (item, { variant = "icon" } = {}) => {
+    const target = getSaveTarget(item);
+    if (!target) return null;
+    const progress = target.saveId ? saveDownloads[target.saveId] : null;
+    const downloading = progress?.status === "downloading";
+    const done = target.saved || progress?.status === "completed";
+    const failed = progress?.status === "failed" || progress?.status === "error";
+    const percent = Math.round(Number(progress?.percent) || 0);
+    const label = done
+      ? "Saved"
+      : downloading
+        ? `Saving… ${percent}%`
+        : failed
+          ? "Retry save"
+          : "Save video";
+    const icon = done
+      ? "fa-check"
+      : downloading
+        ? "fa-circle-notch fa-spin"
+        : "fa-download";
+    const onClick = (e) => {
+      e.stopPropagation();
+      handleSaveVideo(item);
+    };
+    if (variant === "chip") {
+      return (
+        <button
+          type="button"
+          className={`vp-chip-btn vp-save-chip${done ? " saved" : ""}`}
+          onClick={onClick}
+          disabled={done || downloading}
+          title={label}
+        >
+          <i className={`fas ${icon}`} /> {label}
+        </button>
+      );
+    }
+    return (
+      <button
+        type="button"
+        className={`vp-icon-btn vp-save-btn${done ? " saved" : ""}${downloading ? " saving" : ""}`}
+        onClick={onClick}
+        disabled={done || downloading}
+        title={label}
+        aria-label={`${label}: ${target.title}`}
+      >
+        {downloading && percent > 0 ? (
+          <span className="vp-save-percent">{percent}</span>
+        ) : (
+          <i className={`fas ${icon}`} />
+        )}
+      </button>
+    );
+  };
+
   const renderWatchResult = (video) => {
     const author = watchAuthors[video.sourceId];
     return (
@@ -1982,6 +2098,7 @@ const MediaPlayer = () => {
           <strong>{video.title}</strong>
           <small>{video.type === "saved" ? "Saved on this device" : author || "Watch"}</small>
         </div>
+        {renderSaveButton(video)}
         <button
           type="button"
           className="vp-icon-btn vp-icon-btn-accent"
@@ -2260,6 +2377,7 @@ const MediaPlayer = () => {
                       <i className={`fas ${isFullscreen ? "fa-compress" : "fa-expand"}`} />
                     </button>
                   </div>
+                  {renderSaveButton(currentPlayback || currentVideo, { variant: "chip" })}
                   {watchPip && !isThisPip ? (
                     <button type="button" className="vp-chip-btn" onClick={minimizeToPip}>
                       <i className="fas fa-external-link-alt" /> Pop out
@@ -2442,6 +2560,7 @@ const MediaPlayer = () => {
                             <i className="fas fa-plus" />
                           </button>
                         </div>
+                        {renderSaveButton(item)}
                         <button
                           type="button"
                           className="vp-icon-btn vp-icon-btn-quiet"
@@ -2688,6 +2807,7 @@ const MediaPlayer = () => {
                             {getSourceLabel(video)}
                           </div>
                         </div>
+                        {renderSaveButton(video)}
                         <button
                           type="button"
                           className="vp-icon-btn vp-icon-btn-accent"

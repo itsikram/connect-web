@@ -447,6 +447,36 @@
     color: var(--vp-danger) !important;
 }
 
+/* Save video (to Saved Videos) */
+.vp-save-btn {
+    background: transparent;
+    border-color: transparent;
+    color: var(--vp-muted, var(--vp-text)) !important;
+}
+
+.vp-save-btn:hover:not(:disabled) {
+    background: var(--vp-accent-soft);
+    border-color: transparent;
+    color: var(--vp-accent) !important;
+}
+
+.vp-save-btn.saving:disabled {
+    opacity: 1;
+    color: var(--vp-accent) !important;
+}
+
+.vp-save-btn.saved:disabled,
+.vp-save-chip.saved:disabled {
+    opacity: 1;
+    color: #22c55e !important;
+}
+
+.vp-save-percent {
+    font-size: 10px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
 .vp-btn {
     display: inline-flex;
     align-items: center;
