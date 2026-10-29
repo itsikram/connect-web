@@ -520,12 +520,6 @@
         background: var(--msg-bg-primary, #0b0d11);
     }
 
-    body.message-page-mobile.message-keyboard-open #header {
-        /* Keep site header visible — hiding it caused the chat to jump above the header on focus */
-        visibility: visible;
-        pointer-events: auto;
-    }
-
     .modern-message-container,
     .modern-message-container.is-mobile {
         width: 100%;
@@ -537,17 +531,17 @@
         padding-right: env(safe-area-inset-right, 0px);
         /* Pin via --message-vv-top / --message-mobile-height (Message.js) */
         position: fixed;
-        top: var(--message-vv-top, var(--site-header-height, 56px));
+        top: var(--message-vv-top, 0px);
         left: 0;
         right: 0;
         bottom: auto;
         height: var(
             --message-mobile-height,
-            calc(100svh - var(--site-header-height, 56px))
+            100svh
         ) !important;
         max-height: var(
             --message-mobile-height,
-            calc(100svh - var(--site-header-height, 56px))
+            100svh
         ) !important;
         z-index: 40;
         overflow: hidden;
@@ -558,7 +552,7 @@
     body.message-page-mobile.message-keyboard-open
         .modern-message-container.is-mobile {
         /* Same top as closed state — only height shrinks above the keyboard (no upward bounce) */
-        top: var(--message-vv-top, var(--site-header-height, 56px)) !important;
+        top: var(--message-vv-top, 0px) !important;
         bottom: auto !important;
         height: var(--message-mobile-height, 50dvh) !important;
         max-height: var(--message-mobile-height, 50dvh) !important;
@@ -591,7 +585,7 @@
     html.standalone-pwa
         body.message-page-mobile.message-keyboard-open
         .modern-message-container {
-        top: var(--message-vv-top, var(--site-header-height, 56px)) !important;
+        top: var(--message-vv-top, 0px) !important;
         height: var(--message-mobile-height, 50dvh) !important;
         max-height: var(--message-mobile-height, 50dvh) !important;
     }
@@ -619,38 +613,27 @@
         min-height: 0;
     }
 
-    .mobile-nav-toggle {
-        display: block;
-        top: 8px;
-        left: 8px;
-        z-index: 1100;
-    }
-    .nav-toggle-btn {
-        width: 40px;
-        height: 40px;
-    }
-
+    /* Phones show one screen at a time: the inbox or the open chat. */
     .message-sidebar.left-sidebar {
-        position: fixed;
-        top: 0;
-        left: 0;
-        bottom: 0;
-        width: min(85vw, 320px);
-        max-width: 320px;
-        z-index: 999;
-        transform: translateX(-100%);
-        transition: transform var(--msg-transition-normal);
-        border-radius: 0 var(--msg-radius-lg) var(--msg-radius-lg) 0;
-        padding-top: env(safe-area-inset-top, 0px);
+        flex: 1 1 auto;
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+        height: 100%;
+        min-height: 0;
+        border: none;
+        border-radius: 0;
         padding-bottom: env(safe-area-inset-bottom, 0px);
+        animation: messageMobileFadeIn 0.2s ease-out;
     }
 
-    .message-sidebar.left-sidebar.mobile-active {
-        transform: translateX(0);
+    .message-sidebar.left-sidebar.mobile-hidden,
+    .message-main-content.mobile-hidden {
+        display: none !important;
     }
 
-    .message-sidebar.left-sidebar.mobile-hidden {
-        transform: translateX(-100%);
+    .modern-message-layout.mobile-view-chat .message-main-content {
+        animation: messageMobileSlideIn 0.22s ease-out;
     }
 
     .message-main-content.mobile-full {
@@ -664,8 +647,8 @@
         border: none;
     }
 
-    .sidebar-content {
-        padding-top: calc(var(--msg-spacing-xl) + 44px);
+    .modern-message-layout .message-sidebar .sidebar-content {
+        padding: 0 12px 10px;
     }
 
     .modern-message-container #chatBox .chat-footer {
@@ -673,25 +656,30 @@
     }
 }
 
-@media (max-width: 480px) {
-    .message-sidebar.left-sidebar {
-        width: 100%;
-        max-width: none;
-        border-radius: 0;
+@keyframes messageMobileSlideIn {
+    from {
+        opacity: 0.6;
+        transform: translateX(24px);
     }
-
-    .message-main-content.mobile-full {
-        margin: 0;
+    to {
+        opacity: 1;
+        transform: none;
     }
+}
 
-    .mobile-nav-toggle {
-        top: 6px;
-        left: 6px;
+@keyframes messageMobileFadeIn {
+    from {
+        opacity: 0;
     }
+    to {
+        opacity: 1;
+    }
+}
 
-    .nav-toggle-btn {
-        width: 38px;
-        height: 38px;
+@media (prefers-reduced-motion: reduce) {
+    .message-sidebar.left-sidebar,
+    .modern-message-layout.mobile-view-chat .message-main-content {
+        animation: none !important;
     }
 }
 
@@ -1522,69 +1510,57 @@
     }
 
     .modern-message-container #chatBox .chat-header-main {
-        padding: 6px 8px 6px 48px; /* room for conversation-list hamburger */
-        min-height: 52px;
-        gap: 6px;
-    }
-
-    .modern-message-container #chatBox .chat-header-profilePic {
-        width: 36px;
-        height: 36px;
-    }
-
-    .modern-message-container #chatBox .chat-header-username {
-        font-size: 0.9rem;
-    }
-
-    .modern-message-container #chatBox .chat-header-active-status {
-        font-size: 0.68rem;
-    }
-
-    .modern-message-container #chatBox .chat-header-action-btn-container {
+        /* The chat is full-screen on phones: clear the status bar / notch. */
+        padding: calc(6px + env(safe-area-inset-top, 0px)) 6px 6px 4px;
+        min-height: calc(56px + env(safe-area-inset-top, 0px));
         gap: 4px;
     }
 
+    .modern-message-container #chatBox .chat-header-user {
+        gap: 10px;
+    }
+
+    .modern-message-container #chatBox .chat-header-profilePic {
+        width: 38px;
+        height: 38px;
+    }
+
+    .modern-message-container #chatBox .chat-header-username {
+        font-size: 1rem;
+        letter-spacing: -0.01em;
+    }
+
+    .modern-message-container #chatBox .chat-header-active-status {
+        font-size: 0.72rem;
+        color: var(--msg-text-muted, #9aa3b2);
+        opacity: 1;
+    }
+
+    .modern-message-container #chatBox .chat-header-action-btn-container {
+        gap: 2px;
+    }
+
     .modern-message-container #chatBox .chat-header-action .action-button {
-        width: 30px;
-        height: 30px;
-        min-width: 30px;
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
     }
 
     .modern-message-container #chatBox .chat-header-action .action-button i {
-        font-size: 0.78rem;
-    }
-
-    .modern-message-container .mobile-nav-toggle {
-        top: 10px;
-        left: 8px;
-        z-index: 1102;
-    }
-
-    .modern-message-container .nav-toggle-btn {
-        width: 34px;
-        height: 34px;
-    }
-
-    /* iOS Home Screen app: clear the status bar / notch */
-    html.standalone-ios .modern-message-container #chatBox .chat-header-main,
-    html.standalone-pwa .modern-message-container #chatBox .chat-header-main {
-        padding-top: calc(6px + env(safe-area-inset-top, 0px));
+        font-size: 1.05rem;
     }
 }
 
 @media (max-width: 380px) {
     .modern-message-container #chatBox .chat-header-action .action-button {
-        width: 28px;
-        height: 28px;
-        min-width: 28px;
+        width: 36px;
+        height: 36px;
+        min-width: 36px;
     }
 
-    .modern-message-container #chatBox .chat-header-action .action-button i {
-        font-size: 0.72rem;
-    }
-
-    .modern-message-container #chatBox .chat-header-main {
-        padding-left: 0px;
+    .modern-message-container #chatBox .chat-header-profilePic {
+        width: 34px;
+        height: 34px;
     }
 }
 
@@ -6362,10 +6338,110 @@
     filter: brightness(1.1);
 }
 
-/* Mobile: keep the drawer toggle from covering the conversation search. */
+/* Back button in the mobile inbox header and chat top bar. */
+.message-back-btn {
+    flex: 0 0 auto;
+    width: 40px;
+    height: 40px;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--msg-text-primary, #e4e6eb);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color 0.15s ease;
+}
+
+.message-back-btn i {
+    font-size: 1.15rem;
+    line-height: 1;
+}
+
+.message-back-btn:active,
+.message-back-btn:focus-visible {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.message-back-btn:focus-visible {
+    outline: 2px solid var(--msg-primary, #00d4ff);
+    outline-offset: 1px;
+}
+
+/* Mobile inbox: app-style top bar (back + title + options) above the search. */
 @media (max-width: 768px) {
-    .modern-message-layout.has-nav-toggle .message-sidebar .search-section {
-        padding-left: 52px !important;
+    /* The back button replaces the old hamburger gutter (style.scss). */
+    .modern-message-container #chatBox .chat-header {
+        padding-left: 0 !important;
+    }
+
+    /* Plain icon buttons in the chat top bar, like native chat apps
+       (beats the per-theme tinted circles above). */
+    .modern-message-container.is-mobile[data-chat-theme]
+        #chatBox
+        .chat-header
+        .chat-header-action
+        .chat-header-action-btn-container
+        .action-button {
+        background: transparent;
+        border: none;
+        backdrop-filter: none;
+        transform: none;
+    }
+
+    .modern-message-container.is-mobile[data-chat-theme]
+        #chatBox
+        .chat-header
+        .chat-header-action
+        .chat-header-action-btn-container
+        .action-button:active {
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    /* Keep the inbox (and its New Chat button) above the bottom tab bar. */
+    body.has-mobile-bottom-nav
+        .modern-message-layout.mobile-view-list
+        .message-sidebar.left-sidebar {
+        padding-bottom: calc(
+            var(--mobile-bottom-nav-h, 60px) + env(safe-area-inset-bottom, 0px)
+        );
+    }
+
+    .modern-message-layout.mobile-view-list .modern-message-header {
+        padding: calc(6px + env(safe-area-inset-top, 0px)) 0 6px;
+        margin: 0 -8px;
+    }
+
+    .modern-message-layout.mobile-view-list .header-title-section {
+        flex-direction: row;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .modern-message-layout.mobile-view-list .modern-title {
+        font-size: 1.35rem;
+    }
+
+    .modern-message-layout.mobile-view-list .header-actions .action-button {
+        width: 40px;
+        height: 40px;
+        border: none;
+        border-radius: 50%;
+        background: transparent;
+        backdrop-filter: none;
+        color: var(--msg-text-primary);
+    }
+
+    .modern-message-layout.mobile-view-list .header-actions .action-button:hover {
+        transform: none;
+    }
+
+    .modern-message-layout.mobile-view-list .search-section {
+        margin-bottom: 8px;
     }
 }
 

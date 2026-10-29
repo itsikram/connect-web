@@ -119,7 +119,7 @@ function getShortTimeAgo(timestamp) {
 
 const userInfo = JSON.parse(localStorage.getItem("user") || "{}");
 const profileId = userInfo.profile;
-const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
+const MessageList = React.memo(({ onChatSelect, compact, menuStyle, showBackButton }) => {
   const [messageOption, setMessageOption] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [focusedIndex, setFocusedIndex] = useState(-1);
@@ -441,11 +441,21 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
 
   const goToLink = useCallback(
     (e) => {
-      navigate(`/message/${e.currentTarget.dataset.id}`);
+      // fromInbox lets the mobile chat back button pop back to this list.
+      navigate(`/message/${e.currentTarget.dataset.id}`, {
+        state: { fromInbox: true },
+      });
       onChatSelect && onChatSelect();
     },
     [navigate, onChatSelect],
   );
+
+  // Mobile inbox back button: return to the previous in-app page, or home
+  // when the inbox was opened directly (e.g. from a link or notification).
+  const handleBack = useCallback(() => {
+    if ((window.history.state?.idx ?? 0) > 0) navigate(-1);
+    else navigate("/", { replace: true });
+  }, [navigate]);
 
   const filteredContacts = useMemo(() => {
     const query = (searchQuery || "").toLowerCase();
@@ -776,6 +786,16 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle }) => {
         <div className="modern-message-header">
           <div className="header-content">
             <div className="header-title-section">
+              {showBackButton && (
+                <button
+                  type="button"
+                  className="message-back-btn"
+                  onClick={handleBack}
+                  aria-label="Back"
+                >
+                  <i className="fas fa-chevron-left" aria-hidden="true"></i>
+                </button>
+              )}
               <h1 className="modern-title">Messages</h1>
               <div className="online-indicator" aria-live="polite">
                 <span className="indicator-dot"></span>

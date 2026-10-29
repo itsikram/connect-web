@@ -11,7 +11,6 @@ const Message = (props) => {
   const { profile: connectId } = useParams();
   const { theme } = useConnectChatSettings(connectId);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const [showMobileNav, setShowMobileNav] = useState(false);
 
   const useMediaQuery = (query) => {
     const [matches, setMatches] = useState(window.matchMedia(query).matches);
@@ -27,11 +26,6 @@ const Message = (props) => {
   };
 
   const isMobile = useMediaQuery("(max-width: 768px)");
-
-  // On phones, land on the conversation list when no chat is open.
-  useEffect(() => {
-    if (isMobile && !connectId) setShowMobileNav(true);
-  }, [isMobile, connectId]);
 
   useEffect(() => {
     const timer = setTimeout(() => setIsInitialLoad(false), 300);
@@ -98,13 +92,17 @@ const Message = (props) => {
 
     const applyViewport = (opts = {}) => {
       const settle = !!opts.settle;
+      // Phones hide the site header on this page (see Main.js), so the chat
+      // shell starts at the top edge there.
       const header = document.getElementById("header");
       const headerHeight = header
         ? Math.ceil(header.getBoundingClientRect().height)
         : isMobile
-          ? 56
+          ? 0
           : 70;
-      root.style.setProperty("--site-header-height", `${headerHeight}px`);
+      if (header) {
+        root.style.setProperty("--site-header-height", `${headerHeight}px`);
+      }
 
       const vv = window.visualViewport;
       const vvHeight = Math.round(vv?.height || window.innerHeight);
@@ -122,7 +120,7 @@ const Message = (props) => {
 
       if (keyboardOpen) {
         body.classList.add("message-keyboard-open");
-        // Keep top under the site header — do NOT jump to 0 (that slides chat above the header).
+        // Keep top under the site header (if any) — do NOT jump above it.
         // Only shrink height to the visible area above the keyboard.
         nextTop = headerHeight;
         nextHeight = Math.max(180, vvHeight - headerHeight);
@@ -238,9 +236,9 @@ const Message = (props) => {
     };
   }, [isMobile]);
 
-  const handleMobileNavToggle = () => {
-    setShowMobileNav((prev) => !prev);
-  };
+  // Phones show one screen at a time: the conversation list (inbox) when no
+  // chat is open, otherwise the chat with a back button in its top bar.
+  const mobileView = connectId ? "chat" : "list";
 
   return (
     <Fragment>
@@ -260,46 +258,23 @@ const Message = (props) => {
           }}
         >
           <div
-            className={`modern-message-layout${isMobile && connectId ? " has-nav-toggle" : ""}`}
+            className={`modern-message-layout${isMobile ? ` mobile-view-${mobileView}` : ""}`}
           >
-            {/* Mobile Navigation Toggle (inbox shows the list as the page) */}
-            {isMobile && connectId && (
-              <button
-                type="button"
-                className="mobile-nav-toggle"
-                onClick={handleMobileNavToggle}
-                aria-label={
-                  showMobileNav ? "Close conversations" : "Open conversations"
-                }
-              >
-                <div className="nav-toggle-btn">
-                  <div className={`hamburger ${showMobileNav ? "active" : ""}`}>
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                  </div>
-                </div>
-              </button>
-            )}
-
             {/* Chat List Sidebar */}
             <div
-              className={`message-sidebar left-sidebar ${isMobile ? (showMobileNav ? "mobile-active" : "mobile-hidden") : ""}`}
+              className={`message-sidebar left-sidebar${isMobile ? (mobileView === "list" ? " mobile-active" : " mobile-hidden") : ""}`}
             >
               <div className="sidebar-content">
-                <MessageList onChatSelect={() => setShowMobileNav(false)} />
+                <MessageList showBackButton={isMobile} />
               </div>
             </div>
 
             {/* Main Chat Area */}
             <div
-              className={`message-main-content ${isMobile ? "mobile-full" : ""}`}
+              className={`message-main-content${isMobile ? " mobile-full" : ""}${isMobile && mobileView === "list" ? " mobile-hidden" : ""}`}
             >
               <div className="chat-container">
-                <MessageBody
-                  cameraVideoRef={props.cameraVideoRef}
-                  onOpenList={isMobile ? () => setShowMobileNav(true) : undefined}
-                />
+                <MessageBody cameraVideoRef={props.cameraVideoRef} />
               </div>
             </div>
 
@@ -310,14 +285,6 @@ const Message = (props) => {
                   <MessageOptions />
                 </div>
               </div>
-            )}
-
-            {/* Mobile Overlay */}
-            {isMobile && showMobileNav && (
-              <div
-                className="mobile-overlay"
-                onClick={() => setShowMobileNav(false)}
-              ></div>
             )}
           </div>
         </Container>

@@ -2609,6 +2609,13 @@ const ChatHeader = ({
     return sanitizeProfileImageUrl(data?.profilePic || connectPP || "", 200);
   }, [userInfoData, connectProfile, connectPP]);
 
+  // Mobile chat top bar back button: pop back to the inbox when we came from
+  // it, otherwise open the inbox in place of this chat (direct links/notifications).
+  const handleBackToInbox = useCallback(() => {
+    if (location.state?.fromInbox) navigate(-1);
+    else navigate("/message", { replace: true });
+  }, [location.state, navigate]);
+
   const displayName =
     connectProfile === true
       ? connectProfile?.fullName || ""
@@ -2619,6 +2626,16 @@ const ChatHeader = ({
   return (
     <>
       <div className="chat-header-main">
+        {isMobile && (
+          <button
+            type="button"
+            className="message-back-btn"
+            onClick={handleBackToInbox}
+            aria-label="Back to conversations"
+          >
+            <i className="fas fa-chevron-left" aria-hidden="true"></i>
+          </button>
+        )}
         <div className={`chat-header-user ${"skleton-card"}`}>
           {isMobile && emotion && (
             <div

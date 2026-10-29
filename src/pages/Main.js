@@ -43,6 +43,7 @@ import EnablePushBanner from "../components/EnablePushBanner";
 import { initIncomingCallPushBridge } from "../utils/incomingCallFromPush";
 import socket from "../common/socket";
 import Header from "../partials/header/Header";
+import useIsMobile from "../utils/useIsMobile";
 import ProtectedRoute from "../components/ProtectedRoute.js";
 import ProfileSkeleton from "../skletons/profile/ProfileSkeleton";
 import { useAuth } from "../hooks/useAuth";
@@ -2334,6 +2335,12 @@ const Main = () => {
     location.pathname.startsWith("/camera") ||
     location.pathname.startsWith("/expo");
 
+  // Phones get a full-screen chat with its own back-button top bar instead
+  // of the site header.
+  const isMobileViewport = useIsMobile();
+  const isMobileChatRoute =
+    isMobileViewport && location.pathname.startsWith("/message");
+
   // AI Agent Modal State
   const [isAIAgentModalOpen, setIsAIAgentModalOpen] = useState(false);
   // Mirrors the Expo app: a plain open shows the full agent (and restores it
@@ -2407,7 +2414,7 @@ const Main = () => {
         </div>
       )}
 
-      {!isHeaderHiddenRoute && isAuthenticated && (
+      {!isHeaderHiddenRoute && !isMobileChatRoute && isAuthenticated && (
         <Header
           pendingLudoInvites={pendingLudoInvites}
           pendingChessInvites={pendingChessInvites}
