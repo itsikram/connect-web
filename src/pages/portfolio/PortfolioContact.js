@@ -5,7 +5,7 @@ import { usePortfolio } from '../../contexts/PortfolioContext';
 import { getServerAddress } from '../../utils/offlineUtils';
 
 function getServerBase() {
-  return getServerAddress() || 'https://oeazgm4zwn.c35.airoapp.ai';
+  return getServerAddress() || 'https://onlinestorefrontsigns.com';
 }
 
 const PortfolioContact = () => {

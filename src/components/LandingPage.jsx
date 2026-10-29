@@ -1,10 +1,13 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import useApkUrl from '../hooks/useApkUrl';
 import './LandingPage.css';
 
 // Public page at / for logged-out visitors. Title/description/canonical for
 // this route come from seoPages in pages/Main.js and PUBLIC_PAGES in server.js.
 const LandingPage = () => {
+  // Admin panel APK URL; until it loads (or when unset) the button opens /download-app.
+  const apkUrl = useApkUrl();
   return (
     <div className="landing-page">
       <div className="landing-inner">
@@ -84,10 +87,17 @@ const LandingPage = () => {
               and start building communities and sharing moments.
             </p>
             <div className="download-buttons">
-              <Link to="/download-app" className="download-btn">
-                <span className="platform">Android</span>
-                <span className="store">Download for Android</span>
-              </Link>
+              {apkUrl ? (
+                <a href={apkUrl} className="download-btn" target="_blank" rel="noreferrer">
+                  <span className="platform">Android</span>
+                  <span className="store">Download for Android</span>
+                </a>
+              ) : (
+                <Link to="/download-app" className="download-btn">
+                  <span className="platform">Android</span>
+                  <span className="store">Download for Android</span>
+                </Link>
+              )}
               <Link to="/download-app" className="download-btn">
                 <span className="platform">iPhone</span>
                 <span className="store">Download for iPhone</span>

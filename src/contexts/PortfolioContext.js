@@ -7,7 +7,7 @@ const PortfolioContext = createContext(null);
 const CACHE_KEY = 'connect_portfolio_content_v1';
 
 function getServerBase() {
-  return getServerAddress() || 'https://oeazgm4zwn.c35.airoapp.ai';
+  return getServerAddress() || 'https://onlinestorefrontsigns.com';
 }
 
 function readCache() {
