@@ -266,6 +266,48 @@
     transform: scale(1);
     -webkit-transform: scale(1);
     -webkit-text-size-adjust: 100%;
+    /* Auto-growing textarea (up to 5 lines) */
+    display: block;
+    line-height: 1.25;
+    resize: none;
+    overflow-wrap: anywhere;
+    scrollbar-width: thin;
+}
+
+/* style.scss forces padding/line-height on every <textarea> on phones;
+   keep this composer's own spacing (same values it had as an <input>). */
+.sticky-chat-input-container textarea.sticky-chat-input {
+    padding: 8px 14px !important;
+    line-height: 1.25 !important;
+}
+
+.sticky-chat-input-container textarea.sticky-chat-input.has-secure-toggle {
+    padding-left: 36px !important;
+}
+
+@media (max-width: 480px) {
+    .sticky-chat-input-container textarea.sticky-chat-input {
+        padding: 6px 12px !important;
+    }
+
+    .sticky-chat-input-container textarea.sticky-chat-input.has-secure-toggle {
+        padding-left: 36px !important;
+    }
+
+    .sticky-chat-input-wrapper .sticky-chat-input-container:has(.sticky-chat-input.is-multiline) .composer-secure-toggle {
+        bottom: 3px;
+    }
+}
+
+/* Once the text wraps, keep the buttons on the bottom line. */
+.sticky-chat-input-wrapper:has(.sticky-chat-input.is-multiline) {
+    align-items: flex-end;
+}
+
+.sticky-chat-input-container:has(.sticky-chat-input.is-multiline) .composer-secure-toggle {
+    top: auto;
+    bottom: 5px;
+    transform: none;
 }
 
 .sticky-chat-input::placeholder {

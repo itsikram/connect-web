@@ -15,6 +15,7 @@ import ComposerMicMenu from "./ComposerMicMenu";
 import useComposerLiveTranscribe from "../../hooks/useComposerLiveTranscribe";
 import { mergeTranscriptChunk } from "../../hooks/transcriptText";
 import useConnectChatSettings from "../../hooks/useConnectChatSettings";
+import useAutoGrowTextarea from "../../hooks/useAutoGrowTextarea";
 
 const StickyChatFooter = ({
   room,
@@ -72,6 +73,8 @@ const StickyChatFooter = ({
   const transcribeBaseRef = useRef("");
   const inputValueRef = useRef("");
   const messageInput = useRef(null);
+  // Composer grows with its text up to 5 lines, then scrolls.
+  const isComposerMultiline = useAutoGrowTextarea(messageInput, inputValue, 5);
   const [emojiPosition, setEmojiPosition] = useState({ top: 0, right: 0 });
   const [micMenuPosition, setMicMenuPosition] = useState({ left: 0, bottom: 0 });
 
@@ -905,10 +908,10 @@ const StickyChatFooter = ({
               ></i>
             </button>
           ) : null}
-          <input
+          <textarea
             ref={messageInput}
+            rows={1}
             data-voice-input="false"
-            type="text"
             value={inputValue}
             onChange={handleInputChange}
             onKeyDown={handleKeyPress}
@@ -932,7 +935,7 @@ const StickyChatFooter = ({
                   ? "Secure message"
                   : "Type a message..."
             }
-            className={`sticky-chat-input ${isInputFocused ? "focused" : ""}${canUseSecure ? " has-secure-toggle" : ""}${isSecureComposer ? " is-secure" : ""}`}
+            className={`sticky-chat-input ${isInputFocused ? "focused" : ""}${canUseSecure ? " has-secure-toggle" : ""}${isSecureComposer ? " is-secure" : ""}${isComposerMultiline ? " is-multiline" : ""}`}
             disabled={isRecording || isUploadingAudio}
           />
         </div>

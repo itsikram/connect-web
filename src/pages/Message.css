@@ -2581,6 +2581,11 @@
     font-family: var(--msg-font-family);
 }
 
+/* Keep line breaks typed with Shift+Enter in the composer. */
+.chat-message-container .message-container .message-text {
+    white-space: pre-wrap;
+}
+
 .message-hashtag {
     display: inline;
     padding: 0;
@@ -3418,6 +3423,25 @@
     min-width: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
+    resize: none;
+    overflow-wrap: anywhere;
+    scrollbar-width: thin;
+}
+
+/* Auto-growing composer (up to 5 lines): once the text wraps, keep the
+   buttons on the bottom line instead of floating in the middle. */
+.modern-composer .composer-main:has(.composer-field.is-multiline),
+.modern-composer .new-message-container.composer-main:has(.composer-field.is-multiline) {
+    align-items: flex-end !important;
+}
+
+.composer-field.is-multiline {
+    align-items: flex-end;
+}
+
+.composer-field.is-multiline > .composer-secure-toggle,
+.composer-field.is-multiline > .composer-emoji-btn {
+    margin-bottom: 3px;
 }
 
 .composer-emoji-btn {

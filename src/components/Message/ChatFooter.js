@@ -21,6 +21,7 @@ import useComposerImageUploads, {
   MAX_COMPOSER_IMAGES,
 } from "../../hooks/useComposerImageUploads";
 import { showErrorToast, showInfoToast } from "../../utils/toastUtils";
+import useAutoGrowTextarea from "../../hooks/useAutoGrowTextarea";
 import "./SecureMessage.css";
 
 const UPLOAD_PLACEHOLDER =
@@ -50,6 +51,8 @@ const ChatFooter = ({
 }) => {
   // Removed unused width state
   const [inputValue, setInputValue] = useState("");
+  // Composer grows with its text up to 5 lines, then scrolls.
+  const isComposerMultiline = useAutoGrowTextarea(messageInput, inputValue, 5);
   const [attachmentUrl, setAttachmentUrl] = useState(false);
   const [isImojiContainer, setIsEmojiContainer] = useState(false);
   const [isImojiChangeContainer, setIsEmojiChangeContainer] = useState(false);
@@ -1157,7 +1160,7 @@ const ChatFooter = ({
 
           <div className="new-message-form composer-field-wrap">
             <div
-              className={`new-message-input-container composer-field${isSecureComposer ? " is-secure" : ""}`}
+              className={`new-message-input-container composer-field${isSecureComposer ? " is-secure" : ""}${isComposerMultiline ? " is-multiline" : ""}`}
             >
               {canUseSecure ? (
                 <button
@@ -1183,8 +1186,9 @@ const ChatFooter = ({
                   ></i>
                 </button>
               ) : null}
-              <input
+              <textarea
                 ref={messageInput}
+                rows={1}
                 data-voice-input="false"
                 onChange={handleInputChange}
                 value={inputValue}
