@@ -28,9 +28,19 @@ export default function useAutoGrowTextarea(ref, value, maxLines = 5) {
       (parseFloat(cs.borderBottomWidth) || 0);
     const isBorderBox = cs.boxSizing === "border-box";
 
+    // Hidden or not laid out yet: measuring now would be wrong; the
+    // ResizeObserver below re-runs this once the textarea gets a width.
+    if (!el.clientWidth) return;
+
+    // Empty composer is always exactly one line. Browsers count a wrapped
+    // placeholder in scrollHeight, which would otherwise open it at 2 lines.
+    const isEmpty = !String(el.value || "").length;
+
     // Measure the natural height of the text (scrollHeight includes padding).
     el.style.height = "auto";
-    const textHeight = Math.max(el.scrollHeight - padding, lineHeight);
+    const textHeight = isEmpty
+      ? lineHeight
+      : Math.max(el.scrollHeight - padding, lineHeight);
     const maxTextHeight = lineHeight * maxLines;
     const shownTextHeight = Math.min(textHeight, maxTextHeight);
 

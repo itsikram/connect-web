@@ -312,6 +312,10 @@
 
 .sticky-chat-input::placeholder {
     color: #65676B;
+    /* Placeholder stays on one line, even when the box is narrow */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .sticky-chat-input:focus,
