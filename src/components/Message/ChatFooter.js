@@ -1185,6 +1185,7 @@ const ChatFooter = ({
               ) : null}
               <input
                 ref={messageInput}
+                data-voice-input="false"
                 onChange={handleInputChange}
                 value={inputValue}
                 onKeyDown={handleKeyPress}
