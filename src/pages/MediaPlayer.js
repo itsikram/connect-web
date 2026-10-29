@@ -57,6 +57,13 @@ import {
   loadLocalVideos,
   deleteLocalVideo,
 } from "../utils/localVideoStore";
+import {
+  loadLastPlayback,
+  saveLastPlayback,
+  findLastPlaybackIndex,
+  getResumePosition,
+  isSamePlayback,
+} from "../utils/mediaPlayerResume";
 
 const MediaPlayer = () => {
   const myProfileId = useSelector((state) => state.profile?._id);
@@ -189,6 +196,25 @@ const MediaPlayer = () => {
   const currentPlaybackRef = useRef(null);
   const resumeHandledRef = useRef(false);
   const libraryRefreshRef = useRef(null);
+  const [libraryRefreshed, setLibraryRefreshed] = useState(false);
+  // Reopen the last video, paused at the same spot. Skipped when the page was
+  // opened to play something specific (AI agent link, pop-out "expand").
+  const explicitOpen = !!(location.state?.playUrl || location.state?.videoId);
+  const lastPlaybackRef = useRef(undefined);
+  if (lastPlaybackRef.current === undefined) {
+    lastPlaybackRef.current = explicitOpen ? null : loadLastPlayback();
+  }
+  // While active, the video shown on open loads paused instead of autoplaying.
+  // `decided` = the last video was found (or given up on); `target` = that video.
+  const openHoldRef = useRef({
+    active: !explicitOpen,
+    decided: false,
+    finished: false,
+    selectedIndex: null,
+    target: null,
+    positionApplied: false,
+  });
+  const usingQueueRef = useRef(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackRate, setPlaybackRate] = useState(1);
@@ -371,6 +397,7 @@ const MediaPlayer = () => {
   currentVideoRef.current = currentVideo;
   loopingRef.current = isLooping;
   currentPlaybackRef.current = currentPlayback;
+  usingQueueRef.current = usingQueue;
 
   const libraryPipPlaylist = useMemo(
     () =>
@@ -396,6 +423,52 @@ const MediaPlayer = () => {
   });
   const bgApiRef = useRef(backgroundAudio);
   bgApiRef.current = backgroundAudio;
+
+  // Select the video that was playing last time (it loads paused, see canplay).
+  // Re-checked until the library has refreshed, since new Watches can shift
+  // positions in the list.
+  useEffect(() => {
+    const hold = openHoldRef.current;
+    if (hold.finished) return;
+    if (!hold.active || isThisPip) {
+      hold.finished = true;
+      hold.decided = true;
+      hold.active = false;
+      return;
+    }
+    // Another video was picked after we selected the saved one: stop here.
+    if (hold.selectedIndex != null && playbackIndex !== hold.selectedIndex) {
+      hold.finished = true;
+      return;
+    }
+    const settled = libraryRefreshed && localFilesHydrated;
+    const saved = lastPlaybackRef.current;
+    const idx = saved ? findLastPlaybackIndex(playbackList, saved) : -1;
+    if (idx >= 0) {
+      if (idx !== playbackIndex) {
+        setPlayPass(1);
+        if (usingQueue) setQueueIndex(idx);
+        else setCurrentVideoIndex(idx);
+      }
+      hold.selectedIndex = idx;
+      hold.target = saved;
+      hold.decided = true;
+      if (settled) hold.finished = true;
+      return;
+    }
+    // Keep looking until the library and local files have finished loading.
+    if (saved && !settled) return;
+    hold.decided = true;
+    hold.finished = true;
+    if (!hold.target) hold.target = currentPlaybackRef.current || null;
+  }, [
+    playbackList,
+    playbackIndex,
+    usingQueue,
+    isThisPip,
+    libraryRefreshed,
+    localFilesHydrated,
+  ]);
 
   useEffect(() => {
     // Wait for local files so their saved positions aren't pruned before they load.
@@ -435,6 +508,7 @@ const MediaPlayer = () => {
           setLibraryError("Could not refresh some video sources.");
         } finally {
           setLibraryLoading(false);
+          setLibraryRefreshed(true);
           libraryRefreshRef.current = null;
         }
       })();
@@ -513,6 +587,35 @@ const MediaPlayer = () => {
 
     const onCanPlay = () => {
       setMediaReady(true);
+      const hold = openHoldRef.current;
+      if (hold.active) {
+        const playback = currentPlaybackRef.current;
+        if (hold.decided && !hold.target) hold.target = playback;
+        const holding =
+          !hold.decided || !hold.target || isSamePlayback(playback, hold.target);
+        if (holding) {
+          // Opened the player: show the last video paused where it was left.
+          const saved = lastPlaybackRef.current;
+          if (
+            hold.decided &&
+            !hold.positionApplied &&
+            saved &&
+            isSamePlayback(playback, saved)
+          ) {
+            hold.positionApplied = true;
+            const at = getResumePosition(saved, video.duration);
+            if (at > 0) {
+              try {
+                video.currentTime = at;
+              } catch (_) {}
+            }
+          }
+          setIsPlaying(false);
+          return;
+        }
+        // A different video was picked: from here on behave as before.
+        hold.active = false;
+      }
       if (document.hidden) {
         try {
           video.muted = true;
@@ -582,6 +685,59 @@ const MediaPlayer = () => {
       video.removeEventListener("loadedmetadata", syncPlaybackState);
     };
   }, [mediaElement, isThisPip, currentTrackKey]);
+
+  // Remember the current video and position (throttled, plus on pause/seek/leave).
+  useEffect(() => {
+    const video = mediaElement;
+    if (!video || isThisPip) return undefined;
+    let lastSave = 0;
+    const persist = (force) => {
+      const hold = openHoldRef.current;
+      const playback = currentPlaybackRef.current;
+      const playingUrl = currentVideoRef.current?.url || playback?.url;
+      if (!playback || !playingUrl) return;
+      // Not decided yet, or the element still holds the previous track.
+      if (hold.active && !hold.decided) return;
+      if (video.getAttribute("src") !== playingUrl) return;
+      const saved = lastPlaybackRef.current;
+      if (
+        hold.active &&
+        !hold.positionApplied &&
+        saved &&
+        getResumePosition(saved) > 0 &&
+        isSamePlayback(playback, saved)
+      ) {
+        return; // keep the saved spot until we've seeked back to it
+      }
+      const now = Date.now();
+      if (!force && now - lastSave < 2000) return;
+      lastSave = now;
+      saveLastPlayback({
+        queueId: playback.queueId,
+        videoId: playback.videoId,
+        url: playingUrl,
+        title: playback.title,
+        fromQueue: usingQueueRef.current,
+        position: video.currentTime,
+        duration: video.duration,
+      });
+    };
+    const onTime = () => persist(false);
+    const onForce = () => persist(true);
+    video.addEventListener("timeupdate", onTime);
+    video.addEventListener("pause", onForce);
+    video.addEventListener("seeked", onForce);
+    video.addEventListener("loadedmetadata", onForce);
+    window.addEventListener("pagehide", onForce);
+    return () => {
+      persist(true);
+      video.removeEventListener("timeupdate", onTime);
+      video.removeEventListener("pause", onForce);
+      video.removeEventListener("seeked", onForce);
+      video.removeEventListener("loadedmetadata", onForce);
+      window.removeEventListener("pagehide", onForce);
+    };
+  }, [mediaElement, isThisPip]);
 
   useEffect(() => {
     const urls = blobUrlsRef.current;
@@ -712,6 +868,7 @@ const MediaPlayer = () => {
       setPlayPass(clampPlayCount(pipData.playPass));
     }
 
+    openHoldRef.current.active = false;
     pipReturnRef.current = {
       resumeAt: Number(pipData.currentTime) || 0,
       autoplay: pipData.playing !== false,
@@ -2013,7 +2170,10 @@ const MediaPlayer = () => {
                       preload="auto"
                       poster={currentVideo.thumbnail || undefined}
                       onEnded={handleVideoEnd}
-                      onPlay={() => setIsPlaying(true)}
+                      onPlay={() => {
+                        openHoldRef.current.active = false;
+                        setIsPlaying(true);
+                      }}
                       onPause={() => {
                         if (bgApiRef.current.handingOffRef.current) return;
                         setIsPlaying(false);
