@@ -83,6 +83,18 @@ const isLoggedIn = () => {
   }
 };
 
+// Tells the server whether the user is looking at this tab right now; while
+// any of their tabs/devices is focused the server skips push notifications.
+const isFocused = () =>
+  document.visibilityState === "visible" && document.hasFocus();
+let lastFocus = null;
+const reportFocus = (force = false) => {
+  const focused = isFocused();
+  if (!socket.connected || (!force && focused === lastFocus)) return;
+  lastFocus = focused;
+  socket.emit("presence:focus", { focused });
+};
+
 export const startPresence = () => {
   if (started || typeof window === "undefined") return;
   started = true;
@@ -96,7 +108,9 @@ export const startPresence = () => {
     // The server re-sends the connects snapshot itself; re-watch the rest.
     if (watchCounts.size) queueSubscribe([...watchCounts.keys()]);
     if (document.visibilityState === "visible") socket.emit("presence:active");
+    reportFocus(true);
   });
+  if (socket.connected) reportFocus(true);
 
   // Coming back to the tab / network: reconnect right away instead of
   // waiting for socket.io's backoff, and refresh statuses.
@@ -111,9 +125,14 @@ export const startPresence = () => {
   };
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") wake();
+    reportFocus();
   });
   window.addEventListener("online", wake);
-  window.addEventListener("focus", wake);
+  window.addEventListener("focus", () => {
+    wake();
+    reportFocus();
+  });
+  window.addEventListener("blur", () => reportFocus());
 };
 
 export const getPresence = (profileId) =>
