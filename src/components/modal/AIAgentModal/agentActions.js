@@ -58,6 +58,7 @@ import {
   todayKey,
 } from "./agentActionHelpers";
 import { getProfilePath } from "../../../utils/profilePath";
+import { newCallChannelName } from "../../../utils/callSession";
 
 const CALENDAR_STORAGE_KEY = "calendarApp";
 const HABITS_STORAGE_KEY = "habitsApp";
@@ -1022,7 +1023,7 @@ export const executeAction = async ({
 
       // ── Video Call ─────────────────────────────────────────────────────────
       case "VIDEO_CALL": {
-        const channelName = `${myProfile._id}-${connect._id}`;
+        const channelName = newCallChannelName(myProfile._id, connect._id);
         window.dispatchEvent(
           new CustomEvent("startVideoCall", {
             detail: {
@@ -1042,7 +1043,7 @@ export const executeAction = async ({
 
       // ── Audio Call ─────────────────────────────────────────────────────────
       case "AUDIO_CALL": {
-        const channelName = `${myProfile._id}-${connect._id}`;
+        const channelName = newCallChannelName(myProfile._id, connect._id);
         window.dispatchEvent(
           new CustomEvent("startAudioCall", {
             detail: {

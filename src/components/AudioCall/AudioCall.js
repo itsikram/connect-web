@@ -41,6 +41,7 @@ import {
   markCallIdle,
   isOtherCallActive,
 } from "../../utils/callSession";
+import { joinWithRetry } from "../../rtc/agoraClient";
 
 const RINGTONE_DB_NAME = "connect-audio-cache";
 const RINGTONE_DB_VERSION = 1;
@@ -792,7 +793,11 @@ const AudioCall = ({ myId }) => {
           return [track];
         })();
         const [, micTracks] = await Promise.all([
-          client.join(appId, channelName, token, numericUid),
+          joinWithRetry(
+            client,
+            { appId, channel: channelName, token, uid: numericUid },
+            { isCancelled: () => isTerminating.current || clientRef.current !== client },
+          ),
           micReady,
         ]);
         localTracks.current = micTracks;
@@ -1306,12 +1311,20 @@ const AudioCall = ({ myId }) => {
     const onRejectFromPush = (event) => {
       const detail = event.detail || {};
       if (!detail.isAudio) return;
-      stopRingtone();
       const to = detail.from;
       const channelName = detail.channelName;
+      // The server ignores a decline for a call that was already answered.
       if (to && channelName) {
         socket.emit("audio-call-reject", { to: String(to), channelName });
       }
+      // A Reject pressed on an old notification must not close the call on
+      // screen: only the call that is ringing here, and only before answering.
+      const isRingingCall =
+        !currentChannelRef.current ||
+        !channelName ||
+        String(channelName) === String(currentChannelRef.current);
+      if (!isRingingCall || callAcceptedRef.current || isJoiningOrJoined.current) return;
+      stopRingtone();
       cleanupAudioCallRef.current?.();
     };
     window.addEventListener("rejectCallFromPush", onRejectFromPush);
@@ -1447,11 +1460,11 @@ const AudioCall = ({ myId }) => {
     socket.on("call-accepted", onCallAccepted);
 
     // Ignore end/cancel events that belong to a different call than the one
-    // on screen (e.g. an old call's late event, or a busy-rejected caller).
+    // on screen (e.g. an old call's late event, or a busy-rejected caller),
+    // and all of them while no call is on screen.
     const isForActiveCall = (channelName) =>
-      !channelName ||
-      !currentChannelRef.current ||
-      String(channelName) === String(currentChannelRef.current);
+      !!currentChannelRef.current &&
+      (!channelName || String(channelName) === String(currentChannelRef.current));
 
     const onAudioCallEnded = async ({ channelName } = {}) => {
       if (!isForActiveCall(channelName)) return;
@@ -1477,9 +1490,7 @@ const AudioCall = ({ myId }) => {
       if (
         callAcceptedRef.current ||
         isJoiningOrJoined.current ||
-        (channelName &&
-          currentChannelRef.current &&
-          channelName !== currentChannelRef.current)
+        !isForActiveCall(channelName)
       ) {
         console.warn("AudioCall: Ignoring stale rejection for active call", {
           channelName,
@@ -1498,7 +1509,8 @@ const AudioCall = ({ myId }) => {
     const onCallNotAccepted = async ({ isAudio, channelName }) => {
       if (!isAudio) return;
       const activeChannel = currentChannelRef.current;
-      if (channelName && activeChannel && channelName !== activeChannel) return;
+      if (!activeChannel) return;
+      if (channelName && channelName !== activeChannel) return;
       console.log("AudioCall: Call not accepted (timeout)", {
         channelName,
         activeChannel,
@@ -1627,6 +1639,11 @@ const AudioCall = ({ myId }) => {
   const answerCall = useCallback(async () => {
     stopRingtone(); // This also closes notification
     if (!incomingCall) return;
+    // A second tap (or the notification's Accept on top of the button) must
+    // not answer again: the caller would get call-accepted twice.
+    if (callAcceptedRef.current || isJoiningOrJoined.current) return;
+    callAcceptedRef.current = true;
+    acceptedChannelRef.current = incomingCall.channelName;
 
     console.log("Answering Agora audio call");
     // Tell the caller first so both sides join the channel in parallel; the

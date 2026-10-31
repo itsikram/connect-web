@@ -13,3 +13,10 @@ export const markCallIdle = (kind) => {
 
 export const isOtherCallActive = (kind) =>
   Object.keys(activeCalls).some((k) => k !== kind && activeCalls[k]);
+
+// A new Agora channel for every call (the app does the same). Reusing
+// `${caller}-${callee}` for every call between two people let a late event of
+// an earlier call (an end sent after a reconnect, a ring timeout) end the
+// next one. 24-char ids keep this under Agora's 64-byte channel limit.
+export const newCallChannelName = (myId, peerId) =>
+  `${myId}-${peerId}-${Date.now().toString(36)}`;

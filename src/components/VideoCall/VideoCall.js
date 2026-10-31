@@ -31,6 +31,7 @@ import {
   markCallIdle,
   isOtherCallActive,
 } from "../../utils/callSession";
+import { joinWithRetry } from "../../rtc/agoraClient";
 import {
   unlockAudio,
   playAudioWithWebAudio,
@@ -1135,6 +1136,16 @@ const VideoCall = ({ myId }) => {
   // Start a call (join & publish)
   const startCall = useCallback(
     async (channelName) => {
+      // Prevent double join attempts (race-safe). This runs before anything
+      // else: a duplicate "call-accepted" (the other side answered twice, or
+      // the event reached this tab twice) used to bump the attempt counter
+      // first, which made the join already in progress give up halfway, so
+      // this side sat in the channel without publishing anything.
+      if (isJoiningOrJoined.current) {
+        console.warn("Join skipped: client already joining/joined");
+        return;
+      }
+      isJoiningOrJoined.current = true;
       const callAttempt = ++callAttemptRef.current;
       const isStaleAttempt = () =>
         callAttempt !== callAttemptRef.current || isCleaningUpRef.current;
@@ -1142,18 +1153,12 @@ const VideoCall = ({ myId }) => {
       try {
         console.log("Starting Agora call with channel:", channelName);
         stopRingback();
-        await unlockAudio();
         setCallAccepted(true);
         setCurrentChannel(channelName);
         callAcceptedRef.current = true;
         currentChannelRef.current = channelName;
-
-        // Prevent double join attempts (race-safe)
-        if (isJoiningOrJoined.current) {
-          console.warn("Join skipped: client already joining/joined");
-          return;
-        }
-        isJoiningOrJoined.current = true;
+        await unlockAudio();
+        if (isStaleAttempt()) return;
 
         // Signal any hidden emotion camera in ChatHeader to stop before grabbing camera
         try {
@@ -1283,14 +1288,28 @@ const VideoCall = ({ myId }) => {
           }
         });
         const [, tracks] = await Promise.all([
-          client.join(appId, channelName, token, numericUid),
+          joinWithRetry(
+            client,
+            { appId, channel: channelName, token, uid: numericUid },
+            { isCancelled: () => isStaleAttempt() || clientRef.current !== client },
+          ),
           tracksReady,
         ]);
         if (isStaleAttempt()) return;
         console.log("Joined Agora channel successfully");
 
         if (tracks && tracks.length) {
-          await client.publish(tracks);
+          try {
+            await client.publish(tracks);
+          } catch (publishError) {
+            if (isStaleAttempt()) return;
+            // Publishing right after the join can race the connection
+            // settling; one retry before giving up on the call.
+            console.warn("VideoCall: publish failed, retrying", publishError);
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            if (isStaleAttempt()) return;
+            await client.publish(tracks);
+          }
           if (isStaleAttempt()) return;
           console.log("Published local tracks");
         }
@@ -1629,13 +1648,21 @@ const VideoCall = ({ myId }) => {
     const onRejectFromPush = (event) => {
       const detail = event.detail || {};
       if (detail.isAudio) return;
-      stopRingtone();
-      stopFlashingTitle();
       const to = detail.from;
       const channelName = detail.channelName;
+      // The server ignores a decline for a call that was already answered.
       if (to && channelName) {
         socket.emit("video-call-reject", { to: String(to), channelName });
       }
+      // A Reject pressed on an old notification must not close the call on
+      // screen: only the call that is ringing here, and only before answering.
+      const isRingingCall =
+        !currentChannelRef.current ||
+        !channelName ||
+        String(channelName) === String(currentChannelRef.current);
+      if (!isRingingCall || callAcceptedRef.current || isJoiningOrJoined.current) return;
+      stopRingtone();
+      stopFlashingTitle();
       cleanupVideoCallRef.current?.();
     };
     window.addEventListener("rejectCallFromPush", onRejectFromPush);
@@ -1687,11 +1714,10 @@ const VideoCall = ({ myId }) => {
     socket.on("updated-call-status", handleUpdatedCallStatus);
 
     // Ignore end/cancel/reject events that belong to a different call than
-    // the one on screen.
+    // the one on screen, and all of them while no call is on screen.
     const isForActiveCall = (channelName) =>
-      !channelName ||
-      !currentChannelRef.current ||
-      String(channelName) === String(currentChannelRef.current);
+      !!currentChannelRef.current &&
+      (!channelName || String(channelName) === String(currentChannelRef.current));
 
     const onVideoCallEnded = async ({ channelName } = {}) => {
       if (!isForActiveCall(channelName)) return;
@@ -1740,9 +1766,8 @@ const VideoCall = ({ myId }) => {
       // Read the ref: this listener is registered once, so the `currentChannel`
       // state captured in its closure is stale.
       const activeChannel = currentChannelRef.current;
-      if (!activeChannel && !channelName) return;
-      if (channelName && activeChannel && channelName !== activeChannel)
-        return;
+      if (!activeChannel) return;
+      if (channelName && channelName !== activeChannel) return;
       console.log("VideoCall: Call not accepted (timeout)");
       stopRingtone();
       stopRingback();
@@ -1878,6 +1903,9 @@ const VideoCall = ({ myId }) => {
   const answerCall = useCallback(async () => {
     stopRingtone();
     if (!incomingCall) return;
+    // A second tap (or the notification's Accept on top of the button) must
+    // not answer again: the caller would get call-accepted twice.
+    if (callAcceptedRef.current || isJoiningOrJoined.current) return;
 
     console.log("Answering Agora call");
 

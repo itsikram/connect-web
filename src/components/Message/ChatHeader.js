@@ -39,6 +39,7 @@ import ReportModal from "../modal/ReportModal";
 import ChatSettingsModal from "./ChatSettingsModal";
 import "./UserInfoModal.css";
 import { getProfilePath } from "../../utils/profilePath";
+import { newCallChannelName } from "../../utils/callSession";
 // Using Agora RTC SDK instead of simple-peer
 
 const ChatHeader = ({
@@ -1112,7 +1113,7 @@ const ChatHeader = ({
       // dual Agora joins / conflicting socket handlers in ChatHeader.
       setIsVideoCalling(false);
 
-      const channelName = `${profileId}-${id}`;
+      const channelName = newCallChannelName(profileId, id);
       window.dispatchEvent(
         new CustomEvent("startVideoCall", {
           detail: {
@@ -1144,7 +1145,7 @@ const ChatHeader = ({
       setIsVideoCalling(false);
 
       // Dispatch custom event to AudioCall component
-      const channelName = `${profileId}-${id}`;
+      const channelName = newCallChannelName(profileId, id);
       window.dispatchEvent(
         new CustomEvent("startAudioCall", {
           detail: {

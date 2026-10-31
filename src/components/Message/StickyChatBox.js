@@ -33,6 +33,7 @@ import { sanitizeProfileImageUrl } from "../../utils/profileImage";
 import MessageCacheManager from "../../utils/messageCacheManager";
 import { getPresence, usePresence } from "../../utils/presence";
 import { showErrorToast } from "../../utils/toastUtils";
+import { newCallChannelName } from "../../utils/callSession";
 import {
   emitChatMessage,
   idOf,
@@ -1616,7 +1617,7 @@ const StickyChatBox = ({
               className="sticky-chat-option-item"
               onClick={() => {
                 // Audio Call - dispatch custom event and notify other user
-                const channelName = `${userId}-${connectId}`;
+                const channelName = newCallChannelName(userId, connectId);
                 const callData = {
                   to: connectId,
                   channelName,
@@ -1644,7 +1645,7 @@ const StickyChatBox = ({
               className="sticky-chat-option-item"
               onClick={() => {
                 // Video Call - dispatch custom event and notify other user
-                const channelName = `${userId}-${connectId}`;
+                const channelName = newCallChannelName(userId, connectId);
                 const callData = {
                   to: connectId,
                   channelName,
