@@ -45,7 +45,6 @@ import WatchCacheManager, {
 } from "../utils/watchCacheManager";
 import useMediaSession from "../hooks/useMediaSession";
 import useBackgroundAudioHandoff from "../hooks/useBackgroundAudioHandoff";
-import useSmoothAudio from "../hooks/useSmoothAudio";
 import api from "../api/api";
 import { getYtDownloadApiUrl, normalizeServerUrl } from "../utils/offlineUtils";
 import { showErrorToast, showSuccessToast } from "../utils/toastUtils";
@@ -223,7 +222,6 @@ const MediaPlayer = () => {
   const [playbackRate, setPlaybackRate] = useState(1);
   const [mediaReady, setMediaReady] = useState(false);
   const [mediaElement, setMediaElement] = useState(null);
-  useSmoothAudio(mediaElement);
 
   // Search runs against two sources in parallel: Watches stored on our server
   // (all of them, not just the recent feed cached in the library) and YouTube.
