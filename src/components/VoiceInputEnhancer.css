@@ -1,4 +1,4 @@
-/* Zero-size fixed layer: children are placed in viewport coordinates. */
+/* Zero-size fixed layer for the language menu (viewport coordinates). */
 .voice-input-enhancer {
   height: 0;
   left: 0;
@@ -9,50 +9,98 @@
   z-index: 2147483000;
 }
 
-.voice-input-enhancer.is-measuring,
-.voice-input-enhancer.is-measuring * {
+/* Let hit-testing see through our own mics and menu while measuring. */
+.voice-input-measuring voice-input-mic.voice-input-enhancer__mic,
+.voice-input-measuring voice-input-mic.voice-input-enhancer__mic *,
+.voice-input-measuring .voice-input-enhancer,
+.voice-input-measuring .voice-input-enhancer * {
   pointer-events: none !important;
 }
 
 /* Keep typed text clear of the in-field mic, like the app's paddingRight. */
 input[data-voice-mic],
 textarea[data-voice-mic] {
-  padding-right: 40px !important;
+  padding-right: 42px !important;
 }
 
-.voice-input-enhancer__mic {
-  align-items: center;
-  background: transparent;
-  border: 0;
-  border-radius: 50%;
-  color: var(--primary-color, #3b82f6);
+/* The mic made this field its parent's second-to-last child; keep the
+   corners it had as the last one. */
+input[data-voice-mic-radius],
+textarea[data-voice-mic-radius] {
+  border-bottom-right-radius: var(--voice-mic-radius-bottom) !important;
+  border-top-right-radius: var(--voice-mic-radius-top) !important;
+}
+
+/* Lets a mic scroll with its field inside an inner scroller (only set on a
+   static parent with nothing else positioned inside it). */
+[data-voice-mic-host] {
+  position: relative;
+}
+
+/* The mic sits next to its field, inside the field's own parent, so it is
+   hardened against layout rules the parent applies to its children
+   (e.g. `.row > *`, `.input-group > *`). left/top are set inline. */
+voice-input-mic.voice-input-enhancer__mic {
+  align-items: center !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+  bottom: auto !important;
+  box-shadow: none !important;
+  box-sizing: border-box !important;
+  color: var(--primary-color, #3b82f6) !important;
   cursor: pointer;
-  display: flex;
-  font-size: 17px;
-  height: 32px;
-  justify-content: center;
-  padding: 0;
-  position: absolute;
+  display: flex !important;
+  flex: none !important;
+  float: none !important;
+  height: 32px !important;
+  justify-content: center !important;
+  line-height: 1 !important;
+  margin: 0 !important;
+  max-height: none !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  min-width: 0 !important;
+  opacity: 1 !important;
+  padding: 0 !important;
+  pointer-events: auto;
+  position: absolute !important;
+  right: auto !important;
   touch-action: manipulation;
+  transform: none !important;
   user-select: none;
+  -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
-  width: 32px;
+  width: 32px !important;
+  z-index: 3 !important;
 }
 
-.voice-input-enhancer__mic:hover {
-  background: rgba(59, 130, 246, 0.12);
+voice-input-mic.voice-input-enhancer__mic[hidden] {
+  display: none !important;
 }
 
-.voice-input-enhancer__mic.is-listening {
-  color: #ef4444;
+voice-input-mic.voice-input-enhancer__mic > i {
+  color: inherit !important;
+  font-size: 18px !important;
+  line-height: 1 !important;
+  margin: 0 !important;
+  pointer-events: none;
 }
 
-.voice-input-enhancer__mic.is-listening:hover {
-  background: rgba(239, 68, 68, 0.12);
+voice-input-mic.voice-input-enhancer__mic:hover {
+  background: rgba(59, 130, 246, 0.12) !important;
 }
 
-.voice-input-enhancer__mic:focus-visible {
+voice-input-mic.voice-input-enhancer__mic.is-listening {
+  color: #ef4444 !important;
+}
+
+voice-input-mic.voice-input-enhancer__mic.is-listening:hover {
+  background: rgba(239, 68, 68, 0.12) !important;
+}
+
+voice-input-mic.voice-input-enhancer__mic:focus-visible {
   outline: 2px solid currentColor;
   outline-offset: 1px;
 }
