@@ -1,4 +1,5 @@
-import { ADD_MESSAGE, ADD_MESSAGES, NEW_MESSAGE, SEEN_MESSAGE, EDIT_MESSAGE } from "../constants/messageConsts";
+import { ADD_MESSAGE, ADD_MESSAGES, NEW_MESSAGE, SEEN_MESSAGE, EDIT_MESSAGE, MESSAGE_STATUS, MARK_ALL_READ } from "../constants/messageConsts";
+import { applyStatusToContacts, markContactsRead, withKnownStatus } from "../../utils/messageStatus";
 import {CLEAR_ALL_STATE} from '../constants/authConsts';
 import { applyMessageEditToContacts } from "../../utils/optimisticMessage";
 const initialState = []
@@ -74,8 +75,16 @@ const messageReducer = (state = initialState, action) => {
                 );
                 
                 if (messageExists) {
-                    // Message already exists, just return current state
-                    return state;
+                    // Same message again (room + user events, or the sender's
+                    // confirmation): only let its delivered / seen status move forward.
+                    const index = state.indexOf(updatedContact[0]);
+                    const messages = updatedContact[0].messages.map((msg) =>
+                        msg?._id?.toString() === newMsg._id?.toString() ? withKnownStatus(msg, newMsg) : msg
+                    );
+                    if (messages.every((msg, i) => msg === updatedContact[0].messages[i])) return state;
+                    const nextState = state.slice();
+                    nextState[index] = { ...updatedContact[0], messages };
+                    return nextState;
                 }
                 
                 // Create a deep copy to avoid mutation
@@ -146,6 +155,13 @@ const messageReducer = (state = initialState, action) => {
                 return state;
             }
         }
+
+        case MESSAGE_STATUS:
+            // Same state object back when nothing changed.
+            return applyStatusToContacts(state, action.payload?.kind, action.payload?.data, action.myProfileId)
+
+        case MARK_ALL_READ:
+            return markContactsRead(state, action.myProfileId, action.payload?.senderIds)
 
         case EDIT_MESSAGE:
             // Same state object back when no contact holds the message.

@@ -77,7 +77,9 @@ import {
 } from "../services/actions/notificationActions.js";
 import {
   addMessages,
+  allMessagesRead,
   messageEdited,
+  messageStatusChanged,
   newMessage,
 } from "../services/actions/messageActions.js";
 import {
@@ -1326,6 +1328,60 @@ const Main = () => {
     socket.on("messageEdited", handleMessageEdited);
     return () => {
       socket.off("messageEdited", handleMessageEdited);
+    };
+  }, [profileId, dispatch]);
+
+  // Message status (server utils/messageStatus.js) for the chat list and the
+  // header / tab badges: my messages delivered or seen, messages I read on
+  // another device, and "mark all as read" done anywhere.
+  useEffect(() => {
+    if (!profileId) return undefined;
+
+    const handleDelivered = (data) =>
+      dispatch(messageStatusChanged("delivered", data, profileId));
+    const handleSeen = (data) =>
+      dispatch(messageStatusChanged("seen", data, profileId));
+    const handleAllSeen = (data) => {
+      if (data?.receiverId && idOf(data.receiverId) !== idOf(profileId)) return;
+      dispatch(allMessagesRead(profileId, data?.connectId ? [data.connectId] : null));
+      // Their chat notifications are read too (same tag the chat page clears).
+      const senderIds = Array.isArray(data?.senderIds) ? data.senderIds : [];
+      if (!senderIds.length || typeof navigator === "undefined") return;
+      navigator.serviceWorker?.ready
+        ?.then((registration) =>
+          Promise.all(
+            senderIds.map((id) =>
+              registration.getNotifications({ tag: `chat-${idOf(id)}` }),
+            ),
+          ),
+        )
+        .then((groups) => {
+          (groups || []).flat().forEach((notification) => notification.close());
+        })
+        .catch(() => {});
+    };
+    // A message reached this open tab: delivered (the sender's double check).
+    const handleIncoming = (data) => {
+      const message = data?.updatedMessage;
+      const messageId = idOf(message?._id);
+      if (!messageId || messageId.startsWith("temp-")) return;
+      if (idOf(message.receiverId) !== idOf(profileId)) return;
+      if (idOf(message.senderId) === idOf(profileId)) return;
+      if (message.isDelivered || message.isSeen) return;
+      socket.emit("markDelivered", { messageIds: [messageId] });
+    };
+
+    socket.on("messagesDelivered", handleDelivered);
+    socket.on("messageSeen", handleSeen);
+    socket.on("seenMessage", handleSeen);
+    socket.on("allMessagesSeen", handleAllSeen);
+    socket.on("newMessageToUser", handleIncoming);
+    return () => {
+      socket.off("messagesDelivered", handleDelivered);
+      socket.off("messageSeen", handleSeen);
+      socket.off("seenMessage", handleSeen);
+      socket.off("allMessagesSeen", handleAllSeen);
+      socket.off("newMessageToUser", handleIncoming);
     };
   }, [profileId, dispatch]);
 

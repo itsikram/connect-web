@@ -1,4 +1,4 @@
-import {ADD_MESSAGE,ADD_MESSAGES,NEW_MESSAGE,SEEN_MESSAGE,EDIT_MESSAGE} from '../constants/messageConsts'
+import {ADD_MESSAGE,ADD_MESSAGES,NEW_MESSAGE,SEEN_MESSAGE,EDIT_MESSAGE,MESSAGE_STATUS,MARK_ALL_READ} from '../constants/messageConsts'
 
 export const addMessage = (message) => {
     return {
@@ -35,6 +35,25 @@ export const messageEdited = (edit) => {
     return {
         type: EDIT_MESSAGE,
         payload: edit,
+    }
+}
+
+// `messagesDelivered` (kind "delivered") or `messageSeen` (kind "seen")
+// socket payload, applied to the conversation it belongs to.
+export const messageStatusChanged = (kind, data, myProfileId) => {
+    return {
+        type: MESSAGE_STATUS,
+        payload: { kind, data },
+        myProfileId,
+    }
+}
+
+// "Mark all as read": every message I received (or only from senderIds) is seen.
+export const allMessagesRead = (myProfileId, senderIds = null) => {
+    return {
+        type: MARK_ALL_READ,
+        payload: { senderIds },
+        myProfileId,
     }
 }
 

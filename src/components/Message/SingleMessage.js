@@ -19,6 +19,8 @@ import { QUICK_REACTION_PRESETS } from "../../utils/chatThemes";
 import { SecureMessageBubble, isSecureMessage } from "./SecureMessage";
 import { applyMessageEdit, canEditMessage } from "../../utils/optimisticMessage";
 import { showErrorToast } from "../../utils/toastUtils";
+import MessageStatusIcon from "./MessageStatusIcon";
+import { getMessageStatus } from "../../utils/messageStatus";
 
 // Keep in step with the server limit in utils/messageEdit.js.
 const MAX_EDIT_LENGTH = 10000;
@@ -197,6 +199,7 @@ const SingleMessage = ({
   msgListRef,
   setIsPreview,
   isMsgLoading,
+  onRetry,
 }) => {
   const myProfile = useSelector((state) => state.profile);
   const myId = myProfile._id;
@@ -861,28 +864,23 @@ const SingleMessage = ({
         </span>
         {isSent &&
           (msg.sendFailed ? (
-            <span
-              className="message-seen-check failed"
-              title="Failed to send"
-              aria-label="Failed to send"
+            <button
+              type="button"
+              className="message-seen-check failed message-retry-btn"
+              title="Not sent. Click to try again"
+              aria-label="Not sent. Click to try again"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onRetry) onRetry(msg);
+              }}
+              disabled={!onRetry}
             >
-              <i className="fas fa-exclamation-circle"></i>
-            </span>
-          ) : msg.isSeen ? (
-            <span
-              className="message-seen-check seen"
-              title="Seen"
-              aria-label="Seen"
-            >
-              <i className="fas fa-check-double"></i>
-            </span>
+              <MessageStatusIcon status="pending" title="Not sent" />
+              {onRetry ? <span className="message-retry-label">Retry</span> : null}
+            </button>
           ) : (
-            <span
-              className="message-seen-check sent"
-              title="Sent"
-              aria-label="Sent"
-            >
-              <i className="fas fa-check"></i>
+            <span className={`message-seen-check ${getMessageStatus(msg)}`}>
+              <MessageStatusIcon status={getMessageStatus(msg)} />
             </span>
           ))}
       </div>

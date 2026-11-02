@@ -7,7 +7,8 @@ import React, {
   useMemo,
 } from "react";
 import UserPP from "../UserPP";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
+import { MdMarkChatRead } from "react-icons/md";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import moment from "moment";
 import {
@@ -15,7 +16,7 @@ import {
   fetchOnlineStatusesCached,
   invalidateCachedResource,
 } from "../../utils/requestCache";
-import { invalidateGetCache } from "../../api/api";
+import api, { invalidateGetCache } from "../../api/api";
 import { getPresence, usePresenceVersion } from "../../utils/presence";
 import MsgListSkleton from "../../skletons/message/MsgListSkleton";
 import ContactCacheManager from "../../utils/contactCacheManager";
@@ -28,6 +29,14 @@ import {
   idOf,
   mergeContactsPreferNewer,
 } from "../../utils/optimisticMessage";
+import {
+  applyStatusToContacts,
+  getMessageStatus,
+  markContactsRead,
+} from "../../utils/messageStatus";
+import { seenMessage } from "../../services/actions/messageActions";
+import { showErrorToast, showSuccessToast } from "../../utils/toastUtils";
+import MessageStatusIcon from "./MessageStatusIcon";
 // const isProfileActive = (id) => {
 //     return true
 //     socket.emit('is_active', { profileId: id, myId: profileId })
@@ -133,6 +142,7 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle, showBackButt
   const myProfile = useSelector((state) => state.profile);
   const myId = myProfile._id;
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const effectiveProfileId = myId || profileId;
 
   const cachedContacts = useMemo(() => {
@@ -295,26 +305,28 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle, showBackButt
       applyIncoming(event?.detail?.updatedMessage);
     };
 
-    const onMessageSeen = (data) => {
-      const seenId = data?.messageId || data?._id;
-      if (!seenId) return;
+    // Status of my last messages (eye / double check), and messages I read
+    // on another device.
+    const applyContactStatus = (kind, data) => {
       setContacts((prev) => {
-        let didChange = false;
-        const next = prev.map((contact) => {
-          let contactChanged = false;
-          const messages = (contact.messages || []).map((m) => {
-            if (m && idOf(m._id) === idOf(seenId) && m.isSeen !== true) {
-              contactChanged = true;
-              didChange = true;
-              return { ...m, isSeen: true };
-            }
-            return m;
-          });
-          return contactChanged ? { ...contact, messages } : contact;
-        });
-        if (didChange) writeContactCache(next);
-        return didChange ? next : prev;
+        const next = applyStatusToContacts(prev, kind, data, myId);
+        if (next !== prev) writeContactCache(next);
+        return next;
       });
+    };
+    const onMessageSeen = (data) => applyContactStatus("seen", data);
+    const onMessagesDelivered = (data) => applyContactStatus("delivered", data);
+
+    // "Mark all as read" on this or another of my devices.
+    const onAllMessagesSeen = (data) => {
+      if (data?.receiverId && idOf(data.receiverId) !== idOf(myId)) return;
+      setContacts((prev) => {
+        const next = markContactsRead(prev, myId, data?.connectId ? [data.connectId] : null);
+        if (next !== prev) writeContactCache(next);
+        return next;
+      });
+      invalidateCachedResource(`chatList:${myId}`);
+      invalidateGetCache("/message/chatList");
     };
 
     const onConversationDeleted = (data) => {
@@ -354,6 +366,8 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle, showBackButt
     socket.on("messageSent", onSocketMessage);
     socket.on("messageSeen", onMessageSeen);
     socket.on("seenMessage", onMessageSeen);
+    socket.on("messagesDelivered", onMessagesDelivered);
+    socket.on("allMessagesSeen", onAllMessagesSeen);
     socket.on("conversationDeleted", onConversationDeleted);
     socket.on("messageEdited", onMessageEdited);
     window.addEventListener(CHAT_MESSAGE_EVENT, onLocalMessage);
@@ -365,6 +379,8 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle, showBackButt
       socket.off("messageSent", onSocketMessage);
       socket.off("messageSeen", onMessageSeen);
       socket.off("seenMessage", onMessageSeen);
+      socket.off("messagesDelivered", onMessagesDelivered);
+      socket.off("allMessagesSeen", onAllMessagesSeen);
       socket.off("conversationDeleted", onConversationDeleted);
       socket.off("messageEdited", onMessageEdited);
       window.removeEventListener(CHAT_MESSAGE_EVENT, onLocalMessage);
@@ -440,9 +456,90 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle, showBackButt
     };
   }, []);
 
+  // Messages I received and have not read, in the loaded conversations.
+  const unreadTotal = useMemo(
+    () =>
+      (contacts || []).reduce(
+        (total, contact) =>
+          total +
+          (contact?.messages || []).filter(
+            (m) => m && idOf(m.receiverId) === idOf(myId) && !m.isSeen,
+          ).length,
+        0,
+      ),
+    [contacts, myId],
+  );
+
+  // Marks every unseen message as read on the server: senders see the eye
+  // icon, my other tabs and devices clear their badges (allMessagesSeen).
+  const [markingAllRead, setMarkingAllRead] = useState(false);
+  const markingAllReadRef = useRef(false);
+  const contactsRef = useRef(contacts);
+  contactsRef.current = contacts;
   const markAllMsgAsRead = useCallback(async () => {
-    return;
-  }, []);
+    setMessageOption(false);
+    if (!myId || markingAllReadRef.current) return;
+    markingAllReadRef.current = true;
+    setMarkingAllRead(true);
+    try {
+      const response = await api.post("/message/seen-all", {});
+      const senderIds = Array.isArray(response?.data?.senderIds)
+        ? response.data.senderIds.map((id) => idOf(id))
+        : [];
+      setContacts((prev) => {
+        const next = markContactsRead(prev, myId);
+        if (next !== prev) writeContactCache(next);
+        return next;
+      });
+      // Header / tab badges read the Redux copy of the chat list.
+      const contactIds = new Set(senderIds);
+      (contactsRef.current || []).forEach((contact) => {
+        const hasUnread = (contact?.messages || []).some(
+          (m) => m && idOf(m.receiverId) === idOf(myId) && !m.isSeen,
+        );
+        if (hasUnread) contactIds.add(idOf(contact?.person?._id));
+      });
+      contactIds.forEach((id) => id && dispatch(seenMessage(id)));
+      invalidateCachedResource(`chatList:${myId}`);
+      invalidateGetCache("/message/chatList");
+      const count = Number(response?.data?.updatedCount) || 0;
+      showSuccessToast(
+        count > 0
+          ? `Marked ${count} message${count === 1 ? "" : "s"} as read`
+          : "No unread messages",
+        { toastId: "mark-all-read" },
+      );
+    } catch (error) {
+      console.error("Mark all as read failed:", error);
+      showErrorToast("Could not mark messages as read. Please try again.", {
+        toastId: "mark-all-read-failed",
+      });
+    } finally {
+      markingAllReadRef.current = false;
+      setMarkingAllRead(false);
+    }
+  }, [myId, dispatch, writeContactCache]);
+
+  const markAllButton = (variant) =>
+    unreadTotal > 0 ? (
+      <button
+        type="button"
+        className={`mark-all-read-btn ${variant}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          markAllMsgAsRead();
+        }}
+        disabled={markingAllRead}
+        aria-busy={markingAllRead}
+        title="Mark all messages as read"
+        aria-label={`Mark all ${unreadTotal} unread messages as read`}
+      >
+        <MdMarkChatRead aria-hidden="true" focusable="false" />
+        <span className="mark-all-read-label">
+          {markingAllRead ? "Marking…" : "Mark all as read"}
+        </span>
+      </button>
+    ) : null;
 
   const handleMsgOptionClick = useCallback(async () => {
     setMessageOption((prev) => !prev);
@@ -619,10 +716,13 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle, showBackButt
         >
           <div className="chat-list-header">
             <span className="list-title">All Contacts</span>
-            <span className="chat-count">
-              {searchQuery
-                ? `${filteredContacts.length}/${contacts?.length || 0}`
-                : contacts?.length || 0}
+            <span className="chat-list-header-actions">
+              {markAllButton("compact")}
+              <span className="chat-count">
+                {searchQuery
+                  ? `${filteredContacts.length}/${contacts?.length || 0}`
+                  : contacts?.length || 0}
+              </span>
             </span>
           </div>
           <ul
@@ -678,11 +778,6 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle, showBackButt
                 const lastMessage = contactMessages[0] || {};
                 const isOutgoing =
                   lastMessage && idOf(lastMessage.senderId) === idOf(myId);
-                const statusTitle = isOutgoing
-                  ? lastMessage.isSeen
-                    ? "Seen"
-                    : "Delivered"
-                  : "";
                 return (
                   <li
                     key={contactPerson._id || index}
@@ -726,12 +821,10 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle, showBackButt
                           </div>
                         </div>
                         <div className="last-message-preview">
-                          {isOutgoing && (
-                            <i
-                              className={`message-status-icon ${lastMessage.isSeen ? "fas fa-check-double seen" : "fas fa-check delivered"}`}
-                              title={statusTitle}
-                              aria-hidden="true"
-                            ></i>
+                          {isOutgoing && contactMessages.length > 0 && (
+                            <MessageStatusIcon
+                              status={getMessageStatus(lastMessage)}
+                            />
                           )}
                           <span className="message-text">
                             {isOutgoing && contactMessages.length > 0 && (
@@ -825,22 +918,25 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle, showBackButt
               </div>
             </div>
             <div className="header-actions" ref={messageMenuRef}>
-              <button
-                type="button"
-                onClick={handleMsgOptionClick}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    handleMsgOptionClick();
-                  }
-                }}
-                className="action-button"
-                aria-label="Message options"
-                aria-expanded={messageOption}
-                aria-haspopup="true"
-              >
-                <i className="fas fa-ellipsis-h"></i>
-              </button>
+              <div className="header-actions-row">
+                {markAllButton("header")}
+                <button
+                  type="button"
+                  onClick={handleMsgOptionClick}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleMsgOptionClick();
+                    }
+                  }}
+                  className="action-button"
+                  aria-label="Message options"
+                  aria-expanded={messageOption}
+                  aria-haspopup="true"
+                >
+                  <i className="fas fa-ellipsis-h"></i>
+                </button>
+              </div>
               {messageOption && <MessageOptionMenu />}
             </div>
           </div>
@@ -892,10 +988,12 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle, showBackButt
         <div className="modern-chat-list-container">
           <div className="chat-list-header">
             <span className="list-title">All Contacts</span>
-            <span className="chat-count">
-              {searchQuery
-                ? `${filteredContacts.length}/${contacts?.length || 0}`
-                : contacts?.length || 0}
+            <span className="chat-list-header-actions">
+              <span className="chat-count">
+                {searchQuery
+                  ? `${filteredContacts.length}/${contacts?.length || 0}`
+                  : contacts?.length || 0}
+              </span>
             </span>
           </div>
 
@@ -975,11 +1073,6 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle, showBackButt
                   const lastMessage = contactMessages[0] || {};
                   const isOutgoing =
                     lastMessage && idOf(lastMessage.senderId) === idOf(myId);
-                  const statusTitle = isOutgoing
-                    ? lastMessage.isSeen
-                      ? "Seen"
-                      : "Delivered"
-                    : "";
 
                   return (
                     <li
@@ -1039,12 +1132,10 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle, showBackButt
                             className="last-message-preview"
                             style={{ display: "block" }}
                           >
-                            {isOutgoing && (
-                              <i
-                                className={`message-status-icon ${lastMessage.isSeen ? "fas fa-check-double seen" : "fas fa-check delivered"}`}
-                                title={statusTitle}
-                                aria-hidden="true"
-                              ></i>
+                            {isOutgoing && contactMessages.length > 0 && (
+                              <MessageStatusIcon
+                                status={getMessageStatus(lastMessage)}
+                              />
                             )}
                             <span className="message-text">
                               {isOutgoing && contactMessages.length > 0 && (

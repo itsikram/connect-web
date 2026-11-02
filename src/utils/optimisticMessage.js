@@ -1,3 +1,5 @@
+import { applySeen, withKnownStatus } from "./messageStatus";
+
 export const CHAT_MESSAGE_EVENT = "connect_chat_message";
 
 export function idOf(value) {
@@ -177,9 +179,11 @@ export function reconcileWithSnapshot(
     const id = msg && !msg.isOptimistic ? idOf(msg._id) : "";
     if (id) localById.set(id, msg);
   });
-  const hist = sortMessages(snapshot).map((msg) =>
-    withNewerEdit(msg, localById.get(idOf(msg._id))),
-  );
+  const hist = sortMessages(snapshot).map((msg) => {
+    const local = localById.get(idOf(msg._id));
+    // Keep a newer edit and a newer delivered / seen status from this tab.
+    return withKnownStatus(withNewerEdit(msg, local), local || null);
+  });
   const known = knownIds instanceof Set ? knownIds : new Set();
   const histIds = new Set(hist.map((m) => idOf(m._id)).filter(Boolean));
   const confirmedHist = hist.filter((m) => !m.isOptimistic);
@@ -239,6 +243,9 @@ export function upsertConfirmedMessage(prev, confirmed, tempId) {
 
   const confirmedId = idOf(confirmed._id);
   const matchTemp = tempId || confirmed.tempId || null;
+  // The same message may already be here with a newer status (delivered /
+  // seen arrived first); status never goes backwards.
+  const previous = list.find((msg) => idOf(msg._id) === confirmedId) || null;
 
   const withoutDupes = list.filter((msg) => {
     if (matchTemp && (msg.tempId === matchTemp || msg._id === matchTemp)) {
@@ -260,7 +267,13 @@ export function upsertConfirmedMessage(prev, confirmed, tempId) {
     return true;
   });
 
-  return sortMessages([...withoutDupes, { ...confirmed, isOptimistic: false }]);
+  return sortMessages([
+    ...withoutDupes,
+    withKnownStatus(
+      { ...confirmed, isOptimistic: false, sendFailed: false },
+      previous,
+    ),
+  ]);
 }
 
 export function isConversationMessage(msg, userId, connectId) {
@@ -283,8 +296,7 @@ export function isConversationMessage(msg, userId, connectId) {
 // seen event anywhere marked every message I had sent as seen.
 export function applySeenToMessages(prev, data, userId, connectId) {
   const list = Array.isArray(prev) ? prev : [];
-  const seenId = idOf(data?.messageId || data?._id);
-  if (!seenId) return list;
+  if (!idOf(data?.messageId || data?._id) && !data?.messageIds?.length) return list;
   if (
     data?.senderId &&
     data?.receiverId &&
@@ -292,29 +304,16 @@ export function applySeenToMessages(prev, data, userId, connectId) {
   ) {
     return list;
   }
-  const target = list.find((m) => m && idOf(m._id) === seenId);
-  if (!target) return list;
-  const cutoff = new Date(target.timestamp || 0).getTime();
-  const targetSender = idOf(target.senderId);
-  let changed = false;
-  const next = list.map((msg) => {
-    if (!msg || msg.isSeen === true || msg.isOptimistic) return msg;
-    const isTarget = idOf(msg._id) === seenId;
-    const isEarlierFromSameSender =
-      idOf(msg.senderId) === targetSender &&
-      new Date(msg.timestamp || 0).getTime() <= cutoff;
-    if (isTarget || isEarlierFromSameSender) {
-      changed = true;
-      return { ...msg, isSeen: true };
-    }
-    return msg;
-  });
-  return changed ? next : list;
+  return applySeen(list, data);
 }
 
 export function mergeHistoryWithLive(history, live) {
-  const hist = Array.isArray(history) ? history.filter(Boolean) : [];
   const liveList = Array.isArray(live) ? live.filter(Boolean) : [];
+  const liveById = new Map(liveList.map((m) => [idOf(m._id), m]));
+  // A fresher delivered / seen status from live events is kept.
+  const hist = (Array.isArray(history) ? history.filter(Boolean) : []).map(
+    (m) => withKnownStatus(m, liveById.get(idOf(m._id)) || null),
+  );
   const histIds = new Set(hist.map((m) => idOf(m._id)).filter(Boolean));
 
   const extras = liveList.filter((msg) => {
@@ -355,6 +354,8 @@ export function applyLastMessageToContacts(contacts, message, myId) {
   const existing = current.messages || [];
   const msgId = idOf(message._id);
   const tempId = message.tempId;
+  const previous = msgId ? existing.find((m) => m && idOf(m._id) === msgId) : null;
+  const incoming = withKnownStatus(message, previous || null);
   const filtered = existing.filter((m) => {
     if (!m) return false;
     if (msgId && idOf(m._id) === msgId) return false;
@@ -364,7 +365,7 @@ export function applyLastMessageToContacts(contacts, message, myId) {
 
   const updated = {
     ...current,
-    messages: [message, ...filtered],
+    messages: [incoming, ...filtered],
   };
   const next = contacts.slice();
   next.splice(idx, 1);
@@ -389,7 +390,7 @@ export function mergeContactsPreferNewer(serverContacts, localContacts) {
     const serverLast = server?.messages?.[0];
     const localLast = local?.messages?.[0];
     if (serverLast && localLast && idOf(serverLast._id) === idOf(localLast._id)) {
-      const merged = withNewerEdit(serverLast, localLast);
+      const merged = withKnownStatus(withNewerEdit(serverLast, localLast), localLast);
       if (merged !== serverLast) {
         return { ...server, messages: [merged, ...server.messages.slice(1)] };
       }

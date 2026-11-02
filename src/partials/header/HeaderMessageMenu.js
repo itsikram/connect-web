@@ -1,11 +1,17 @@
-import React, { memo, useCallback, useMemo, useState } from "react";
-import { useSelector } from "react-redux";
+import React, { memo, useCallback, useMemo, useRef, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import config from "../../config/config.json";
 import {
   PROFILE_IMG_REFERRER_POLICY,
   sanitizeProfileImageUrl,
 } from "../../utils/profileImage";
+import api, { invalidateGetCache } from "../../api/api";
+import { invalidateCachedResource } from "../../utils/requestCache";
+import { allMessagesRead } from "../../services/actions/messageActions";
+import { getMessageStatus } from "../../utils/messageStatus";
+import { showErrorToast } from "../../utils/toastUtils";
+import MessageStatusIcon from "../../components/Message/MessageStatusIcon";
 import "./HeaderMessageMenu.css";
 
 const MAX_VISIBLE = 20;
@@ -129,6 +135,9 @@ const ConversationRow = memo(function ConversationRow({ row, onOpen }) {
             {row.time ? <span className="hr-msg-time">{row.time}</span> : null}
           </div>
           <div className="hr-msg-preview">
+            {row.isOutgoing && row.status ? (
+              <MessageStatusIcon status={row.status} className="hr-msg-status" />
+            ) : null}
             {row.isOutgoing ? <span className="hr-msg-you">You: </span> : null}
             <span className="hr-msg-text">{row.preview}</span>
             {row.unreadCount > 0 ? (
@@ -143,9 +152,43 @@ const ConversationRow = memo(function ConversationRow({ row, onOpen }) {
 
 const HeaderMessageMenu = ({ menuStyle, onChatSelect }) => {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const conversations = useSelector(selectConversations);
   const myId = useSelector(selectMyId);
   const [query, setQuery] = useState("");
+  const [markingAllRead, setMarkingAllRead] = useState(false);
+  const markingRef = useRef(false);
+
+  const unreadTotal = useMemo(
+    () =>
+      conversations.reduce(
+        (total, contact) => total + countUnread(contact?.messages, myId),
+        0,
+      ),
+    [conversations, myId],
+  );
+
+  // Every unseen message becomes read on the server; senders see the eye
+  // icon and my other tabs / devices clear their badges.
+  const markAllAsRead = useCallback(async () => {
+    if (!myId || markingRef.current) return;
+    markingRef.current = true;
+    setMarkingAllRead(true);
+    try {
+      await api.post("/message/seen-all", {});
+      dispatch(allMessagesRead(myId));
+      invalidateCachedResource(`chatList:${myId}`);
+      invalidateGetCache("/message/chatList");
+    } catch (error) {
+      console.error("Mark all as read failed:", error);
+      showErrorToast("Could not mark messages as read. Please try again.", {
+        toastId: "mark-all-read-failed",
+      });
+    } finally {
+      markingRef.current = false;
+      setMarkingAllRead(false);
+    }
+  }, [dispatch, myId]);
 
   const rows = useMemo(() => {
     const me = String(myId || "");
@@ -180,6 +223,7 @@ const HeaderMessageMenu = ({ menuStyle, onChatSelect }) => {
         time: getShortTimeAgo(last?.timestamp),
         unreadCount: countUnread(messages, me),
         isOutgoing: last ? idStr(last.senderId) === me : false,
+        status: last && idStr(last.senderId) === me ? getMessageStatus(last) : null,
         sortTs: last?.timestamp ? new Date(last.timestamp).getTime() || 0 : 0,
       });
     }
@@ -231,6 +275,20 @@ const HeaderMessageMenu = ({ menuStyle, onChatSelect }) => {
           </li>
         )}
       </ul>
+
+      {unreadTotal > 0 ? (
+        <button
+          type="button"
+          className="hr-msg-markall"
+          onClick={markAllAsRead}
+          disabled={markingAllRead}
+          aria-busy={markingAllRead}
+          aria-label={`Mark all ${unreadTotal} unread messages as read`}
+        >
+          <i className="fas fa-check-double" aria-hidden="true" />
+          {markingAllRead ? "Marking…" : "Mark all as read"}
+        </button>
+      ) : null}
 
       <div className="hr-msg-footer">
         <button type="button" className="hr-msg-footer-btn" onClick={goToNewChat}>

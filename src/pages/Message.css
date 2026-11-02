@@ -849,6 +849,83 @@
     position: relative;
 }
 
+.header-actions-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* "Mark all as read" (chat list) */
+.mark-all-read-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 12px;
+    background: var(--msg-glass-bg);
+    border: 1px solid var(--msg-glass-border);
+    border-radius: var(--msg-radius-sm);
+    color: var(--msg-primary, #00d4ff);
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all var(--msg-transition-fast);
+}
+
+.mark-all-read-btn svg {
+    width: 1.15em;
+    height: 1.15em;
+    flex-shrink: 0;
+}
+
+.mark-all-read-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.mark-all-read-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.mark-all-read-btn.compact {
+    height: 26px;
+    padding: 0 8px;
+    font-size: 0.72rem;
+}
+
+.chat-list-header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Icon only (with a tooltip) in the narrow desktop sidebar; with its label
+   on phones, where the list is full width. */
+.mark-all-read-btn.header {
+    width: 36px;
+    padding: 0;
+    justify-content: center;
+}
+
+.mark-all-read-btn.header .mark-all-read-label {
+    display: none;
+}
+
+@media (max-width: 768px) and (min-width: 381px) {
+    .mark-all-read-btn.header {
+        width: auto;
+        padding: 0 12px;
+    }
+    .mark-all-read-btn.header .mark-all-read-label {
+        display: inline;
+    }
+}
+
+.modern-message-header .modern-title {
+    white-space: nowrap;
+}
+
 .action-button {
     width: 36px;
     height: 36px;
@@ -1879,6 +1956,36 @@
 
 .message-sent .message-seen-check.failed {
     color: #fca5a5;
+}
+
+/* Status of my messages: not sent / sent / delivered / seen */
+.message-sent .message-seen-check.pending {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.message-sent .message-seen-check.delivered {
+    color: #ffffff;
+}
+
+.message-retry-btn {
+    background: none;
+    border: 0;
+    padding: 0;
+    margin-left: 6px;
+    gap: 3px;
+    font: inherit;
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.message-retry-btn:hover .message-retry-label,
+.message-retry-btn:focus-visible .message-retry-label {
+    text-decoration: underline;
+}
+
+.message-retry-btn:disabled {
+    cursor: default;
 }
 
 .chat-message-profilePic {
@@ -5453,6 +5560,15 @@
 }
 .modern-chat-list .modern-chat-item .message-status-icon.seen {
     color: #22c55e; /* green-500 */
+}
+.modern-chat-list .modern-chat-item .message-status-icon.delivered {
+    color: #cbd5e1; /* slate-300 */
+}
+.modern-chat-list .modern-chat-item .message-status-icon.pending {
+    color: #f87171; /* red-400 */
+}
+.modern-chat-list .modern-chat-item .last-message-preview .message-status-icon {
+    margin-right: 4px;
 }
 .modern-chat-list .modern-chat-item.focused,
 .modern-chat-list .modern-chat-item:focus-visible {

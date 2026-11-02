@@ -203,6 +203,60 @@
   background: transparent;
 }
 
+.hr-msg-footer-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* "Mark all as read" row above the footer (shown with unread messages) */
+.hr-msg-markall {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: calc(100% - 20px);
+  margin: 6px 10px 2px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(45, 136, 255, 0.12);
+  color: #2d88ff;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.hr-msg-markall:hover:not(:disabled) {
+  background: rgba(45, 136, 255, 0.2);
+}
+
+.hr-msg-markall:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Status of my last message: not sent / sent / delivered / seen */
+.hr-msg-status {
+  color: #b0b3b8;
+  font-size: 13px;
+}
+
+.hr-msg-status.delivered {
+  color: #e4e6eb;
+}
+
+.hr-msg-status.seen {
+  color: #2d88ff;
+}
+
+.hr-msg-status.pending {
+  color: #f87171;
+}
+
 .hr-msg-footer-btn:hover {
   background: #4e4f50;
 }

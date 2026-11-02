@@ -50,6 +50,12 @@ import {
   sortMessages,
   upsertConfirmedMessage,
 } from "../../utils/optimisticMessage";
+import { applyDelivered } from "../../utils/messageStatus";
+import {
+  emitOutgoingMessage,
+  ensureSocketConnected,
+  retryPayloadFor,
+} from "../../utils/outgoingMessages";
 
 const NEAR_BOTTOM_PX = 80;
 
@@ -273,11 +279,22 @@ const StickyChatBox = ({
     if (!isSecure) triggerLoveRain(messageData.message);
 
     return new Promise((resolve, reject) => {
-      let settled = false;
+      deliverOutgoing(payload, tempId, { resolve, reject });
+    });
+  };
 
-      const fallbackTimeout = setTimeout(() => {
-        if (settled) return;
-        settled = true;
+  // Send (or re-send) one of my messages: "not sent" until the server
+  // answers, confirmed when it does (even after the timeout, e.g. once the
+  // socket reconnects), removed when refused.
+  const deliverOutgoing = (payload, tempId, { resolve, reject } = {}) => {
+    let settled = false;
+    const settle = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      if (fn) fn(value);
+    };
+    emitOutgoingMessage(payload, {
+      onTimeout: () => {
         setMessages((prev) =>
           prev.map((msg) =>
             msg && (msg._id === tempId || msg.tempId === tempId) && msg.isOptimistic
@@ -286,26 +303,21 @@ const StickyChatBox = ({
           ),
         );
         console.warn("StickyChatBox message not confirmed by server within timeout");
-        resolve(null);
-      }, 10000);
-
-      const finish = (err, updatedMessage) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(fallbackTimeout);
-        if (err) {
-          setMessages((prev) =>
-            prev.filter(
-              (msg) => msg && msg._id !== tempId && msg.tempId !== tempId,
-            ),
-          );
-          // One toast per conversation, even when several photos fail at once.
-          showErrorToast(err?.message || "Message not sent. Please try again.", {
-            toastId: `sticky-send-failed-${connectId}`,
-          });
-          reject(err);
-          return;
-        }
+        settle(resolve, null);
+      },
+      onRejected: (err) => {
+        setMessages((prev) =>
+          prev.filter(
+            (msg) => msg && msg._id !== tempId && msg.tempId !== tempId,
+          ),
+        );
+        // One toast per conversation, even when several photos fail at once.
+        showErrorToast(err?.message || "Message not sent. Please try again.", {
+          toastId: `sticky-send-failed-${connectId}`,
+        });
+        settle(reject, err);
+      },
+      onConfirmed: (updatedMessage) => {
         if (updatedMessage?._id) {
           setMessages((prev) =>
             upsertConfirmedMessage(prev, updatedMessage, tempId),
@@ -313,30 +325,33 @@ const StickyChatBox = ({
           emitChatMessage(updatedMessage);
           dispatch(newMessage(updatedMessage, userId));
         }
-        resolve(updatedMessage);
-      };
-
-      try {
-        socket.emit("sendMessage", payload, (response) => {
-          if (!response) return;
-          if (response.ok === false || response.blocked) {
-            finish(
-              new Error(response.reason || response.error || "Message blocked"),
-            );
-            return;
-          }
-          if (response.updatedMessage) {
-            finish(null, response.updatedMessage);
-          }
-        });
-      } catch (error) {
-        console.error(
-          "StickyChatBox error sending message via WebSocket:",
-          error,
-        );
-        finish(error);
-      }
+        settle(resolve, updatedMessage);
+      },
     });
+    // Offline: the message waits in the socket buffer (shown as "not sent")
+    // and goes out on reconnect, so the composer is free for the next one.
+    if (!socket.connected) settle(resolve, null);
+  };
+
+  // "Retry" on a message that was not sent: same payload, same tempId.
+  const retryMessage = (msg) => {
+    const tempId = String(msg?.tempId || msg?._id || "");
+    const payload = retryPayloadFor(msg, { userId, connectId });
+    if (!tempId || !payload) {
+      showErrorToast("This message can no longer be sent. Please write it again.", {
+        toastId: `sticky-retry-failed-${tempId}`,
+      });
+      return;
+    }
+    ensureSocketConnected();
+    setMessages((prev) =>
+      prev.map((m) =>
+        m && (m._id === msg._id || (msg.tempId && m.tempId === msg.tempId))
+          ? { ...m, sendFailed: false, isOptimistic: true }
+          : m,
+      ),
+    );
+    deliverOutgoing(payload, tempId);
   };
 
   // Mark unseen messages from the connect as seen in one batched request
@@ -800,6 +815,18 @@ const StickyChatBox = ({
       }
     };
 
+    // My messages reached the receiver's open app: double check.
+    const handleMessagesDelivered = (data) => {
+      if (
+        data?.senderId &&
+        data?.receiverId &&
+        !isConversationMessage(data, userId, connectId)
+      ) {
+        return;
+      }
+      setMessages((prev) => applyDelivered(prev, data));
+    };
+
     const handleMessageSeen = (data) => {
       setMessages((prev) =>
         applySeenToMessages(prev, data, userId, connectId),
@@ -832,6 +859,7 @@ const StickyChatBox = ({
     socket.on("typing", handleTyping);
     socket.on("messageSeen", handleMessageSeen);
     socket.on("seenMessage", handleMessageSeen);
+    socket.on("messagesDelivered", handleMessagesDelivered);
     socket.on("messageReactionUpdated", handleReactionUpdate);
 
     const handleDeleteMessage = (deletedMessageId) => {
@@ -877,6 +905,7 @@ const StickyChatBox = ({
       socket.off("typing", handleTyping);
       socket.off("messageSeen", handleMessageSeen);
       socket.off("seenMessage", handleMessageSeen);
+      socket.off("messagesDelivered", handleMessagesDelivered);
       socket.off("messageReactionUpdated", handleReactionUpdate);
       socket.off("deleteMessage", handleDeleteMessage);
       socket.off("messageEdited", handleMessageEdited);
@@ -1511,6 +1540,7 @@ const StickyChatBox = ({
                 setIsPreview={setIsPreview}
                 msgListRef={msgListRef}
                 isMsgLoading={isMsgLoading}
+                onRetry={retryMessage}
               />
             ))
           ) : (

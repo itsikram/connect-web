@@ -1,0 +1,16 @@
+/* Message status icon (MessageStatusIcon.js): no internet / check /
+   double check / eye. Colors come from the surrounding context. */
+.message-status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.message-status-icon svg {
+  display: block;
+  width: 1.2em;
+  height: 1.2em;
+}
