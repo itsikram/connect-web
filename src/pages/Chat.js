@@ -28,6 +28,10 @@ import SingleMsgSkleton from "../skletons/message/SingleMsgSkleton";
 import defaultChatBackground from "../assets/images/default-chat-bg.svg";
 import MessageCacheManager from "../utils/messageCacheManager";
 import ContactCacheManager from "../utils/contactCacheManager";
+import {
+  CONVERSATION_DELETED_EVENT,
+  clearConversationCaches,
+} from "../utils/deleteConversation";
 import useConnectChatSettings from "../hooks/useConnectChatSettings";
 import { isRomanticMessage } from "../utils/chatThemes";
 import LoveEmojiRain from "../components/Message/LoveEmojiRain";
@@ -722,6 +726,17 @@ const Chat = () => {
       );
     };
 
+    // Either participant deleted the whole conversation (socket for the other
+    // side and other tabs, window event for this tab).
+    const handleConversationDeleted = (data) => {
+      const payload = data?.detail || data || {};
+      if (String(payload.profileId) !== String(userId)) return;
+      if (String(payload.connectId) !== String(connectId)) return;
+      clearConversationCaches(userId, connectId);
+      cachedMessageIdsRef.current = new Set();
+      setMessages([]);
+    };
+
     const handleMessageEdited = (payload) => {
       if (!isConversationMessage(payload, userId, connectId)) return;
       setMessages((prev) => applyMessageEdit(prev, payload));
@@ -775,6 +790,8 @@ const Chat = () => {
     socket.on("messageReactionUpdated", handleReactionUpdate);
     socket.on("deleteMessage", handleDeleteMessage);
     socket.on("messageEdited", handleMessageEdited);
+    socket.on("conversationDeleted", handleConversationDeleted);
+    window.addEventListener(CONVERSATION_DELETED_EVENT, handleConversationDeleted);
     socket.on("secureMessageOpened", handleSecureOpened);
 
     const rejoinRoom = () => {
@@ -792,6 +809,11 @@ const Chat = () => {
       socket.off("messageReactionUpdated", handleReactionUpdate);
       socket.off("deleteMessage", handleDeleteMessage);
       socket.off("messageEdited", handleMessageEdited);
+      socket.off("conversationDeleted", handleConversationDeleted);
+      window.removeEventListener(
+        CONVERSATION_DELETED_EVENT,
+        handleConversationDeleted,
+      );
       socket.off("secureMessageOpened", handleSecureOpened);
       socket.off("connect", rejoinRoom);
       if (typingTimeoutRef.current) {

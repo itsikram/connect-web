@@ -40,6 +40,10 @@ import ChatSettingsModal from "./ChatSettingsModal";
 import "./UserInfoModal.css";
 import { getProfilePath } from "../../utils/profilePath";
 import {
+  deleteConversation,
+  getDeleteConversationError,
+} from "../../utils/deleteConversation";
+import {
   isCallBusy,
   newCallChannelName,
   onCallBusyChange,
@@ -2461,6 +2465,38 @@ const ChatHeader = ({
     }
   }, [currentConnectId, isBlocking, patchMyBlockedUsers]);
 
+  const [isDeletingConversation, setIsDeletingConversation] = useState(false);
+  const handleDeleteConversation = useCallback(async () => {
+    const targetId = currentConnectId || connectId;
+    if (!targetId || !profileId || isDeletingConversation) return;
+    setIsChatOptionMenu(false);
+    const name = connectProfile?.user?.firstName || "this connect";
+    if (
+      !window.confirm(
+        `Delete your conversation with ${name}? This removes every message for both of you and can't be undone.`,
+      )
+    ) {
+      return;
+    }
+    setIsDeletingConversation(true);
+    try {
+      await deleteConversation({ profileId, connectId: targetId });
+      navigate("/message", { replace: true });
+    } catch (error) {
+      console.error("Error deleting conversation:", error);
+      alert(getDeleteConversationError(error));
+    } finally {
+      setIsDeletingConversation(false);
+    }
+  }, [
+    currentConnectId,
+    connectId,
+    profileId,
+    isDeletingConversation,
+    connectProfile?.user?.firstName,
+    navigate,
+  ]);
+
   const handleViewProfile = useCallback(
     () => navigate(getProfilePath(connectId, "", connectProfile?.username)),
     [navigate, connectId, connectProfile?.username],
@@ -3042,6 +3078,29 @@ const ChatHeader = ({
                         style={{ marginRight: "8px" }}
                       ></i>
                       Report {connectProfile.user.firstName}
+                    </li>
+                    <li
+                      className="danger"
+                      onClick={handleDeleteConversation}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleDeleteConversation();
+                        }
+                      }}
+                      tabIndex={0}
+                      aria-disabled={isDeletingConversation}
+                      style={{ color: "#e53935" }}
+                    >
+                      <i
+                        className={
+                          isDeletingConversation
+                            ? "fas fa-spinner fa-spin"
+                            : "fas fa-trash"
+                        }
+                        style={{ marginRight: "8px" }}
+                      ></i>
+                      Delete conversation
                     </li>
                   </ul>
                 </div>

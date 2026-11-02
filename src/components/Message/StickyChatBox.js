@@ -18,6 +18,10 @@ import { newMessage, seenMessage } from "../../services/actions/messageActions";
 import SingleMessage from "./SingleMessage";
 import { SECURE_MESSAGE_TYPE, SECURE_PLACEHOLDER } from "./SecureMessage";
 import ChatHeader from "./ChatHeader";
+import {
+  deleteConversation,
+  getDeleteConversationError,
+} from "../../utils/deleteConversation";
 import StickyChatFooter from "./StickyChatFooter";
 import SingleMsgSkleton from "../../skletons/message/SingleMsgSkleton";
 import ModalContainer from "../modal/ModalContainer";
@@ -1773,31 +1777,19 @@ const StickyChatBox = ({
                   )
                 ) {
                   try {
-                    await api.post("/message/deleteConversation", {
+                    await deleteConversation({
                       profileId: userId,
                       connectId,
                     });
 
                     setMessages([]);
-                    window.dispatchEvent(
-                      new CustomEvent("conversationDeleted", {
-                        detail: { profileId: userId, connectId },
-                      }),
-                    );
-                    socket.emit("deleteConversation", {
-                      profileId: userId,
-                      connectId,
-                    });
                     setShowOptionsMenu(false);
                     if (typeof onClose === "function") {
                       onClose();
                     }
                   } catch (error) {
                     console.error("Error deleting conversation:", error);
-                    window.alert(
-                      error?.response?.data?.message ||
-                        "Failed to delete conversation.",
-                    );
+                    window.alert(getDeleteConversationError(error));
                   }
                 }
               }}

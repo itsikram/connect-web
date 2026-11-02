@@ -20,6 +20,7 @@ import { getPresence, usePresenceVersion } from "../../utils/presence";
 import MsgListSkleton from "../../skletons/message/MsgListSkleton";
 import ContactCacheManager from "../../utils/contactCacheManager";
 import socket from "../../common/socket";
+import { CONVERSATION_DELETED_EVENT } from "../../utils/deleteConversation";
 import {
   applyLastMessageToContacts,
   applyMessageEditToContacts,
@@ -317,7 +318,7 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle, showBackButt
     };
 
     const onConversationDeleted = (data) => {
-      const { profileId, connectId } = data || {};
+      const { profileId, connectId } = data?.detail || data || {};
       if (!profileId || !connectId) return;
       if (String(profileId) !== String(myId)) return;
 
@@ -331,6 +332,9 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle, showBackButt
         }
         return prev;
       });
+      // A refetch must not bring the deleted chat back from the GET cache.
+      invalidateCachedResource(`chatList:${myId}`);
+      invalidateGetCache("/message/chatList");
     };
 
     // An edited last message updates its preview in place (no reordering).
@@ -353,6 +357,7 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle, showBackButt
     socket.on("conversationDeleted", onConversationDeleted);
     socket.on("messageEdited", onMessageEdited);
     window.addEventListener(CHAT_MESSAGE_EVENT, onLocalMessage);
+    window.addEventListener(CONVERSATION_DELETED_EVENT, onConversationDeleted);
 
     return () => {
       socket.off("newMessage", onSocketMessage);
@@ -363,6 +368,10 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle, showBackButt
       socket.off("conversationDeleted", onConversationDeleted);
       socket.off("messageEdited", onMessageEdited);
       window.removeEventListener(CHAT_MESSAGE_EVENT, onLocalMessage);
+      window.removeEventListener(
+        CONVERSATION_DELETED_EVENT,
+        onConversationDeleted,
+      );
     };
   }, [myId, fetchContacts, writeContactCache]);
 
