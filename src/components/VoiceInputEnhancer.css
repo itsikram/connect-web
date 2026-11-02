@@ -20,7 +20,7 @@
 /* Keep typed text clear of the in-field mic, like the app's paddingRight. */
 input[data-voice-mic],
 textarea[data-voice-mic] {
-  padding-right: 42px !important;
+  padding-right: 36px !important;
 }
 
 /* The mic made this field its parent's second-to-last child; keep the

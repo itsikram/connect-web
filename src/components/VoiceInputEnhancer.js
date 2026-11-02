@@ -20,10 +20,9 @@ import "./VoiceInputEnhancer.css";
 const TEXT_INPUT_TYPES = new Set(["", "text", "search"]);
 const LANGUAGE_STORAGE_KEY = "voiceInputLanguage";
 const LONG_PRESS_MS = 400;
-// 32px circle whose centre sits 20px from the field's right edge, matching
-// the app's touch target (right: 2, paddingHorizontal: 8, 20px icon).
+// 32px circle flush with the field's right edge (centre 16px in).
 const MIC_SIZE = 32;
-const MIC_INSET = 4;
+const MIC_INSET = 0;
 const MIN_FIELD_WIDTH = 80;
 const MIN_FIELD_HEIGHT = 24;
 const RESCAN_INTERVAL_MS = 1000;
