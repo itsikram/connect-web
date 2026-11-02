@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import store from "../store";
+import { onCallBusyChange, refuseIfCallBusy } from "../utils/callSession";
 
 const SpeechRecognitionCtor = () =>
   typeof window !== "undefined"
@@ -45,6 +46,8 @@ export default function useSpeechToText({
     (overrideLang) => {
       const Ctor = SpeechRecognitionCtor();
       if (!Ctor) return false;
+      // The call owns the microphone.
+      if (refuseIfCallBusy()) return false;
 
       const nextLang =
         (typeof overrideLang === "string" && overrideLang) ||
@@ -117,6 +120,15 @@ export default function useSpeechToText({
   }, [listening, start, stop]);
 
   useEffect(() => () => stop(), [stop]);
+
+  // A call started: give the microphone up.
+  useEffect(
+    () =>
+      onCallBusyChange((busy) => {
+        if (busy && (wantListenRef.current || recRef.current)) stop();
+      }),
+    [stop],
+  );
 
   return { listening, interim, supported, start, stop, toggle };
 };

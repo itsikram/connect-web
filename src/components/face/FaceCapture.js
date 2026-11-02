@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import "./FaceCapture.css";
+import { getActiveCallKind } from "../../utils/callSession";
 
 // Matches the app: 15 frames at up to 640×480, JPEG quality 0.5, spread over
 // ~2 seconds so a natural blink is captured for the liveness check. Smaller
@@ -85,6 +86,12 @@ const FaceCapture = ({
   }, []);
 
   const startCamera = useCallback(async () => {
+    // A video call is using the camera; taking it would freeze the call.
+    if (getActiveCallKind() === "video") {
+      setPhase("error");
+      setMessage("Your camera is in use by the video call. Try again after the call.");
+      return;
+    }
     setPhase("starting");
     setMessage("");
     setProgress(0);

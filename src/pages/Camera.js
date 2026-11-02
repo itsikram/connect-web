@@ -20,6 +20,7 @@ import {
 } from "../utils/iosCameraFilters";
 import { openCreatePost } from "../utils/openComposer";
 import { showErrorToast, showInfoToast, showSuccessToast } from "../utils/toastUtils";
+import { getActiveCallKind, isCallBusy } from "../utils/callSession";
 import "./Camera.css";
 
 const IDENTITY_INTENSITY = 0;
@@ -171,6 +172,11 @@ const Camera = () => {
   }, []);
 
   const startCamera = useCallback(async (facingMode) => {
+    // A video call is using the camera; taking it would freeze the call.
+    if (getActiveCallKind() === "video") {
+      setError("Your camera is in use by the video call. Try again after the call.");
+      return;
+    }
     if (typeof window !== "undefined" && !window.isSecureContext) {
       setPermission("denied");
       setError("Camera needs HTTPS or localhost.");
@@ -349,14 +355,21 @@ const Camera = () => {
         canvas.captureStream?.(30) || canvas.webkitCaptureStream?.(30);
       if (!canvasStream) throw new Error("no canvas stream");
       let audioStream = null;
-      try {
-        audioStream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-          video: false,
+      // During a call the microphone stays with the call: record silently.
+      if (isCallBusy()) {
+        showInfoToast("Recording without sound while you're in a call.", {
+          toastId: "camera-call-silent",
         });
-        audioStreamRef.current = audioStream;
-      } catch {
-        audioStream = null;
+      } else {
+        try {
+          audioStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: false,
+          });
+          audioStreamRef.current = audioStream;
+        } catch {
+          audioStream = null;
+        }
       }
       const mixed = new MediaStream([
         ...canvasStream.getVideoTracks(),

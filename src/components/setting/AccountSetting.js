@@ -9,6 +9,7 @@ import {
   getUserFromStorage,
   setUserInStorage,
 } from "../../utils/storageUtils";
+import { refuseIfCallBusy } from "../../utils/callSession";
 
 const getProfileEmail = (profile) => {
   const user = profile?.user;
@@ -183,6 +184,8 @@ const AccountSetting = () => {
       showErrorToast("Voice recognition is not supported in your browser");
       return;
     }
+    // The call owns the microphone.
+    if (refuseIfCallBusy()) return;
 
     const recognition = new SpeechRecognition();
     recognition.lang = "bn-BD"; // Bengali (Bangladesh)

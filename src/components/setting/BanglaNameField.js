@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import api from "../../api/api";
 import { showErrorToast, showSuccessToast } from "../../utils/toastUtils";
+import { refuseIfCallBusy } from "../../utils/callSession";
 
 const BanglaNameField = ({ value, onChange }) => {
   const [isListening, setIsListening] = useState(false);
@@ -29,6 +30,8 @@ const BanglaNameField = ({ value, onChange }) => {
       showErrorToast("Voice recognition is not supported in your browser");
       return;
     }
+    // The call owns the microphone.
+    if (refuseIfCallBusy()) return;
 
     const recognition = new SpeechRecognition();
     recognition.lang = "bn-BD";

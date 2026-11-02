@@ -92,6 +92,7 @@ import { loadSettings } from "../services/actions/settingsActions.js";
 import { applyThemeMode } from "../utils/applyThemeMode";
 import { prefetchNavigationTarget } from "../utils/routePrefetch";
 import { speakMessageText } from "../utils/speakMessage";
+import { isCallBusy, onCallBusyChange } from "../utils/callSession";
 import useShakeDetector from "../hooks/useShakeDetector";
 import { clearLocalStoragePreservingDevicePrefs } from "../utils/storageUtils";
 import MobileBottomNav from "../partials/MobileBottomNav/MobileBottomNav";
@@ -553,6 +554,11 @@ const Main = () => {
   };
 
   const playSpokenVoiceMessage = useCallback(async (payload = {}) => {
+    // Never play a spoken message over a call (both sides would hear it).
+    if (isCallBusy()) {
+      pendingSpeakPayloadRef.current = null;
+      return true;
+    }
     const audioUrl = payload?.attachment;
     if (!audioUrl || !isAudioAttachmentUrl(audioUrl)) return false;
 
@@ -1385,6 +1391,7 @@ const Main = () => {
     };
 
     const handleSpeakMessage = async (payload = {}) => {
+      if (isCallBusy()) return;
       const isAudioSpeakRequest =
         payload?.messageType === "audio" ||
         isAudioAttachmentUrl(payload?.attachment);
@@ -2389,9 +2396,33 @@ const Main = () => {
     return () => window.removeEventListener("openAIAgent", openAIAgent);
   }, [openAIAgent]);
 
-  useShakeDetector(openAIAgentVoice, {
+  // Shaking the phone during a call (walking, picking it up) must not open
+  // hands-free talk and take the call's microphone.
+  const onShake = useCallback(() => {
+    if (isCallBusy()) return;
+    openAIAgentVoice();
+  }, [openAIAgentVoice]);
+
+  useShakeDetector(onShake, {
     enabled: isAuthenticated && !isHeaderHiddenRoute,
   });
+
+  // A call started: stop any spoken message that is playing.
+  useEffect(
+    () =>
+      onCallBusyChange((busy) => {
+        if (!busy) return;
+        pendingSpeakPayloadRef.current = null;
+        speakPlayGenerationRef.current += 1;
+        try {
+          speakAudioElement.current?.pause();
+        } catch (_e) {}
+        try {
+          window.speechSynthesis?.cancel();
+        } catch (_e) {}
+      }),
+    [],
+  );
 
   // Cleanup audio elements on unmount
   useEffect(() => {

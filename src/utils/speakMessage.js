@@ -1,3 +1,5 @@
+import { isCallBusy } from "./callSession";
+
 const BENGALI_CHAR = /[\u0980-\u09FF]/;
 
 const getPreferredVoice = (language) => {
@@ -18,6 +20,8 @@ const getPreferredVoice = (language) => {
 
 export const speakMessageText = (value) => {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) return false;
+  // Never read a message aloud over a call.
+  if (isCallBusy()) return false;
 
   const text = String(value || "").replace(/\s+/g, " ").trim();
   if (!text) return false;

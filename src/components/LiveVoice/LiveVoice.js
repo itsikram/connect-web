@@ -4,6 +4,11 @@ import socket from "../../common/socket";
 import api from "../../api/api";
 import LiveVoiceModal from "../Message/LiveVoiceModal";
 import { unlockAudio } from "../../utils/audioUnlock";
+import {
+  isCallBusy,
+  onCallBusyChange,
+  refuseIfCallBusy,
+} from "../../utils/callSession";
 
 const hashUid = (id) => {
   if (!id) return 0;
@@ -292,6 +297,24 @@ const LiveVoice = ({ myId }) => {
       notifyPeer = true,
     }) => {
       if (!to || !channelName || !myId) return;
+      // A call holds the microphone and speaker: live voice waits until it
+      // ends (an incoming one is ignored, like the Expo app).
+      if (isCallBusy()) {
+        if (sessionRole === "sender") {
+          refuseIfCallBusy("Finish your call before starting live voice.");
+        }
+        if (!isActiveRef.current && !isJoiningRef.current) {
+          broadcastStatus({
+            active: false,
+            connecting: false,
+            duration: 0,
+            peerId: null,
+            channelName: null,
+            streaming: false,
+          });
+        }
+        return;
+      }
       await unlockAudio();
 
       if (
@@ -447,6 +470,7 @@ const LiveVoice = ({ myId }) => {
 
   const enableMicrophone = useCallback(async () => {
     if (roleRef.current !== "receiver" || microphoneEnabled || microphonePending) return;
+    if (refuseIfCallBusy()) return;
     const sessionId = sessionIdRef.current;
     setMicrophonePending(true);
     let mic = null;
@@ -580,6 +604,20 @@ const LiveVoice = ({ myId }) => {
       window.removeEventListener("stopLiveVoice", onStopRequest);
     };
   }, [myId]);
+
+  // A call started (incoming ring, placed, or answered): end live voice so
+  // the call has the microphone and speaker to itself.
+  useEffect(
+    () =>
+      onCallBusyChange((busy) => {
+        if (!busy) return;
+        if (!isActiveRef.current && !isJoiningRef.current && !channelRef.current) {
+          return;
+        }
+        stopSessionRef.current?.(true);
+      }),
+    [],
+  );
 
   // Let the chat UI know as soon as voice starts or stops flowing.
   useEffect(() => {

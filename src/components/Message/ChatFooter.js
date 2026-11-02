@@ -21,6 +21,11 @@ import useComposerImageUploads, {
   MAX_COMPOSER_IMAGES,
 } from "../../hooks/useComposerImageUploads";
 import { showErrorToast, showInfoToast } from "../../utils/toastUtils";
+import {
+  isCallBusy,
+  onCallBusyChange,
+  refuseIfCallBusy,
+} from "../../utils/callSession";
 import useAutoGrowTextarea from "../../hooks/useAutoGrowTextarea";
 import "./SecureMessage.css";
 
@@ -671,9 +676,16 @@ const ChatFooter = ({
 
   const startRecording = useCallback(async () => {
     if (isRecording || isUploadingAudio) return;
+    if (refuseIfCallBusy()) return;
     stopTranscription();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // A call started while the mic was opening: the call keeps it.
+      if (isCallBusy()) {
+        stream.getTracks().forEach((track) => track.stop());
+        refuseIfCallBusy();
+        return;
+      }
       mediaStreamRef.current = stream;
 
       const mimeType = pickSupportedMimeType();
@@ -728,6 +740,7 @@ const ChatFooter = ({
       setShowMicMenu(false);
       setMicMenuView("main");
       setShowAttachTray(false);
+      if (refuseIfCallBusy()) return;
       if (!isTranscribeSupported) {
         window.alert(
           "Live transcription is not available. Use Chrome or Edge for English, or check your connection for Deepgram.",
@@ -790,6 +803,22 @@ const ChatFooter = ({
       await uploadAndSendAudio(blob, mimeType);
     }
   }, []);
+
+  // A call started mid-recording: release the microphone for the call. The
+  // unfinished clip is not sent.
+  const stopRecordingRef = useRef(stopRecording);
+  stopRecordingRef.current = stopRecording;
+  useEffect(
+    () =>
+      onCallBusyChange((busy) => {
+        if (!busy || !recorderRef.current) return;
+        stopRecordingRef.current(false);
+        showInfoToast("Voice message stopped because a call started.", {
+          toastId: "call-stopped-voice-message",
+        });
+      }),
+    [],
+  );
 
   const cancelRecording = useCallback(async () => {
     await stopRecording(false);

@@ -11,6 +11,11 @@ import useComposerImageUploads, {
   MAX_COMPOSER_IMAGES,
 } from "../../hooks/useComposerImageUploads";
 import { showErrorToast, showInfoToast } from "../../utils/toastUtils";
+import {
+  isCallBusy,
+  onCallBusyChange,
+  refuseIfCallBusy,
+} from "../../utils/callSession";
 import ComposerMicMenu from "./ComposerMicMenu";
 import useComposerLiveTranscribe from "../../hooks/useComposerLiveTranscribe";
 import { mergeTranscriptChunk } from "../../hooks/transcriptText";
@@ -462,9 +467,16 @@ const StickyChatFooter = ({
 
   const startRecording = useCallback(async () => {
     if (isRecording || isUploadingAudio) return;
+    if (refuseIfCallBusy()) return;
     stopTranscription();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // A call started while the mic was opening: the call keeps it.
+      if (isCallBusy()) {
+        stream.getTracks().forEach((track) => track.stop());
+        refuseIfCallBusy();
+        return;
+      }
       mediaStreamRef.current = stream;
       const mimeType = pickSupportedMimeType();
       const recorder = new MediaRecorder(
@@ -498,6 +510,7 @@ const StickyChatFooter = ({
     async (langCode) => {
       setShowMicMenu(false);
       setMicMenuView("main");
+      if (refuseIfCallBusy()) return;
       if (!isTranscribeSupported) {
         window.alert(
           "Live transcription is not available. Use Chrome or Edge for English, or check your connection for Deepgram.",
@@ -556,6 +569,22 @@ const StickyChatFooter = ({
 
     recorderRef.current = null;
   }, []);
+
+  // A call started mid-recording: release the microphone for the call. The
+  // unfinished clip is not sent.
+  const stopRecordingRef = useRef(stopRecording);
+  stopRecordingRef.current = stopRecording;
+  useEffect(
+    () =>
+      onCallBusyChange((busy) => {
+        if (!busy || !recorderRef.current) return;
+        stopRecordingRef.current(false);
+        showInfoToast("Voice message stopped because a call started.", {
+          toastId: "call-stopped-voice-message",
+        });
+      }),
+    [],
+  );
 
   const handleMicButtonClick = () => {
     if (isUploadingAudio) return;

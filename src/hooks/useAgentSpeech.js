@@ -4,6 +4,7 @@ import {
   agentSpeechEnded,
   agentSpeechStarted,
 } from "../components/modal/AIAgentModal/agentEcho";
+import { isCallBusy, onCallBusyChange } from "../utils/callSession";
 
 const hasBangla = (text) => /[\u0980-\u09FF]/.test(String(text || ""));
 
@@ -146,7 +147,8 @@ export default function useAgentSpeech() {
 
   const enqueue = useCallback(
     (raw, langHint) => {
-      if (!supported) return;
+      // Never talk over a call (both sides would hear it).
+      if (!supported || isCallBusy()) return;
       const text = stripForSpeech(raw).slice(0, 280);
       if (!text) return;
       const lang = speechLanguageFor(text, langHint);
@@ -254,7 +256,7 @@ export default function useAgentSpeech() {
         cancel();
         const startGeneration = generationRef.current;
         const cleaned = stripForSpeech(text);
-        if (!supported || !cleaned) {
+        if (!supported || !cleaned || isCallBusy()) {
           onEnd?.();
           resolve();
           return;
@@ -283,6 +285,15 @@ export default function useAgentSpeech() {
         }, ms);
       }),
     [cancel, enqueue, forceIdle, supported],
+  );
+
+  // A call started: stop talking at once.
+  useEffect(
+    () =>
+      onCallBusyChange((busy) => {
+        if (busy) cancel();
+      }),
+    [cancel],
   );
 
   return { supported, speaking, speak, feed, flush, cancel };

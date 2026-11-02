@@ -69,6 +69,7 @@ import {
 import { detectAgentLanguage } from "./banglish";
 import { pickBestYoutubeMatch } from "./agentActionHelpers";
 import useAgentSpeech from "../../../hooks/useAgentSpeech";
+import { isCallBusy, onCallBusyChange } from "../../../utils/callSession";
 import { AuthContext } from "../../../contexts/AuthContext";
 import {
   AI_PROVIDERS,
@@ -1755,6 +1756,16 @@ const AIAgentModal = ({
   // microphone is unavailable.
   const startHandsFreeTalk = useCallback(async () => {
     if (liveTalkOnRef.current) return true;
+    // A call holds the microphone; hands-free talk would cut it off.
+    if (isCallBusy()) {
+      addMessage({
+        type: "agent",
+        content:
+          "You're in a call, so voice talk is paused. You can still type to me.",
+        skipSpeech: true,
+      });
+      return false;
+    }
     // Skip the permission probe (a full mic open/close) once access was
     // already granted, so listening starts without delay.
     let alreadyGranted = false;
@@ -1781,6 +1792,17 @@ const AIAgentModal = ({
     if (!liveTalkOnRef.current) handleToggleLiveTalk();
     return true;
   }, [addMessage, handleToggleLiveTalk]);
+
+  // A call started (placed by me, by the agent, or incoming): end hands-free
+  // talk so the call gets the microphone. Speech is cancelled by
+  // useAgentSpeech.
+  useEffect(
+    () =>
+      onCallBusyChange((busy) => {
+        if (busy && liveTalkOnRef.current) handleToggleLiveTalk();
+      }),
+    [handleToggleLiveTalk],
+  );
 
   const handleMiniMicToggle = useCallback(() => {
     if (liveTalkOnRef.current) handleToggleLiveTalk();

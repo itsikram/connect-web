@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import useComposerLiveTranscribe from "../../../hooks/useComposerLiveTranscribe";
+import { refuseIfCallBusy } from "../../../utils/callSession";
 import { mergeTranscriptChunk } from "../../../hooks/transcriptText";
 import { isVoiceFiller } from "./agentFastPath";
 import {
@@ -246,6 +247,7 @@ const ChatInput = ({
   const startLiveTranscribe = useCallback(
     async (nextLangCode = langCode) => {
       if (liveTalkOnRef.current || isBusy) return false;
+      if (refuseIfCallBusy()) return false;
       if (!isSpeechSupported) {
         window.alert(
           "Live transcription is not available. Use Chrome or Edge for English, or check your connection for Deepgram.",
@@ -399,6 +401,7 @@ const ChatInput = ({
   }, [value]);
 
   const startLiveTalk = async () => {
+    if (!liveTalkOn && refuseIfCallBusy()) return;
     if (!liveTalkOn && navigator?.mediaDevices?.getUserMedia) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({

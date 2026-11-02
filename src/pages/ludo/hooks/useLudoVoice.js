@@ -5,6 +5,13 @@ import {
   unlockAudio,
   resumeAudioFromGesture,
 } from "../../../utils/audioUnlock";
+import {
+  isCallBusy,
+  onCallBusyChange,
+  refuseIfCallBusy,
+} from "../../../utils/callSession";
+
+const CALL_PAUSED_MESSAGE = "Voice chat is paused during your call";
 
 const hashUid = (id) => {
   if (!id) return 1;
@@ -34,6 +41,9 @@ export const useLudoVoice = ({
   const [voiceConnecting, setVoiceConnecting] = useState(false);
   const [voiceError, setVoiceError] = useState(null);
   const [speakingUids, setSpeakingUids] = useState(() => new Set());
+  // A call owns the microphone and speaker: voice chat leaves while it runs
+  // and rejoins when it ends.
+  const [callBusy, setCallBusy] = useState(isCallBusy);
 
   const clientRef = useRef(null);
   const localTrackRef = useRef(null);
@@ -89,8 +99,14 @@ export const useLudoVoice = ({
     }
   }, []);
 
+  useEffect(() => onCallBusyChange((busy) => setCallBusy(busy)), []);
+
   const joinVoice = useCallback(async () => {
     if (!enabledRef.current || !gameId || !profileId) return;
+    if (isCallBusy()) {
+      setVoiceError(CALL_PAUSED_MESSAGE);
+      return;
+    }
 
     const session = ++joinGenRef.current;
     setVoiceConnecting(true);
@@ -162,7 +178,7 @@ export const useLudoVoice = ({
           ANS: true,
           AGC: true,
         });
-        if (session !== joinGenRef.current) {
+        if (session !== joinGenRef.current || isCallBusy()) {
           mic.close();
           return;
         }
@@ -216,13 +232,19 @@ export const useLudoVoice = ({
       leaveVoice();
       return undefined;
     }
+    if (callBusy) {
+      leaveVoice();
+      setVoiceError(CALL_PAUSED_MESSAGE);
+      return undefined;
+    }
     joinVoice();
     return () => {
       leaveVoice();
     };
-  }, [enabled, gameId, profileId, joinVoice, leaveVoice]);
+  }, [enabled, gameId, profileId, callBusy, joinVoice, leaveVoice]);
 
   const toggleMic = useCallback(async () => {
+    if (refuseIfCallBusy()) return;
     resumeAudioFromGesture();
     const next = !micOnRef.current;
     micOnRef.current = next;

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { mergeTranscriptChunk } from "./transcriptText";
 import store from "../store";
 import { getServerAddress } from "../utils/offlineUtils";
+import { isCallBusy, onCallBusyChange } from "../utils/callSession";
 
 const TARGET_SAMPLE_RATE = 16000;
 // Smaller buffers reduce the delay before Deepgram receives each audio frame.
@@ -229,6 +230,8 @@ export default function useComposerLiveTranscribe({
   onFinal,
   onInterim,
   onRefining,
+  // Only the in-call transcript may listen while a call holds the mic.
+  allowDuringCall = false,
 } = {}) {
   const [listening, setListening] = useState(false);
   const [browserEnglishSupported, setBrowserEnglishSupported] = useState(false);
@@ -253,6 +256,12 @@ export default function useComposerLiveTranscribe({
   const refineRef = useRef(false);
   const drainingRef = useRef(null);
 
+  const allowDuringCallRef = useRef(allowDuringCall);
+  allowDuringCallRef.current = allowDuringCall;
+  const blockedByCall = useCallback(
+    () => isCallBusy() && !allowDuringCallRef.current,
+    [],
+  );
   onFinalRef.current = onFinal;
   onInterimRef.current = onInterim;
   onRefiningRef.current = onRefining;
@@ -416,6 +425,10 @@ export default function useComposerLiveTranscribe({
           reject(new Error("no-speech-recognition"));
           return;
         }
+        if (blockedByCall()) {
+          reject(new Error("call-in-progress"));
+          return;
+        }
         haltBrowserRec();
         wantListenRef.current = true;
         langRef.current = langCode;
@@ -512,7 +525,7 @@ export default function useComposerLiveTranscribe({
           );
         }
       }),
-    [emitFinal, haltBrowserRec],
+    [blockedByCall, emitFinal, haltBrowserRec],
   );
 
   startBrowserRef.current = startBrowser;
@@ -591,6 +604,7 @@ export default function useComposerLiveTranscribe({
 
   const startDeepgram = useCallback(
     async (language, existingStream = null) => {
+      if (blockedByCall()) throw new Error("call-in-progress");
       refineRef.current = false;
       const socketUrls = speechSocketUrls();
       // Connect and open the mic at the same time; capture starts as soon as
@@ -612,6 +626,12 @@ export default function useComposerLiveTranscribe({
       let stream = existingStream;
       try {
         if (!stream) stream = await requestMicStream();
+        // A call started while the mic was opening.
+        if (blockedByCall()) {
+          stopTracks(stream);
+          stream = null;
+          throw new Error("call-in-progress");
+        }
       } catch (error) {
         wsPromise.then((socket) => socket?.close()).catch(() => {});
         throw error;
@@ -754,13 +774,18 @@ export default function useComposerLiveTranscribe({
       setListening(true);
       return true;
     },
-    [closeSocket, handleSocketMessage, stop, stopDeepgramHardware],
+    [blockedByCall, closeSocket, handleSocketMessage, stop, stopDeepgramHardware],
   );
 
   startDeepgramRef.current = startDeepgram;
 
   const start = useCallback(
     async (langCode) => {
+      // The call owns the microphone: a second capture can silence it.
+      if (blockedByCall()) {
+        stop();
+        return false;
+      }
       try {
         stop();
         lastPartialRef.current = "";
@@ -786,7 +811,7 @@ export default function useComposerLiveTranscribe({
         let primedStream = null;
         // Browser recognition is the lowest-latency path for English. Bangla
         // uses the server recognizer first when available for better coverage.
-        if (isBangla && canUseDeepgram()) {
+        if (isBangla && canUseDeepgram() && !blockedByCall()) {
           try {
             primedStream = await requestMicStream();
           } catch (error) {
@@ -846,10 +871,20 @@ export default function useComposerLiveTranscribe({
         return false;
       }
     },
-    [startBrowser, startDeepgram, stop],
+    [blockedByCall, startBrowser, startDeepgram, stop],
   );
 
   useEffect(() => () => stop(), [stop]);
+
+  // A call started: give the microphone up straight away.
+  useEffect(() => {
+    if (allowDuringCall) return undefined;
+    return onCallBusyChange((busy) => {
+      if (busy && (wantListenRef.current || recRef.current || mediaStreamRef.current)) {
+        stop();
+      }
+    });
+  }, [allowDuringCall, stop]);
 
   return {
     listening,

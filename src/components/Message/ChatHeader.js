@@ -39,7 +39,11 @@ import ReportModal from "../modal/ReportModal";
 import ChatSettingsModal from "./ChatSettingsModal";
 import "./UserInfoModal.css";
 import { getProfilePath } from "../../utils/profilePath";
-import { newCallChannelName } from "../../utils/callSession";
+import {
+  isCallBusy,
+  newCallChannelName,
+  onCallBusyChange,
+} from "../../utils/callSession";
 // Using Agora RTC SDK instead of simple-peer
 
 const ChatHeader = ({
@@ -418,17 +422,21 @@ const ChatHeader = ({
     closeCallNotification(); // Close notification when beep stops
   };
 
+  // Any call (from this chat or anywhere else) owns the camera and mic.
+  const [callBusy, setCallBusy] = useState(isCallBusy);
+  useEffect(() => onCallBusyChange((busy) => setCallBusy(busy)), []);
+
   // Stop hidden emotion camera when a call starts or is accepted
   // (Agora call uses its own camera, so we need to stop emotion detection camera)
   useEffect(() => {
-    if (isVideoCalling || callAccepted) {
+    if (isVideoCalling || callAccepted || callBusy) {
       try {
         stopCamera(true); // Force stop during calls
       } catch (e) {
         /* Ignore camera stop errors */
       }
     }
-  }, [isVideoCalling, callAccepted]);
+  }, [isVideoCalling, callAccepted, callBusy]);
 
   // Call duration tracking
   useEffect(() => {
@@ -1215,6 +1223,8 @@ const ChatHeader = ({
 
   const startVideo = useCallback(async () => {
     if (!cameraVideoRef.current) return;
+    // The camera belongs to the call while one rings or runs.
+    if (isCallBusy()) return;
     const startId = ++cameraStartIdRef.current;
 
     // Check if camera is already running to prevent unnecessary restarts
@@ -1240,7 +1250,8 @@ const ChatHeader = ({
       // newly granted stream after the message page has started cleaning up.
       if (
         startId !== cameraStartIdRef.current ||
-        !cameraVideoRef.current
+        !cameraVideoRef.current ||
+        isCallBusy()
       ) {
         emotionStream.getTracks().forEach((track) => track.stop());
         return;
@@ -2047,7 +2058,7 @@ const ChatHeader = ({
       typeof currentConnectId === "string" &&
       currentConnectId.length > 0;
 
-    if (room && settings.isShareEmotion && hasValidIds) {
+    if (room && settings.isShareEmotion && hasValidIds && !callBusy) {
       // Only start if camera is not already running (prevent unnecessary restarts)
       if (!isCameraRunningRef.current) {
         (async () => {
@@ -2091,6 +2102,7 @@ const ChatHeader = ({
     connectProfile,
     startVideo,
     startEmotionDetection,
+    callBusy,
   ]);
 
   useEffect(() => {

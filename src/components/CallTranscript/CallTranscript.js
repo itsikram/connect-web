@@ -25,6 +25,8 @@ export default function CallTranscript({ enabled, channelName, peerId, myId }) {
   };
 
   const transcribe = useComposerLiveTranscribe({
+    // Captions are part of the call, so they may listen while it runs.
+    allowDuringCall: true,
     onFinal: (text) => {
       addLine(myId, text, true);
       socket.emit("call-transcript", { to: peerId, channelName, text, isFinal: true });

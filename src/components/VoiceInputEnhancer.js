@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import useComposerLiveTranscribe from "../hooks/useComposerLiveTranscribe";
+import { refuseIfCallBusy } from "../utils/callSession";
 import "./VoiceInputEnhancer.css";
 
 // Mirrors the Expo app's VoiceTextInput: every visible text field gets a mic
@@ -451,6 +452,7 @@ export default function VoiceInputEnhancer() {
   useEffect(() => () => window.clearTimeout(longPressTimerRef.current), []);
 
   const startListening = (mic, nextLanguage) => {
+    if (refuseIfCallBusy()) return;
     targetRef.current = mic.field;
     lastFinalRef.current = "";
     baseTextRef.current = mic.field.value;
