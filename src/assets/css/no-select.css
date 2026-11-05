@@ -1,0 +1,22 @@
+/* Disable text/element selection across the whole web view.
+   Imported from src/index.js so it applies to both the full app and the
+   public pages (landing, about, public profile). */
+html,
+body {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Keep typing, caret placement and copy/paste working in form fields
+   and editable areas. */
+input,
+textarea,
+select,
+[contenteditable]:not([contenteditable='false']) {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
