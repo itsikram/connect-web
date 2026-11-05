@@ -1,16 +1,23 @@
 /**
  * Cache Manager for Posts
  * Handles caching, retrieval, and updates of post data with localStorage
+ *
+ * The cached home feed is painted at once when Home opens and is always
+ * replaced by a fresh fetch (stale-while-revalidate). It belongs to the
+ * account that saved it and is never shown to another account.
  */
+import { getSessionProfileId } from './bootCache';
 
 const CACHE_KEYS = {
   HOME_POSTS: 'cached_home_posts',
   HOME_POSTS_TIMESTAMP: 'home_posts_timestamp',
+  HOME_POSTS_OWNER: 'home_posts_owner',
   CACHE_VERSION: 'cache_version',
 };
 
-const CACHE_VERSION = '1.0';
-const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes in milliseconds
+// 1.1: entries carry the owning account (older ones had none and are dropped).
+const CACHE_VERSION = '1.1';
+const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
 class CacheManager {
   /**
@@ -41,6 +48,10 @@ class CacheManager {
         return null;
       }
 
+      if (!this.isOwnedBySession()) {
+        return null;
+      }
+
       const timeSinceCache = Date.now() - parseInt(timestamp, 10);
       if (timeSinceCache > CACHE_DURATION) {
         console.log('📦 Cache expired, clearing');
@@ -49,6 +60,7 @@ class CacheManager {
       }
 
       const posts = JSON.parse(cachedData);
+      if (!Array.isArray(posts)) return null;
       console.log('✅ Retrieved posts from cache:', posts.length);
       return posts;
     } catch (error) {
@@ -68,12 +80,30 @@ class CacheManager {
         return false;
       }
 
+      const owner = getSessionProfileId();
+      if (!owner) return false;
+
       localStorage.setItem(CACHE_KEYS.HOME_POSTS, JSON.stringify(posts));
       localStorage.setItem(CACHE_KEYS.HOME_POSTS_TIMESTAMP, Date.now().toString());
+      localStorage.setItem(CACHE_KEYS.HOME_POSTS_OWNER, owner);
       console.log('💾 Posts cached successfully:', posts.length);
       return true;
     } catch (error) {
       console.error('Error caching posts:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Whether the cached feed was saved by the account signed in now
+   * @returns {boolean}
+   */
+  static isOwnedBySession() {
+    try {
+      const owner = localStorage.getItem(CACHE_KEYS.HOME_POSTS_OWNER);
+      const session = getSessionProfileId();
+      return Boolean(owner && session && owner === session);
+    } catch (error) {
       return false;
     }
   }
@@ -87,7 +117,7 @@ class CacheManager {
       const cachedData = localStorage.getItem(CACHE_KEYS.HOME_POSTS);
       const timestamp = localStorage.getItem(CACHE_KEYS.HOME_POSTS_TIMESTAMP);
 
-      if (!cachedData || !timestamp) {
+      if (!cachedData || !timestamp || !this.isOwnedBySession()) {
         return false;
       }
 
@@ -123,6 +153,7 @@ class CacheManager {
     try {
       localStorage.removeItem(CACHE_KEYS.HOME_POSTS);
       localStorage.removeItem(CACHE_KEYS.HOME_POSTS_TIMESTAMP);
+      localStorage.removeItem(CACHE_KEYS.HOME_POSTS_OWNER);
       console.log('🗑️ Cache cleared');
     } catch (error) {
       console.error('Error clearing cache:', error);

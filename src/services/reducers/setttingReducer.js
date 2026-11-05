@@ -1,7 +1,8 @@
 import { SET_MODE_SHARE, SET_NOTIFICATION, UPDATE_OPTION, LOAD_SETTINGS } from "../constants/settingConsts";
 import { CLEAR_ALL_STATE } from '../constants/authConsts';
+import { BOOT_SLICES, readBootCache } from "../../utils/bootCache";
 
-const initialState = {
+export const defaultSettings = {
     isShareEmotion: false,
     isShareLocation: true,
     showIsTyping: true,
@@ -27,6 +28,14 @@ const initialState = {
     connectChatSettings: {},
 };
 
+// The signed-in account's last known settings (theme, ringtone, chat
+// background...) until Main.js loads the current ones from the server.
+const cachedSettings = readBootCache(BOOT_SLICES.SETTINGS);
+const initialState =
+    cachedSettings && typeof cachedSettings === 'object' && !Array.isArray(cachedSettings)
+        ? { ...defaultSettings, ...cachedSettings }
+        : defaultSettings;
+
 const settingReducer = (state = initialState, action) => {
     switch (action.type) {
         case SET_MODE_SHARE:
@@ -41,12 +50,12 @@ const settingReducer = (state = initialState, action) => {
 
         case LOAD_SETTINGS:
             return {
-                ...initialState,
+                ...defaultSettings,
                 ...action.payload,
             };
 
         case CLEAR_ALL_STATE:
-            return initialState;
+            return defaultSettings;
 
         default:
             return state;

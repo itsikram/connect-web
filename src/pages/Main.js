@@ -60,11 +60,18 @@ import audioPreloader from "../utils/audioPreloader";
 import { playBumpSound, resumeAudioFromGesture } from "../utils/audioUnlock";
 import IosAddToHomeScreen from "../components/IosAddToHomeScreen";
 import WatchPipPlayer from "../components/watch/WatchPipPlayer";
-import { useDispatch, useSelector } from "react-redux";
+import { useDispatch, useSelector, useStore } from "react-redux";
 import api from "../api/api";
 import Wallet from "./Wallet";
 import ConnectCacheManager from "../utils/connectCacheManager";
-import { fetchChatListCached, fetchProfileCached, primeCachedResource } from "../utils/requestCache";
+import {
+  fetchChatListCached,
+  fetchProfileCached,
+  peekCachedResource,
+  primeCachedResource,
+} from "../utils/requestCache";
+import { BOOT_OWNER_ID } from "../utils/bootCache";
+import { clearAllState } from "../services/actions/authActions";
 import {
   getCachedProfile,
   getPorfileReq,
@@ -106,6 +113,10 @@ import { startPresence } from "../utils/presence";
 import SavedVideos from "./SavedVideos.js";
 import SingleVideo from "../components/downloads/SingleVideo.js";
 import FeatureGate from "../components/FeatureGate.js";
+
+// How old a remembered chat list may be and still be painted at start-up
+// while the current one loads.
+const CHAT_LIST_STALE_MS = 3 * 24 * 60 * 60 * 1000;
 
 const Profile = lazy(() => import("./Profile"));
 const Connects = lazy(() => import("./Connects"));
@@ -388,6 +399,7 @@ let lastNotificationFetchTime = getLastNotificationFetchTime(); // Timestamp of 
 
 const Main = () => {
   const dispatch = useDispatch();
+  const store = useStore();
   const { token, user, isAuthenticated, logout, loading: authLoading } = useAuth();
   // Logged-out, online visitors (and search crawlers) get the public landing
   // page and public profiles; offline visitors fall through to
@@ -659,6 +671,20 @@ const Main = () => {
 
   const profileId = user?.profile;
 
+  // The store starts with the cached data of whoever was signed in when the
+  // page loaded (see utils/bootCache.js). If a different account signs in
+  // without a reload, drop all of it before that account's data loads.
+  // Declared before the effects that fetch the signed-in account's data.
+  const storeOwnerRef = useRef(BOOT_OWNER_ID);
+  useEffect(() => {
+    if (!isAuthenticated || !profileId) return;
+    const owner = String(profileId);
+    if (storeOwnerRef.current && storeOwnerRef.current !== owner) {
+      dispatch(clearAllState());
+    }
+    storeOwnerRef.current = owner;
+  }, [profileId, isAuthenticated, dispatch]);
+
   useEffect(() => {
     isTabActiveRef.current = isTabActive;
   }, [isTabActive]);
@@ -805,7 +831,19 @@ const Main = () => {
 
     const abortController = new AbortController();
 
-    fetchChatListCached(profileId, { ttlMs: 30000, storageTtlMs: 120000 })
+    // Paint the last known chat list at once (only into an empty list, so a
+    // re-run never rolls back live updates), then always load the current one:
+    // messages may have arrived while the app was closed.
+    const chatListKey = `chatList:${profileId}`;
+    const currentContacts = store.getState().message;
+    if (!Array.isArray(currentContacts) || currentContacts.length === 0) {
+      const lastKnownContacts = peekCachedResource(chatListKey, CHAT_LIST_STALE_MS);
+      if (Array.isArray(lastKnownContacts) && lastKnownContacts.length > 0) {
+        dispatch(addMessages(lastKnownContacts, true));
+      }
+    }
+
+    fetchChatListCached(profileId, { forceRefresh: true })
       .then((contacts) => {
         if (!Array.isArray(contacts) || contacts.length === 0) return;
         dispatch(addMessages(contacts, true));
@@ -838,7 +876,7 @@ const Main = () => {
     return () => {
       abortController.abort();
     };
-  }, [profileId, token, isAuthenticated, dispatch]);
+  }, [profileId, token, isAuthenticated, dispatch, store]);
 
   // Unlock audio on first user interaction (autoplay policy)
   useEffect(() => {
@@ -2127,14 +2165,19 @@ const Main = () => {
 
     if (!token || !profileId || !isAuthenticated) return;
 
-    const cachedProfile = getCachedProfile();
-    if (cachedProfile?._id) {
-      dispatch(getProfileSuccess(cachedProfile));
-    } else {
-      dispatch(getPorfileReq());
+    // Show the signed-in account's cached profile (the store usually already
+    // starts with it), then always load the current one from the server.
+    const shownProfileId = String(store.getState().profile?._id || "");
+    if (shownProfileId !== String(profileId)) {
+      const cachedProfile = getCachedProfile(profileId);
+      if (cachedProfile?._id) {
+        dispatch(getProfileSuccess(cachedProfile));
+      } else {
+        dispatch(getPorfileReq());
+      }
     }
 
-    fetchProfileCached(profileId, { ttlMs: 60000, storageTtlMs: 300000 })
+    fetchProfileCached(profileId, { forceRefresh: true })
       .then((profileData) => {
         if (profileData) {
           dispatch(getProfileSuccess(profileData));
@@ -2150,7 +2193,7 @@ const Main = () => {
     }
 
     // Do not depend on `useParams()` object — it is often a new reference each render and would re-POST /profile endlessly.
-  }, [token, profileId, isAuthenticated, dispatch]);
+  }, [token, profileId, isAuthenticated, dispatch, store]);
 
   useEffect(() => {
     if (!isAuthenticated || !profileId) return undefined;

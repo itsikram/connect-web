@@ -393,6 +393,8 @@ export const AuthProvider = ({ children }) => {
       if (profileId) {
         invalidateCachedResource(`profile:${profileId}`);
         invalidateCachedResource(`profileLite:${profileId}`);
+        invalidateCachedResource(`chatList:${profileId}`);
+        invalidateCachedResource(`homeStories:${profileId}`);
         ProfileCacheManager.clearCache();
         const api = require("../api/api").default;
         const webNotificationService =

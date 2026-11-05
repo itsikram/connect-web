@@ -6,6 +6,11 @@ const inflightRequests = new Map();
 
 const now = () => Date.now();
 
+// Past its TTL an entry no longer counts as fresh, but it is kept so the next
+// start can paint it while the fresh copy loads (see peekCachedResource), and
+// so it is still there when the network is not. Only entries this old go.
+const STALE_ENTRY_LIMIT_MS = 7 * 24 * 60 * 60 * 1000;
+
 const readStorageCache = (key, ttlMs) => {
   try {
     const raw = localStorage.getItem(key);
@@ -14,12 +19,16 @@ const readStorageCache = (key, ttlMs) => {
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return null;
 
-    if (ttlMs && parsed.timestamp && now() - parsed.timestamp > ttlMs) {
+    const age = parsed.timestamp ? now() - parsed.timestamp : 0;
+    if (age > STALE_ENTRY_LIMIT_MS) {
       localStorage.removeItem(key);
       return null;
     }
+    if (ttlMs && parsed.timestamp && age > ttlMs) {
+      return null;
+    }
 
-    return parsed.data;
+    return parsed.data ?? null;
   } catch (error) {
     return null;
   }
@@ -95,6 +104,16 @@ const getCachedResource = async ({
   } finally {
     inflightRequests.delete(key);
   }
+};
+
+// The last stored copy of a resource even when it is past its TTL (up to
+// `maxAgeMs` old), for painting at once before a fresh fetch replaces it.
+// Never triggers a request.
+export const peekCachedResource = (key, maxAgeMs = STALE_ENTRY_LIMIT_MS) => {
+  if (!key) return null;
+  const memoryData = readMemoryCache(key, maxAgeMs);
+  if (memoryData !== null) return memoryData;
+  return readStorageCache(key, maxAgeMs);
 };
 
 export const primeCachedResource = (key, data, storageKey = key) => {

@@ -1,92 +1,59 @@
-const CACHE_KEYS = {
-  PROFILE: "cachedProfileData",
-  PROFILE_TIMESTAMP: "cachedProfileDataTimestamp",
-  CACHE_VERSION: "profile_cache_version",
-};
+import {
+  BOOT_SLICES,
+  getSessionProfileId,
+  readBootCache,
+  removeBootCache,
+  writeBootCache,
+} from "./bootCache";
 
-const CACHE_VERSION = "1.0";
-const PROFILE_CACHE_DURATION = 30 * 60 * 1000;
+// Keys used by the old cache, which was not tied to an account and expired
+// after 30 minutes. Removed on load so they can never be read again.
+const LEGACY_KEYS = [
+  "cachedProfileData",
+  "cachedProfileDataTimestamp",
+  "profile_cache_version",
+];
+
+// Fields of the Redux profile slice that describe a request, not the profile.
+const TRANSIENT_FIELDS = ["isLoading", "error", "isLoggedIn"];
+
+const profileIdOf = (profile) =>
+  profile && typeof profile === "object" ? String(profile._id || profile.id || "") : "";
 
 class ProfileCacheManager {
   static initialize() {
     try {
-      const cachedVersion = localStorage.getItem(CACHE_KEYS.CACHE_VERSION);
-      if (cachedVersion !== CACHE_VERSION) {
-        this.clearCache();
-        localStorage.setItem(CACHE_KEYS.CACHE_VERSION, CACHE_VERSION);
-      }
+      LEGACY_KEYS.forEach((key) => localStorage.removeItem(key));
     } catch (error) {
-      console.warn("Profile cache initialization error:", error);
+      // ignore
     }
   }
 
-  static getCachedProfile() {
-    try {
-      const cachedProfile = localStorage.getItem(CACHE_KEYS.PROFILE);
-      const timestamp = localStorage.getItem(CACHE_KEYS.PROFILE_TIMESTAMP);
-
-      if (!cachedProfile || !timestamp) {
-        return null;
-      }
-
-      const timeSinceCache = Date.now() - parseInt(timestamp, 10);
-      if (timeSinceCache > PROFILE_CACHE_DURATION) {
-        this.clearCache();
-        return null;
-      }
-
-      const parsedProfile = JSON.parse(cachedProfile);
-      return parsedProfile && typeof parsedProfile === "object"
-        ? parsedProfile
-        : null;
-    } catch (error) {
-      console.error("Error reading profile from localStorage:", error);
-      return null;
-    }
+  // The signed-in account's own profile, or null. Never returns a profile
+  // that belongs to a different account than `profileId` (default: the
+  // account signed in right now).
+  static getCachedProfile(profileId = getSessionProfileId()) {
+    const owner = String(profileId || "");
+    if (!owner) return null;
+    const profile = readBootCache(BOOT_SLICES.PROFILE, { ownerId: owner });
+    return profileIdOf(profile) === owner ? profile : null;
   }
 
+  // Only the signed-in account's own profile is stored.
   static setCachedProfile(profile) {
-    try {
-      if (!profile || typeof profile !== "object") {
-        return false;
-      }
-
-      localStorage.setItem(CACHE_KEYS.PROFILE, JSON.stringify(profile));
-      localStorage.setItem(
-        CACHE_KEYS.PROFILE_TIMESTAMP,
-        Date.now().toString(),
-      );
-      return true;
-    } catch (error) {
-      console.error("Error saving profile to localStorage:", error);
-      return false;
-    }
+    const owner = getSessionProfileId();
+    if (!owner || profileIdOf(profile) !== owner) return false;
+    const clean = { ...profile };
+    TRANSIENT_FIELDS.forEach((field) => delete clean[field]);
+    return writeBootCache(BOOT_SLICES.PROFILE, clean, owner);
   }
 
   static isCacheValid() {
-    try {
-      const cachedProfile = localStorage.getItem(CACHE_KEYS.PROFILE);
-      const timestamp = localStorage.getItem(CACHE_KEYS.PROFILE_TIMESTAMP);
-
-      if (!cachedProfile || !timestamp) {
-        return false;
-      }
-
-      const timeSinceCache = Date.now() - parseInt(timestamp, 10);
-      return timeSinceCache <= PROFILE_CACHE_DURATION;
-    } catch (error) {
-      console.warn("Error checking profile cache validity:", error);
-      return false;
-    }
+    return Boolean(this.getCachedProfile());
   }
 
   static clearCache() {
-    try {
-      localStorage.removeItem(CACHE_KEYS.PROFILE);
-      localStorage.removeItem(CACHE_KEYS.PROFILE_TIMESTAMP);
-    } catch (error) {
-      console.error("Error clearing cached profile:", error);
-    }
+    removeBootCache(BOOT_SLICES.PROFILE);
   }
 }
 

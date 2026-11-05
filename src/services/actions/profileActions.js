@@ -1,8 +1,9 @@
 import {GET_PROFILE_REQ,GET_PROFILE_FAILED,GET_PROFILE_SUCCESS} from '../constants/profileConsts'
 import ProfileCacheManager from '../../utils/profileCacheManager'
 
-export const getCachedProfile = () => {
-    return ProfileCacheManager.getCachedProfile()
+// Only ever the signed-in account's own profile (see profileCacheManager).
+export const getCachedProfile = (profileId) => {
+    return ProfileCacheManager.getCachedProfile(profileId || undefined)
 }
 
 export const clearCachedProfile = () => {
@@ -19,7 +20,7 @@ export const getProfileSuccess = (profileData) => {
     let coverPicUrl = profileData.coverPic
 
     let profile = {...profileData, coverPic: coverPicUrl,profilePic: profilePicUrl}
-    ProfileCacheManager.setCachedProfile(profile)
+    // Cached by bootCacheMiddleware once merged into the store.
     return {
         type: GET_PROFILE_SUCCESS,
         payload: profile

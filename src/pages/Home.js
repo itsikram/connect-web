@@ -14,9 +14,13 @@ import StoryListSkleton from "../skletons/story/StoryListSkleton";
 import { loadPosts } from "../services/actions/postActions"
 import { getCachedProfile, getProfileSuccess } from "../services/actions/profileActions"
 import CacheManager from "../utils/cacheManager"
-import { fetchHomeStoriesCached } from "../utils/requestCache"
+import { fetchHomeStoriesCached, peekCachedResource } from "../utils/requestCache"
 import FeedBoostCards from "../components/feed/FeedBoostCards"
 
+
+// Stories last a day; a remembered list this recent is painted at once while
+// the current one loads, instead of a skeleton.
+const STORIES_STALE_MS = 6 * 60 * 60 * 1000;
 
 // The fixed 280px side rails only fit beside the feed on wide screens.
 const SIDE_RAILS_HIDDEN_QUERY = '(max-width: 1199.98px)';
@@ -47,8 +51,12 @@ const Home = () => {
     // setting state to store posts data
 
     const [newsFeeds, setNewsFeed] = useState([])
-    const [stories, setStories] = useState([])
-    const [storiesLoading, setStoriesLoading] = useState(true)
+    const [lastKnownStories] = useState(() => {
+        const cached = peekCachedResource(`homeStories:${effectiveProfileId}`, STORIES_STALE_MS)
+        return Array.isArray(cached) ? cached : null
+    })
+    const [stories, setStories] = useState(lastKnownStories || [])
+    const [storiesLoading, setStoriesLoading] = useState(lastKnownStories === null)
     const [lastVisitPost, setLastVisitPost] = useState(false)
     const [feedLoaded, setFeedLoaded] = useState(false)
     const [pageNumber, setPageNumber] = useState(0)

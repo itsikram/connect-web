@@ -8,8 +8,16 @@ import {
     DELETE_NOTIFICATION,
 } from "../constants/notificationConsts";
 import { CLEAR_ALL_STATE } from '../constants/authConsts';
+import { BOOT_SLICES, readBootCache } from '../../utils/bootCache';
 
-let initialState = []
+const emptyState = []
+
+// The signed-in account's last known notifications, so the bell shows its
+// list and count at once. Main.js replaces them with the server's list.
+const cachedNotifications = readBootCache(BOOT_SLICES.NOTIFICATIONS)
+const initialState = Array.isArray(cachedNotifications)
+    ? cachedNotifications.filter((noti) => noti && noti._id)
+    : emptyState
 
 const notificaitonReducer = (state = initialState, action) => {
     switch (action.type) {
@@ -57,7 +65,7 @@ const notificaitonReducer = (state = initialState, action) => {
             return []
 
         case CLEAR_ALL_STATE:
-            return initialState
+            return emptyState
 
         default:
             return state
