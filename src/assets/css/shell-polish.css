@@ -1,0 +1,164 @@
+/*
+ * App shell polish: header layout on phones, the back button, and light
+ * mode for the header. Loaded after every other global stylesheet (see
+ * App.js), so equal-specificity rules here win; the older header rules use
+ * !important in places, which is why some light-mode rules below need it too.
+ */
+
+/* ---------- Phones: header layout + back button ---------- */
+
+@media (max-width: 768px) {
+  /* The right side (bell + photo) takes only the room it needs, so the left
+     side has space for back, logo, apps and search. */
+  #header .header-container > .row {
+    flex-wrap: nowrap;
+  }
+
+  #header .header-container > .row > .col.header-right {
+    flex: 0 0 auto;
+    width: auto;
+  }
+
+  #header .header-container > .row > .col:first-child {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+}
+
+#header .header-left .header-back-container {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-right: 10px;
+}
+
+#header .header-left.header-search-active .header-back-container {
+  display: none;
+}
+
+.header-back-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 212, 255, 0.35);
+  background: rgba(0, 212, 255, 0.14);
+  color: #00d4ff;
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.12s ease, background-color 0.15s ease;
+}
+
+.header-back-button:hover {
+  background: rgba(0, 212, 255, 0.22);
+}
+
+.header-back-button:active {
+  transform: scale(0.92);
+}
+
+@media (max-width: 359px) {
+  #header .header-left .header-back-container {
+    margin-right: 6px;
+  }
+
+  #header .header-container .header-left .header-app-menu-container {
+    margin-left: 6px;
+  }
+}
+
+/* ---------- Light mode header ---------- */
+
+/* The sticky (scrolled) header and the installed app forced the dark
+   background with !important, so light mode turned dark again on scroll. */
+html[data-theme="light"] body #header,
+html[data-theme="light"] body #header.sticky-header {
+  background: rgba(255, 255, 255, 0.97) !important;
+  border-bottom: 1px solid #e4e6eb !important;
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.07) !important;
+}
+
+html[data-theme="light"].standalone-pwa body #header,
+html[data-theme="light"].standalone-ios body #header {
+  background: #ffffff !important;
+}
+
+/* Round header buttons: light grey with dark icons instead of dark-mode
+   grey-on-grey, which nearly disappeared on the white header. */
+html[data-theme="light"] #header .header-app-menu-container,
+html[data-theme="light"] #header .header-quick-menu-item:not(.item-profile),
+html[data-theme="light"] #header .header-search-container:not(.active-mobile) {
+  background: #eef0f3 !important;
+  border-color: #e1e4e8 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html[data-theme="light"] #header .header-mm-button {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="light"] #header .header-mm-button i,
+html[data-theme="light"] #header .header-quick-menu-icon,
+html[data-theme="light"] #header .header-search-container:not(.active-mobile) .header-search-icon {
+  color: #1c1e21 !important;
+}
+
+html[data-theme="light"] #header .header-quick-menu-item.active {
+  background: rgba(0, 153, 204, 0.14) !important;
+  border-color: rgba(0, 153, 204, 0.35) !important;
+}
+
+html[data-theme="light"] #header .header-quick-menu-item.active .header-quick-menu-icon,
+html[data-theme="light"] #header .header-mm-button.active i {
+  color: #0086b3 !important;
+}
+
+@media (hover: hover) {
+  html[data-theme="light"] #header .header-app-menu-container:hover,
+  html[data-theme="light"] #header .header-quick-menu-item:not(.item-profile):hover {
+    background: #e4e6eb !important;
+  }
+
+  html[data-theme="light"] #header .header-mm-button:hover i,
+  html[data-theme="light"] #header .header-quick-menu-item:hover .header-quick-menu-icon {
+    color: #0086b3 !important;
+  }
+}
+
+html[data-theme="light"] .header-back-button {
+  background: rgba(0, 153, 204, 0.12);
+  border-color: rgba(0, 153, 204, 0.35);
+  color: #0086b3;
+}
+
+/* Desktop search box: typed text was light-on-light in light mode. The
+   phone search sheet keeps its dark style, so this is desktop only. */
+@media (min-width: 769px) {
+  html[data-theme="light"] #header #header-search,
+  html[data-theme="light"] #header #header-search:focus {
+    color: #1c1e21 !important;
+  }
+
+  html[data-theme="light"] #header #header-search::placeholder {
+    color: #65676b;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .header-back-button {
+    transition: none;
+  }
+
+  .header-back-button:active {
+    transform: none;
+  }
+}

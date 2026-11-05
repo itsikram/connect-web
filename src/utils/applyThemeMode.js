@@ -7,9 +7,21 @@ const systemQuery =
 
 let followingSystem = false;
 
+// Phone status bar / browser bar colour, matched to the header so the top of
+// the screen reads as one bar (Android and the installed app use this).
+const THEME_BAR_COLORS = { dark: '#1e1f20', light: '#ffffff' };
+
+const setThemeBarColor = (mode) => {
+    const color = THEME_BAR_COLORS[mode] || THEME_BAR_COLORS.dark;
+    document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
+        meta.setAttribute('content', color);
+    });
+};
+
 const setTheme = (mode) => {
     document.documentElement.setAttribute('data-theme', mode);
     document.body.setAttribute('data-theme', mode);
+    setThemeBarColor(mode);
 };
 
 const onSystemThemeChange = (event) => {

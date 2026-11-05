@@ -13,6 +13,7 @@ import useIsMobile from "../../utils/useIsMobile";
 import AppMenuModal from "./AppMenuModal";
 import config from "../../config/config.json";
 import { getProfilePath } from "../../utils/profilePath";
+import { backFallbackFor, isTabRoute } from "../MobileBottomNav/mobileTabs";
 
 const RECENT_SEARCH_KEY = "headerRecentSearches";
 const MAX_RECENT_SEARCHES = 8;
@@ -266,6 +267,32 @@ let HeaderLeft = ({ onAIAgentOpen, onAIAgentVoice }) => {
     return () => window.removeEventListener("openAIAgent", openAgent);
   }, [onAIAgentOpen]);
 
+  // "Ask by voice" on the Menu page: open the agent already listening, the
+  // same as long-pressing the logo. preventDefault tells the sender it was
+  // handled.
+  useEffect(() => {
+    const openAgentVoice = (event) => {
+      event.preventDefault();
+      setIsAppMenuOpen(false);
+      if (onAIAgentVoice) onAIAgentVoice();
+      else onAIAgentOpen?.();
+    };
+    window.addEventListener("openAIAgentVoice", openAgentVoice);
+    return () => window.removeEventListener("openAIAgentVoice", openAgentVoice);
+  }, [onAIAgentOpen, onAIAgentVoice]);
+
+  // Phones (and the installed iPhone app, which has no browser back button)
+  // get a back arrow on every page that is not one of the bottom-bar tabs.
+  const showBackButton = isMobile && !isTabRoute(location.pathname);
+  const goBack = useCallback(() => {
+    const historyIndex = window.history.state?.idx;
+    if (typeof historyIndex === "number" && historyIndex > 0) {
+      navigate(-1);
+    } else {
+      navigate(backFallbackFor(location.pathname), { replace: true });
+    }
+  }, [location.pathname, navigate]);
+
   const startLogoLongPress = useCallback(
     (event) => {
       if (event?.button !== undefined && event.button !== 0) return;
@@ -339,7 +366,12 @@ let HeaderLeft = ({ onAIAgentOpen, onAIAgentVoice }) => {
     };
   }, [clearLogoLongPressTimer]);
 
+  // Phones have one place for every app: the Menu page (also the last tab).
   let headerMMClick = () => {
+    if (isMobile) {
+      navigate("/menu");
+      return;
+    }
     setIsAppMenuOpen((open) => !open);
   };
   let MenuButton = () => {
@@ -350,7 +382,9 @@ let HeaderLeft = ({ onAIAgentOpen, onAIAgentVoice }) => {
           onClick={headerMMClick}
           className={`header-mm-button ${isAppMenuOpen ? "active" : ""}`}
           aria-label={isAppMenuOpen ? "Close apps menu" : "Open apps menu"}
-          aria-expanded={isAppMenuOpen}
+          aria-expanded={isMobile ? undefined : isAppMenuOpen}
+          data-speak="All apps"
+          data-speak-bn="সব অ্যাপ"
           style={{
             lineHeight: 1,
             border: "none",
@@ -650,6 +684,20 @@ let HeaderLeft = ({ onAIAgentOpen, onAIAgentVoice }) => {
         className={`header-left ${isSearchOpen ? "header-search-active" : ""}`}
         ref={searchRootRef}
       >
+        {showBackButton && (
+          <div className="header-back-container">
+            <button
+              type="button"
+              className="header-back-button"
+              onClick={goBack}
+              aria-label="Go back"
+              data-speak="Go back"
+              data-speak-bn="পেছনে যান"
+            >
+              <i className="fas fa-arrow-left" aria-hidden="true" />
+            </button>
+          </div>
+        )}
         <div
           className="header-logo-container"
           onMouseDown={handleLogoMouseDown}
@@ -754,6 +802,8 @@ let HeaderLeft = ({ onAIAgentOpen, onAIAgentVoice }) => {
             className="header-search-icon-button"
             onClick={handleSearchIconClick}
             aria-label={isMobile && !isSearchOpen ? "Open search" : "Search"}
+            data-speak="Search. Find people and videos."
+            data-speak-bn="খুঁজুন। মানুষ আর ভিডিও খুঁজুন।"
           >
             {isSearching ? (
               <i className="fal fa-circle-notch fa-spin header-search-icon" aria-hidden="true" />

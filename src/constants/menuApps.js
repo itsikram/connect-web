@@ -1,10 +1,17 @@
 /** Apps shown on the /menu page and in header / sidebar launchers. */
 
+// short    – one or two plain words for the big /menu tiles
+// say      – what "hold to hear" says (see utils/voiceHelp.js)
+// bn/sayBn – the same in Bangla, used when Bangla voice help is chosen
 export const MENU_APPS = [
   {
     key: "camera",
     name: "Camera",
+    short: "Camera",
+    bn: "ক্যামেরা",
     desc: "Capture photos and video with iOS-style filters",
+    say: "Camera. Take photos and videos.",
+    sayBn: "ক্যামেরা। ছবি আর ভিডিও তুলুন।",
     icon: "📷",
     faIcon: "fa-camera",
     href: "/camera",
@@ -14,7 +21,11 @@ export const MENU_APPS = [
   {
     key: "ludo",
     name: "Ludo Game",
+    short: "Ludo",
+    bn: "লুডু",
     desc: "Play the classic board game",
+    say: "Ludo. Play the Ludo game.",
+    sayBn: "লুডু। লুডু খেলুন।",
     icon: "🎲",
     faIcon: "fa-dice",
     href: "/ludo-game",
@@ -24,7 +35,11 @@ export const MENU_APPS = [
   {
     key: "chess",
     name: "Chess Game",
+    short: "Chess",
+    bn: "দাবা",
     desc: "Play the classic strategy game",
+    say: "Chess. Play chess.",
+    sayBn: "দাবা। দাবা খেলুন।",
     icon: "♟️",
     faIcon: "fa-chess",
     href: "/chess-game",
@@ -34,7 +49,11 @@ export const MENU_APPS = [
   {
     key: "video-player", // kept: saved app-menu orders reference this key
     name: "Media Player",
+    short: "Media Player",
+    bn: "মিডিয়া প্লেয়ার",
     desc: "Play video songs in a continuous loop",
+    say: "Media player. Play songs and videos.",
+    sayBn: "মিডিয়া প্লেয়ার। গান আর ভিডিও চালান।",
     icon: "🎬",
     faIcon: "fa-play-circle",
     href: "/media-player",
@@ -44,7 +63,11 @@ export const MENU_APPS = [
   {
     key: "yt-download",
     name: "YouTube Downloader",
+    short: "YouTube Download",
+    bn: "ইউটিউব ডাউনলোড",
     desc: "Download YouTube videos in any quality",
+    say: "YouTube download. Save YouTube videos to your phone.",
+    sayBn: "ইউটিউব ডাউনলোড। ইউটিউবের ভিডিও ফোনে রাখুন।",
     icon: "⬇️",
     faIcon: "fa-download",
     href: "/yt-download",
@@ -55,7 +78,11 @@ export const MENU_APPS = [
   {
     key: "notes",
     name: "Notes",
+    short: "Notes",
+    bn: "নোট",
     desc: "Quickly capture ideas and thoughts",
+    say: "Notes. Write things down.",
+    sayBn: "নোট। দরকারি কথা লিখে রাখুন।",
     icon: "📝",
     faIcon: "fa-sticky-note",
     href: "/notes",
@@ -65,7 +92,11 @@ export const MENU_APPS = [
   {
     key: "tasks",
     name: "Tasks",
+    short: "Tasks",
+    bn: "কাজ",
     desc: "Plan your day and track progress",
+    say: "Tasks. Your list of things to do.",
+    sayBn: "কাজ। আপনার কাজের তালিকা।",
     icon: "✅",
     faIcon: "fa-tasks",
     href: "/tasks",
@@ -75,7 +106,11 @@ export const MENU_APPS = [
   {
     key: "timer",
     name: "Focus Timer",
+    short: "Timer",
+    bn: "টাইমার",
     desc: "Stay in flow with timed sessions",
+    say: "Timer. Count the time.",
+    sayBn: "টাইমার। সময় গুনুন।",
     icon: "⏱️",
     faIcon: "fa-clock",
     href: "/timer",
@@ -85,7 +120,11 @@ export const MENU_APPS = [
   {
     key: "flashcards",
     name: "Flashcards",
+    short: "Flashcards",
+    bn: "ফ্ল্যাশকার্ড",
     desc: "Memorize faster with spaced repetition",
+    say: "Flashcards. Learn and remember.",
+    sayBn: "ফ্ল্যাশকার্ড। শিখুন আর মনে রাখুন।",
     icon: "🧠",
     faIcon: "fa-clone",
     href: "/flashcards",
@@ -95,7 +134,11 @@ export const MENU_APPS = [
   {
     key: "calendar",
     name: "Calendar",
+    short: "Calendar",
+    bn: "ক্যালেন্ডার",
     desc: "See what's ahead at a glance",
+    say: "Calendar. See dates and plans.",
+    sayBn: "ক্যালেন্ডার। তারিখ আর পরিকল্পনা দেখুন।",
     icon: "📅",
     faIcon: "fa-calendar",
     href: "/calendar",
@@ -105,7 +148,11 @@ export const MENU_APPS = [
   {
     key: "habits",
     name: "Habits",
+    short: "Habits",
+    bn: "অভ্যাস",
     desc: "Build consistent study routines",
+    say: "Habits. Build good daily habits.",
+    sayBn: "অভ্যাস। প্রতিদিনের ভালো অভ্যাস গড়ুন।",
     icon: "📈",
     faIcon: "fa-chart-line",
     href: "/habits",
@@ -115,7 +162,11 @@ export const MENU_APPS = [
   {
     key: "health",
     name: "Health & Fitness",
+    short: "Health",
+    bn: "স্বাস্থ্য",
     desc: "Fitness tips, nutrition advice & wellness guides",
+    say: "Health. Exercise and health tips.",
+    sayBn: "স্বাস্থ্য। ব্যায়াম আর স্বাস্থ্যের পরামর্শ।",
     icon: "💪",
     faIcon: "fa-heartbeat",
     href: "/health",
@@ -125,7 +176,11 @@ export const MENU_APPS = [
   {
     key: "rehab",
     name: "Recovery Support",
+    short: "Recovery",
+    bn: "রিকভারি",
     desc: "24/7 addiction recovery support with AI counseling",
+    say: "Recovery. Help to quit addiction.",
+    sayBn: "রিকভারি। নেশা ছাড়তে সাহায্য।",
     icon: "🤝",
     faIcon: "fa-hand-holding-heart",
     href: "/rehab",
@@ -135,7 +190,11 @@ export const MENU_APPS = [
   {
     key: "settings",
     name: "Settings",
+    short: "Settings",
+    bn: "সেটিংস",
     desc: "Manage your profile, privacy, notifications, and preferences",
+    say: "Settings. Change your profile and the app.",
+    sayBn: "সেটিংস। প্রোফাইল আর অ্যাপ বদলান।",
     icon: "⚙️",
     faIcon: "fa-cog",
     href: "/settings",

@@ -10,12 +10,14 @@ import 'nprogress/nprogress.css';
 import './assets/css/nprogress-overrides.css';
 import './assets/css/portfolio.scss';
 import './assets/css/ui-polish.css';
+import './assets/css/shell-polish.css';
 import process from 'process';
 import { AuthProvider } from './contexts/AuthContext';
 import { CallMinimizeProvider } from './contexts/CallMinimizeContext';
 import { WatchPipProvider } from './contexts/WatchPipContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import VoiceInputEnhancer from './components/VoiceInputEnhancer';
+import VoiceHelp from './components/VoiceHelp/VoiceHelp';
 import './utils/configValidation';
 window.process = process;
 
@@ -110,6 +112,7 @@ function App() {
               {/* <SimpleEmotionTest /> */}
               <Main />
               <VoiceInputEnhancer />
+              <VoiceHelp />
               {showDownloadModal && (
                 <Suspense fallback={null}>
                   <DownloadAppModal isOpen onClose={handleCloseDownloadModal} />

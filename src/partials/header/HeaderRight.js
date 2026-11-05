@@ -20,6 +20,7 @@ import { sanitizeProfileImageUrl } from "../../utils/profileImage";
 import HeaderMessageMenu from "./HeaderMessageMenu";
 import useIsMobile from "../../utils/useIsMobile";
 import { getProfilePath } from "../../utils/profilePath";
+import ConfirmLogoutDialog from "../../components/ConfirmLogout/ConfirmLogoutDialog";
 
 const EMPTY_LIST = [];
 
@@ -221,14 +222,22 @@ let HeaderRight = ({ pendingLudoInvites = [], pendingChessInvites = [] }) => {
     navigate(profilePath);
   }, [navigate, profilePath]);
 
+  // Log out asks first (see ConfirmLogoutDialog).
+  const [confirmLogout, setConfirmLogout] = useState(false);
   const logOutBtn = useCallback(
     (e) => {
       e.preventDefault();
-      logout();
-      navigate("/login");
+      closeMenus();
+      setConfirmLogout(true);
     },
-    [logout, navigate],
+    [closeMenus],
   );
+  const cancelLogout = useCallback(() => setConfirmLogout(false), []);
+  const confirmLogoutNow = useCallback(() => {
+    setConfirmLogout(false);
+    logout();
+    navigate("/login");
+  }, [logout, navigate]);
 
   if (!isAuthenticated) {
     return null;
@@ -348,6 +357,8 @@ let HeaderRight = ({ pendingLudoInvites = [], pendingChessInvites = [] }) => {
             title="Notifications"
             aria-expanded={isNotificationMenu}
             aria-haspopup="true"
+            data-speak="Notifications. See what is new."
+            data-speak-bn="নোটিফিকেশন। নতুন কী হলো দেখুন।"
           >
             <div className="header-quick-menu-icon">
               <i className="far fa-bell"></i>
@@ -392,6 +403,8 @@ let HeaderRight = ({ pendingLudoInvites = [], pendingChessInvites = [] }) => {
             title=""
             aria-expanded={isProfileMenu}
             aria-haspopup="true"
+            data-speak="Your profile, settings and log out."
+            data-speak-bn="আপনার প্রোফাইল, সেটিংস আর লগ আউট।"
           >
             <div className="profile-pic">
               <img src={ppUrl} alt="" referrerPolicy="no-referrer" />
@@ -448,6 +461,11 @@ let HeaderRight = ({ pendingLudoInvites = [], pendingChessInvites = [] }) => {
           )}
         </ul>
       </div>
+      <ConfirmLogoutDialog
+        open={confirmLogout}
+        onConfirm={confirmLogoutNow}
+        onCancel={cancelLogout}
+      />
     </Fragment>
   );
 };
