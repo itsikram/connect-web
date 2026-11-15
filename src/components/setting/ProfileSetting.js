@@ -193,9 +193,7 @@ const ProfileSetting = () => {
               <label htmlFor="username">Username</label>
 
               <div className="input-group">
-                <div className="input-group-prepend">
-                  <span className="input-group-text">@</span>
-                </div>
+                <span className="input-group-text">@</span>
                 <input
                   type="text"
                   className="form-control"
@@ -245,11 +243,9 @@ const ProfileSetting = () => {
               <label htmlFor="presentAddress">Present Address</label>
 
               <div className="input-group">
-                <div className="input-group-prepend">
-                  <span className="input-group-text py-3">
-                    <i className="fas fa-home"></i>
-                  </span>
-                </div>
+                <span className="input-group-text">
+                  <i className="fas fa-home"></i>
+                </span>
                 <input
                   type="text"
                   value={settings.presentAddress || ""}
@@ -265,12 +261,10 @@ const ProfileSetting = () => {
               <label htmlFor="permanentAddress">Permanent Address</label>
 
               <div className="input-group">
-                <div className="input-group-prepend">
-                  <span className="input-group-text py-3">
-                    {" "}
-                    <i className="fa fa-globe"></i>
-                  </span>
-                </div>
+                <span className="input-group-text">
+                  {" "}
+                  <i className="fa fa-globe"></i>
+                </span>
                 <input
                   value={settings.permanentAddress || ""}
                   type="text"
@@ -296,11 +290,9 @@ const ProfileSetting = () => {
                     <div key={index} className="form-group mb-2">
                       <label className="form-label">Degree</label>
                       <div className="input-group">
-                        <div className="input-group-prepend">
-                          <span className="input-group-text py-3">
-                            <i className="fas fa-graduation-cap"></i>
-                          </span>
-                        </div>
+                        <span className="input-group-text">
+                          <i className="fas fa-graduation-cap"></i>
+                        </span>
                         <input
                           type="text"
                           value={school.degree || ""}
@@ -318,11 +310,9 @@ const ProfileSetting = () => {
                     <div key={index} className="form-group mb-2">
                       <label className="form-label">School Name</label>
                       <div className="input-group">
-                        <div className="input-group-prepend">
-                          <span className="input-group-text py-3">
-                            <i className="fas fa-graduation-cap"></i>
-                          </span>
-                        </div>
+                        <span className="input-group-text">
+                          <i className="fas fa-graduation-cap"></i>
+                        </span>
                         <input
                           type="text"
                           value={school.name || ""}
@@ -356,11 +346,9 @@ const ProfileSetting = () => {
                     <div key={index} className="form-group mb-2">
                       <label className="form-label">Designation</label>
                       <div className="input-group">
-                        <div className="input-group-prepend">
-                          <span className="input-group-text py-3">
-                            <i className="fas fa-briefcase"></i>
-                          </span>
-                        </div>
+                        <span className="input-group-text">
+                          <i className="fas fa-briefcase"></i>
+                        </span>
                         <input
                           type="text"
                           value={workplace.designation || ""}
@@ -378,11 +366,9 @@ const ProfileSetting = () => {
                     <div key={index} className="form-group mb-2">
                       <label className="form-label">Company Name</label>
                       <div className="input-group">
-                        <div className="input-group-prepend">
-                          <span className="input-group-text py-3">
-                            <i className="fas fa-briefcase"></i>
-                          </span>
-                        </div>
+                        <span className="input-group-text">
+                          <i className="fas fa-briefcase"></i>
+                        </span>
                         <input
                           type="text"
                           value={workplace.name || ""}

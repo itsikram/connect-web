@@ -9753,3 +9753,22 @@ body, html, #root {
     min-width: 48px;
   }
 }
+
+/* Bootstrap 4 `.input-group-prepend/-append` wrappers don't exist in
+   Bootstrap 5: make them stretch and join their field without a seam. */
+.input-group > .input-group-prepend,
+.input-group > .input-group-append {
+  display: flex;
+}
+.input-group > .input-group-prepend > .input-group-text {
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+.input-group > .input-group-append > .input-group-text {
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+}
+.input-group > .input-group-prepend + .form-control {
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+}
