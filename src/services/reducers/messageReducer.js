@@ -1,7 +1,7 @@
-import { ADD_MESSAGE, ADD_MESSAGES, NEW_MESSAGE, SEEN_MESSAGE, EDIT_MESSAGE, MESSAGE_STATUS, MARK_ALL_READ } from "../constants/messageConsts";
+import { ADD_MESSAGE, ADD_MESSAGES, NEW_MESSAGE, SEEN_MESSAGE, EDIT_MESSAGE, MESSAGE_STATUS, MARK_ALL_READ, CONVERSATION_DELETED, MESSAGE_DELETED } from "../constants/messageConsts";
 import { applyStatusToContacts, markContactsRead, withKnownStatus } from "../../utils/messageStatus";
 import {CLEAR_ALL_STATE} from '../constants/authConsts';
-import { applyMessageEditToContacts } from "../../utils/optimisticMessage";
+import { applyMessageEditToContacts, idOf } from "../../utils/optimisticMessage";
 const initialState = []
 const messageReducer = (state = initialState, action) => {
     switch (action.type) {
@@ -135,13 +135,17 @@ const messageReducer = (state = initialState, action) => {
             const seenContact = index >= 0 ? state[index] : null
 
             if (seenContact?.messages?.length > 0) {
-                if (!seenContact.messages.some(msg => msg && msg.isSeen !== true)) return state
+                // Only what I received from them: my own messages are seen
+                // when they read them (messageSeen), not when I open the chat.
+                const isUnseenFromContact = (msg) =>
+                    msg && msg.isSeen !== true && idOf(msg.senderId) === seenId
+                if (!seenContact.messages.some(isUnseenFromContact)) return state
 
                 const nextState = state.slice()
                 nextState[index] = {
                     ...seenContact,
                     messages: seenContact.messages.map((msg) =>
-                        msg && msg.isSeen !== true ? { ...msg, isSeen: true } : msg
+                        isUnseenFromContact(msg) ? { ...msg, isSeen: true } : msg
                     )
                 }
                 return nextState
@@ -166,6 +170,29 @@ const messageReducer = (state = initialState, action) => {
         case EDIT_MESSAGE:
             // Same state object back when no contact holds the message.
             return applyMessageEditToContacts(state, action.payload)
+
+        case CONVERSATION_DELETED: {
+            // The contact stays (the server lists every connect), without messages.
+            const deletedId = idOf(action.payload?.connectId)
+            const index = state.findIndex(c => idOf(c?.person?._id) === deletedId)
+            if (!deletedId || index < 0 || !state[index].messages?.length) return state
+            const nextState = state.slice()
+            nextState[index] = { ...state[index], messages: [] }
+            return nextState
+        }
+
+        case MESSAGE_DELETED: {
+            const deletedId = idOf(action.payload?.messageId)
+            if (!deletedId) return state
+            let changed = false
+            const nextState = state.map((contact) => {
+                const messages = contact?.messages
+                if (!Array.isArray(messages) || !messages.some(m => idOf(m?._id) === deletedId)) return contact
+                changed = true
+                return { ...contact, messages: messages.filter(m => idOf(m?._id) !== deletedId) }
+            })
+            return changed ? nextState : state
+        }
 
         case CLEAR_ALL_STATE:
             return initialState

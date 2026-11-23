@@ -6,3 +6,6 @@ export const EDIT_MESSAGE = 'EDIT_MESSAGE'
 // Delivered / seen status of messages in the chat list (utils/messageStatus.js).
 export const MESSAGE_STATUS = "MESSAGE_STATUS";
 export const MARK_ALL_READ = "MARK_ALL_READ";
+// A whole conversation / one message was deleted (socket or this tab).
+export const CONVERSATION_DELETED = "CONVERSATION_DELETED";
+export const MESSAGE_DELETED = "MESSAGE_DELETED";

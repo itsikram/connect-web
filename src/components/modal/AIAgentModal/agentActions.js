@@ -60,6 +60,9 @@ import {
 import { getProfilePath } from "../../../utils/profilePath";
 import { newCallChannelName } from "../../../utils/callSession";
 
+// App languages the settings endpoint accepts (see PreferenceSetting).
+const SETTING_LANGUAGE_CODES = { english: "eng", bengali: "bn" };
+
 const CALENDAR_STORAGE_KEY = "calendarApp";
 const HABITS_STORAGE_KEY = "habitsApp";
 const HEALTH_WEIGHT_LOG_KEY = "connectWeightLog";
@@ -1139,7 +1142,7 @@ export const executeAction = async ({
 
       // ── Block ──────────────────────────────────────────────────────────────
       case "BLOCK": {
-        const res = await api.post("connect/block", { connectId: connect._id });
+        const res = await api.post("connects/block", { connectId: connect._id });
         return res.status === 200
           ? { success: true, message: `🚫 ${connectName} has been blocked.` }
           : { success: false, message: `Failed to block ${connectName}.` };
@@ -1147,7 +1150,7 @@ export const executeAction = async ({
 
       // ── Unblock ────────────────────────────────────────────────────────────
       case "UNBLOCK": {
-        const res = await api.post("connect/unblock", { connectId: connect._id });
+        const res = await api.post("connects/unblock", { connectId: connect._id });
         return res.status === 200
           ? { success: true, message: `✅ ${connectName} has been unblocked.` }
           : { success: false, message: `Failed to unblock ${connectName}.` };
@@ -2037,6 +2040,9 @@ export const executeAction = async ({
         }
         const language = patch.preferredLanguage;
         delete patch.preferredLanguage;
+        if (SETTING_LANGUAGE_CODES[language]) {
+          patch.language = SETTING_LANGUAGE_CODES[language];
+        }
         if (Object.keys(patch).length) {
           const res = await api.post("/setting/update", patch);
           if (res.data) store.dispatch(loadSettings(res.data));
@@ -2066,14 +2072,6 @@ export const executeAction = async ({
             store.dispatch(getProfileSuccess(res.data));
             invalidateGetCache("/profile");
           }
-        }
-        if (language) {
-          try {
-            await api.put("/profile/language-settings", {
-              preferredLanguage: language,
-              userId: myProfile._id,
-            });
-          } catch (_) {}
         }
         const nextRoute = route || profileRoute || "/settings";
         go(nextRoute);
@@ -2276,10 +2274,15 @@ export const executeAction = async ({
           const selectedLang = supportedLanguages.find((lang) =>
             language.includes(lang),
           );
-          await api.put("/profile/language-settings", {
-            preferredLanguage: selectedLang,
-            userId: myProfile._id,
-          });
+          const languageCode = SETTING_LANGUAGE_CODES[selectedLang];
+          if (!languageCode) {
+            return {
+              success: false,
+              message: "Connect can use English or Bangla. Which would you prefer?",
+            };
+          }
+          const res = await api.post("/setting/update", { language: languageCode });
+          if (res.data) store.dispatch(loadSettings(res.data));
           return {
             success: true,
             message: `🌐 Language preference updated to ${selectedLang}.`,

@@ -19,6 +19,8 @@ import SingleMessage from "./SingleMessage";
 import { SECURE_MESSAGE_TYPE, SECURE_PLACEHOLDER } from "./SecureMessage";
 import ChatHeader from "./ChatHeader";
 import {
+  CONVERSATION_DELETED_EVENT,
+  clearConversationCaches,
   deleteConversation,
   getDeleteConversationError,
 } from "../../utils/deleteConversation";
@@ -889,9 +891,21 @@ const StickyChatBox = ({
         ),
       );
     };
+    // Either participant deleted the whole conversation (socket for the other
+    // side and other tabs, window event for this tab).
+    const handleConversationDeleted = (data) => {
+      const payload = data?.detail || data || {};
+      if (idOf(payload.profileId) !== idOf(userId)) return;
+      if (idOf(payload.connectId) !== idOf(connectId)) return;
+      clearConversationCaches(userId, connectId);
+      cachedMessageIdsRef.current = new Set();
+      setMessages([]);
+    };
     socket.on("deleteMessage", handleDeleteMessage);
     socket.on("messageEdited", handleMessageEdited);
     socket.on("secureMessageOpened", handleSecureOpened);
+    socket.on("conversationDeleted", handleConversationDeleted);
+    window.addEventListener(CONVERSATION_DELETED_EVENT, handleConversationDeleted);
 
     const rejoinRoom = () => {
       socket.emit("joinRoom", roomId);
@@ -910,6 +924,11 @@ const StickyChatBox = ({
       socket.off("deleteMessage", handleDeleteMessage);
       socket.off("messageEdited", handleMessageEdited);
       socket.off("secureMessageOpened", handleSecureOpened);
+      socket.off("conversationDeleted", handleConversationDeleted);
+      window.removeEventListener(
+        CONVERSATION_DELETED_EVENT,
+        handleConversationDeleted,
+      );
       socket.off("connect", rejoinRoom);
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);

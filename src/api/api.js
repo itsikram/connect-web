@@ -171,6 +171,50 @@ const getRequestCacheKey = (requestConfig) => {
   return `get:${requestUrl.pathname}${requestUrl.search}:${authHeader}`;
 };
 
+// A successful write drops remembered reads of its resource family (the first
+// path segment after /api: "setting", "story", ...) and of the families it is
+// known to change, so a page reopened right after saving never shows the
+// pre-save copy.
+const WRITE_METHODS = new Set(["post", "put", "patch", "delete"]);
+const RELATED_READ_FAMILIES = {
+  connects: ["profile"],
+  react: ["story", "post", "feed", "watch"],
+  comment: ["story", "post", "feed", "watch"],
+  post: ["feed"],
+};
+// Bumped on each write, so a read that was in flight during it is not cached.
+const familyGenerations = new Map();
+
+const familyOfPath = (pathname) => {
+  const parts = String(pathname || "").split("/").filter(Boolean);
+  const apiIndex = parts.indexOf("api");
+  return (apiIndex >= 0 ? parts[apiIndex + 1] : parts[0]) || "";
+};
+
+// Cache keys are `get:<pathname><search>:<auth>`.
+const familyOfCacheKey = (key) =>
+  familyOfPath(String(key).slice(4).split(/[?:]/)[0]);
+
+const dropCachedReadsAfterWrite = (requestConfig) => {
+  let family = "";
+  try {
+    family = familyOfPath(getRequestUrl(requestConfig).pathname);
+  } catch (error) {
+    return;
+  }
+  if (!family) return;
+
+  const families = new Set([family, ...(RELATED_READ_FAMILIES[family] || [])]);
+  families.forEach((name) => {
+    familyGenerations.set(name, (familyGenerations.get(name) || 0) + 1);
+  });
+  [getResponseCache, inFlightGetRequests].forEach((map) => {
+    Array.from(map.keys()).forEach((key) => {
+      if (families.has(familyOfCacheKey(key))) map.delete(key);
+    });
+  });
+};
+
 const defaultAdapter = axios.getAdapter
   ? axios.getAdapter(api.defaults.adapter || axios.defaults.adapter)
   : api.defaults.adapter || axios.defaults.adapter;
@@ -179,11 +223,19 @@ api.defaults.adapter = async (requestConfig) => {
   const optimization = getGetRequestOptimization(requestConfig);
 
   if (!optimization) {
+    if (WRITE_METHODS.has(String(requestConfig.method || "").toLowerCase())) {
+      return defaultAdapter(requestConfig).then((response) => {
+        dropCachedReadsAfterWrite(requestConfig);
+        return response;
+      });
+    }
     return defaultAdapter(requestConfig);
   }
 
   const requestKey = getRequestCacheKey(requestConfig);
-  const cachedEntry = getResponseCache.get(requestKey);
+  // `forceRefresh` in utils/requestCache.js: always ask the server.
+  const skipCache = Boolean(requestConfig.skipGetCache);
+  const cachedEntry = skipCache ? null : getResponseCache.get(requestKey);
 
   if (optimization.cacheTtl > 0 && cachedEntry) {
     if (cachedEntry.expiresAt > Date.now()) {
@@ -193,14 +245,19 @@ api.defaults.adapter = async (requestConfig) => {
     getResponseCache.delete(requestKey);
   }
 
-  const inFlightRequest = inFlightGetRequests.get(requestKey);
+  const inFlightRequest = skipCache ? null : inFlightGetRequests.get(requestKey);
   if (inFlightRequest) {
     return inFlightRequest.then((response) => cloneAxiosResponse(response));
   }
 
+  const family = familyOfCacheKey(requestKey);
+  const generation = familyGenerations.get(family) || 0;
   const requestPromise = defaultAdapter(requestConfig)
     .then((response) => {
-      if (optimization.cacheTtl > 0) {
+      if (
+        optimization.cacheTtl > 0 &&
+        (familyGenerations.get(family) || 0) === generation
+      ) {
         getResponseCache.set(requestKey, {
           expiresAt: Date.now() + optimization.cacheTtl,
           response: cloneAxiosResponse(response),
@@ -210,7 +267,9 @@ api.defaults.adapter = async (requestConfig) => {
       return response;
     })
     .finally(() => {
-      inFlightGetRequests.delete(requestKey);
+      if (inFlightGetRequests.get(requestKey) === requestPromise) {
+        inFlightGetRequests.delete(requestKey);
+      }
     });
 
   inFlightGetRequests.set(requestKey, requestPromise);
@@ -384,7 +443,10 @@ api.interceptors.response.use(
         const userData = getUserFromStorage();
         const refreshToken = userData?.refreshToken;
 
-        if (refreshToken && !isRefreshing) {
+        if (!userData?.accessToken) {
+          // Already signed out (e.g. a request that finished after logout):
+          // nothing to clear, and auth:logout would wipe this device's data.
+        } else if (refreshToken && !isRefreshing) {
           isRefreshing = true;
 
           try {

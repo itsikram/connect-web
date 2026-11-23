@@ -1,4 +1,4 @@
-import {ADD_MESSAGE,ADD_MESSAGES,NEW_MESSAGE,SEEN_MESSAGE,EDIT_MESSAGE,MESSAGE_STATUS,MARK_ALL_READ} from '../constants/messageConsts'
+import {ADD_MESSAGE,ADD_MESSAGES,NEW_MESSAGE,SEEN_MESSAGE,EDIT_MESSAGE,MESSAGE_STATUS,MARK_ALL_READ,CONVERSATION_DELETED,MESSAGE_DELETED} from '../constants/messageConsts'
 
 export const addMessage = (message) => {
     return {
@@ -54,6 +54,22 @@ export const allMessagesRead = (myProfileId, senderIds = null) => {
         type: MARK_ALL_READ,
         payload: { senderIds },
         myProfileId,
+    }
+}
+
+// The whole conversation with connectId was deleted: its messages leave the chat list.
+export const conversationDeleted = (connectId) => {
+    return {
+        type: CONVERSATION_DELETED,
+        payload: { connectId },
+    }
+}
+
+// `deleteMessage` socket payload (the message id).
+export const messageDeleted = (messageId) => {
+    return {
+        type: MESSAGE_DELETED,
+        payload: { messageId },
     }
 }
 

@@ -18,6 +18,17 @@ const StickyChatBoxContainer = () => {
         openChatsRef.current = openChats;
     }, [openChats]);
 
+    // Another account (or nobody) is signed in now: close the previous
+    // account's chats instead of leaving its conversations on screen.
+    const lastUserIdRef = useRef(userId);
+    useEffect(() => {
+        if (lastUserIdRef.current && lastUserIdRef.current !== userId) {
+            pendingOpensRef.current.clear();
+            setOpenChats([]);
+        }
+        lastUserIdRef.current = userId;
+    }, [userId]);
+
     // Expose function to check if chat is open (for external use)
     useEffect(() => {
         window.isStickyChatOpen = (profileId) => {

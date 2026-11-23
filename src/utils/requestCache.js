@@ -67,6 +67,11 @@ const writeMemoryCache = (key, data) => {
   });
 };
 
+// Request config for a fetcher: a forced refresh also skips api.js's
+// short-lived GET response cache, or it could get the same stale copy back.
+const readConfig = (forceRefresh, config = {}) =>
+  forceRefresh ? { ...config, skipGetCache: true } : config;
+
 const getCachedResource = async ({
   key,
   storageKey = key,
@@ -86,12 +91,13 @@ const getCachedResource = async ({
     }
   }
 
-  if (inflightRequests.has(key)) {
+  // A forced refresh does not join a request that started before it.
+  if (!forceRefresh && inflightRequests.has(key)) {
     return inflightRequests.get(key);
   }
 
   const request = (async () => {
-    const data = await fetcher();
+    const data = await fetcher({ forceRefresh });
     writeMemoryCache(key, data);
     writeStorageCache(storageKey, data);
     return data;
@@ -102,7 +108,7 @@ const getCachedResource = async ({
   try {
     return await request;
   } finally {
-    inflightRequests.delete(key);
+    if (inflightRequests.get(key) === request) inflightRequests.delete(key);
   }
 };
 
@@ -145,10 +151,13 @@ export const fetchProfileCached = async (
     ttlMs,
     storageTtlMs,
     forceRefresh,
-    fetcher: async () => {
-      const response = await api.get("/profile", {
-        params: lite ? { profileId, lite: 1 } : { profileId },
-      });
+    fetcher: async ({ forceRefresh: force } = {}) => {
+      const response = await api.get(
+        "/profile",
+        readConfig(force, {
+          params: lite ? { profileId, lite: 1 } : { profileId },
+        }),
+      );
       const profile = response.data?.profile || response.data;
       if (profile && !lite) {
         writeMemoryCache(`profileLite:${profileId}`, profile);
@@ -170,8 +179,8 @@ export const fetchHomeStoriesCached = async (
     ttlMs,
     storageTtlMs,
     forceRefresh,
-    fetcher: async () => {
-      const response = await api.get("/story/");
+    fetcher: async ({ forceRefresh: force } = {}) => {
+      const response = await api.get("/story/", readConfig(force));
       return Array.isArray(response.data) ? response.data : [];
     },
   });
@@ -237,12 +246,15 @@ export const fetchOnlineStatusesCached = async (
   }
 
   const request = (async () => {
-    const response = await api.get("/profile/online-status", {
-      params:
-        missingIds.length === 1
-          ? { profileId: missingIds[0] }
-          : { profileIds: missingIds.join(",") },
-    });
+    const response = await api.get(
+      "/profile/online-status",
+      readConfig(forceRefresh, {
+        params:
+          missingIds.length === 1
+            ? { profileId: missingIds[0] }
+            : { profileIds: missingIds.join(",") },
+      }),
+    );
     const batch = parseOnlineStatusPayload(response.data, missingIds);
     missingIds.forEach((id) => {
       const status = batch[id] || { isActive: false, lastSeen: null };
@@ -272,10 +284,11 @@ export const fetchChatListCached = async (
     ttlMs,
     storageTtlMs,
     forceRefresh,
-    fetcher: async () => {
-      const response = await api.get("/message/chatList", {
-        params: { profileId },
-      });
+    fetcher: async ({ forceRefresh: force } = {}) => {
+      const response = await api.get(
+        "/message/chatList",
+        readConfig(force, { params: { profileId } }),
+      );
       const body = response.data;
       const contacts = Array.isArray(body)
         ? body
@@ -311,10 +324,11 @@ export const fetchProfileHasStoryCached = async (
     ttlMs,
     storageTtlMs,
     forceRefresh,
-    fetcher: async () => {
-      const response = await api.get("/profile/hasStory", {
-        params: { profileId },
-      });
+    fetcher: async ({ forceRefresh: force } = {}) => {
+      const response = await api.get(
+        "/profile/hasStory",
+        readConfig(force, { params: { profileId } }),
+      );
       return response.data;
     },
   });
@@ -332,10 +346,11 @@ export const fetchProfilePostsCached = async (
     ttlMs,
     storageTtlMs,
     forceRefresh,
-    fetcher: async () => {
-      const response = await api.get("/post/myPosts", {
-        params: { profile: profileId },
-      });
+    fetcher: async ({ forceRefresh: force } = {}) => {
+      const response = await api.get(
+        "/post/myPosts",
+        readConfig(force, { params: { profile: profileId } }),
+      );
       return Array.isArray(response.data) ? response.data : [];
     },
   });

@@ -67,9 +67,14 @@ import ConnectCacheManager from "../utils/connectCacheManager";
 import {
   fetchChatListCached,
   fetchProfileCached,
+  invalidateCachedResource,
   peekCachedResource,
   primeCachedResource,
 } from "../utils/requestCache";
+import {
+  CONVERSATION_DELETED_EVENT,
+  clearConversationCaches,
+} from "../utils/deleteConversation";
 import { BOOT_OWNER_ID } from "../utils/bootCache";
 import { clearAllState } from "../services/actions/authActions";
 import {
@@ -85,6 +90,8 @@ import {
 import {
   addMessages,
   allMessagesRead,
+  conversationDeleted,
+  messageDeleted,
   messageEdited,
   messageStatusChanged,
   newMessage,
@@ -170,7 +177,6 @@ const MessageSetting = lazy(() => import("../components/setting/MessageSetting.j
 const PreferenceSetting = lazy(() => import("../components/setting/PreferenceSetting.js"));
 const SoundSetting = lazy(() => import("../components/setting/SoundSetting.js"));
 const CacheSetting = lazy(() => import("../components/setting/CacheSetting.js"));
-const VideoCallPage = lazy(() => import("./VideoCallPage.js"));
 const Youtebe = lazy(() => import("./Youtebe.js"));
 const LudoGame = lazy(() => import("./ludo"));
 const ChessGame = lazy(() => import("./ChessGame"));
@@ -843,9 +849,13 @@ const Main = () => {
       }
     }
 
+    // Not cancellable like the request below: drop a late answer for a
+    // session that has ended (logout / another account). An empty list is a
+    // real answer and replaces the painted one.
+    let cancelled = false;
     fetchChatListCached(profileId, { forceRefresh: true })
       .then((contacts) => {
-        if (!Array.isArray(contacts) || contacts.length === 0) return;
+        if (cancelled || !Array.isArray(contacts)) return;
         dispatch(addMessages(contacts, true));
       })
       .catch((err) => {
@@ -874,6 +884,7 @@ const Main = () => {
       });
 
     return () => {
+      cancelled = true;
       abortController.abort();
     };
   }, [profileId, token, isAuthenticated, dispatch, store]);
@@ -1420,6 +1431,33 @@ const Main = () => {
       socket.off("seenMessage", handleSeen);
       socket.off("allMessagesSeen", handleAllSeen);
       socket.off("newMessageToUser", handleIncoming);
+    };
+  }, [profileId, dispatch]);
+
+  // Deleted conversations / messages leave the header and tab badges and
+  // previews (socket for either participant, window event for this tab).
+  useEffect(() => {
+    if (!profileId) return undefined;
+
+    const handleConversationDeleted = (data) => {
+      const payload = data?.detail || data || {};
+      if (!payload.connectId || idOf(payload.profileId) !== idOf(profileId)) return;
+      clearConversationCaches(profileId, payload.connectId);
+      dispatch(conversationDeleted(payload.connectId));
+    };
+    const handleMessageDeleted = (messageId) => {
+      if (!messageId) return;
+      invalidateCachedResource(`chatList:${profileId}`);
+      dispatch(messageDeleted(messageId));
+    };
+
+    socket.on("conversationDeleted", handleConversationDeleted);
+    window.addEventListener(CONVERSATION_DELETED_EVENT, handleConversationDeleted);
+    socket.on("deleteMessage", handleMessageDeleted);
+    return () => {
+      socket.off("conversationDeleted", handleConversationDeleted);
+      window.removeEventListener(CONVERSATION_DELETED_EVENT, handleConversationDeleted);
+      socket.off("deleteMessage", handleMessageDeleted);
     };
   }, [profileId, dispatch]);
 
@@ -2575,10 +2613,6 @@ const Main = () => {
           <Route path="/">
             <Route path="menu" element={<Menu />}></Route>
             <Route path="wallet" element={<ProtectedRoute><Wallet /></ProtectedRoute>}></Route>
-            <Route
-              path="video-call"
-              element={<VideoCallPage socket={socket} />}
-            ></Route>
             <Route path="youtube" element={<Youtebe />}></Route>
             <Route path="expo" element={<ExpoConsole />}></Route>
             <Route path="download-app" element={<DownloadApp />}></Route>
@@ -2915,7 +2949,7 @@ const Main = () => {
           <LiveVoice myId={profileId}></LiveVoice>
         </Suspense>
       ) : null}
-      <StickyChatBoxContainer />
+      {isAuthenticated && profileId ? <StickyChatBoxContainer /> : null}
       {isAuthenticated && !isHeaderHiddenRoute && <MobileBottomNav />}
       {isAIAgentModalOpen && (
         <Suspense fallback={null}>

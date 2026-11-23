@@ -18,6 +18,7 @@ import {
 import { invalidateCachedResource } from "../utils/requestCache";
 import ProfileCacheManager from "../utils/profileCacheManager";
 import MessageCacheManager from "../utils/messageCacheManager";
+import ContactCacheManager from "../utils/contactCacheManager";
 import { getServerAddress } from "../utils/offlineUtils";
 // Import socket lazily to avoid circular dependency at module load time
 const getSocket = () => {
@@ -399,8 +400,12 @@ export const AuthProvider = ({ children }) => {
         const api = require("../api/api").default;
         const webNotificationService =
           require("../services/webNotificationService").default;
+        // Read now: the stored session is removed below, before these
+        // requests go out.
+        const accessToken =
+          user?.accessToken || getUserFromStorage()?.accessToken || null;
         webNotificationService
-          .cleanup(profileId, api, { removePush: true })
+          .cleanup(profileId, api, { removePush: true, token: accessToken })
           .catch(() => {});
       }
     } catch (error) {
@@ -410,6 +415,16 @@ export const AuthProvider = ({ children }) => {
       MessageCacheManager.clearAllMessageCache();
     } catch (error) {
       console.warn("Warning: Could not clear message cache:", error);
+    }
+    // Chat-list copies (MessageList's contactsData_<id> and
+    // ContactCacheManager's cached_message_contacts_<id> / active connects).
+    try {
+      ContactCacheManager.clearCache();
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith("contactsData_")) localStorage.removeItem(key);
+      });
+    } catch (error) {
+      console.warn("Warning: Could not clear contact cache:", error);
     }
 
     // Disconnect socket connection (lazy import to avoid circular dependency)

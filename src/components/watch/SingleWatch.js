@@ -282,7 +282,7 @@ const SinglePost = (watch) => {
                     {
                         label: "Yes",
                         onClick: async () => {
-                            let deleteRes = await api.post('/post/delete', { postId: watchData._id, authorId: watchData.author._id })
+                            let deleteRes = await api.post('/watch/delete', { watchId: watchData._id, authorId: watchData.author?._id || watchData.author })
                             if (deleteRes.status === 200) {
                                 $(target).parents('.nf-post').css({
                                     'min-height': '0px',

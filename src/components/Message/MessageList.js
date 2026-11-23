@@ -37,6 +37,7 @@ import {
 import { seenMessage } from "../../services/actions/messageActions";
 import { showErrorToast, showSuccessToast } from "../../utils/toastUtils";
 import MessageStatusIcon from "./MessageStatusIcon";
+import { getUserFromStorage } from "../../utils/storageUtils";
 // const isProfileActive = (id) => {
 //     return true
 //     socket.emit('is_active', { profileId: id, myId: profileId })
@@ -127,8 +128,6 @@ function getShortTimeAgo(timestamp) {
   return `${years}y`;
 }
 
-const userInfo = JSON.parse(localStorage.getItem("user") || "{}");
-const profileId = userInfo.profile;
 const MessageList = React.memo(({ onChatSelect, compact, menuStyle, showBackButton }) => {
   const [messageOption, setMessageOption] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -143,7 +142,9 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle, showBackButt
   const myId = myProfile._id;
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  const effectiveProfileId = myId || profileId;
+  // Read at render time: a module-level copy belonged to whoever was signed
+  // in when this chunk loaded (another account after logout/login).
+  const effectiveProfileId = myId || idOf(getUserFromStorage()?.profile);
 
   const cachedContacts = useMemo(() => {
     if (!effectiveProfileId) return [];
@@ -749,11 +750,11 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle, showBackButt
                     ? `${contactPerson?.user?.firstName || ""} ${contactPerson?.user?.surname || ""}`.trim()
                     : "");
                 if (!authorFullName) return null;
+                // Only a message I received can be unread; my own unseen
+                // message shows its status icon instead.
                 const isMsgSeen = contactMessages[0]
-                  ? contactMessages[0].isSeen &&
-                    idOf(contactMessages[0].receiverId) === idOf(myId)
-                    ? true
-                    : contactMessages[0].isSeen
+                  ? idOf(contactMessages[0].receiverId) !== idOf(myId) ||
+                    Boolean(contactMessages[0].isSeen)
                   : true;
                 const isActive = idOf(contactPerson._id) === idOf(params.profile);
                 const profileIsActive =
@@ -1043,11 +1044,10 @@ const MessageList = React.memo(({ onChatSelect, compact, menuStyle, showBackButt
                       ? `${contactPerson?.user?.firstName || ""} ${contactPerson?.user?.surname || ""}`.trim()
                       : "");
                   if (!authorFullName) return null;
+                  // Only a message I received can be unread.
                   const isMsgSeen = contactMessages[0]
-                    ? contactMessages[0].isSeen &&
-                      idOf(contactMessages[0].receiverId) === idOf(myId)
-                      ? true
-                      : contactMessages[0].isSeen
+                    ? idOf(contactMessages[0].receiverId) !== idOf(myId) ||
+                      Boolean(contactMessages[0].isSeen)
                     : true;
                   const isActive =
                     idOf(contactPerson._id) === idOf(params.profile);

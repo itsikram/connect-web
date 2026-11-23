@@ -2430,7 +2430,7 @@ const ChatHeader = ({
     if (!targetId || isBlocking) return;
     setIsBlocking(true);
     try {
-      const res = await api.post("connect/block", { connectId: targetId });
+      const res = await api.post("connects/block", { connectId: targetId });
       if (res.status === 200) {
         patchMyBlockedUsers(true, targetId);
         setIsChatOptionMenu(false);
@@ -2450,7 +2450,7 @@ const ChatHeader = ({
     if (!targetId || isBlocking) return;
     setIsBlocking(true);
     try {
-      const res = await api.post("connect/unblock", { connectId: targetId });
+      const res = await api.post("connects/unblock", { connectId: targetId });
       if (res.status === 200) {
         patchMyBlockedUsers(false, targetId);
         setIsChatOptionMenu(false);

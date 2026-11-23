@@ -228,7 +228,7 @@ class WebNotificationService {
     return subscription;
   }
 
-  async unsubscribeFromPush(api, profileId) {
+  async unsubscribeFromPush(api, profileId, requestConfig) {
     try {
       const registration =
         this.registration ||
@@ -240,10 +240,14 @@ class WebNotificationService {
         const endpoint = subscription.endpoint;
         await subscription.unsubscribe();
         if (api && profileId) {
-          await api.post('/web-notification/unsubscribe', {
-            profileId,
-            endpoint,
-          });
+          await api.post(
+            '/web-notification/unsubscribe',
+            {
+              profileId,
+              endpoint,
+            },
+            requestConfig,
+          );
         }
       }
       this.subscription = null;
@@ -262,12 +266,16 @@ class WebNotificationService {
     return response.data;
   }
 
-  async unregisterBrowserId(profileId, api) {
+  async unregisterBrowserId(profileId, api, requestConfig) {
     const browserId = this.getBrowserId();
-    const response = await api.post('/web-notification/unregister-browser', {
-      profileId,
-      browserId,
-    });
+    const response = await api.post(
+      '/web-notification/unregister-browser',
+      {
+        profileId,
+        browserId,
+      },
+      requestConfig,
+    );
     return response.data;
   }
 
@@ -392,12 +400,18 @@ class WebNotificationService {
     return true;
   }
 
-  async cleanup(profileId, api, { removePush = true } = {}) {
+  // `token`: logout clears the stored session before these calls go out, so
+  // the caller passes the token it read first; a 401 here must not trigger
+  // the session-expired handling.
+  async cleanup(profileId, api, { removePush = true, token = null } = {}) {
+    const requestConfig = token
+      ? { headers: { Authorization: token }, skipAuthRefresh: true }
+      : { skipAuthRefresh: true };
     try {
       if (removePush) {
-        await this.unsubscribeFromPush(api, profileId);
+        await this.unsubscribeFromPush(api, profileId, requestConfig);
       }
-      await this.unregisterBrowserId(profileId, api);
+      await this.unregisterBrowserId(profileId, api, requestConfig);
       try {
         localStorage.removeItem('connect_browser_id');
       } catch (_) {
