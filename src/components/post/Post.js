@@ -104,6 +104,16 @@ const Post = React.memo(
     let [totalComments, setTotalComments] = useState(post.comments.length);
     let [allComments, setAllComments] = useState(post.comments);
 
+    // A cached post is painted first and replaced by the fresh copy under the
+    // same key, so counts follow the incoming data rather than mount state.
+    useEffect(() => {
+      setTotalShares(Array.isArray(post?.shares) ? post.shares.length : 0);
+    }, [post?._id, post?.shares]);
+
+    useEffect(() => {
+      setSelectedAudience(post?.audience || 1);
+    }, [post?._id, post?.audience]);
+
     useEffect(() => {
       setTotalComments(post?.comments?.length || 0);
       setAllComments(Array.isArray(post?.comments) ? post.comments : []);

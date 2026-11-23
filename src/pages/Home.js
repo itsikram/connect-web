@@ -15,12 +15,26 @@ import { loadPosts } from "../services/actions/postActions"
 import { getCachedProfile, getProfileSuccess } from "../services/actions/profileActions"
 import CacheManager from "../utils/cacheManager"
 import { fetchHomeStoriesCached, peekCachedResource } from "../utils/requestCache"
+import { getSessionProfileId } from "../utils/bootCache"
 import FeedBoostCards from "../components/feed/FeedBoostCards"
 
 
-// Stories last a day; a remembered list this recent is painted at once while
-// the current one loads, instead of a skeleton.
-const STORIES_STALE_MS = 6 * 60 * 60 * 1000;
+// Stories last a day; a remembered list from within that day is painted at
+// once while the current one loads, instead of a skeleton.
+const STORY_LIFETIME_MS = 24 * 60 * 60 * 1000;
+const STORIES_STALE_MS = STORY_LIFETIME_MS;
+
+// Drops remembered stories that have run out since they were saved, so the
+// cached row never links to a story the server no longer has.
+const liveStoriesOnly = (list) => {
+    if (!Array.isArray(list)) return null
+    const cutoff = Date.now() - STORY_LIFETIME_MS
+    return list.filter((story) => {
+        if (!story || !story.author) return false
+        const created = story.createdAt ? new Date(story.createdAt).getTime() : NaN
+        return Number.isNaN(created) || created > cutoff
+    })
+}
 
 // The fixed 280px side rails only fit beside the feed on wide screens.
 const SIDE_RAILS_HIDDEN_QUERY = '(max-width: 1199.98px)';
@@ -29,8 +43,9 @@ const Home = () => {
     const dispatch = useDispatch()
     const location = useLocation()
     const myProfile = useSelector(state => state.profile)
-    const userInfo = JSON.parse(localStorage.getItem('user') || '{}')
-    const effectiveProfileId = myProfile._id || userInfo.profile || 'guest'
+    // Same id before and after the profile loads, so the stories cache key
+    // (and fetchStories) does not change mid-load.
+    const effectiveProfileId = getSessionProfileId() || myProfile._id || 'guest'
     const storyContainer = useRef()
     const postContainer = useRef()
     function scrollLeft() {
@@ -52,8 +67,10 @@ const Home = () => {
 
     const [newsFeeds, setNewsFeed] = useState([])
     const [lastKnownStories] = useState(() => {
-        const cached = peekCachedResource(`homeStories:${effectiveProfileId}`, STORIES_STALE_MS)
-        return Array.isArray(cached) ? cached : null
+        const cached = liveStoriesOnly(
+            peekCachedResource(`homeStories:${effectiveProfileId}`, STORIES_STALE_MS)
+        )
+        return cached && cached.length > 0 ? cached : null
     })
     const [stories, setStories] = useState(lastKnownStories || [])
     const [storiesLoading, setStoriesLoading] = useState(lastKnownStories === null)
@@ -153,8 +170,9 @@ const Home = () => {
             const nextStories = await fetchHomeStoriesCached(effectiveProfileId, {
                 forceRefresh,
             })
-            setStories(nextStories)
+            if (Array.isArray(nextStories)) setStories(liveStoriesOnly(nextStories))
         } catch (error) {
+            // Keep showing the remembered stories when the network fails.
             console.error('Error fetching stories:', error)
         } finally {
             setStoriesLoading(false)
@@ -163,7 +181,7 @@ const Home = () => {
 
     const memoizedStories = useMemo(() => {
         return stories.map((story, index) => {
-            return <StoryCard key={index} data={story}></StoryCard>
+            return <StoryCard key={story?._id || `story-${index}`} data={story}></StoryCard>
         })
     }, [stories])
 
@@ -229,7 +247,9 @@ const Home = () => {
         if (location.pathname !== '/') return
 
         const cachedPosts = CacheManager.getCachedPosts() || [];
-        setFeedLoaded(cachedPosts.length === 0)
+        // With a cached feed it is painted now; without one the skeleton
+        // shows until refreshFeed answers (not the empty-feed message).
+        setFeedLoaded(cachedPosts.length > 0)
         setHasNewPosts(true)
         setPageNumber(0)
         setLoadNewPosts(false)

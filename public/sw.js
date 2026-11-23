@@ -1,6 +1,10 @@
 // Service Worker for Web Push Notifications and Offline Support
 const CACHE_NAME = "connect-app-v7";
 const STATIC_CACHE_NAME = "connect-static-v7";
+// Profile pictures, post photos and story images from the image hosts. Kept
+// across app updates so the home page paints them at once, even offline.
+const IMAGE_CACHE_NAME = "connect-images-v1";
+const IMAGE_CACHE_MAX_ENTRIES = 500;
 const ASSET_MANIFEST_URL = "/asset-manifest.json";
 
 const CALL_ACTIONS = [
@@ -103,6 +107,77 @@ async function getPrecacheUrls() {
   }
 }
 
+// Remote images worth keeping: Cloudinary image uploads (their URLs carry a
+// version, so a changed picture has a new URL) and Google account avatars.
+function remoteImageKind(request, url) {
+  if (request.method !== "GET" || request.headers.has("range")) return null;
+  if (request.destination && request.destination !== "image") return null;
+  if (url.hostname === "res.cloudinary.com" && url.pathname.includes("/image/upload/")) {
+    return "immutable";
+  }
+  if (/(^|\.)googleusercontent\.com$|(^|\.)ggpht\.com$/i.test(url.hostname)) {
+    return "revalidate";
+  }
+  return null;
+}
+
+let imageTrimTimer = null;
+function scheduleImageCacheTrim() {
+  if (imageTrimTimer) return;
+  imageTrimTimer = setTimeout(async () => {
+    imageTrimTimer = null;
+    try {
+      const cache = await caches.open(IMAGE_CACHE_NAME);
+      const keys = await cache.keys();
+      const excess = keys.length - IMAGE_CACHE_MAX_ENTRIES;
+      for (let i = 0; i < excess; i += 1) {
+        await cache.delete(keys[i]);
+      }
+    } catch (_) {}
+  }, 5000);
+}
+
+// A CORS copy can be stored without the size padding browsers add to opaque
+// responses. Hosts that refuse CORS just load the normal way, uncached.
+async function fetchAndStoreImage(cache, key) {
+  const response = await fetch(key, {
+    mode: "cors",
+    credentials: "omit",
+    referrerPolicy: "no-referrer",
+  });
+  if (response && response.ok && response.type !== "opaque") {
+    try {
+      await cache.put(key, response.clone());
+      scheduleImageCacheTrim();
+    } catch (_) {}
+  }
+  return response;
+}
+
+async function respondWithCachedImage(event, request, kind) {
+  const key = request.url;
+  let cache = null;
+  try {
+    cache = await caches.open(IMAGE_CACHE_NAME);
+    const cached = await cache.match(key);
+    if (cached) {
+      if (kind === "revalidate") {
+        // Show the stored picture now; swap in a newer one for next time.
+        event.waitUntil(fetchAndStoreImage(cache, key).catch(() => {}));
+      }
+      return cached;
+    }
+  } catch (_) {}
+
+  if (cache) {
+    try {
+      const response = await fetchAndStoreImage(cache, key);
+      if (response && response.ok) return response;
+    } catch (_) {}
+  }
+  return fetch(request);
+}
+
 // Install event - cache critical resources
 self.addEventListener("install", (event) => {
   console.log("Service Worker: Installing...");
@@ -194,7 +269,11 @@ self.addEventListener("activate", (event) => {
         return Promise.all(
           cacheNames.map((cacheName) => {
             // Delete old cache versions
-            if (cacheName !== CACHE_NAME && cacheName !== STATIC_CACHE_NAME) {
+            if (
+              cacheName !== CACHE_NAME &&
+              cacheName !== STATIC_CACHE_NAME &&
+              cacheName !== IMAGE_CACHE_NAME
+            ) {
               console.log("Service Worker: Deleting old cache:", cacheName);
               return caches.delete(cacheName);
             }
@@ -237,6 +316,12 @@ self.addEventListener("fetch", (event) => {
     request.headers.has("range") ||
     url.pathname.match(/\.(mp4|m4v|mov|webm|m3u8|mp3|wav|ogg|m4a|aac)$/i)
   ) {
+    return;
+  }
+
+  const imageKind = remoteImageKind(request, url);
+  if (imageKind) {
+    event.respondWith(respondWithCachedImage(event, request, imageKind));
     return;
   }
 

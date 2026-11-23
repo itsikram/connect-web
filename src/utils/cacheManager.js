@@ -17,7 +17,9 @@ const CACHE_KEYS = {
 
 // 1.1: entries carry the owning account (older ones had none and are dropped).
 const CACHE_VERSION = '1.1';
-const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+// The cached feed is only a placeholder painted until the fresh one arrives,
+// so it is kept for a week rather than dropped after a day of not opening.
+const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000;
 
 class CacheManager {
   /**
