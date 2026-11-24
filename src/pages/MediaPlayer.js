@@ -1958,6 +1958,27 @@ const MediaPlayer = () => {
     backgroundAudio.mediaPosition.duration > 0
       ? backgroundAudio.mediaPosition.position
       : currentTime;
+  // Our own time readout: iOS hides the native control-bar times when the
+  // inline video is narrow (e.g. iPhone 12 mini).
+  const [scrubTime, setScrubTime] = useState(null);
+  const formatClock = (secs) => {
+    const t = Math.max(0, Math.floor(Number(secs) || 0));
+    const h = Math.floor(t / 3600);
+    const m = Math.floor((t % 3600) / 60);
+    const sec = String(t % 60).padStart(2, "0");
+    return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
+  };
+  const shownDuration = sessionDuration > 0 ? sessionDuration : 0;
+  const shownPosition = Math.min(
+    scrubTime ?? sessionPosition ?? 0,
+    shownDuration || Infinity,
+  );
+  const commitScrub = () => {
+    if (scrubTime == null) return;
+    seekTo({ seekTime: scrubTime });
+    setScrubTime(null);
+  };
+
   const sessionRate = backgroundAudio.mediaPosition.playing
     ? backgroundAudio.mediaPosition.playbackRate
     : playbackRate;
@@ -2399,6 +2420,35 @@ const MediaPlayer = () => {
                     </p>
                   </div>
                 </div>
+
+                {!isThisPip ? (
+                  <div className="vp-timeline">
+                    <span className="vp-time" aria-label="Elapsed time">
+                      {formatClock(shownPosition)}
+                    </span>
+                    <input
+                      type="range"
+                      className="vp-seek"
+                      min={0}
+                      max={shownDuration || 0}
+                      step="any"
+                      value={shownDuration ? shownPosition : 0}
+                      disabled={!shownDuration}
+                      aria-label="Seek"
+                      style={{
+                        "--vp-seek-pct": `${shownDuration ? (shownPosition / shownDuration) * 100 : 0}%`,
+                      }}
+                      onChange={(e) => setScrubTime(Number(e.target.value))}
+                      onPointerUp={commitScrub}
+                      onTouchEnd={commitScrub}
+                      onKeyUp={commitScrub}
+                      onBlur={commitScrub}
+                    />
+                    <span className="vp-time vp-time-total" aria-label="Duration">
+                      {formatClock(shownDuration)}
+                    </span>
+                  </div>
+                ) : null}
 
                 <div className="vp-controls">
                   <div className="vp-transport">
