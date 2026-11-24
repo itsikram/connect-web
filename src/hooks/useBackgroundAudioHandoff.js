@@ -268,8 +268,10 @@ const useBackgroundAudioHandoff = (
 
   const applyLoop = useCallback(() => {
     const audio = audioRef.current;
+    // Repeat is done by hand in onAudioEnded: iOS Safari does not reliably
+    // honour the native loop attribute for background/locked-screen audio.
     if (audio && activeOwner === ownerIdRef.current) {
-      audio.loop = !!loopRef.current;
+      audio.loop = false;
     }
   }, []);
 
@@ -667,10 +669,10 @@ const useBackgroundAudioHandoff = (
       applyLoop();
       const currentAudio = audioRef.current;
       if (loopRef.current) {
-        if (currentAudio?.paused) restartBackgroundAudio();
+        restartBackgroundAudio();
         return;
       }
-      if (!isTrueTrackEnd(currentAudio, video)) return;
+      if (!currentAudio?.ended && !isTrueTrackEnd(currentAudio, video)) return;
       if (!isPageHidden() && !backgroundActiveRef.current) return;
       const handler = onEndedRef?.current;
       if (typeof handler === "function") handler();

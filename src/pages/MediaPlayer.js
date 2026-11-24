@@ -6,7 +6,7 @@ import React, {
   useMemo,
 } from "react";
 import { useSelector } from "react-redux";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import "./MediaPlayer.css";
 import useIsMobile from "../utils/useIsMobile";
 import { useWatchPipOptional } from "../contexts/WatchPipContext";
@@ -49,7 +49,7 @@ import api from "../api/api";
 import { getYtDownloadApiUrl, normalizeServerUrl } from "../utils/offlineUtils";
 import { showErrorToast, showSuccessToast } from "../utils/toastUtils";
 import { subscribeWatchDownloads } from "../utils/watchDownloadProgress";
-import { saveVideoFromUrl } from "../utils/useSavedVideos";
+import { saveVideoFromUrl, getAllSavedVideos } from "../utils/useSavedVideos";
 import {
   isVideoFile,
   stripExtension,
@@ -66,6 +66,7 @@ import {
 } from "../utils/mediaPlayerResume";
 
 const MediaPlayer = () => {
+  const navigate = useNavigate();
   const myProfileId = useSelector((state) => state.profile?._id);
   const location = useLocation();
   const watchPip = useWatchPipOptional();
@@ -155,6 +156,35 @@ const MediaPlayer = () => {
   const folderInputRef = useRef(null);
   const blobUrlsRef = useRef(new Set());
   const [localFilesHydrated, setLocalFilesHydrated] = useState(false);
+  // Videos stored on this device (IndexedDB) play from there, never streamed.
+  // Keyed by saved-video id; values are blob: URLs.
+  const [offlineUrls, setOfflineUrls] = useState(() => new Map());
+  const refreshOfflineUrls = useCallback(() => {
+    getAllSavedVideos((rows) => {
+      const next = new Map();
+      (rows || []).forEach((row) => {
+        if (!row?.videoURL || row.id == null) return;
+        next.set(String(row.id), row.videoURL);
+        blobUrlsRef.current.add(row.videoURL);
+      });
+      setOfflineUrls((prev) => {
+        if (
+          prev.size === next.size &&
+          [...next.keys()].every((k) => prev.has(k))
+        ) {
+          next.forEach((url) => {
+            try { URL.revokeObjectURL(url); } catch (_) {}
+            blobUrlsRef.current.delete(url);
+          });
+          return prev;
+        }
+        return next;
+      });
+    });
+  }, []);
+  useEffect(() => {
+    refreshOfflineUrls();
+  }, [refreshOfflineUrls]);
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [localImport, setLocalImport] = useState(null);
 
@@ -192,6 +222,7 @@ const MediaPlayer = () => {
   const currentVideoRef = useRef(null);
   const playlistPipRef = useRef([]);
   const loopingRef = useRef(false);
+  const loadedTrackKeyRef = useRef("");
   const pipReturnRef = useRef(null);
   const currentPlaybackRef = useRef(null);
   const resumeHandledRef = useRef(false);
@@ -380,17 +411,25 @@ const MediaPlayer = () => {
     const fromLibrary = allVideos.find(
       (video) => video.id === currentPlayback.videoId,
     );
-    if (fromLibrary) {
-      return { ...fromLibrary, title: currentPlayback.title };
+    const base = fromLibrary
+      ? { ...fromLibrary, title: currentPlayback.title }
+      : {
+          id: currentPlayback.videoId,
+          url: currentPlayback.url,
+          title: currentPlayback.title,
+          thumbnail: currentPlayback.thumbnail,
+          type: currentPlayback.type,
+        };
+    // Prefer the copy saved in IndexedDB over streaming from the internet.
+    if (base.type !== "file" && offlineUrls.size) {
+      const keys = [base.sourceId, base.id, currentPlayback.videoId]
+        .filter((k) => k != null && k !== "")
+        .flatMap((k) => [String(k), String(k).replace(/^saved-/, "")]);
+      const local = keys.map((k) => offlineUrls.get(k)).find(Boolean);
+      if (local) return { ...base, url: local, online: false };
     }
-    return {
-      id: currentPlayback.videoId,
-      url: currentPlayback.url,
-      title: currentPlayback.title,
-      thumbnail: currentPlayback.thumbnail,
-      type: currentPlayback.type,
-    };
-  }, [currentPlayback, allVideos]);
+    return base;
+  }, [currentPlayback, allVideos, offlineUrls]);
 
   const currentTrackKey = currentPlayback
     ? `${currentPlayback.queueId}:${currentPlayback.url}`
@@ -648,12 +687,35 @@ const MediaPlayer = () => {
 
     video.addEventListener("canplay", onCanPlay, { once: true });
 
+    const sameTrack = loadedTrackKeyRef.current === currentTrackKey;
+    if (
+      sameTrack &&
+      video.getAttribute("src") &&
+      video.getAttribute("src") !== currentVideo.url &&
+      (!video.paused || video.currentTime > 0)
+    ) {
+      // Already playing this track; keep going rather than restarting.
+      video.removeEventListener("canplay", onCanPlay);
+      setMediaReady(true);
+      return undefined;
+    }
+    loadedTrackKeyRef.current = currentTrackKey;
     if (video.getAttribute("src") !== currentVideo.url) {
       try {
         video.pause();
       } catch (_) {}
       video.src = currentVideo.url;
       video.load();
+      // Next track while the screen is locked / app backgrounded: iOS may never
+      // load the hidden <video>, so start the background audio straight away.
+      if (
+        document.hidden &&
+        !openHoldRef.current.active &&
+        bgApiRef.current.wantPlayingRef.current
+      ) {
+        video.removeEventListener("canplay", onCanPlay);
+        onCanPlay();
+      }
     } else if (video.readyState >= 3) {
       onCanPlay();
     }
@@ -2012,12 +2074,16 @@ const MediaPlayer = () => {
     if (!target || target.saved || !target.saveId) return;
     const progress = saveDownloads[target.saveId];
     if (progress?.status === "downloading") return;
-    saveVideoFromUrl(target.saveId, target.url, {
-      _id: target.saveId,
-      caption: target.title,
-      videoUrl: target.url,
-      thumbnail: target.thumbnail,
-    });
+    Promise.resolve(
+      saveVideoFromUrl(target.saveId, target.url, {
+        _id: target.saveId,
+        caption: target.title,
+        videoUrl: target.url,
+        thumbnail: target.thumbnail,
+      }),
+    )
+      .catch(() => {})
+      .finally(refreshOfflineUrls);
   };
 
   const renderSaveButton = (item, { variant = "icon" } = {}) => {
@@ -2146,6 +2212,18 @@ const MediaPlayer = () => {
   return (
     <div className="video-player-page">
       <header className="vp-topbar">
+        <button
+          type="button"
+          className="vp-back-btn"
+          onClick={() => {
+            if (window.history.length > 1 && location.key !== "default") navigate(-1);
+            else navigate("/");
+          }}
+          aria-label="Back"
+          title="Back"
+        >
+          <i className="fas fa-arrow-left" aria-hidden="true" />
+        </button>
         <div className="vp-topbar-title">
           <h1>Media</h1>
           <p>

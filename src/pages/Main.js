@@ -2491,6 +2491,7 @@ const Main = () => {
     location.pathname.startsWith("/portfolio") ||
     location.pathname.startsWith("/youtube") ||
     location.pathname.startsWith("/camera") ||
+    location.pathname.startsWith("/media-player") ||
     location.pathname.startsWith("/expo");
 
   // Phones get a full-screen chat with its own back-button top bar instead
