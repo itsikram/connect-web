@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api from "../api/api";
+import { chatUploadForm } from "../utils/privateChatFiles";
 
 export const MAX_COMPOSER_IMAGES = 10;
 const MAX_PARALLEL_UPLOADS = 3;
@@ -14,7 +15,7 @@ const getUploadError = (error) =>
  * Uploads chat photos in the background, a few at a time, tracking per-image progress.
  * Each image: { id, previewUrl, file, status: queued|uploading|processing|done|error, progress, url, error }.
  */
-const useComposerImageUploads = () => {
+const useComposerImageUploads = (recipient) => {
   const [images, setImages] = useState([]);
   const controllersRef = useRef(new Map());
   const imagesRef = useRef(images);
@@ -33,9 +34,8 @@ const useComposerImageUploads = () => {
       patchImage(image.id, { status: "uploading", progress: 0, error: "" });
 
       try {
-        const form = new FormData();
-        form.append("image", image.file);
-        const res = await api.post("/upload", form, {
+        const form = chatUploadForm(image.file, recipient);
+        const res = await api.post("/upload/chat/image", form, {
           headers: { "Content-Type": "multipart/form-data" },
           signal: controller.signal,
           onUploadProgress: (event) => {
@@ -58,7 +58,7 @@ const useComposerImageUploads = () => {
         controllersRef.current.delete(image.id);
       }
     },
-    [patchImage],
+    [patchImage, recipient],
   );
 
   // Keep at most MAX_PARALLEL_UPLOADS in flight; start queued ones as slots free up.

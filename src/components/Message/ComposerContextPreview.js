@@ -1,3 +1,4 @@
+import { driveChatFile } from "../../utils/privateChatFiles";
 import React from "react";
 import {
   getMessageSnippet,
@@ -178,6 +179,8 @@ const ComposerContextPreview = ({
                 <span className="msg-media-skeleton-shimmer" />
               </div>
             </div>
+          ) : driveChatFile(attachmentUrl) ? (
+            <i className="fa fa-paperclip" aria-hidden="true" />
           ) : (
             <div className="composer-attach-preview">
               <img
@@ -189,7 +192,7 @@ const ComposerContextPreview = ({
           )}
           <div className="composer-attach-meta">
             <span className="composer-attach-title">
-              {uploading ? "Uploading photo" : "Photo attached"}
+              {uploading ? "Uploading attachment" : "Attachment ready"}
             </span>
             <span className="composer-attach-hint">
               {uploading ? "Almost ready…" : "Will send with your message"}

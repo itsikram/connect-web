@@ -1,3 +1,4 @@
+import { chatUploadForm, driveChatFile } from "../../utils/privateChatFiles";
 import React, { useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import api from "../../api/api";
@@ -68,7 +69,7 @@ const StickyChatFooter = ({
   const isTypingRef = useRef(false);
   const lastTypingEmitRef = useRef(0);
   const imageInput = useRef(null);
-  const imageUploads = useComposerImageUploads();
+  const imageUploads = useComposerImageUploads(connectId);
   const uploadFileInput = useRef(null);
   const emojiContainerRef = useRef(null);
   const emojiButtonRef = useRef(null);
@@ -255,6 +256,10 @@ const StickyChatFooter = ({
         return;
       }
       const photoUrls = imageUploads.readyUrls;
+      if (secureModeRef.current && !isAi && [attachmentUrl, ...photoUrls].some(driveChatFile)) {
+        showInfoToast("Turn off secure message mode to send a personal Drive attachment.");
+        return;
+      }
       if (
         isSendingRef.current ||
         (!inputValue.trim() && !attachmentUrl && photoUrls.length === 0)
@@ -389,10 +394,9 @@ const StickyChatFooter = ({
 
     setIsUploadingFile(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
+      const formData = chatUploadForm(file, connectId);
 
-      const res = await api.post("/upload/file", formData, {
+      const res = await api.post("/upload/chat/file", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
@@ -605,9 +609,8 @@ const StickyChatFooter = ({
       setIsUploadingAudio(true);
       try {
         const fileName = `voice-${Date.now()}.${mimeType.includes("ogg") ? "ogg" : mimeType.includes("mp4") ? "m4a" : "webm"}`;
-        const form = new FormData();
-        form.append("file", new File([blob], fileName, { type: mimeType }));
-        const res = await api.post("/upload/file", form, {
+        const form = chatUploadForm(new File([blob], fileName, { type: mimeType }), connectId);
+        const res = await api.post("/upload/chat/voice", form, {
           headers: { "Content-Type": "multipart/form-data" },
         });
 

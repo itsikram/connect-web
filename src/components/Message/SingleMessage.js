@@ -1,3 +1,5 @@
+import DriveChatAttachment, { useDriveChatMedia } from "./DriveChatAttachment";
+import { driveChatFile } from "../../utils/privateChatFiles";
 import React, { useEffect, useState, useRef } from "react";
 import { useSelector } from "react-redux";
 import moment from "moment";
@@ -528,7 +530,9 @@ const SingleMessage = ({
   const isSecure = isSecureMessage(msg);
   const isCallMessage = msg.messageType === "call";
   const isAudioMessage = () => !isSecure && isAudioMsg(msg);
-  const hasMedia = !isSecure && hasImageAttachment(msg);
+  const privateFile = driveChatFile(msg.attachment);
+  const voice = useDriveChatMedia(isAudioMessage() && privateFile ? msg.attachment : null);
+  const hasMedia = !isSecure && (hasImageAttachment(msg) || Boolean(privateFile));
   const hasCaption = !isSecure && Boolean(String(msg.message || "").trim());
 
   // Only the state (sealed / opened / expired) is stored; the content of a
@@ -566,10 +570,9 @@ const SingleMessage = ({
     }
   };
   const togglePlay = () => {
-    if (!audioRef.current) return;
+    if (!audioRef.current || (privateFile && !voice.media)) return;
     if (audioRef.current.paused) {
-      audioRef.current.play();
-      setIsPlaying(true);
+      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => showErrorToast("Could not play this voice message."));
     } else {
       audioRef.current.pause();
       setIsPlaying(false);
@@ -615,7 +618,8 @@ const SingleMessage = ({
   };
 
   const renderAudioContent = () => {
-    const src = msg.attachment;
+    const src = privateFile ? voice.media?.url : msg.attachment;
+    if (voice.failed) return <span>Drive voice message unavailable</span>;
     const duration = audioDuration > 0 ? audioDuration : 0;
     const current = audioCurrent > 0 ? audioCurrent : 0;
     const progressPct =
@@ -630,6 +634,7 @@ const SingleMessage = ({
         <div className={`voice-message${isPlaying ? " is-playing" : ""}`}>
           <button
             type="button"
+            disabled={Boolean(privateFile && !src)}
             onClick={togglePlay}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
@@ -834,7 +839,7 @@ const SingleMessage = ({
       ) : null}
 
       {!isSecure && !isCallMessage && !isAudioMessage() && (
-        <MessageAttachment src={msg.attachment} />
+        privateFile ? <DriveChatAttachment key={msg.attachment} reference={msg.attachment} /> : <MessageAttachment src={msg.attachment} />
       )}
 
       <div className="message-meta">

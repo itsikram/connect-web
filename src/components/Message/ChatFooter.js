@@ -1,3 +1,4 @@
+import { chatUploadForm, driveChatFile } from "../../utils/privateChatFiles";
 import React, {
   useState,
   useCallback,
@@ -95,7 +96,7 @@ const ChatFooter = ({
   const analyserRef = useRef(null);
   const audioSourceRef = useRef(null);
   const imageInput = useRef(null);
-  const imageUploads = useComposerImageUploads();
+  const imageUploads = useComposerImageUploads(connectId);
   const uploadFileInput = useRef(null);
   const micMenuRef = useRef(null);
   const micButtonRef = useRef(null);
@@ -319,6 +320,10 @@ const ChatFooter = ({
         return;
       }
       const photoUrls = imageUploads.readyUrls;
+      if (secureModeRef.current && !isAi && [attachmentUrl, ...photoUrls].some(driveChatFile)) {
+        showInfoToast("Turn off secure message mode to send a personal Drive attachment.");
+        return;
+      }
       if (attachmentUrl === UPLOAD_PLACEHOLDER) return;
 
       // Check if message is empty
@@ -856,10 +861,9 @@ const ChatFooter = ({
       setIsUploadingAudio(true);
       try {
         const fileName = `voice-${Date.now()}.${mimeType.includes("ogg") ? "ogg" : mimeType.includes("mp4") ? "m4a" : "webm"}`;
-        const form = new FormData();
-        form.append("file", new File([blob], fileName, { type: mimeType }));
+        const form = chatUploadForm(new File([blob], fileName, { type: mimeType }), connectId);
         // Show uploading placeholder spinner on send button via isUploadingAudio
-        const res = await api.post("/upload/file", form, {
+        const res = await api.post("/upload/chat/voice", form, {
           headers: { "Content-Type": "multipart/form-data" },
         });
         if (res.status === 200 && res.data?.secure_url) {
@@ -957,12 +961,11 @@ const ChatFooter = ({
       if (rawFile) {
         setIsUploadingFile(true);
         try {
-          const fileForm = new FormData();
-          fileForm.append("file", rawFile);
+          const fileForm = chatUploadForm(rawFile, connectId);
           setAttachmentUrl(UPLOAD_PLACEHOLDER);
           setIsPreview(true);
 
-          const uploadAttachmentRes = await api.post("/upload/file", fileForm, {
+          const uploadAttachmentRes = await api.post("/upload/chat/file", fileForm, {
             headers: {
               "Content-Type": "multipart/form-data",
             },
@@ -986,7 +989,7 @@ const ChatFooter = ({
         }
       }
     },
-    [sendMessage],
+    [connectId],
   );
 
   const emogiListContainer = useRef(null);

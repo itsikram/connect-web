@@ -1,4 +1,5 @@
 import isValidUrl from "./isValiUrl";
+import { driveChatFile } from "./privateChatFiles";
 
 const AUDIO_EXTENSIONS = [
   ".mp3",
@@ -21,13 +22,15 @@ export const isAudioMessage = (msg) =>
   msg?.messageType === "audio" || isAudioUrl(msg?.attachment);
 
 export const hasImageAttachment = (msg) =>
-  isValidUrl(msg?.attachment) && !isAudioMessage(msg);
+  isValidUrl(msg?.attachment) && !driveChatFile(msg?.attachment) && !isAudioMessage(msg);
 
 export const getMessageSnippet = (msg) => {
   const text = String(msg?.message || msg?.body || "").trim();
   if (text) return text;
   if (msg?.messageType === "call") return msg?.message || "Call";
   if (isAudioMessage(msg)) return "Voice message";
+  const privateFile = driveChatFile(msg?.attachment);
+  if (privateFile) return privateFile[2] === "image" ? "Photo" : "Attachment";
   if (isValidUrl(msg?.attachment)) return "Photo";
   return "Message";
 };

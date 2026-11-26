@@ -10,6 +10,7 @@ const SETTINGS_NAV = [
     { to: '/settings/preference', label: 'Preferences', icon: 'fa-sliders-h' },
     { to: '/settings/message', label: 'Messaging', icon: 'fa-comments' },
     { to: '/settings/sound', label: 'Sounds', icon: 'fa-volume-up' },
+    { to: '/settings/storage', label: 'Storage', icon: 'fa-cloud' },
     { to: '/settings/cache', label: 'Cache', icon: 'fa-database' },
 ];
 

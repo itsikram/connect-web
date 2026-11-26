@@ -1,3 +1,4 @@
+import { driveChatFile, fetchDriveChatFile } from "../utils/privateChatFiles";
 import React, {
   Fragment,
   useEffect,
@@ -173,6 +174,7 @@ const ProfileSetting = lazy(() => import("../components/setting/ProfileSetting.j
 const AccountSetting = lazy(() => import("../components/setting/AccountSetting.js"));
 const PrivacySetting = lazy(() => import("../components/setting/PrivacySetting.js"));
 const NotificationSetting = lazy(() => import("../components/setting/NotificationSetting.js"));
+const StorageSetting = lazy(() => import("../components/setting/StorageSetting"));
 const MessageSetting = lazy(() => import("../components/setting/MessageSetting.js"));
 const PreferenceSetting = lazy(() => import("../components/setting/PreferenceSetting.js"));
 const SoundSetting = lazy(() => import("../components/setting/SoundSetting.js"));
@@ -300,6 +302,7 @@ const isAudioAttachmentUrl = (url) => {
   if (!url || typeof url !== "string") return false;
   const lower = url.toLowerCase();
   return (
+    driveChatFile(url)?.[2] === "voice" ||
     lower.includes(".mp3") ||
     lower.includes(".wav") ||
     lower.includes(".ogg") ||
@@ -427,6 +430,7 @@ const Main = () => {
   const speakPlayPromiseRef = useRef(null);
   const speakPlayGenerationRef = useRef(0);
   const lastSpeakKeyRef = useRef({ key: "", at: 0 });
+  const privateSpeakUrl = useRef(null);
   const navigationProgressTimeoutRef = useRef(null);
   const [audioReady, setAudioReady] = useState(false);
 
@@ -560,6 +564,10 @@ const Main = () => {
       audio.setAttribute("webkit-playsinline", "true");
       audio.crossOrigin = "anonymous";
       document.body.appendChild(audio);
+      audio.addEventListener("ended", () => {
+        if (privateSpeakUrl.current) URL.revokeObjectURL(privateSpeakUrl.current);
+        privateSpeakUrl.current = null;
+      });
       speakAudioElement.current = audio;
     }
     return speakAudioElement.current;
@@ -622,8 +630,19 @@ const Main = () => {
       }
     } catch (_e) {}
 
+    if (privateSpeakUrl.current) URL.revokeObjectURL(privateSpeakUrl.current);
+    privateSpeakUrl.current = null;
     const currentSrc = el.currentSrc || el.src || "";
-    if (currentSrc !== resolvedSrc) {
+    if (driveChatFile(audioUrl)) {
+      try {
+        const { data } = await fetchDriveChatFile(audioUrl);
+        if (generation !== speakPlayGenerationRef.current || isCallBusy()) return true;
+        privateSpeakUrl.current = URL.createObjectURL(data);
+        el.src = privateSpeakUrl.current;
+      } catch {
+        return false;
+      }
+    } else if (currentSrc !== resolvedSrc) {
       el.src = audioUrl;
     } else {
       try {
@@ -2581,6 +2600,8 @@ const Main = () => {
         }
         speakAudioElement.current = null;
       }
+      if (privateSpeakUrl.current) URL.revokeObjectURL(privateSpeakUrl.current);
+      privateSpeakUrl.current = null;
       pendingSpeakPayloadRef.current = null;
       speakPlayPromiseRef.current = null;
       speakPlayGenerationRef.current += 1;
@@ -2927,6 +2948,7 @@ const Main = () => {
               <Route path="message" element={<MessageSetting />} />
               <Route path="preference" element={<PreferenceSetting />} />
               <Route path="sound" element={<SoundSetting />} />
+              <Route path="storage" element={<StorageSetting />} />
               <Route path="cache" element={<CacheSetting />} />
             </Route>
 
