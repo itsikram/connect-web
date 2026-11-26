@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import "./FaceCapture.css";
 import { getActiveCallKind } from "../../utils/callSession";
+import { getServerAddress } from "../../utils/offlineUtils";
 
 // ~3.4 s of frames: long enough that a blink lands inside the burst even
 // when the user reacts late to the cue (phones sample unevenly). The face
@@ -137,6 +138,16 @@ const FaceCapture = ({
       setSafe(() => setPhase("denied"));
     }
   }, [setSafe, stopCamera]);
+
+  // Let the face service load its models while the camera starts and the
+  // user frames their face, so the scan's answer does not wait on that.
+  useEffect(() => {
+    try {
+      fetch(`${getServerAddress()}/api/auth/face/warmup`, { method: "POST" }).catch(() => {});
+    } catch {
+      /* warm-up is only an optimisation */
+    }
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
