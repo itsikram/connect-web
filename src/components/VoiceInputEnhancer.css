@@ -17,10 +17,12 @@
   pointer-events: none !important;
 }
 
-/* Keep typed text clear of the in-field mic, like the app's paddingRight. */
+/* Keep typed text clear of the in-field mic, like the app's paddingRight.
+   The width is worked out per field (more when the mic sits left of the
+   field's own buttons). */
 input[data-voice-mic],
 textarea[data-voice-mic] {
-  padding-right: 36px !important;
+  padding-right: var(--voice-mic-pad, 40px) !important;
 }
 
 /* The mic made this field its parent's second-to-last child; keep the
@@ -48,7 +50,7 @@ voice-input-mic.voice-input-enhancer__mic {
   bottom: auto !important;
   box-shadow: none !important;
   box-sizing: border-box !important;
-  color: var(--primary-color, #3b82f6) !important;
+  color: var(--ui-accent, #00d4ff) !important;
   cursor: pointer;
   display: flex !important;
   flex: none !important;
@@ -89,7 +91,12 @@ voice-input-mic.voice-input-enhancer__mic > i {
 }
 
 voice-input-mic.voice-input-enhancer__mic:hover {
-  background: rgba(59, 130, 246, 0.12) !important;
+  background: rgba(0, 212, 255, 0.14) !important;
+}
+
+/* Brand cyan is too light on white; use its stronger shade there. */
+[data-theme="light"] voice-input-mic.voice-input-enhancer__mic:not(.is-listening) {
+  color: var(--ui-accent-strong, #0099cc) !important;
 }
 
 voice-input-mic.voice-input-enhancer__mic.is-listening {
@@ -149,13 +156,13 @@ voice-input-mic.voice-input-enhancer__mic:focus-visible {
 }
 
 .voice-input-enhancer__menu button i {
-  color: var(--primary-color, #3b82f6);
+  color: var(--ui-accent, #00d4ff);
   font-size: 12px;
 }
 
 .voice-input-enhancer__menu button:hover,
 .voice-input-enhancer__menu button.is-active {
-  background: rgba(59, 130, 246, 0.18);
+  background: rgba(0, 212, 255, 0.16);
 }
 
 .voice-input-enhancer__menu .voice-input-enhancer__cancel {

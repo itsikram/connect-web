@@ -23,7 +23,15 @@ const LANGUAGE_STORAGE_KEY = "voiceInputLanguage";
 const LONG_PRESS_MS = 400;
 // 32px circle flush with the field's right edge (centre 16px in).
 const MIC_SIZE = 32;
-const MIC_INSET = 0;
+// Standalone mic: a small inset from the field's right edge, where inputs
+// put their own action buttons.
+const MIC_INSET = 4;
+// Mic docked beside a field's own trailing buttons (camera, send, clear...):
+// it joins that button group, just left of the leftmost one.
+const GROUP_GAP = 2;
+const GROUP_CONTROL_SELECTOR = "button, [role='button'], a[href], label, select";
+const MAX_GROUP_LEVELS = 4;
+const MAX_GROUP_DISTANCE = 160;
 const MIN_FIELD_WIDTH = 80;
 const MIN_FIELD_HEIGHT = 24;
 const RESCAN_INTERVAL_MS = 1000;
@@ -131,6 +139,52 @@ const canAnchorTo = (host) => {
     if (window.getComputedStyle(descendant).position === "absolute") return false;
   }
   return true;
+};
+
+const hasArea = (rect) => rect.width > 0 && rect.height > 0;
+
+// The buttons a field shows at its right inside its own box (a comment
+// box's camera/send button, a clear button laid over the field's end).
+// Returns where that group starts, or null when the field has none.
+const findTrailingGroup = (field, fieldRect) => {
+  const centerY = fieldRect.top + fieldRect.height / 2;
+  const maxBoxHeight = Math.max(fieldRect.height * 2.5, fieldRect.height + 48);
+  let box = field.parentElement;
+  for (let level = 0; box && level < MAX_GROUP_LEVELS; level += 1, box = box.parentElement) {
+    if (box === document.body || box === document.documentElement) return null;
+    // Past the field's own box (a whole card or form row): stop looking.
+    if (box.getBoundingClientRect().height > maxBoxHeight) return null;
+    const otherField = [...box.querySelectorAll("input, textarea")].some((other) =>
+      other !== field && isVoiceInput(other) && hasArea(other.getBoundingClientRect()));
+    if (otherField) return null;
+    let group = null;
+    box.querySelectorAll(GROUP_CONTROL_SELECTOR).forEach((control) => {
+      if (control.closest(MIC_TAG) || control.contains(field)) return;
+      const rect = control.getBoundingClientRect();
+      if (!hasArea(rect) || rect.top > centerY || rect.bottom < centerY) return;
+      if (rect.left < fieldRect.left + fieldRect.width / 2) return;
+      if (rect.left - fieldRect.right > MAX_GROUP_DISTANCE) return;
+      if (group && rect.left >= group.left) return;
+      const style = window.getComputedStyle(control);
+      if (style.visibility === "hidden" || parseFloat(style.opacity) === 0) return;
+      group = { box, left: rect.left, centerY: rect.top + rect.height / 2 };
+    });
+    if (group) return group;
+  }
+  return null;
+};
+
+// Where the mic's centre goes for this field (viewport coordinates).
+const micSpot = (field, fieldRect) => {
+  const group = findTrailingGroup(field, fieldRect);
+  if (group) {
+    return { group, x: group.left - GROUP_GAP - MIC_SIZE / 2, y: group.centerY };
+  }
+  return {
+    group: null,
+    x: fieldRect.right - MIC_INSET - MIC_SIZE / 2,
+    y: fieldRect.top + fieldRect.height / 2,
+  };
 };
 
 export default function VoiceInputEnhancer() {
@@ -260,6 +314,7 @@ export default function VoiceInputEnhancer() {
   const removeMic = useCallback((mic) => {
     mic.el.remove();
     if (mic.padded) mic.field.removeAttribute("data-voice-mic");
+    mic.field.style.removeProperty("--voice-mic-pad");
     releaseKeptRadius(mic);
     const host = mic.anchoredHost;
     if (host) {
@@ -281,18 +336,22 @@ export default function VoiceInputEnhancer() {
     // transparent to hit-testing while we look.
     root.classList.add(MEASURING_CLASS);
     const eligible = new Map();
+    const spots = new Map();
     document.querySelectorAll("input, textarea").forEach((field) => {
       if (!isVoiceInput(field) || !field.parentElement) return;
       const rect = field.getBoundingClientRect();
       if (rect.width < MIN_FIELD_WIDTH || rect.height < MIN_FIELD_HEIGHT) return;
-      const x = rect.right - MIC_INSET - MIC_SIZE / 2;
-      const y = rect.top + rect.height / 2;
+      const spot = micSpot(field, rect);
+      const { x, y, group } = spot;
       const existing = mics.get(field);
       if (x >= 0 && y >= 0 && x < viewportWidth && y < viewportHeight) {
-        // Only show the mic where the field is actually on top: this hides it
-        // for fields that are clipped, behind a modal, or that already have
-        // their own control at the right edge.
-        eligible.set(field, document.elementFromPoint(x, y) === field);
+        // Only show the mic where its spot is really part of the field (or
+        // of the field's box, beside its buttons): this hides it for fields
+        // that are clipped or behind a modal.
+        const hit = document.elementFromPoint(x, y);
+        const show = group ? !!hit && group.box.contains(hit) : hit === field;
+        eligible.set(field, show);
+        spots.set(field, { mode: group ? "group" : "solo", overlap: rect.right - (x - MIC_SIZE / 2) });
       } else if (existing) {
         // Off screen: keep the last decision so mics don't blink at the edge.
         eligible.set(field, existing.shown);
@@ -315,35 +374,53 @@ export default function VoiceInputEnhancer() {
       attachMic(mic);
       if (mic.keptRadius && mic.el.nextElementSibling) releaseKeptRadius(mic);
       if (mic.el.hidden === show) mic.el.hidden = !show;
-      // Reserve room for the mic so typed text never runs under it.
-      if (show && !mic.padded && mic.needsPadding === undefined) {
-        const paddingRight = parseFloat(window.getComputedStyle(field).paddingRight) || 0;
-        mic.needsPadding = paddingRight < MIC_SIZE + MIC_INSET;
+      // Reserve room for the mic so typed text never runs under it. Worked
+      // out once per placement mode, so padding that resizes the field
+      // can't feed back into itself.
+      const spot = spots.get(field);
+      if (show && spot && spot.mode !== mic.padMode) {
+        if (mic.basePadding === undefined) {
+          mic.basePadding = parseFloat(window.getComputedStyle(field).paddingRight) || 0;
+        }
+        const needed = spot.overlap > 0 ? Math.ceil(spot.overlap) + 4 : 0;
+        mic.padMode = spot.mode;
+        mic.needsPadding = mic.basePadding < needed ? needed : 0;
       }
       const pad = show && !!mic.needsPadding;
+      if (pad) {
+        const value = `${mic.needsPadding}px`;
+        if (field.style.getPropertyValue("--voice-mic-pad") !== value) {
+          field.style.setProperty("--voice-mic-pad", value);
+        }
+      }
       if (pad !== mic.padded) {
         if (pad) field.setAttribute("data-voice-mic", "true");
-        else field.removeAttribute("data-voice-mic");
+        else {
+          field.removeAttribute("data-voice-mic");
+          field.style.removeProperty("--voice-mic-pad");
+        }
         mic.padded = pad;
       }
     });
 
-    // Pass 3: line each visible mic up with its field's right edge, centred
-    // vertically. Done as a correction from where it currently is, so it
-    // works whatever its containing block is; once placed, scrolling moves
-    // mic and field together and nothing needs rewriting.
+    // Pass 3: line each visible mic up with its field's right edge (or just
+    // left of the field's own buttons), centred vertically. Done as a
+    // correction from where it currently is, so it works whatever its
+    // containing block is; once placed, scrolling moves mic and field
+    // together and nothing needs rewriting.
     const placements = [];
     mics.forEach((mic) => {
       if (!mic.shown) return;
       const fieldRect = mic.field.getBoundingClientRect();
+      const spot = micSpot(mic.field, fieldRect);
       const micRect = mic.el.getBoundingClientRect();
-      placements.push({ mic, fieldRect, micRect });
+      placements.push({ mic, spot, micRect });
     });
-    placements.forEach(({ mic, fieldRect, micRect }) => {
+    placements.forEach(({ mic, spot, micRect }) => {
       if (!micRect.width) return;
       const scale = micRect.width / MIC_SIZE;
-      const wantLeft = fieldRect.right - (MIC_INSET + MIC_SIZE) * scale;
-      const wantTop = fieldRect.top + (fieldRect.height - MIC_SIZE * scale) / 2;
+      const wantLeft = spot.x - (MIC_SIZE / 2) * scale;
+      const wantTop = spot.y - (MIC_SIZE / 2) * scale;
       const left = Math.round(mic.left + (wantLeft - micRect.left) / scale);
       const top = Math.round(mic.top + (wantTop - micRect.top) / scale);
       if (left !== mic.left) {
