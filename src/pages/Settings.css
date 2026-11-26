@@ -238,6 +238,28 @@
     border-bottom-right-radius: 0 !important;
 }
 
+/* The Bengali name's mic button, in the brand colour like every input mic. */
+.setting-page .bengali-name-input-group .bengali-voice-btn {
+    border-radius: 0 12px 12px 0 !important;
+}
+
+.setting-page .bengali-name-input-group .bengali-voice-btn.is-idle {
+    background: transparent;
+    border: 1px solid var(--ui-accent, #00d4ff);
+    color: var(--ui-accent, #00d4ff);
+}
+
+.setting-page .bengali-name-input-group .bengali-voice-btn.is-idle:hover:not(:disabled),
+.setting-page .bengali-name-input-group .bengali-voice-btn.is-idle:focus-visible {
+    background: rgba(0, 212, 255, 0.14);
+    color: var(--ui-accent, #00d4ff);
+}
+
+[data-theme="light"] .setting-page .bengali-name-input-group .bengali-voice-btn.is-idle {
+    border-color: var(--ui-accent-strong, #0099cc);
+    color: var(--ui-accent-strong, #0099cc);
+}
+
 .setting-page .email-input-group .email-edit-btn {
     flex: 0 0 auto;
     width: 48px;
@@ -482,16 +504,21 @@
         font-size: 16px !important; /* prevent iOS zoom */
     }
 
+    /* Keep the Voice (mic) button on the field's right, like every other
+       input's mic, instead of wrapping it onto its own row. */
     .setting-page .bengali-name-input-group {
-        flex-wrap: wrap;
-        gap: 8px;
+        flex-wrap: nowrap;
     }
 
-    .setting-page .bengali-name-input-group .form-control,
-    .setting-page .bengali-name-input-group .btn {
-        flex: 1 0 100%;
-        width: 100%;
-        border-radius: 12px !important;
+    .setting-page .bengali-name-input-group .form-control {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .setting-page .bengali-name-input-group .bengali-voice-btn {
+        flex: 0 0 auto;
+        padding-left: 12px;
+        padding-right: 12px;
     }
 
     .setting-page .form-check small,

@@ -531,17 +531,18 @@ const AccountSetting = () => {
                 value={banglaName}
                 onChange={handleBanglaNameChange}
                 placeholder="আপনার বাংলা নাম লিখুন"
+                data-voice-input="false"
                 dir="auto"
               />
               <button
                 type="button"
                 onClick={startVoiceRecognition}
-                className={`btn ${
+                className={`btn bengali-voice-btn ${
                   isListening
                     ? "btn-danger"
                     : showVoiceConfirmation
                       ? "btn-warning"
-                      : "btn-outline-secondary"
+                      : "is-idle"
                 }`}
                 disabled={
                   isListening || isSavingBangla || showVoiceConfirmation

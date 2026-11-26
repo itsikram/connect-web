@@ -167,17 +167,18 @@ const BanglaNameField = ({ value, onChange }) => {
             value={value || ""}
             onChange={(event) => setName(event.target.value)}
             placeholder="আপনার বাংলা নাম লিখুন"
+            data-voice-input="false"
             dir="auto"
           />
           <button
             type="button"
             onClick={startVoiceRecognition}
-            className={`btn ${
+            className={`btn bengali-voice-btn ${
               isListening
                 ? "btn-danger"
                 : showVoiceConfirmation
                   ? "btn-warning"
-                  : "btn-outline-secondary"
+                  : "is-idle"
             }`}
             disabled={isListening || isSaving || showVoiceConfirmation}
             title="Use voice to set Bengali name (requires clear speech)"

@@ -32,6 +32,11 @@ const GROUP_GAP = 2;
 const GROUP_CONTROL_SELECTOR = "button, [role='button'], a[href], label, select";
 const MAX_GROUP_LEVELS = 4;
 const MAX_GROUP_DISTANCE = 160;
+const MAX_GROUP_DESCENDANTS = 80;
+// A multi-line field keeps its mic in the bottom-right corner, where the
+// typing ends, instead of floating in the middle of the box.
+const TALL_FIELD_HEIGHT = MIC_SIZE * 2;
+const TALL_FIELD_INSET = 6;
 const MIN_FIELD_WIDTH = 80;
 const MIN_FIELD_HEIGHT = 24;
 const RESCAN_INTERVAL_MS = 1000;
@@ -158,17 +163,26 @@ const findTrailingGroup = (field, fieldRect) => {
       other !== field && isVoiceInput(other) && hasArea(other.getBoundingClientRect()));
     if (otherField) return null;
     let group = null;
-    box.querySelectorAll(GROUP_CONTROL_SELECTOR).forEach((control) => {
-      if (control.closest(MIC_TAG) || control.contains(field)) return;
+    // Buttons by tag/role, plus clickable icons (an <i> or <span> with a
+    // click handler shows a pointer cursor) in small boxes.
+    const descendants = box.getElementsByTagName("*");
+    const candidates = descendants.length <= MAX_GROUP_DESCENDANTS
+      ? descendants
+      : box.querySelectorAll(GROUP_CONTROL_SELECTOR);
+    for (let index = 0; index < candidates.length; index += 1) {
+      const control = candidates[index];
+      if (control === field || isMicElement(control) || control.closest(MIC_TAG)
+        || control.contains(field)) continue;
       const rect = control.getBoundingClientRect();
-      if (!hasArea(rect) || rect.top > centerY || rect.bottom < centerY) return;
-      if (rect.left < fieldRect.left + fieldRect.width / 2) return;
-      if (rect.left - fieldRect.right > MAX_GROUP_DISTANCE) return;
-      if (group && rect.left >= group.left) return;
+      if (!hasArea(rect) || rect.top > centerY || rect.bottom < centerY) continue;
+      if (rect.left < fieldRect.left + fieldRect.width / 2) continue;
+      if (rect.left - fieldRect.right > MAX_GROUP_DISTANCE) continue;
+      if (group && rect.left >= group.left) continue;
       const style = window.getComputedStyle(control);
-      if (style.visibility === "hidden" || parseFloat(style.opacity) === 0) return;
+      if (style.visibility === "hidden" || parseFloat(style.opacity) === 0) continue;
+      if (!control.matches(GROUP_CONTROL_SELECTOR) && style.cursor !== "pointer") continue;
       group = { box, left: rect.left, centerY: rect.top + rect.height / 2 };
-    });
+    }
     if (group) return group;
   }
   return null;
@@ -179,6 +193,13 @@ const micSpot = (field, fieldRect) => {
   const group = findTrailingGroup(field, fieldRect);
   if (group) {
     return { group, x: group.left - GROUP_GAP - MIC_SIZE / 2, y: group.centerY };
+  }
+  if (fieldRect.height >= TALL_FIELD_HEIGHT) {
+    return {
+      group: null,
+      x: fieldRect.right - TALL_FIELD_INSET - MIC_SIZE / 2,
+      y: fieldRect.bottom - TALL_FIELD_INSET - MIC_SIZE / 2,
+    };
   }
   return {
     group: null,
