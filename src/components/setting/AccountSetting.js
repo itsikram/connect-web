@@ -129,7 +129,8 @@ const AccountSetting = () => {
       await api.post(
         "auth/face/register",
         { frames },
-        { skipAuthRefresh: true },
+        // The face service can need extra time right after being idle.
+        { skipAuthRefresh: true, timeout: 90000 },
       );
       setIsFaceRegistered(true);
       updateUser({ faceLoginEnabled: true });
@@ -141,9 +142,13 @@ const AccountSetting = () => {
       showSuccessToast("Face login registered successfully");
       return { success: true };
     } catch (error) {
+      // Say what actually went wrong instead of blaming the capture.
+      const status = error?.response?.status;
       const message =
         error?.response?.data?.message ||
-        "Couldn't register your face. Please blink once and try again.";
+        (!error?.response
+          ? "Couldn't reach the server. Check your internet connection and try again."
+          : `Face registration failed on the server (error ${status}). Please try again in a moment.`);
       const code = error?.response?.data?.code;
       // The camera panel shows blink / framing problems and retries them
       // itself; a toast on top of that is noise.
@@ -502,7 +507,7 @@ const AccountSetting = () => {
               <i className="fas fa-trash-alt me-2"></i>{isRemovingFace ? "Removing..." : "Remove face login"}
             </button>}
           </div>
-          {showFaceCapture && <div className="mt-3"><FaceCapture onCapture={handleFaceCapture} disabled={isRegisteringFace || isRemovingFace} actionLabel={isFaceRegistered ? "Update my face" : "Register my face"} /></div>}
+          {showFaceCapture && <div className="mt-3"><FaceCapture mode="register" onCapture={handleFaceCapture} disabled={isRegisteringFace || isRemovingFace} actionLabel={isFaceRegistered ? "Update my face" : "Register my face"} /></div>}
         </div>
 
         {/* Bengali Name Section */}

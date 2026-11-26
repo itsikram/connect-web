@@ -8,10 +8,18 @@ import { getServerAddress } from "../../utils/offlineUtils";
 // service stops reading frames as soon as it has seen the blink, so a quick
 // blink also means a quick answer. 400 px wide frames keep the upload small
 // on mobile data while the face stays well above what the detector needs.
-const FRAME_COUNT = 24;
+const LOGIN_FRAME_COUNT = 24;
+// Registration needs no blink, only a clear steady face.
+const REGISTER_FRAME_COUNT = 16;
 const FRAME_INTERVAL_MS = 140;
 const MAX_FRAME_WIDTH = 400;
-const JPEG_QUALITY = 0.6;
+// The face service's host rejects uploads over 1 MB, and detailed phone
+// frames easily pass that, so each frame gets a share of a safe budget:
+// try these [size, JPEG quality] steps until one fits.
+const UPLOAD_BUDGET_CHARS = 840000;
+const ENCODE_STEPS = [
+  [1, 0.7], [1, 0.58], [1, 0.46], [0.85, 0.5], [0.75, 0.45], [0.65, 0.4], [0.5, 0.35],
+];
 // The cue appears just after capture starts, so the frames before it show
 // the eyes open and the blink comes after them.
 const BLINK_CUE_DELAY_MS = 350;
@@ -33,6 +41,8 @@ const PHASE_TEXT = {
   denied: "Camera access is required. Allow the camera and try again.",
 };
 
+const HOLD_PROMPT_BN = "ক্যামেরার দিকে তাকিয়ে স্থির থাকুন";
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const waitForVideoReady = async (video) => {
@@ -49,12 +59,12 @@ const waitForVideoReady = async (video) => {
   throw new Error("Camera video did not provide usable frames");
 };
 
-const speakPrompt = () => {
+const speakPrompt = (text) => {
   try {
     const synth = window.speechSynthesis;
     if (!synth) return;
     synth.cancel();
-    const utterance = new SpeechSynthesisUtterance(BLINK_PROMPT_BN);
+    const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "bn-BD";
     utterance.rate = 1.05;
     const voice = (synth.getVoices() || []).find((v) =>
@@ -70,6 +80,7 @@ const speakPrompt = () => {
 /**
  * Live camera capture for face login / face registration.
  *
+ * mode "login" asks for a blink; mode "register" only for a steady face.
  * onCapture(frames) may return { success, error, code }; the panel then
  * shows the result and a retry button. A `liveness_failed` / `no_face` code
  * is retried once automatically. Callers that return nothing are treated as
@@ -77,6 +88,7 @@ const speakPrompt = () => {
  */
 const FaceCapture = ({
   onCapture,
+  mode = "login",
   disabled = false,
   actionLabel = "Scan my face",
   autoStart = true,
@@ -85,6 +97,7 @@ const FaceCapture = ({
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const canvasRef = useRef(null);
+  const isRegister = mode === "register";
   const mountedRef = useRef(true);
   const autoScannedRef = useRef(false);
   const [phase, setPhase] = useState("starting");
@@ -167,13 +180,30 @@ const FaceCapture = ({
 
   /** One burst of frames, or null when the camera stopped mid-way. */
   const recordBurst = useCallback(async (video, track) => {
-    const scale = Math.min(1, MAX_FRAME_WIDTH / video.videoWidth);
+    const frameCount = isRegister ? REGISTER_FRAME_COUNT : LOGIN_FRAME_COUNT;
+    const frameBudget = Math.floor(UPLOAD_BUDGET_CHARS / frameCount);
+    const baseScale = Math.min(1, MAX_FRAME_WIDTH / video.videoWidth);
     const canvas = canvasRef.current || document.createElement("canvas");
     canvasRef.current = canvas;
-    canvas.width = Math.round(video.videoWidth * scale);
-    canvas.height = Math.round(video.videoHeight * scale);
     const context = canvas.getContext("2d");
-    if (!context || !canvas.width || !canvas.height) return null;
+    if (!context || !video.videoWidth || !video.videoHeight) return null;
+    let step = 0;
+    const grabFrame = () => {
+      for (;;) {
+        const [size, quality] = ENCODE_STEPS[step];
+        const width = Math.round(video.videoWidth * baseScale * size);
+        const height = Math.round(video.videoHeight * baseScale * size);
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width;
+          canvas.height = height;
+        }
+        context.drawImage(video, 0, 0, width, height);
+        const frame = canvas.toDataURL("image/jpeg", quality);
+        if (frame.length <= frameBudget || step >= ENCODE_STEPS.length - 1) return frame;
+        // Too big: step down, and stay there for the following frames.
+        step += 1;
+      }
+    };
 
     setSafe(() => {
       setPhase("capturing");
@@ -181,19 +211,18 @@ const FaceCapture = ({
       setBlinkCue(false);
     });
     const cueTimer = setTimeout(() => {
-      setSafe(() => setBlinkCue(true));
-      speakPrompt();
+      if (!isRegister) setSafe(() => setBlinkCue(true));
+      speakPrompt(isRegister ? HOLD_PROMPT_BN : BLINK_PROMPT_BN);
     }, BLINK_CUE_DELAY_MS);
 
     const frames = [];
     const startedAt = performance.now();
     try {
-      for (let index = 0; index < FRAME_COUNT; index += 1) {
+      for (let index = 0; index < frameCount; index += 1) {
         if (track.readyState !== "live") return null;
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        frames.push(canvas.toDataURL("image/jpeg", JPEG_QUALITY));
-        setSafe(() => setProgress(Math.round(((index + 1) / FRAME_COUNT) * 100)));
-        if (index < FRAME_COUNT - 1) {
+        frames.push(grabFrame());
+        setSafe(() => setProgress(Math.round(((index + 1) / frameCount) * 100)));
+        if (index < frameCount - 1) {
           // Keep an even pace: JPEG encoding time on slow phones would
           // otherwise stretch the gaps and skip over a quick blink.
           const due = startedAt + (index + 1) * FRAME_INTERVAL_MS;
@@ -205,7 +234,7 @@ const FaceCapture = ({
       setSafe(() => setBlinkCue(false));
     }
     return frames;
-  }, [setSafe]);
+  }, [isRegister, setSafe]);
 
   const capture = useCallback(async () => {
     const video = videoRef.current;
@@ -255,7 +284,7 @@ const FaceCapture = ({
       setPhase("error");
       setMessage(
         result.error ||
-          "We couldn't verify your face. Face the light, blink once and try again.",
+          "We couldn't verify your face. Face the light and try again.",
       );
       return;
     }
@@ -276,7 +305,12 @@ const FaceCapture = ({
   }, [autoScan, capture, disabled, phase]);
 
   const busy = phase === "capturing" || phase === "verifying";
-  const statusText = message || PHASE_TEXT[phase] || "";
+  const statusText =
+    message ||
+    (isRegister && phase === "capturing"
+      ? "Look at the camera and hold still."
+      : PHASE_TEXT[phase]) ||
+    "";
   const ringState =
     phase === "success"
       ? "success"
