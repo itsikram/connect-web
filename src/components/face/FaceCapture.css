@@ -81,6 +81,40 @@
   }
 }
 
+.face-capture-blink {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.92);
+  color: #fff;
+  font-weight: 700;
+  font-size: 16px;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.35);
+  animation: face-capture-blink-in 0.2s ease-out;
+}
+
+.face-capture-blink i {
+  font-size: 18px;
+}
+
+@keyframes face-capture-blink-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
 .face-capture-overlay {
   position: absolute;
   inset: 0;

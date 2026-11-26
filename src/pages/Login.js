@@ -34,7 +34,8 @@ let Login = (props) => {
         const result = await faceLogin(frames);
         if (result.success) {
             navigate('/');
-        } else {
+        } else if (result.code !== 'liveness_failed' && result.code !== 'no_face') {
+            // Blink / framing problems are shown (and retried) in the camera panel.
             setError({ message: result.error });
         }
         // Lets the camera panel show "Verified" or a retry in place.

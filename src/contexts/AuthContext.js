@@ -246,8 +246,11 @@ export const AuthProvider = ({ children }) => {
       const errorMsg =
         error.response?.data?.message ||
         "Couldn't verify — please make sure you're a live person in front of the camera and try again";
-      setAuthError(errorMsg);
-      return { success: false, error: errorMsg };
+      // The camera panel shows face-check failures itself and retries a
+      // missed blink on its own, so only keep the code for it.
+      const code = error.response?.data?.code;
+      if (code !== "liveness_failed" && code !== "no_face") setAuthError(errorMsg);
+      return { success: false, error: errorMsg, code };
     } finally {
       setLoading(false);
     }

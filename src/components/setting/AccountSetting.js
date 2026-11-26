@@ -143,10 +143,13 @@ const AccountSetting = () => {
     } catch (error) {
       const message =
         error?.response?.data?.message ||
-        "Couldn't register your face. Please blink naturally and try again.";
-      showErrorToast(message);
+        "Couldn't register your face. Please blink once and try again.";
+      const code = error?.response?.data?.code;
+      // The camera panel shows blink / framing problems and retries them
+      // itself; a toast on top of that is noise.
+      if (code !== "liveness_failed" && code !== "no_face") showErrorToast(message);
       // Lets the camera panel show the reason and a retry in place.
-      return { success: false, error: message };
+      return { success: false, error: message, code };
     } finally {
       setIsRegisteringFace(false);
     }
