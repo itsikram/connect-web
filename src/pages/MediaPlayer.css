@@ -27,7 +27,7 @@
     background: var(--vp-bg);
     color: var(--vp-text);
     padding: var(--vp-pad);
-    padding-top: calc(var(--vp-pad) + env(safe-area-inset-top, 0px));
+    padding-top: calc(8px + env(safe-area-inset-top, 0px));
     padding-bottom: calc(var(--vp-pad) + env(safe-area-inset-bottom, 0px));
     box-sizing: border-box;
     width: 100%;
@@ -58,18 +58,18 @@
 /* ---------- Top bar + search ---------- */
 .vp-topbar {
     max-width: 1440px;
-    margin: 0 auto var(--vp-gap);
+    margin: 0 auto 10px;
     display: grid;
     grid-template-columns: auto auto minmax(0, 1fr) auto;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
     position: relative;
     z-index: 20;
 }
 
 .vp-back-btn {
-    width: 40px;
-    height: 40px;
+    width: 34px;
+    height: 34px;
     border-radius: 50%;
     border: 1px solid var(--vp-border);
     background: var(--vp-surface);
@@ -90,15 +90,16 @@
 
 .vp-topbar-title h1 {
     margin: 0;
-    font-size: 24px;
+    font-size: 19px;
     font-weight: 800;
+    line-height: 1.15;
     letter-spacing: -0.02em;
     color: var(--vp-text);
 }
 
 .vp-topbar-title p {
-    margin: 2px 0 0;
-    font-size: 12px;
+    margin: 0;
+    font-size: 11px;
     color: var(--vp-muted);
     white-space: nowrap;
 }
@@ -1639,7 +1640,7 @@
     }
 
     .vp-topbar-title h1 {
-        font-size: 22px;
+        font-size: 18px;
     }
 
     .video-stage-body {
